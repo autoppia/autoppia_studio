@@ -9,7 +9,6 @@ from browser_use.llm import ChatOpenAI
 from browser_use.agent.views import AgentState
 from browser_use.agent.gif import create_history_gif
 from browser_use.browser import BrowserProfile, BrowserSession
-from playwright.async_api import Browser
 
 from operators.shared import BaseOperator
 
@@ -27,44 +26,39 @@ class BrowserUseOperator(BaseOperator):
 
     async def initialize(
         self,
-        browser: Browser,
         task: str, 
         initial_url: str = None, 
         storage_state_path: Path = None
     ) -> None:
-        self.browser = browser
         self.task = task
         self.initial_url = initial_url
         self.storage_state_path = storage_state_path
 
-        self.browser_context = await browser.new_context()
         self.browser_profile = BrowserProfile(
             disable_security=True,
             headless=False,
             chromium_sandbox=False,
             highlight_elements=False,
-            viewport={"width": 1024, "height": 768},
+            window_size={"width": 1024, "height": 768},
             user_data_dir=None,
             locale="en-US",
             storage_state=self.storage_state_path
         )
         self.browser_session = BrowserSession(
-            browser_profile=self.browser_profile,
-            browser=self.browser,
-            browser_context=self.browser_context
+            browser_profile=self.browser_profile
         )
-        self.agent_state = AgentState()
+        await self.browser_session.start()        
 
         if self.initial_url:
             task = F"Go to {self.initial_url}, {self.task}"
         else:
             task = self.task
 
+        self.agent_state = AgentState()
         self.agent = Agent(
             task=task,
             llm=ChatOpenAI(model='gpt-4.1'),
-            planner_llm=ChatOpenAI(model='o4-mini'),
-            use_vision_for_planner=False, 
+            temperature=0.0,
             browser_session=self.browser_session,
             injected_agent_state=self.agent_state,
             max_actions_per_step=1

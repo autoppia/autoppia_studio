@@ -1,10 +1,8 @@
 import json
 import logging
 import socketio
-import tempfile
 from pathlib import Path
 
-from app.utils.browser_manager import get_browser
 from operators.openai import OpenAIOperator
 from operators.browser_use import BrowserUseOperator
 
@@ -16,10 +14,9 @@ socket_app = socketio.ASGIApp(sio)
 
 sessions = {}
 
-storage_state_dir = Path(tempfile.gettempdir()) / "automata" / "storage_states"
+home_dir = Path.home()
+storage_state_dir = home_dir / ".automata" / "storage_states"
 storage_state_dir.mkdir(parents=True, exist_ok=True)
-history_gif_dir = Path(tempfile.gettempdir()) / "automata" / "history"
-history_gif_dir.mkdir(parents=True, exist_ok=True)
 
 @sio.on("connect")
 async def connect(sid, environ):
@@ -51,8 +48,7 @@ async def start_task(sid, data):
     else:
         operator = BrowserUseOperator()
 
-    browser = get_browser()
-    await operator.initialize(browser, task, initial_url, storage_state_path)
+    await operator.initialize(task, initial_url, storage_state_path)
 
     sessions[sid] = operator
     await _perform_task(sid)

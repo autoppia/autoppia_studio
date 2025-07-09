@@ -1,17 +1,21 @@
 import uuid
 import asyncio
 from typing import Literal
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-from app.utils.browser_manager import get_browser
 from operators.openai import OpenAIOperator
 from operators.browser_use import BrowserUseOperator
 
 router = APIRouter()
 
 tasks = {}
+
+home_dir = Path.home()
+history_gif_dir = home_dir / ".automata" / "history"
+history_gif_dir.mkdir(parents=True, exist_ok=True)
 
 class TaskRequest(BaseModel):
     task: str
@@ -24,26 +28,27 @@ class TaskResponse(BaseModel):
 class TaskDetails(BaseModel):
     id: str
     task: str
-    initial_url: str
+    initial_url: str | None
     provider: Literal["browser_use", "openai"]
     status: str
-    steps: list
+    steps: list[dict]
     output: str | None
 
 class TaskStatus(BaseModel):
     status: str
 
 class TaskScreenshots(BaseModel):
-    screenshots: list
+    screenshots: list[str]
 
 class TaskGif(BaseModel):
     gif: str
 
-@router.post("/run-task", response_model=TaskResponse)
+
+@router.post("/run-task", tags=["Operator"], response_model=TaskResponse)
 async def run_task(request: TaskRequest):
-    task = request.get("task")
-    initial_url = request.get("initial_url")
-    provider = request.get("provider")
+    task = request.task
+    initial_url = request.initial_url
+    provider = request.provider
 
     if not task:
         raise HTTPException(status_code=400, detail="No task provided")
@@ -66,7 +71,7 @@ async def run_task(request: TaskRequest):
 
     return {"task_id": task_id}
 
-@router.get("/task/{task_id}", response_model=TaskDetails)
+@router.get("/task/{task_id}", tags=["Operator"], response_model=TaskDetails)
 async def get_task(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -82,7 +87,7 @@ async def get_task(task_id: str):
         "output": task["output"],
     }
 
-@router.get("/task/{task_id}/status", response_model=TaskStatus)
+@router.get("/task/{task_id}/status", tags=["Operator"], response_model=TaskStatus)
 async def get_task_status(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -90,7 +95,7 @@ async def get_task_status(task_id: str):
     
     return {"status": task["status"]}
 
-@router.get("/task/{task_id}/screenshots", response_model=TaskScreenshots)
+@router.get("/task/{task_id}/screenshots", tags=["Operator"], response_model=TaskScreenshots)
 async def get_task_screenshots(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -98,7 +103,7 @@ async def get_task_screenshots(task_id: str):
     
     return {"screenshots": task["screenshots"]}
 
-@router.get("/task/{task_id}/gif", response_model=TaskGif)
+@router.get("/task/{task_id}/gif", tags=["Operator"], response_model=TaskGif)
 async def get_task_gif(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -120,8 +125,7 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     else:
         operator = BrowserUseOperator()
 
-    browser = get_browser()
-    await operator.initialize(browser, task, initial_url)
+    await operator.initialize(task, initial_url)
 
     for _ in range(max_steps):
         done, valid = await operator.take_step()
@@ -132,7 +136,7 @@ async def _perform_task(task_id: str, max_steps: int = 25):
             
         model_thought = operator.get_model_thought()
         if model_thought:
-            tasks[task_id]["step"].append(model_thought)
+            tasks[task_id]["steps"].append(model_thought)
 
         if done and valid:
             break
@@ -141,19 +145,12 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     if screenshot:
         tasks[task_id]["screenshots"].append(screenshot)
 
-    gif = await operator.generate_gif()
+    gif = operator.generate_gif(history_gif_dir / f"{task_id}.gif")
     if gif:
         tasks[task_id]["gif"] = gif
 
-    result = await operator.get_result()
-    if result["output"]:
-        tasks[task_id]["output"] = result["content"]
-    if result["success"]:
-        tasks[task_id]["status"] = "completed"
-    else:
-        tasks[task_id]["status"] = "failed"
+    result = operator.get_result()
+    tasks[task_id]["output"] = result.get("content")
+    tasks[task_id]["status"] = "completed" if result.get("success") else "failed"
 
     await operator.close()
-
-
-    
