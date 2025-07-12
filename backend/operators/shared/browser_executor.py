@@ -1,7 +1,7 @@
 import asyncio
 import base64
 from typing import List, Dict
-from playwright.async_api import async_playwright, Page
+from patchright.async_api import async_playwright, Page
 
 # Optional: key mapping if your model uses "CUA" style keys
 CUA_KEY_TO_PLAYWRIGHT_KEY = {
@@ -46,16 +46,17 @@ class BrowserExecutor:
         self.browser = await self.playwright.chromium.launch(
             headless=False,
             args=[
-                f"--window-size={width},{height}",
                 "--disable-extensions",
                 "--disable-file-system",
             ]
         )
-        self.context = await self.browser.new_context()
+        self.context = await self.browser.new_context(
+            viewport={"width": width, "height": height},
+            locale='en-US',
+        )
         self.context.on("page", self._handle_new_page)
 
         page = await self.context.new_page()
-        await page.set_viewport_size({"width": width, "height": height})
         page.on("close", self._handle_page_close)
 
         if initial_url is None:

@@ -120,6 +120,7 @@ async def _perform_task(task_id: str, max_steps: int = 25):
 
     if provider == "openai":
         operator = OpenAIOperator()
+        max_steps = 2 * max_steps
     elif provider == "browser_use":
         operator = BrowserUseOperator()
     else:

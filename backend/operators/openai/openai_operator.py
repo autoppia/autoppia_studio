@@ -4,9 +4,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from typing import Tuple
 
-from openai import AsyncOpenAI
-
 from operators.shared import BaseOperator, BrowserExecutor
+from cua.openai import OpenAICUA
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -14,16 +13,9 @@ logger.setLevel(logging.INFO)
 
 class OpenAIOperator(BaseOperator):
     def __init__(self):
-        self.client = AsyncOpenAI()
-        self.model = "computer-use-preview"
-        self.tools = [{
-            "type": "computer_use_preview",
-            "display_width": 1024,
-            "display_height": 768,
-            "environment": "browser"
-        }]
+        self.cua = OpenAICUA()
+        self.output = None
 
-        self.response = None
         self.model_thoughts = []
         self.screenshots = []
         self.result = None
@@ -42,23 +34,19 @@ class OpenAIOperator(BaseOperator):
         await self.browser_executor.initialize(initial_url)
 
     async def take_step(self) -> Tuple[bool, bool]:
-        if self.response is None:
-            await self._take_initial_step()
+        if not self.output:
+            self.output = await self.cua.call(user_input=self.task)
             return False, False
-        
-        print(self.response.output)
 
-        computer_calls = [item for item in self.response.output if item.type == "computer_call"]
+        computer_calls = [item for item in self.output if item.type == "computer_call"]
         if not computer_calls:
             print("No computer call found. Output from model:")
-            for item in self.response.output:
+            for item in self.output:
                 print(item)
             return True, True
         
         computer_call = computer_calls[0]
-        last_call_id = computer_call.call_id
         action = computer_call.action
-        pending_safety_checks = computer_call.pending_safety_checks
         
         await self._handle_action(action)
         await asyncio.sleep(1)  
@@ -67,25 +55,8 @@ class OpenAIOperator(BaseOperator):
         self.screenshots.append(screenshot_base64)
 
         current_url = self.browser_executor.get_current_url()
+        self.output = await self.cua.call(screenshot=screenshot_base64, current_url=current_url)
 
-        self.response = await self.client.responses.create(
-            model=self.model,
-            previous_response_id=self.response.id,
-            tools=self.tools,
-            input=[
-                {
-                    "type": "computer_call_output",
-                    "call_id": last_call_id,
-                    "acknowledged_safety_checks": pending_safety_checks,
-                    "output": {
-                        "type": "input_image",
-                        "image_url": f"data:image/png;base64,{screenshot_base64}",
-                        "current_url": current_url
-                    }
-                }
-            ],
-            truncation="auto"
-        )
         return False, False
 
     async def take_screenshot(self) -> str:
@@ -97,33 +68,20 @@ class OpenAIOperator(BaseOperator):
     async def close(self):
         await self.browser_executor.close()
 
-    def add_new_task(self, new_task: str) -> None:
-        return  
+    async def add_new_task(self, new_task: str) -> None:
+        self.output = await self.cua.call(user_input=self.task)
 
     def get_model_thought(self) -> dict:
-        return {}
+        if self.model_thoughts:
+            return self.model_thoughts[-1]
+        else:
+            return None
 
     def get_result(self) -> dict:
         return {}
 
     def generate_gif(self, output_path: Path) -> str:
-        return "GIF"
-
-    async def _take_initial_step(self):
-        self.response = await self.client.responses.create(
-            model=self.model,
-            tools=self.tools,
-            input=[
-                {
-                    "role": "user",
-                    "content": self.task
-                }
-            ],
-            reasoning={
-                "summary": "concise",
-            },
-            truncation="auto"
-        )
+        return "GIF"        
 
     async def _handle_action(self, action: dict):
         action_type = action.type

@@ -67,7 +67,7 @@ async def continue_task(sid, data):
         await sio.emit('error', {'message': 'No existing session for this sid'}, to=sid)
         return
 
-    operator.add_new_task(task)
+    await operator.add_new_task(task)
     await _perform_task(sid)
 
 @sio.on("disconnect")

@@ -28,7 +28,7 @@ class BaseOperator(ABC):
         pass
 
     @abstractmethod
-    def add_new_task(self, new_task: str) -> None:
+    async def add_new_task(self, new_task: str) -> None:
         pass
 
     @abstractmethod

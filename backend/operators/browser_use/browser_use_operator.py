@@ -85,7 +85,7 @@ class BrowserUseOperator(BaseOperator):
         await self.agent.close()
         await self.browser_session.stop()
         
-    def add_new_task(self, new_task: str) -> None:
+    async def add_new_task(self, new_task: str) -> None:
         self.task = new_task
         if self.agent is not None:
             self.agent.add_new_task(new_task)

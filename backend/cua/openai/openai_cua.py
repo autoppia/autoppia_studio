@@ -1,4 +1,9 @@
+import logging
+
 from openai import AsyncOpenAI
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class OpenAICUA:
     def __init__(self):
@@ -10,42 +15,66 @@ class OpenAICUA:
             "display_height": 768,
             "environment": "browser"
         }]
-
-        self.response = None
-        self.pending_safety_checks = []
+        self.items = []
 
     def set_dimension(self, width: int, height: int):
         self.tools[0]["display_width"] = width
         self.tools[0]["display_height"] = height
 
-    async def start(
+    async def call(
         self, 
-        task: str = None,
+        user_input: str = None,
+        screenshot: str = None,
+        current_url: str = None,
     ) -> dict:
-        self.response = await self.client.responses.create(
+        if user_input is not None:
+            self.items.append({
+                "type": "user",
+                "content": self.process_input(user_input)
+            })
+
+        elif screenshot is not None:
+            last_item = self.items[-1]
+            pending_safety_checks = last_item.get("pending_safety_checks", [])
+            self.items.append({
+                "type": "computer_call_output",
+                "call_id": last_item["call_id"],
+                "acknowledged_safety_checks": pending_safety_checks,
+                "output": {
+                    "type": "input_image",
+                    "image_url": f"data:image/png;base64,{screenshot}",
+                    "current_url": current_url
+                }
+            })
+
+        response = await self.client.responses.create(
             model=self.model,
             tools=self.tools,
-            input=[
-                {
-                    "role": "user",
-                    "content": task
-                }
-            ],
-            reasoning={
-                "summary": "concise",
-            },
+            input=self.items,
             truncation="auto"
         )
 
-        return self.response.output
-    
-    async def forward(
-        self,
-        user_message: str = None,
-        screenshot: str = None,
-        current_url: str = None
-    ) -> dict:
-        pass
+        if "output" not in response:
+            logger.error("No output found in the response.")
+            return {}
 
-    def process_response(self) -> dict:
-        pass
+        self.items += response["output"]
+
+        return response.output
+
+    def process_input(self, user_input: str) -> str:
+        if len(self.items) == 0:
+            return (
+                "Do the following task without human in the loop.\n"
+                "Never ask to me and try to solve everything by yourself including captcha.\n"
+                f"Task: {user_input}"
+            )
+        else:
+            return (
+                "Do the following task without human in the loop.\n"
+                "Never ask to me and try to solve everything by yourself including captcha.\n"
+                f"Task: {user_input}"
+            )
+            
+
+        
