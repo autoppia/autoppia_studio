@@ -13,12 +13,10 @@ logger.setLevel(logging.INFO)
 
 class OpenAIOperator(BaseOperator):
     def __init__(self):
-        self.cua = OpenAICUA()
-        self.output = None
-
+        self.cua_output = None
         self.model_thoughts = []
         self.screenshots = []
-        self.result = None
+        self.result = {}
 
     async def initialize(
         self,
@@ -28,26 +26,27 @@ class OpenAIOperator(BaseOperator):
     ) -> None:
         self.task = task
         self.initial_url = initial_url
-        self.storage_state_path = storage_state_path    
+        self.storage_state_path = storage_state_path
 
+        self.cua = OpenAICUA()
         self.browser_executor = BrowserExecutor()
         await self.browser_executor.initialize(initial_url)
 
     async def take_step(self) -> Tuple[bool, bool]:
-        if not self.output:
-            self.output = await self.cua.call(user_input=self.task)
+        if not self.cua_output:
+            self.cua_output = await self.cua.call(user_input=self.task)
             return False, False
 
-        computer_calls = [item for item in self.output if item.type == "computer_call"]
+        computer_calls = [item for item in self.cua_output if item.type == "computer_call"]
         if not computer_calls:
-            print("No computer call found. Output from model:")
-            for item in self.output:
-                print(item)
+            messages = [item for item in self.cua_output if item.type == "message"]
+            self.result = {
+                "content": messages[0].content[0].text,
+                "success": True
+            }
             return True, True
         
-        computer_call = computer_calls[0]
-        action = computer_call.action
-        
+        action = computer_calls[0].action        
         await self._handle_action(action)
         await asyncio.sleep(1)  
 
@@ -55,7 +54,15 @@ class OpenAIOperator(BaseOperator):
         self.screenshots.append(screenshot_base64)
 
         current_url = self.browser_executor.get_current_url()
-        self.output = await self.cua.call(screenshot=screenshot_base64, current_url=current_url)
+        self.cua_output = await self.cua.call(screenshot=screenshot_base64, current_url=current_url)
+
+        model_thoughts = [item for item in self.cua_output if item.type == "reasoning"]
+        if model_thoughts:
+            self.model_thoughts.append({
+                "next_goal": model_thoughts[0].summary[0].text,
+                "evaluation_previous_goal": "Not supported with OpenAI",
+                "previous_success": True
+            })
 
         return False, False
 
@@ -69,7 +76,7 @@ class OpenAIOperator(BaseOperator):
         await self.browser_executor.close()
 
     async def add_new_task(self, new_task: str) -> None:
-        self.output = await self.cua.call(user_input=self.task)
+        self.cua_output = await self.cua.call(user_input=self.task)
 
     def get_model_thought(self) -> dict:
         if self.model_thoughts:
@@ -78,7 +85,7 @@ class OpenAIOperator(BaseOperator):
             return None
 
     def get_result(self) -> dict:
-        return {}
+        return self.result
 
     def generate_gif(self, output_path: Path) -> str:
         return "GIF"        

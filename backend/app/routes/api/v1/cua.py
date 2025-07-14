@@ -10,13 +10,16 @@ router = APIRouter()
 
 agents = {}
 
-class CUAInput(BaseModel):
+class CUAStartInput(BaseModel):
+    task: str
     provider: Literal["openai"] = "openai"
+    display_width: int = Field(1024, gt=0)
+    display_height: int = Field(768, gt=0)
+    
+class CUAForwardInput(BaseModel):
     user_input: Optional[str] = None
     screenshot: Optional[str] = None
     current_url: Optional[str] = None
-    display_width: int = Field(None, gt=0)
-    display_height: int = Field(None, gt=0)
 
     @model_validator(mode="after")
     def check_user_input_or_screenshot(cls, model):
@@ -28,7 +31,7 @@ class CUAInput(BaseModel):
 
 
 @router.post("/cua/start", tags=["CUA"])
-async def start(request: CUAInput):
+async def start(request: CUAStartInput):
     agent_id = str(uuid.uuid4())
 
     if request.provider == "openai":
@@ -36,15 +39,14 @@ async def start(request: CUAInput):
     else:
         cua = OpenAICUA()
 
-    if request.display_width and request.display_height:
-        cua.set_dimension(request.display_width, request.display_height)
+    cua.set_dimension(request.display_width, request.display_height)
     agents[agent_id] = cua
 
-    output = await cua.call(user_input=request.user_input)
+    output = await cua.call(user_input=request.task)
     return {"agent_id": agent_id, "output": output}
 
 @router.put("/cua/{agent_id}/forward", tags=["CUA"])
-async def forward(agent_id: str, request: CUAInput):
+async def forward(agent_id: str, request: CUAForwardInput):
     if agent_id not in agents:
         raise HTTPException(status_code=404, detail="Agent not found")
     

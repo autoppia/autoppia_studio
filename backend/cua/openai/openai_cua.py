@@ -29,16 +29,16 @@ class OpenAICUA:
     ) -> dict:
         if user_input is not None:
             self.items.append({
-                "type": "user",
-                "content": self.process_input(user_input)
+                "role": "user",
+                "content": user_input
             })
 
         elif screenshot is not None:
             last_item = self.items[-1]
-            pending_safety_checks = last_item.get("pending_safety_checks", [])
+            pending_safety_checks = last_item.pending_safety_checks
             self.items.append({
                 "type": "computer_call_output",
-                "call_id": last_item["call_id"],
+                "call_id": last_item.call_id,
                 "acknowledged_safety_checks": pending_safety_checks,
                 "output": {
                     "type": "input_image",
@@ -51,15 +51,19 @@ class OpenAICUA:
             model=self.model,
             tools=self.tools,
             input=self.items,
+            reasoning={
+                "summary": "concise"
+            },
             truncation="auto"
         )
 
-        if "output" not in response:
+        print(response.output)
+
+        if not response.output:
             logger.error("No output found in the response.")
             return {}
 
-        self.items += response["output"]
-
+        self.items += response.output
         return response.output
 
     def process_input(self, user_input: str) -> str:
