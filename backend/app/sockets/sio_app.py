@@ -9,7 +9,7 @@ from operators.browser_use import BrowserUseOperator
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*")
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[])
 socket_app = socketio.ASGIApp(sio)
 
 sessions = {}
@@ -26,7 +26,6 @@ async def connect(sid, environ):
 async def start_task(sid, data):
     task = data.get("task")
     initial_url = data.get("initial_url")
-    storage_state = data.get("storage_state")
     provider = data.get("provider")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
@@ -34,12 +33,7 @@ async def start_task(sid, data):
     
     logger.info(f"Starting task: {task}, Initial URL: {initial_url}")
 
-    if storage_state:
-        storage_state_path = storage_state_dir / f"{sid}.json"
-        with open(storage_state_path, "w") as storage_state_file:
-            json.dump(storage_state, storage_state_file, indent=4)
-    else:
-        storage_state_path = None
+    storage_state_path = storage_state_dir / "automata.json"
 
     if provider == "openai":
         operator = OpenAIOperator()
@@ -73,6 +67,10 @@ async def continue_task(sid, data):
 @sio.on("disconnect")
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
+    operator = sessions.get(sid)
+    if operator:
+        await operator.close()
+        del sessions[sid]
 
 
 async def _perform_task(sid, max_steps=25):

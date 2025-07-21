@@ -1,7 +1,12 @@
 import asyncio
 import base64
+import logging
+from pathlib import Path
 from typing import List, Dict
 from patchright.async_api import async_playwright, Page
+
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 # Optional: key mapping if your model uses "CUA" style keys
 CUA_KEY_TO_PLAYWRIGHT_KEY = {
@@ -35,12 +40,16 @@ CUA_KEY_TO_PLAYWRIGHT_KEY = {
 
 class BrowserExecutor:
     def __init__(self):
-        return
+        self.playwright = None
+        self.browser = None
+        self.context = None
+        self.page = None
     
     def get_dimensions(self):
         return (1024, 768)
 
-    async def initialize(self, initial_url: str):
+    async def initialize(self, initial_url: str, storage_state_path: Path = None):
+        logger.info(f"Initializing BrowserExecutor with initial URL: {initial_url} and storage state path: {storage_state_path}")
         width, height = self.get_dimensions()
         self.playwright = await async_playwright().start()
         self.browser = await self.playwright.chromium.launch(
@@ -52,6 +61,7 @@ class BrowserExecutor:
         )
         self.context = await self.browser.new_context(
             viewport={"width": width, "height": height},
+            storage_state=storage_state_path,
             locale='en-US',
         )
         self.context.on("page", self._handle_new_page)
@@ -64,23 +74,28 @@ class BrowserExecutor:
         await page.goto(initial_url)
 
     async def _handle_new_page(self, page: Page):
-        print("New page created")
+        logger.info("New page created")
         self.page = page
         page.on("close", self._handle_page_close)
 
     async def _handle_page_close(self, page: Page):
-        print("Page closed")
+        logger.info("Page closed")
         if self.page == page:
             if self.browser.contexts[0].pages:
                 self.page = self.browser.contexts[0].pages[-1]
             else:
-                print("Warning: All pages have been closed.")
+                logger.warning("All pages have been closed.")
                 self.page = None
 
     async def close(self):
-        await self.page.close()
+        if not self.page.is_closed():
+            await self.page.close()
+
         await self.context.close()
-        await self.browser.close()
+
+        if self.browser:
+            await self.browser.close()
+        
         await self.playwright.stop()
 
     def get_current_url(self) -> str:

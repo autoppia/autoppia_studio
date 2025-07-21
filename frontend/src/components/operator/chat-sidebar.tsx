@@ -63,6 +63,9 @@ export default function ChatSidebar(props: ChatSidebarProps) {
     setDlgOpen(true);
   };
   const handleYes = () => {
+    sockets.forEach((socket: any) => {
+      socket.disconnect();
+    });
     navigate("/");
   };
 

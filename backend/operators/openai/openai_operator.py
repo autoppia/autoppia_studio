@@ -30,7 +30,7 @@ class OpenAIOperator(BaseOperator):
 
         self.cua = OpenAICUA()
         self.browser_executor = BrowserExecutor()
-        await self.browser_executor.initialize(initial_url)
+        await self.browser_executor.initialize(initial_url, storage_state_path)
 
     async def take_step(self) -> Tuple[bool, bool]:
         if not self.cua_output:
@@ -76,7 +76,7 @@ class OpenAIOperator(BaseOperator):
         await self.browser_executor.close()
 
     async def add_new_task(self, new_task: str) -> None:
-        self.cua_output = await self.cua.call(user_input=self.task)
+        self.cua_output = await self.cua.call(user_input=new_task)
 
     def get_model_thought(self) -> dict:
         if self.model_thoughts:

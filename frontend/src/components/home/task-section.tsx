@@ -14,8 +14,6 @@ import { websites } from "../../utils/mock/mockDB";
 import { resetChat, addTask } from "../../redux/chatSlice";
 import { resetSocket } from "../../redux/socketSlice";
 
-const apiUrl = process.env.REACT_APP_API_URL;
-
 interface TaskSectionProps {
   prompt: string;
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
@@ -36,6 +34,7 @@ export default function TaskSection(props: TaskSectionProps) {
   } = props;
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
+  const [provider, setProvider] = useState("autoppia");
   const [agentCount, setAgentCount] = useState(1);
 
   const navigate = useNavigate();
@@ -68,34 +67,19 @@ export default function TaskSection(props: TaskSectionProps) {
 
   const handleSubmit = async () => {
     try {
-      const response = await fetch(`${apiUrl}/operator`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          agentCount: agentCount,
-        }),
-      });
-      if (response.ok) {
-        const data = await response.json();
         dispatch(resetSocket());
         dispatch(resetChat());
         dispatch(addTask(prompt));
-        data.socketioPaths.forEach((socketioPath: string) => {
-          const socket = initializeSocket(dispatch, socketioPath);
+        for (let i = 0; i < agentCount; i++) {
+          const socket = initializeSocket(dispatch);
           const task = user.isAuthenticated ? `${prompt}\nADDITIONAL INFO: ${user.instructions}` : prompt;
-          socket.emit("new-task", {
+          socket.emit("start-task", {
             task: task,
-            url: initialUrl,
-            storageState: data.storageState,
+            initial_url: initialUrl,
+            provider: provider,
           });
-        });
+        }
         navigate("/operator");
-      } else {
-        const errorData = await response.json();
-        console.log(errorData);
-      }
     } catch (error) {
       console.log(error);
     }
@@ -108,26 +92,49 @@ export default function TaskSection(props: TaskSectionProps) {
           <div className="relative w-full text-sm font-medium">
             <button
               type="button"
-              className="w-[175px] text-left rounded-full shadow-sm py-1 ps-3 text-white bg-gradient-primary outline-none appearance-none -webkit-appearance-none -moz-appearance-none"
-              onClick={() => setOpenedDropdown("network")}
+              className="w-[130px] text-left rounded-full shadow-sm py-1 ps-3 text-white bg-gradient-primary outline-none appearance-none -webkit-appearance-none -moz-appearance-none"
+              onClick={() => setOpenedDropdown("provider")}
             >
-              Autoppia Validator
+              {provider === "autoppia" && "Autoppia"}
+              {provider === "browser_use" && "Browser Use"}
+              {provider === "openai" && "OpenAI"}
               <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
                 <FontAwesomeIcon icon={faAngleDown} />
               </span>
             </button>
             <div
               style={{
-                display: openedDropdown === "network" ? "block" : "none",
+                display: openedDropdown === "provider" ? "block" : "none",
               }}
               className="absolute z-20 mt-1 w-full rounded-lg bg-white shadow-lg"
             >
               <div className="p-1">
                 <button
                   className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
-                  onClick={() => setOpenedDropdown(null)}
+                  onClick={() => {
+                    setProvider("autoppia");
+                    setOpenedDropdown(null);
+                  }}
                 >
-                  Autoppia Validator
+                  Autoppia
+                </button>
+                <button
+                  className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
+                  onClick={() => {
+                    setProvider("browser_use");
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  Browser Use
+                </button>
+                <button
+                  className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
+                  onClick={() => {
+                    setProvider("openai");
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  OpenAI
                 </button>
               </div>
             </div>

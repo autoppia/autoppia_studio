@@ -57,7 +57,7 @@ class OpenAICUA:
             truncation="auto"
         )
 
-        print(response.output)
+        logger.info(f"Model output: {response.output}")
 
         if not response.output:
             logger.error("No output found in the response.")

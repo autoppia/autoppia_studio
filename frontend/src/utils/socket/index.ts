@@ -4,20 +4,16 @@ import { addSocket, addSocketId, setScreenshot } from "../../redux/socketSlice";
 import { addAction, addResult } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
 
-const validatorUrl = process.env.REACT_APP_VALIDATOR_URL;
+const apiUrl = process.env.REACT_APP_API_URL;
 
-export const initializeSocket = (
-  dispatch: AppDispatch,
-  socketioPath: string
-) => {
-  const socket = io(validatorUrl, {
-    path: socketioPath,
+export const initializeSocket = (dispatch: AppDispatch) => {
+  const socket = io(`${apiUrl}`, {
     timeout: 60000,
     reconnection: false,
   });
 
   socket.on("connect", () => {
-    console.log(`Connected to the agent: ${validatorUrl + socketioPath}`);
+    console.log("Connected to the agent:", socket.id);
     dispatch(addSocketId(socket.id));
     dispatch(
       addAction({
@@ -28,8 +24,7 @@ export const initializeSocket = (
   });
 
   socket.on("disconnect", (reason) => {
-    console.log(`Disconnected from the agent: ${validatorUrl + socketioPath}`);
-    console.log(reason);
+    console.log("Disconnected from the agent:", reason);
     dispatch(
       addResult({
         socketId: socket.id,

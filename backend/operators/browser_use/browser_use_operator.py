@@ -37,6 +37,7 @@ class BrowserUseOperator(BaseOperator):
         self.browser_profile = BrowserProfile(
             disable_security=True,
             headless=False,
+            stealth=True,
             chromium_sandbox=False,
             highlight_elements=False,
             window_size={"width": 1024, "height": 768},

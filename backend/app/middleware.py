@@ -1,13 +1,11 @@
-from fastapi import Request
-from fastapi.responses import JSONResponse
 import httpx
+from fastapi import HTTPException, Security
+from fastapi.security import APIKeyHeader
 
-async def verify_api_key(request: Request, call_next):
+api_key_header = APIKeyHeader(name="x-api-key")
+
+async def verify_api_key(api_key: str = Security(api_key_header)):
     try:
-        api_key = request.headers.get("x-api-key")
-        if not api_key:
-            return JSONResponse(status_code=401, content={"error": "Unauthorized: Missing API key"})
-
         async with httpx.AsyncClient() as client:
             response = await client.post(
                 "https://api.autoppia.com/api-keys/verify",
@@ -16,10 +14,8 @@ async def verify_api_key(request: Request, call_next):
             response_data = response.json()
 
         if not response_data.get("is_valid", False):
-            return JSONResponse(status_code=401, content={"error": "Unauthorized: Invalid API key"})
-
-        return await call_next(request)
+            raise HTTPException(status_code=401, detail="Unauthorized: Invalid API key")
 
     except Exception as e:
         print(f"Error during API key verification: {e}")
-        return JSONResponse(status_code=401, content={"error": "Unauthorized: Invalid API key"})
+        raise HTTPException(status_code=401, detail="Unauthorized: Invalid API key")

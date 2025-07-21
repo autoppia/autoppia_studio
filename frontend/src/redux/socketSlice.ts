@@ -20,7 +20,7 @@ const socketSlice = createSlice({
     reducers: {
         resetSocket: (state) => {
             state.sockets.forEach((socket) => {
-                socket.close();
+                socket.disconnect();
             });
             state.sockets = [];
             state.socketIds = [];

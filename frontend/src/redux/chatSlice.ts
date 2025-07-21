@@ -38,6 +38,11 @@ const chatSlice = createSlice({
       });
       const lastIndex = indexes.length > 0 ? indexes[indexes.length - 1] : -1;
       if (lastIndex >= 0 && state.chats[lastIndex].state === "thinking") {
+        const actionLength = state.chats[lastIndex].actions?.length || 0;
+        if (actionLength > 0 && state.chats[lastIndex].actions![actionLength - 1] === action.payload.action) {
+          return;
+        }
+
         state.chats[lastIndex] = {
           ...state.chats[lastIndex],
           thinking: action.payload.action,
