@@ -42,7 +42,8 @@ const provider = new DescopeMcpProvider({
     permissionScopes: [
       {
         name: "claudeai",
-        description: "Allow Claude AI"
+        description: "Allow Claude AI",
+        required: false
       }
     ],
     isDisabled: false // Set to true to disable dynamic registration
