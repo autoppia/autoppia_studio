@@ -39,12 +39,17 @@ const provider = new DescopeMcpProvider({
   // Dynamic client registration options
   dynamicClientRegistrationOptions: {
     authPageUrl: `https://api.descope.com/login/${process.env.DESCOPE_PROJECT_ID}?flow=inbound-apps-user-consent`,
-    permissionScopes: [],
+    permissionScopes: [
+      {
+        name: "claudeai",
+        description: "Allow Claude AI"
+      }
+    ],
     isDisabled: false // Set to true to disable dynamic registration
   },
 });
 
-app.use(descopeMcpAuthRouter());
+app.use(descopeMcpAuthRouter(provider));
 app.use(["/mcp"], descopeMcpBearerAuth(provider));
 
 // Initialize transport
