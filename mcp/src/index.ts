@@ -1,144 +1,133 @@
-import express from "express";
-import { randomUUID } from "node:crypto";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import dotenv from "dotenv";
+import express, { Request, Response } from "express";
+import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { isInitializeRequest } from "@modelcontextprotocol/sdk/types.js"
-import { descopeMcpAuthRouter, descopeMcpBearerAuth } from "@descope/mcp-express";
-import { z } from "zod";
+import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
+import { descopeMcpAuthRouter, descopeMcpBearerAuth, DescopeMcpProvider } from "@descope/mcp-express";
+import { createServer } from "./create-server";
 
-import "dotenv/config";
-
-const app = express();
-// app.use(express.json());
-
-app.use(descopeMcpAuthRouter());
-app.use("/mcp", descopeMcpBearerAuth());
-
-const transports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
-
-app.post('/mcp', async (req, res) => {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
-
-  console.log(sessionId)
-  let transport: StreamableHTTPServerTransport;
-
-  if (sessionId && transports[sessionId]) {
-    transport = transports[sessionId];
-  } else if (!sessionId && isInitializeRequest(req.body)) {
-    transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: () => randomUUID(),
-      onsessioninitialized: (sessionId) => {
-        transports[sessionId] = transport;
-      },
-    });
-
-    transport.onclose = () => {
-      if (transport.sessionId) {
-        delete transports[transport.sessionId];
-      }
-    };
-
-    const server = new McpServer({
-      name: "example-server",
-      version: "1.0.0"
-    });
-
-    server.registerTool(
-      "calculate-bmi",
-      {
-        title: "BMI Calculator",
-        description: "Calculate Body Mass Index",
-        inputSchema: {
-          weightKg: z.number(),
-          heightM: z.number()
-        }
-      },
-      async ({ weightKg, heightM }) => ({
-        content: [{
-          type: "text",
-          text: String(weightKg / (heightM * heightM))
-        }]
-      })
-    );
-
-    // Async tool with external API call
-    server.registerTool(
-      "fetch-weather",
-      {
-        title: "Weather Fetcher",
-        description: "Get weather data for a city",
-        inputSchema: { city: z.string() }
-      },
-      async ({ city }) => {
-        const response = await fetch(`https://api.weather.com/${city}`);
-        const data = await response.text();
-        return {
-          content: [{ type: "text", text: data }]
-        };
-      }
-    );
-
-    // Tool that returns ResourceLinks
-    server.registerTool(
-      "list-files",
-      {
-        title: "List Files",
-        description: "List project files",
-        inputSchema: { pattern: z.string() }
-      },
-      async ({ pattern }) => ({
-        content: [
-          { type: "text", text: `Found files matching "${pattern}":` },
-          // ResourceLinks let tools return references without file content
-          {
-            type: "resource_link",
-            uri: "file:///project/README.md",
-            name: "README.md",
-            mimeType: "text/markdown",
-            description: 'A README file'
-          },
-          {
-            type: "resource_link",
-            uri: "file:///project/src/index.ts",
-            name: "index.ts",
-            mimeType: "text/typescript",
-            description: 'An index file'
-          }
-        ]
-      })
-    );
-
-    await server.connect(transport);
-  } else {
-    res.status(400).json({
-      jsonrpc: '2.0',
-      error: {
-        code: -32000,
-        message: 'Bad Request: No valid session ID provided',
-      },
-      id: null,
-    });
-    return;
+// Type declarations
+declare global {
+  namespace Express {
+    interface Request {
+      auth?: AuthInfo;
+    }
   }
+}
 
-  await transport.handleRequest(req, res, req.body);
+// Environment setup
+dotenv.config();
+const PORT = process.env.PORT || 5000;
+
+// Initialize Express app
+const app = express();
+
+// CORS Middleware
+app.use(cors({
+  origin: true,
+  methods: '*',
+  allowedHeaders: 'Authorization, Origin, Content-Type, Accept, *',
+}));
+
+// Auth middleware
+const provider = new DescopeMcpProvider({
+  // Project credentials
+  projectId: process.env.DESCOPE_PROJECT_ID,
+  managementKey: process.env.DESCOPE_MANAGEMENT_KEY,
+  serverUrl: process.env.SERVER_URL,
+
+  // Dynamic client registration options
+  dynamicClientRegistrationOptions: {
+    authPageUrl: `https://api.descope.com/login/${process.env.DESCOPE_PROJECT_ID}?flow=inbound-apps-user-consent`,
+    permissionScopes: [],
+    isDisabled: false // Set to true to disable dynamic registration
+  },
 });
 
-const handleSessionRequest = async (req: express.Request, res: express.Response) => {
-  const sessionId = req.headers['mcp-session-id'] as string | undefined;
-  if (!sessionId || !transports[sessionId]) {
-    res.status(400).send('Invalid or missing session ID');
-    return;
-  }
+app.use(descopeMcpAuthRouter());
+app.use(["/mcp"], descopeMcpBearerAuth(provider));
 
-  const transport = transports[sessionId];
-  await transport.handleRequest(req, res);
+// Initialize transport
+const transport = new StreamableHTTPServerTransport({
+  sessionIdGenerator: undefined, // set to undefined for stateless servers
+});
+
+// MCP endpoint
+app.post('/mcp', async (req: Request, res: Response) => {
+  console.log('Received MCP request:', req.body);
+  try {
+    await transport.handleRequest(req, res, req.body);
+  } catch (error) {
+    console.error('Error handling MCP request:', error);
+    if (!res.headersSent) {
+      res.status(500).json({
+        jsonrpc: '2.0',
+        error: {
+          code: -32603,
+          message: 'Internal server error',
+        },
+        id: null,
+      });
+    }
+  }
+});
+
+// Method not allowed handlers
+const methodNotAllowed = (req: Request, res: Response) => {
+  console.log(`Received ${req.method} MCP request`);
+  res.status(405).json({
+    jsonrpc: "2.0",
+    error: {
+      code: -32000,
+      message: "Method not allowed."
+    },
+    id: null
+  });
 };
 
-app.get('/mcp', handleSessionRequest);
-app.delete('/mcp', handleSessionRequest);
+app.get('/mcp', methodNotAllowed);
+app.delete('/mcp', methodNotAllowed);
 
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});  
+const { server } = createServer();
+
+// Server setup
+const setupServer = async () => {
+  try {
+    await server.connect(transport);
+    console.log('Server connected successfully');
+  } catch (error) {
+    console.error('Failed to set up the server:', error);
+    throw error;
+  }
+};
+
+// Start server
+setupServer()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`MCP Streamable HTTP Server listening on port ${PORT}`);
+    });
+  })
+  .catch(error => {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  });
+
+// Handle server shutdown
+process.on('SIGINT', async () => {
+  console.log('Shutting down server...');
+  try {
+    console.log(`Closing transport`);
+    await transport.close();
+  } catch (error) {
+    console.error(`Error closing transport:`, error);
+  }
+
+  try {
+    await server.close();
+    console.log('Server shutdown complete');
+  } catch (error) {
+    console.error('Error closing server:', error);
+  }
+  process.exit(0);
+});

@@ -1,5 +1,5 @@
 {
-  "name": "mcp",
+  "name": "automata-mcp-server",
   "version": "1.0.0",
   "license": "ISC",
   "type": "commonjs",
@@ -12,11 +12,15 @@
   "dependencies": {
     "@descope/mcp-express": "^1.0.12",
     "@modelcontextprotocol/sdk": "^1.16.0",
-    "express": "^5.1.0"
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "node-fetch": "^3.3.2"
   },
   "devDependencies": {
+    "@types/cors": "^2.8.19",
     "@types/express": "^5.0.3",
     "@types/node": "^24.1.0",
+    "@types/node-fetch": "^2.6.12",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"
   }
