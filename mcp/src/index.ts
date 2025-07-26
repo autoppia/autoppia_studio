@@ -3,7 +3,6 @@ import express, { Request, Response } from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
-import { descopeMcpAuthRouter, descopeMcpBearerAuth, DescopeMcpProvider } from "@descope/mcp-express";
 import { createServer } from "./create-server";
 
 // Type declarations
@@ -21,6 +20,7 @@ const PORT = process.env.PORT || 5000;
 
 // Initialize Express app
 const app = express();
+app.use(express.json())
 
 // CORS Middleware
 app.use(cors({
@@ -28,30 +28,6 @@ app.use(cors({
   methods: '*',
   allowedHeaders: 'Authorization, Origin, Content-Type, Accept, *',
 }));
-
-// Auth middleware
-const provider = new DescopeMcpProvider({
-  // Project credentials
-  projectId: process.env.DESCOPE_PROJECT_ID,
-  managementKey: process.env.DESCOPE_MANAGEMENT_KEY,
-  serverUrl: process.env.SERVER_URL,
-
-  // Dynamic client registration options
-  dynamicClientRegistrationOptions: {
-    authPageUrl: `https://api.descope.com/login/${process.env.DESCOPE_PROJECT_ID}?flow=inbound-apps-user-consent`,
-    permissionScopes: [
-      {
-        name: "claudeai",
-        description: "Allow Claude AI",
-        required: false
-      }
-    ],
-    isDisabled: false // Set to true to disable dynamic registration
-  },
-});
-
-app.use(descopeMcpAuthRouter(provider));
-app.use(["/mcp"], descopeMcpBearerAuth(provider));
 
 // Initialize transport
 const transport = new StreamableHTTPServerTransport({

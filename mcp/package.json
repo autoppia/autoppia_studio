@@ -10,7 +10,6 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@descope/mcp-express": "^1.0.12",
     "@modelcontextprotocol/sdk": "^1.16.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
