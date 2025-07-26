@@ -2,17 +2,7 @@ import dotenv from "dotenv";
 import express, { Request, Response } from "express";
 import cors from "cors";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { AuthInfo } from "@modelcontextprotocol/sdk/server/auth/types.js";
 import { createServer } from "./create-server";
-
-// Type declarations
-declare global {
-  namespace Express {
-    interface Request {
-      auth?: AuthInfo;
-    }
-  }
-}
 
 // Environment setup
 dotenv.config();
