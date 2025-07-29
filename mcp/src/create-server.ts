@@ -37,9 +37,11 @@ interface TaskGif {
 
 // Helper function for make Automata API requests
 async function makeAutomataRequest<T>(path: string, init?: RequestInit): Promise<T | null> {
-    const headers = {
-        "x-api-key": AUTOPPIA_API_KEY
-    }
+    init = init || {};
+
+    init.headers = {
+        "x-api-key": AUTOPPIA_API_KEY as string
+    };
 
     try {
         const response = await fetch(`${AUTOMATA_API_BASE_URL}${path}`, init);
