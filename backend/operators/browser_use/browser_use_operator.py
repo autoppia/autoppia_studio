@@ -126,4 +126,4 @@ class BrowserUseOperator(BaseOperator):
                 return base64_string
         except Exception as e:
             logger.error(f'Error generating GIF: {e}')
-            return ""
+            return "GIF"

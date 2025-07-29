@@ -147,8 +147,7 @@ async def _perform_task(task_id: str, max_steps: int = 25):
         tasks[task_id]["screenshots"].append(screenshot)
 
     gif = operator.generate_gif(history_gif_dir / f"{task_id}.gif")
-    if gif:
-        tasks[task_id]["gif"] = gif
+    tasks[task_id]["gif"] = gif
 
     result = operator.get_result()
     tasks[task_id]["output"] = result.get("content")

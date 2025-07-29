@@ -40,6 +40,7 @@ async function makeAutomataRequest<T>(path: string, init?: RequestInit): Promise
     init = init || {};
 
     init.headers = {
+        ...init.headers,
         "x-api-key": AUTOPPIA_API_KEY as string
     };
 
@@ -171,7 +172,7 @@ export const createServer = () => {
             }
         },
         async ({ task_id }) => {
-            const response = await makeAutomataRequest<TaskGif>(`/task/${task_id}/screenshots`);
+            const response = await makeAutomataRequest<TaskGif>(`/task/${task_id}/gif`);
 
             if (response) {
                 return {
