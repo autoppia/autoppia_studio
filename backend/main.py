@@ -14,17 +14,19 @@ import execution.browser_executor  # noqa: F401 — cache before autoppia_iwa ca
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 
+import socketio
+
 from app.middleware import verify_api_key
-from app.sio_app import socket_app
+from app.sio_app import sio
 from app.routes import operator, cua
 
-app = FastAPI(
+fastapi_app = FastAPI(
     title="Automata API",
     description="This is API for Automata Web Operator",
     version="1.0.0",
 )
 
-app.add_middleware(
+fastapi_app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
@@ -32,7 +34,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+fastapi_app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
-app.mount("/socket.io", socket_app)
+# Wrap FastAPI inside Socket.IO ASGI app so both share the same origin
+app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)

@@ -8,8 +8,8 @@ from operators.browser_use_operator import BrowserUseOperator
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins=[])
-socket_app = socketio.ASGIApp(sio)
+sio = socketio.AsyncServer(async_mode="asgi", cors_allowed_origins="*", ping_timeout=120, ping_interval=25)
+socket_app = None  # Will be set in main.py after FastAPI app is created
 
 sessions = {}
 
@@ -45,6 +45,15 @@ async def start_task(sid, data):
         await operator.initialize(task, initial_url, storage_state_path)
 
         sessions[sid] = operator
+
+        # Send initial screenshot and action after navigation
+        try:
+            screenshot = await operator.take_screenshot()
+            if screenshot:
+                await sio.emit('screenshot', {'screenshot': screenshot}, to=sid)
+            await sio.emit('action', {'action': f'NavigateAction', 'previous_success': True}, to=sid)
+        except Exception:
+            pass
 
         await _perform_task(sid)
     except Exception as e:
