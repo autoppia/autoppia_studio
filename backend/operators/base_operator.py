@@ -8,7 +8,6 @@ class BaseOperator(ABC):
     @abstractmethod
     async def initialize(
         self,
-        browser: Browser,
         task: str, 
         initial_url: str = None, 
         storage_state_path: Path = None

@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "browser-use>=0.5.6",
-    "fastapi[standard]>=0.116.1",
     "pillow>=11.3.0",
     "python-socketio>=5.13.0",
+    "autoppia_iwa @ git+https://github.com/autoppia/autoppia_iwa.git",
 ]

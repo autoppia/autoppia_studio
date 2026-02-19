@@ -97,7 +97,6 @@ export default function TaskSection(props: TaskSectionProps) {
             >
               {provider === "autoppia" && "Autoppia"}
               {provider === "browser_use" && "Browser Use"}
-              {provider === "openai" && "OpenAI"}
               <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
                 <FontAwesomeIcon icon={faAngleDown} />
               </span>
@@ -126,15 +125,6 @@ export default function TaskSection(props: TaskSectionProps) {
                   }}
                 >
                   Browser Use
-                </button>
-                <button
-                  className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
-                  onClick={() => {
-                    setProvider("openai");
-                    setOpenedDropdown(null);
-                  }}
-                >
-                  OpenAI
                 </button>
               </div>
             </div>

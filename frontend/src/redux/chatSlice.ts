@@ -94,7 +94,6 @@ const chatSlice = createSlice({
             content: action.payload.content,
             state: action.payload.state,
             actionResults: [
-              ...state.chats[lastIndex].actionResults!,
               action.payload.success,
             ],
           },

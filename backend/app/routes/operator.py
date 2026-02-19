@@ -4,10 +4,10 @@ from typing import Literal
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
-from operators.openai import OpenAIOperator
-from operators.browser_use import BrowserUseOperator
+from operators.autoppia_operator import AutoppiaOperator
+from operators.browser_use_operator import BrowserUseOperator
 
 router = APIRouter()
 
@@ -20,7 +20,7 @@ history_gif_dir.mkdir(parents=True, exist_ok=True)
 class TaskRequest(BaseModel):
     task: str
     initial_url: str = None
-    provider: Literal["browser_use", "openai"] = "browser_use"
+    provider: Literal["autoppia", "browser_use"] = "autoppia"
 
 class TaskResponse(BaseModel):
     task_id: str
@@ -29,7 +29,7 @@ class TaskDetails(BaseModel):
     id: str
     task: str
     initial_url: str | None
-    provider: Literal["browser_use", "openai"]
+    provider: Literal["autoppia", "browser_use"]
     status: str
     steps: list[dict]
     output: str | None
@@ -118,26 +118,43 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     initial_url = tasks[task_id].get("initial_url")
     provider = tasks[task_id].get("provider")
 
-    if provider == "openai":
-        operator = OpenAIOperator()
-        max_steps = 2 * max_steps
-    elif provider == "browser_use":
+    if provider == "browser_use":
         operator = BrowserUseOperator()
     else:
-        operator = BrowserUseOperator()
+        operator = AutoppiaOperator()
 
     await operator.initialize(task, initial_url)
+
+    # Wire up per-action callback so screenshots and steps are collected
+    # after each individual action, not just per step.
+    if isinstance(operator, AutoppiaOperator):
+        async def on_action(action_type: str, screenshot: str | None, success: bool):
+            if screenshot:
+                tasks[task_id]["screenshots"].append(screenshot)
+            tasks[task_id]["steps"].append({
+                "action": action_type,
+                "success": success,
+            })
+
+        operator.set_on_action(on_action)
+
+    # Capture the initial page screenshot after navigation
+    screenshot = await operator.take_screenshot()
+    if screenshot:
+        tasks[task_id]["screenshots"].append(screenshot)
 
     for _ in range(max_steps):
         done, valid = await operator.take_step()
 
-        screenshot = await operator.take_screenshot()
-        if screenshot:
-            tasks[task_id]["screenshots"].append(screenshot)
-            
-        model_thought = operator.get_model_thought()
-        if model_thought:
-            tasks[task_id]["steps"].append(model_thought)
+        # For operators without per-action callback, collect per-step data
+        if not isinstance(operator, AutoppiaOperator):
+            screenshot = await operator.take_screenshot()
+            if screenshot:
+                tasks[task_id]["screenshots"].append(screenshot)
+
+            model_thought = operator.get_model_thought()
+            if model_thought:
+                tasks[task_id]["steps"].append(model_thought)
 
         if done and valid:
             break

@@ -1,6 +1,38 @@
-def main():
-    print("Hello from backend!")
+import sys
+from pathlib import Path
+from dotenv import load_dotenv
 
+# Load .env before any imports that depend on env vars (e.g. autoppia_iwa needs OPENAI_API_KEY)
+load_dotenv()
 
-if __name__ == "__main__":
-    main()
+# autoppia_iwa pollutes sys.path with its internal 'src/' directory on import,
+# which shadows our local 'execution' package. Pin our backend dir at the front.
+_backend_dir = str(Path(__file__).resolve().parent)
+sys.path.insert(0, _backend_dir)
+import execution.browser_executor  # noqa: F401 — cache before autoppia_iwa can interfere
+
+from fastapi import FastAPI, Depends
+from fastapi.middleware.cors import CORSMiddleware
+
+from app.middleware import verify_api_key
+from app.sio_app import socket_app
+from app.routes import operator, cua
+
+app = FastAPI(
+    title="Automata API",
+    description="This is API for Automata Web Operator",
+    version="1.0.0",
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+
+app.mount("/socket.io", socket_app)

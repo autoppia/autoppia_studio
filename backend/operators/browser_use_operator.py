@@ -4,13 +4,11 @@ from typing import Tuple
 from dotenv import load_dotenv
 from pathlib import Path
 
-from browser_use import Agent
-from browser_use.llm import ChatOpenAI
-from browser_use.agent.views import AgentState
+from browser_use import Agent, ChatOpenAI
 from browser_use.agent.gif import create_history_gif
 from browser_use.browser import BrowserProfile, BrowserSession
 
-from operators.shared import BaseOperator
+from operators.base_operator import BaseOperator
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -36,7 +34,7 @@ class BrowserUseOperator(BaseOperator):
 
         self.browser_profile = BrowserProfile(
             disable_security=True,
-            headless=False,
+            headless=True,
             stealth=True,
             chromium_sandbox=False,
             highlight_elements=False,
@@ -55,13 +53,11 @@ class BrowserUseOperator(BaseOperator):
         else:
             task = self.task
 
-        self.agent_state = AgentState()
         self.agent = Agent(
             task=task,
             llm=ChatOpenAI(model='gpt-4.1'),
             temperature=0.0,
             browser_session=self.browser_session,
-            injected_agent_state=self.agent_state,
             max_actions_per_step=1
         )
 
@@ -76,7 +72,7 @@ class BrowserUseOperator(BaseOperator):
         #     return await self.browser_session.take_screenshot()
         # else:
         #     return None
-        screenshots = self.agent_state.history.screenshots()
+        screenshots = self.agent.history.screenshots()
         if len(screenshots) > 1:
             return screenshots[-1]
         else:
@@ -92,7 +88,7 @@ class BrowserUseOperator(BaseOperator):
             self.agent.add_new_task(new_task)
 
     def get_model_thought(self) -> dict:
-        model_thoughts = self.agent_state.history.model_thoughts()
+        model_thoughts = self.agent.history.model_thoughts()
         if not model_thoughts:
             return None
 
@@ -106,8 +102,8 @@ class BrowserUseOperator(BaseOperator):
         }
     
     def get_result(self) -> dict:
-        final_result = self.agent_state.history.final_result()
-        is_successful = self.agent_state.history.is_successful()
+        final_result = self.agent.history.final_result()
+        is_successful = self.agent.history.is_successful()
         return {
             'content': final_result,
             'success': is_successful
@@ -117,7 +113,7 @@ class BrowserUseOperator(BaseOperator):
         try:
             create_history_gif(
                 task=self.task,
-                history=self.agent_state.history,
+                history=self.agent.history,
                 output_path=str(output_path),
             )
 
