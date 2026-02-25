@@ -19,6 +19,12 @@ const chatSlice = createSlice({
       state.chats = [];
       state.completed = 0;
     },
+    setChats: (state, action) => {
+      state.chats = action.payload;
+      state.completed = action.payload.filter(
+        (c: ChatItem) => c.state === "success" || c.state === "error" || c.state === "disconnected"
+      ).length;
+    },
     addTask: (state, action) => {
       state.chats = [
         ...state.chats,
@@ -51,6 +57,10 @@ const chatSlice = createSlice({
             ...state.chats[lastIndex].actionResults!,
             action.payload.previous_success,
           ],
+          screenshots: [
+            ...(state.chats[lastIndex].screenshots || []),
+            ...(action.payload.screenshot ? [action.payload.screenshot] : []),
+          ],
         };
       } else {
         state.chats = [
@@ -62,6 +72,7 @@ const chatSlice = createSlice({
             state: "thinking",
             actions: [action.payload.action],
             actionResults: [],
+            screenshots: action.payload.screenshot ? [action.payload.screenshot] : [],
           },
         ];
       }
@@ -104,5 +115,5 @@ const chatSlice = createSlice({
   },
 });
 
-export const { resetChat, addTask, addAction, addResult } = chatSlice.actions;
+export const { resetChat, setChats, addTask, addAction, addResult } = chatSlice.actions;
 export default chatSlice.reducer;

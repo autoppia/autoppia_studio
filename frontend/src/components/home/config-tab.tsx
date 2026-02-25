@@ -39,27 +39,32 @@ export default function ConfigTab() {
 
   return (
     <>
-      <div className="flex-grow px-2 mt-6 w-full">
-        <h2 className="font-bold text-md text-gray-700 dark:text-white">
+      <div className="flex-grow w-full">
+        <h3 className="font-semibold text-sm text-gray-700 dark:text-white mb-2">
           Custom Instructions
-        </h2>
+        </h3>
         <textarea
           rows={4}
           value={instructions}
           onChange={(e) => setInstructions(e.target.value)}
-          className="w-full mt-2 p-2 rounded-lg outline-none border border-gray-500"
+          className="w-full p-3 rounded-xl outline-none text-sm
+            bg-gray-50 dark:bg-dark-surface border border-gray-200 dark:border-dark-border
+            text-gray-700 dark:text-gray-200 placeholder:text-gray-400
+            focus:border-gray-300 dark:focus:border-gray-600 focus:shadow-soft
+            transition-all duration-300 resize-none"
         />
       </div>
       {instructions !== user.instructions && (
-        <div className="flex px-2 justify-end gap-4">
+        <div className="flex justify-end gap-3 mt-3">
           <button
-            className="px-4 py-1 text-sm bg-gradient-primary text-white rounded-full"
+            className="px-5 py-2 text-sm bg-gradient-primary text-white rounded-xl font-medium shadow-glow hover:shadow-glow-lg transition-all duration-300"
             onClick={handleSubmit}
           >
             Save
           </button>
           <button
-            className="px-4 py-1 text-sm bg-white border border-gray-500 text-gray-700 rounded-full"
+            className="px-5 py-2 text-sm bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
+              text-gray-600 dark:text-gray-300 rounded-xl font-medium hover:bg-gray-50 dark:hover:bg-dark-border transition-all duration-300"
             onClick={() => setInstructions(user.instructions)}
           >
             Cancel

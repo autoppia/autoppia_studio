@@ -1,4 +1,5 @@
 import sys
+import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -17,8 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 import socketio
 
 from app.middleware import verify_api_key
+from app.database import ensure_indexes
 from app.sio_app import sio
 from app.routes import operator, cua
+from app.routes import user as user_routes
+from app.routes import session as session_routes
 
 fastapi_app = FastAPI(
     title="Automata API",
@@ -36,6 +40,16 @@ fastapi_app.add_middleware(
 
 fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 fastapi_app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+
+# Web routes (no API key required — used by the frontend)
+fastapi_app.include_router(user_routes.router)
+fastapi_app.include_router(session_routes.router)
+
+
+@fastapi_app.on_event("startup")
+async def startup_event():
+    await ensure_indexes()
+
 
 # Wrap FastAPI inside Socket.IO ASGI app so both share the same origin
 app = socketio.ASGIApp(sio, other_asgi_app=fastapi_app)

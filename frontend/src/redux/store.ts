@@ -7,7 +7,7 @@ const store = configureStore({
   reducer: {
     socket: socketReducer,
     chat: chatReducer,
-    user: userReducer
+    user: userReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

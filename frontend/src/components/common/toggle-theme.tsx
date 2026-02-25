@@ -7,12 +7,13 @@ function ToggleTheme() {
   };
   return (
     <div
-      className="flex justify-center items-center p-2 sm:p-3 rounded-full
-                  transition-all duration-200 cursor-pointer text-gray-700 dark:text-white
-                  border border-gray-300 hover:bg-gray-300 ms-1 sm:ms-3"
+      className="flex justify-center items-center w-9 h-9 sm:w-10 sm:h-10 rounded-full
+                  transition-all duration-300 cursor-pointer text-gray-600 dark:text-white
+                  border border-gray-200 dark:border-dark-border hover:border-gray-300
+                  hover:bg-gray-100 dark:hover:bg-dark-surface hover:shadow-soft"
       onClick={darkThemeHandler}
     >
-      <FontAwesomeIcon icon={faCircleHalfStroke} />
+      <FontAwesomeIcon icon={faCircleHalfStroke} className="text-sm" />
     </div>
   );
 }

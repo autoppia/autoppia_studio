@@ -32,7 +32,7 @@ export default function Home(): React.ReactElement {
       )}
       <div className="fixed w-full h-full hidden dark:block">
         <img
-          src="./assets/images/bg/dark-bg.webp"
+          src="/assets/images/bg/dark-bg.webp"
           alt=""
           className="w-full h-full"
         ></img>
@@ -40,20 +40,20 @@ export default function Home(): React.ReactElement {
       <div className="flex flex-col px-6 md:px-12 xl:px-16 flex-grow h-full relative w-[100vw]">
         <div className="relative flex justify-between items-center mt-8 mb-8">
           <img
-            src="./assets/images/logos/main_dark.webp"
+            src="/assets/images/logos/main_dark.webp"
             alt=""
             className="h-[16px] sm:h-[20px] dark:block hidden"
           />
           <img
-            src="./assets/images/logos/main.webp"
+            src="/assets/images/logos/main.webp"
             alt=""
             className="h-[16px] sm:h-[20px] dark:hidden block"
           />
-          <div className="flex items-center ms-2 md:ms-0">
+          <div className="flex items-center gap-2 ms-2 md:ms-0">
             <IconButton
               onClick={returnHome}
               icon={faHome}
-              className="dark:text-white"
+              className="dark:text-white dark:border-dark-border"
             />
             <ToggleTheme />
             <div

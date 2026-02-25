@@ -1,11 +1,14 @@
-export interface HistoryItem {
+export interface SessionItem {
+    sessionId: string;
     email: string;
     socketioPath: string;
     prompt: string;
     initialUrl: string;
-    historyPath: string;
+    sessionPath: string;
     createdAt?: Date;
 }
+
+export type HistoryItem = SessionItem;
 
 export interface ChatItem {
   role: string;
@@ -13,6 +16,7 @@ export interface ChatItem {
   socketId?: string;
   actions?: string[];
   actionResults?: boolean[];
+  screenshots?: string[];
   thinking?: string;
   state?: string;
 }

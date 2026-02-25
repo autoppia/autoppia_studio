@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
     faSearch,
@@ -16,15 +17,16 @@ export default function HistoryTab() {
   const [filteredHistories, setFilteredHistories] = useState<HistoryItem[]>([]);
   const [searchString, setSearchString] = useState<string>("");
 
+  const navigate = useNavigate();
   const email = useSelector((state: any) => state.user.email);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const response = await fetch(`${apiUrl}/history?email=${email}`);
+        const response = await fetch(`${apiUrl}/sessions?email=${email}`);
         const data = await response.json();
-        setHistories(data.histories);
-        setFilteredHistories(data.histories);
+        setHistories(data.sessions || []);
+        setFilteredHistories(data.sessions || []);
       } catch (err) {
         console.error(err);
       }
@@ -82,7 +84,8 @@ export default function HistoryTab() {
           return (
             <div
               key={`history_${index}`}
-              className="w-full px-4 py-2 mb-2 rounded-xl border border-gray-400 border-dashed text-gray-700 dark:text-white"
+              className="w-full px-4 py-2 mb-2 rounded-xl border border-gray-400 border-dashed text-gray-700 dark:text-white cursor-pointer hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors duration-200"
+              onClick={() => item.sessionId && navigate(`/session/${item.sessionId}`)}
             >
               <div className="flex flex-col items-start sm:flex-row sm:justify-between sm:items-center w-full">
                 <h2 className="w-full font-bold truncate">{item.prompt}</h2>

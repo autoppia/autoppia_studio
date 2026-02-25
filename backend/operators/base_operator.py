@@ -39,5 +39,14 @@ class BaseOperator(ABC):
         pass
 
     @abstractmethod
+    def get_live_url(self) -> str | None:
+        pass
+
+    @abstractmethod
     def generate_gif(self, output_path: Path) -> str:
+        pass
+
+    async def release_session(self) -> None:
+        """Release the cloud browser session (e.g. Browserbase).
+        Called on Socket.IO disconnect to free credits."""
         pass

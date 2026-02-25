@@ -11,10 +11,13 @@ export default function IconButton(props: IconButtonProps) {
   const { icon, className, onClick, disabled } = props;
   return (
     <div
-      className={`flex justify-center items-center p-2 sm:p-3 rounded-full transition-all duration-200 cursor-pointer text-gray-700 border border-gray-300 hover:bg-gray-300 ${className}`}
+      className={`flex justify-center items-center w-9 h-9 sm:w-10 sm:h-10 rounded-full
+        transition-all duration-300 cursor-pointer text-gray-600
+        border border-gray-200 hover:border-gray-300 hover:bg-gray-100 hover:shadow-soft
+        ${disabled ? "opacity-40 cursor-not-allowed" : ""} ${className}`}
       onClick={disabled ? undefined : onClick}
     >
-      <FontAwesomeIcon icon={icon} />
+      <FontAwesomeIcon icon={icon} className="text-sm" />
     </div>
   );
 }

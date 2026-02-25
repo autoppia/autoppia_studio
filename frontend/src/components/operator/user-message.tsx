@@ -5,8 +5,8 @@ interface UserMessageProps {
 export default function UserMessage(props: UserMessageProps) {
   const { content } = props;
   return (
-    <div className="w-full flex justify-end mb-3">
-      <div className="max-w-[90%] text-gray-800 rounded-lg p-2 px-5 bg-gray-200/50 dark:bg-gray-900/50 dark:text-white font-title ">
+    <div className="w-full flex justify-end mb-4 animate-fade-in">
+      <div className="max-w-[85%] text-gray-800 dark:text-white rounded-2xl rounded-br-md py-2.5 px-4 bg-gradient-primary text-white text-sm leading-relaxed shadow-glow">
         {content}
       </div>
     </div>

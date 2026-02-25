@@ -1,7 +1,9 @@
+import os
 import base64
 import logging
 from pathlib import Path
 
+from browserbase import Browserbase
 from playwright.async_api import async_playwright, Page
 
 logger = logging.getLogger(__name__)
@@ -14,23 +16,49 @@ class BrowserExecutor:
         self.browser = None
         self.context = None
         self.page = None
+        self._bb_client = None
+        self._bb_session_id = None
+        self.live_url = None
 
     async def initialize(self, initial_url: str = None, storage_state_path: Path = None):
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            headless=True,
-            args=[
-                "--disable-extensions",
-                "--disable-file-system",
-            ]
-        )
-        self.context = await self.browser.new_context(
-            viewport={"width": 1024, "height": 768},
-            storage_state=str(storage_state_path) if storage_state_path else None
-        )
-        self.context.on("page", self._handle_new_page)
+        bb_api_key = os.getenv("BROWSERBASE_API_KEY", "")
+        bb_project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
 
-        self.page = await self.context.new_page()
+        self.playwright = await async_playwright().start()
+
+        if bb_api_key and bb_project_id:
+            self._bb_client = Browserbase(api_key=bb_api_key)
+            session = self._bb_client.sessions.create(
+                project_id=bb_project_id,
+                keep_alive=True,
+                api_timeout=900,  # 15 minutes before auto-expiry
+            )
+            self._bb_session_id = session.id
+
+            debug_urls = self._bb_client.sessions.debug(session.id)
+            self.live_url = debug_urls.debugger_fullscreen_url
+            logger.info(f"Browserbase session created: {session.id}")
+            logger.info(f"Live URL: {self.live_url}")
+
+            self.browser = await self.playwright.chromium.connect_over_cdp(session.connect_url)
+            self.context = self.browser.contexts[0]
+            self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+        else:
+            logger.warning("Browserbase credentials not set, falling back to local Chromium")
+            self.browser = await self.playwright.chromium.launch(
+                headless=True,
+                args=[
+                    "--disable-extensions",
+                    "--disable-file-system",
+                ]
+            )
+            self.context = await self.browser.new_context(
+                viewport={"width": 1024, "height": 768},
+                storage_state=str(storage_state_path) if storage_state_path else None
+            )
+            self.page = await self.context.new_page()
+
+        self.context.on("page", self._handle_new_page)
         self.page.on("close", self._handle_page_close)
 
         if not initial_url:
@@ -64,9 +92,39 @@ class BrowserExecutor:
         if self.playwright:
             await self.playwright.stop()
 
+        # keep_alive=True keeps the browser alive after Playwright disconnects.
+        # Call release_session() separately when the user leaves.
+
+    async def release_session(self):
+        """Release the Browserbase session to free credits."""
+        if self._bb_client and self._bb_session_id:
+            try:
+                project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
+                self._bb_client.sessions.update(
+                    self._bb_session_id,
+                    project_id=project_id,
+                    status="REQUEST_RELEASE",
+                )
+                logger.info(f"Browserbase session released: {self._bb_session_id}")
+            except Exception as e:
+                logger.warning(f"Failed to release Browserbase session: {e}")
+
     def get_current_url(self) -> str:
         return self.page.url
-    
+
+    def get_live_url(self) -> str | None:
+        return self.live_url
+
+    async def keep_alive_ping(self) -> bool:
+        """Send a lightweight CDP command to keep the Browserbase session alive."""
+        try:
+            if self.page and not self.page.is_closed():
+                await self.page.evaluate("1")
+                return True
+        except Exception as e:
+            logger.warning(f"Keep-alive ping failed: {e}")
+        return False
+
     async def get_snapshot_html(self) -> str:
         return await self.page.content()
 
@@ -74,5 +132,3 @@ class BrowserExecutor:
         """Capture only the viewport (not fullpage)."""
         png_bytes = await self.page.screenshot(full_page=False)
         return base64.b64encode(png_bytes).decode("utf-8")
-    
-

@@ -39,6 +39,7 @@ class ApifiedCUA:
         if history is not None:
             payload["history"] = history
 
+        last_error = None
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             for path in ("/act", "/step"):
                 try:
@@ -54,6 +55,9 @@ class ApifiedCUA:
                     return actions_data
                 except Exception as e:
                     logger.warning(f"Request to {path} failed ({type(e).__name__}): {e}")
+                    last_error = e
                     continue
 
-        return None
+        # All endpoints failed — raise so the caller knows it's an error,
+        # not a "task done" signal.
+        raise ConnectionError(f"CUA agent unreachable: {last_error}")

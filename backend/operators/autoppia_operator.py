@@ -225,6 +225,14 @@ class AutoppiaOperator(BaseOperator):
             self.step_index += 1
             return False, executed_any
 
+        except ConnectionError as e:
+            logger.error(f"CUA connection failed: {e}")
+            self.result = {
+                "content": f"Agent error: {e}",
+                "success": False
+            }
+            self.step_index += 1
+            return True, False
         except Exception as e:
             logger.error(f"Error in take_step: {e}")
             self.step_index += 1
@@ -238,16 +246,26 @@ class AutoppiaOperator(BaseOperator):
         except Exception:
             return None
 
+    def get_live_url(self) -> str | None:
+        if self.browser_executor:
+            return self.browser_executor.get_live_url()
+        return None
+
     async def close(self) -> None:
         if self.browser_executor:
             await self.browser_executor.close()
 
-    async def add_new_task(self, new_task: str) -> None:
+    async def release_session(self) -> None:
+        if self.browser_executor:
+            await self.browser_executor.release_session()
+
+    async def add_new_task(self, new_task: str, preserve_history: bool = False) -> None:
         self.task = new_task
         self.task_id = str(uuid.uuid4())
-        self.step_index = 0
-        self.history = []
-        self.model_thoughts = []
+        if not preserve_history:
+            self.step_index = 0
+            self.history = []
+            self.model_thoughts = []
         self.result = {}
 
     def get_model_thought(self) -> dict:

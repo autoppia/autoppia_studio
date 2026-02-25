@@ -20,10 +20,15 @@ const userSlice = createSlice({
             state.isAuthenticated = true;
             state.email = action.payload.email;
             state.instructions = action.payload.instructions;
+        },
+        logout: (state) => {
+            state.isAuthenticated = false;
+            state.email = "";
+            state.instructions = "";
         }
     }
 })
 
-export const { setUser } = userSlice.actions;
+export const { setUser, logout } = userSlice.actions;
 export default userSlice.reducer;
 

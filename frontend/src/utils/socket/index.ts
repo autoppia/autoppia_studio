@@ -1,12 +1,12 @@
 import { io } from "socket.io-client";
 
-import { addSocket, addSocketId, setScreenshot } from "../../redux/socketSlice";
+import { addSocket, addSocketId, setLiveUrl, setLastUrl, setActionHistory } from "../../redux/socketSlice";
 import { addAction, addResult } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-export const initializeSocket = (dispatch: AppDispatch) => {
+export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = false) => {
   const socket = io(`${apiUrl}`, {
     timeout: 60000,
     reconnection: false,
@@ -15,12 +15,14 @@ export const initializeSocket = (dispatch: AppDispatch) => {
   socket.on("connect", () => {
     console.log("Connected to the agent:", socket.id);
     dispatch(addSocketId(socket.id));
-    dispatch(
-      addAction({
-        socketId: socket.id,
-        action: "Initializing browser...",
-      })
-    );
+    if (!isRestore) {
+      dispatch(
+        addAction({
+          socketId: socket.id,
+          action: "Initializing browser...",
+        })
+      );
+    }
   });
 
   socket.on("disconnect", (reason) => {
@@ -37,12 +39,11 @@ export const initializeSocket = (dispatch: AppDispatch) => {
     console.error("Socket error:", error);
   });
 
-  socket.on("screenshot", ({ screenshot }) => {
-    const base64Prefix = "data:image/png;base64,";
+  socket.on("live_url", ({ url }) => {
     dispatch(
-      setScreenshot({
+      setLiveUrl({
         socketId: socket.id,
-        screenshot: base64Prefix + screenshot,
+        url,
       })
     );
   });
@@ -60,6 +61,12 @@ export const initializeSocket = (dispatch: AppDispatch) => {
         state: result.success ? "success" : "error",
       })
     );
+    if (result.lastUrl) {
+      dispatch(setLastUrl(result.lastUrl));
+    }
+    if (result.actionHistory) {
+      dispatch(setActionHistory(result.actionHistory));
+    }
   });
 
   dispatch(addSocket(socket));

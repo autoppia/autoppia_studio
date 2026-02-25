@@ -1,18 +1,13 @@
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPaperPlane,
   faAngleDown,
-  faPaperclip,
+  faGlobe,
 } from "@fortawesome/free-solid-svg-icons";
 
-import IconButton from "../common/icon-button";
-import { initializeSocket } from "../../utils/socket";
 import { websites } from "../../utils/mock/mockDB";
-import { resetChat, addTask } from "../../redux/chatSlice";
-import { resetSocket } from "../../redux/socketSlice";
+import useStartSession from "../../hooks/useStartSession";
 
 interface TaskSectionProps {
   prompt: string;
@@ -37,10 +32,7 @@ export default function TaskSection(props: TaskSectionProps) {
   const [provider, setProvider] = useState("autoppia");
   const [agentCount, setAgentCount] = useState(1);
 
-  const navigate = useNavigate();
-  const dispatch = useDispatch();
-
-  const user = useSelector((state: any) => state.user);
+  const startSession = useStartSession();
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -65,157 +57,132 @@ export default function TaskSection(props: TaskSectionProps) {
     }
   };
 
-  const handleSubmit = async () => {
-    try {
-        dispatch(resetSocket());
-        dispatch(resetChat());
-        dispatch(addTask(prompt));
-        for (let i = 0; i < agentCount; i++) {
-          const socket = initializeSocket(dispatch);
-          const task = user.isAuthenticated ? `${prompt}\nADDITIONAL INFO: ${user.instructions}` : prompt;
-          socket.emit("start-task", {
-            task: task,
-            initial_url: initialUrl,
-            provider: provider,
-          });
-        }
-        navigate("/operator");
-    } catch (error) {
-      console.log(error);
-    }
+  const handleSubmit = () => {
+    if (!prompt) return;
+    startSession(prompt, initialUrl, provider, agentCount);
   };
 
   return (
-    <>
-      <div className="flex justify-end w-[100%] xl:w-[1000px] mb-4 md:me-2 mt-12">
-        <label className="ms-2">
-          <div className="relative w-full text-sm font-medium">
-            <button
-              type="button"
-              className="w-[130px] text-left rounded-full shadow-sm py-1 ps-3 text-white bg-gradient-primary outline-none appearance-none -webkit-appearance-none -moz-appearance-none"
-              onClick={() => setOpenedDropdown("provider")}
-            >
-              {provider === "autoppia" && "Autoppia"}
-              {provider === "browser_use" && "Browser Use"}
-              <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
-                <FontAwesomeIcon icon={faAngleDown} />
-              </span>
-            </button>
-            <div
-              style={{
-                display: openedDropdown === "provider" ? "block" : "none",
-              }}
-              className="absolute z-20 mt-1 w-full rounded-lg bg-white shadow-lg"
-            >
-              <div className="p-1">
-                <button
-                  className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
-                  onClick={() => {
-                    setProvider("autoppia");
-                    setOpenedDropdown(null);
-                  }}
-                >
-                  Autoppia
-                </button>
-                <button
-                  className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
-                  onClick={() => {
-                    setProvider("browser_use");
-                    setOpenedDropdown(null);
-                  }}
-                >
-                  Browser Use
-                </button>
-              </div>
+    <div className="w-full xl:w-[900px] animate-slide-up" style={{ animationDelay: "0.1s" }}>
+      {/* Dropdowns row */}
+      <div className="flex justify-end mb-3 gap-2">
+        <div className="relative text-sm font-medium">
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-white bg-gradient-primary
+              shadow-soft hover:shadow-glow transition-all duration-300"
+            onClick={() => setOpenedDropdown("provider")}
+          >
+            <span>{provider === "autoppia" ? "Autoppia Operator" : "Browser Use"}</span>
+            <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-80" />
+          </button>
+          <div
+            style={{
+              display: openedDropdown === "provider" ? "block" : "none",
+            }}
+            className="absolute z-20 mt-2 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+          >
+            <div className="p-1">
+              <button
+                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                onClick={() => {
+                  setProvider("autoppia");
+                  setOpenedDropdown(null);
+                }}
+              >
+                Autoppia Operator
+              </button>
+              <button
+                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                onClick={() => {
+                  setProvider("browser_use");
+                  setOpenedDropdown(null);
+                }}
+              >
+                Browser Use
+              </button>
             </div>
           </div>
-        </label>
-        <label className="ms-2">
-          <div className="relative w-full text-sm font-medium">
-            <button
-              type="button"
-              className="w-[105px] text-left rounded-full shadow-sm py-1 ps-3 text-white bg-gradient-primary outline-none appearance-none -webkit-appearance-none -moz-appearance-none"
-              onClick={() => setOpenedDropdown("agentCount")}
-            >
-              {`${agentCount} x Agent`}
-              <span className="absolute inset-y-0 right-2 flex items-center pointer-events-none">
-                <FontAwesomeIcon icon={faAngleDown} />
-              </span>
-            </button>
-            <div
-              style={{
-                display: openedDropdown === "agentCount" ? "block" : "none",
-              }}
-              className="absolute z-20 mt-1 w-full rounded-lg bg-white shadow-lg"
-            >
-              <div className="p-1">
-                {[1, 2, 4].map((option) => (
-                  <button
-                    key={option}
-                    className="block p-2 text-sm rounded-lg text-gray-700 hover:bg-gradient-primary hover:text-white w-full text-left"
-                    onClick={() => {
-                      setAgentCount(option);
-                      setOpenedDropdown(null);
-                    }}
-                  >
-                    {`${option} x Agent`}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </label>
-      </div>
-      <div className="flex flex-col p-3 bg-white rounded-2xl w-[100%] xl:w-[1000px] self-center shadow-md border border-gray-300 group focus-within:shadow-lg focus-within:border-gray-500">
-        <div className="flex items-start flex-grow">
-          {" "}
-          <input
-            className="border-none outline-none flex-grow text-gray-900 p-2"
-            placeholder="Ask me anything..."
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            onKeyDown={handleKeyDown}
-          />
         </div>
+        <div className="relative text-sm font-medium">
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-white bg-gradient-primary
+              shadow-soft hover:shadow-glow transition-all duration-300"
+            onClick={() => setOpenedDropdown("agentCount")}
+          >
+            <span>{`${agentCount} x Agent`}</span>
+            <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-80" />
+          </button>
+          <div
+            style={{
+              display: openedDropdown === "agentCount" ? "block" : "none",
+            }}
+            className="absolute z-20 mt-2 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+          >
+            <div className="p-1">
+              {[1, 2, 4].map((option) => (
+                <button
+                  key={option}
+                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                  onClick={() => {
+                    setAgentCount(option);
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  {`${option} x Agent`}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
 
-        <div className="flex flex-col md:flex-row justify-between mt-3 items-center gap-2">
-          <label className="relative w-full">
-            <div className="flex items-center gap-2">
-              <IconButton icon={faPaperclip} className="dark:text-gray-700" />
-              <div className="flex flex-grow px-4 py-2 grow items-center rounded-full border-gray-300 border-[1px] shadow-sm">
-                {" "}
-                <input
-                  type="text"
-                  placeholder="Website URL..."
-                  className="w-full outline-none bg-none"
-                  value={initialUrl}
-                  onChange={handleUrlChange}
-                />
-                <div className="inset-y-0 right-3 flex items-center pointer-events-none">
-                  <FontAwesomeIcon
-                    icon={faAngleDown}
-                    className="text-gray-500"
-                  />
-                </div>
-              </div>
-              <IconButton
-                icon={faPaperPlane}
-                onClick={handleSubmit}
-                disabled={!prompt}
-                className="dark:text-gray-700"
+      {/* Main input card */}
+      <div className="flex flex-col p-4 bg-white dark:bg-dark-surface rounded-2xl w-full shadow-soft
+        border border-gray-200 dark:border-dark-border
+        focus-within:shadow-soft-lg focus-within:border-gray-300 dark:focus-within:border-gray-600
+        transition-all duration-300">
+        {/* Prompt input */}
+        <input
+          className="border-none outline-none flex-grow text-gray-900 dark:text-white dark:bg-transparent p-2 text-base placeholder:text-gray-400"
+          placeholder="Ask me anything..."
+          value={prompt}
+          onChange={(e) => setPrompt(e.target.value)}
+          onKeyDown={handleKeyDown}
+        />
+
+        {/* Bottom toolbar */}
+        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
+          {/* URL input */}
+          <div className="relative flex-grow mr-3">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border
+              focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-300">
+              <FontAwesomeIcon icon={faGlobe} className="text-gray-400 text-sm" />
+              <input
+                type="text"
+                placeholder="Website URL..."
+                className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+                value={initialUrl}
+                onChange={handleUrlChange}
+              />
+              <FontAwesomeIcon
+                icon={faAngleDown}
+                className="text-gray-400 text-xs"
               />
             </div>
             <div
               style={{
                 display: openedDropdown === "initialUrl" ? "block" : "none",
               }}
-              className="absolute z-20 mt-1 w-[calc(100%-100px)] mx-[50px] rounded-lg bg-white shadow-lg"
+              className="absolute z-20 mt-2 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
             >
-              <div className="p-1">
+              <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
                 {filteredWebsites.map((website) => (
                   <div
                     key={website.url}
-                    className="cursor-pointer p-2 rounded-lg flex items-center hover:bg-gradient-primary hover:text-white"
+                    className="cursor-pointer p-2.5 rounded-lg flex items-center hover:bg-gradient-primary hover:text-white
+                      text-gray-700 dark:text-gray-200 transition-colors duration-200"
                     onClick={() => {
                       setInitialUrl(website.url);
                       setFilteredWebsites([]);
@@ -225,16 +192,30 @@ export default function TaskSection(props: TaskSectionProps) {
                     <img
                      alt=""
                      src={website.favicon}
-                     className="w-5 me-2"
+                     className="w-5 h-5 rounded me-2.5"
                     />
-                    <span className="text-sm">{website.title}</span>
+                    <span className="text-sm font-medium">{website.title}</span>
                   </div>
                 ))}
               </div>
             </div>
-          </label>
+          </div>
+
+          {/* Submit button */}
+          <button
+            onClick={handleSubmit}
+            disabled={!prompt}
+            className={`flex items-center justify-center w-10 h-10 rounded-xl
+              transition-all duration-300
+              ${prompt
+                ? "bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 cursor-pointer"
+                : "bg-gray-100 dark:bg-dark-border text-gray-400 cursor-not-allowed"
+              }`}
+          >
+            <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
+          </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
