@@ -46,6 +46,11 @@ fastapi_app.include_router(user_routes.router)
 fastapi_app.include_router(session_routes.router)
 
 
+@fastapi_app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+
 @fastapi_app.on_event("startup")
 async def startup_event():
     await ensure_indexes()

@@ -103,6 +103,12 @@ class BrowserUseOperator(BaseOperator):
         else:
             return None
 
+    async def get_current_url(self) -> str:
+        try:
+            return await self.browser_session.get_current_page_url()
+        except Exception:
+            return ""
+
     def get_live_url(self) -> str | None:
         return self.live_url
 

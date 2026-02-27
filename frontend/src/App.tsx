@@ -7,6 +7,8 @@ import "./App.css";
 
 import Home from "./pages/home";
 import Session from "./pages/session";
+import MainLayout from "./components/layout/main-layout";
+import { ToastProvider } from "./components/common/toast";
 import { setUser } from "./redux/userSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
@@ -131,12 +133,16 @@ function App() {
   }
 
   return (
-    <BrowserRouter>
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/session/:id" element={<Session />} />
-      </Routes>
-    </BrowserRouter>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
+          <Route element={<MainLayout />}>
+            <Route path="/" element={<Home />} />
+            <Route path="/session/:id" element={<Session />} />
+          </Route>
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 }
 

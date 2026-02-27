@@ -30,7 +30,7 @@ export default function TaskSection(props: TaskSectionProps) {
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
   const [provider, setProvider] = useState("autoppia");
-  const [agentCount, setAgentCount] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
 
   const startSession = useStartSession();
 
@@ -57,9 +57,14 @@ export default function TaskSection(props: TaskSectionProps) {
     }
   };
 
-  const handleSubmit = () => {
-    if (!prompt) return;
-    startSession(prompt, initialUrl, provider, agentCount);
+  const handleSubmit = async () => {
+    if (!prompt || submitting) return;
+    setSubmitting(true);
+    try {
+      await startSession(prompt, initialUrl, provider);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -79,8 +84,9 @@ export default function TaskSection(props: TaskSectionProps) {
           <div
             style={{
               display: openedDropdown === "provider" ? "block" : "none",
+              width: 190,
             }}
-            className="absolute z-20 mt-2 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+            className="absolute left-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
           >
             <div className="p-1">
               <button
@@ -101,38 +107,6 @@ export default function TaskSection(props: TaskSectionProps) {
               >
                 Browser Use
               </button>
-            </div>
-          </div>
-        </div>
-        <div className="relative text-sm font-medium">
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-white bg-gradient-primary
-              shadow-soft hover:shadow-glow transition-all duration-300"
-            onClick={() => setOpenedDropdown("agentCount")}
-          >
-            <span>{`${agentCount} x Agent`}</span>
-            <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-80" />
-          </button>
-          <div
-            style={{
-              display: openedDropdown === "agentCount" ? "block" : "none",
-            }}
-            className="absolute z-20 mt-2 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
-          >
-            <div className="p-1">
-              {[1, 2, 4].map((option) => (
-                <button
-                  key={option}
-                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
-                  onClick={() => {
-                    setAgentCount(option);
-                    setOpenedDropdown(null);
-                  }}
-                >
-                  {`${option} x Agent`}
-                </button>
-              ))}
             </div>
           </div>
         </div>
@@ -204,15 +178,15 @@ export default function TaskSection(props: TaskSectionProps) {
           {/* Submit button */}
           <button
             onClick={handleSubmit}
-            disabled={!prompt}
+            disabled={!prompt || submitting}
             className={`flex items-center justify-center w-10 h-10 rounded-xl
               transition-all duration-300
-              ${prompt
+              ${prompt && !submitting
                 ? "bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 cursor-pointer"
                 : "bg-gray-100 dark:bg-dark-border text-gray-400 cursor-not-allowed"
               }`}
           >
-            <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
+            <FontAwesomeIcon icon={faPaperPlane} className={`text-sm ${submitting ? "animate-pulse" : ""}`} />
           </button>
         </div>
       </div>

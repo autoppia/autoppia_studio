@@ -3,12 +3,12 @@ import { ChatItem } from "../utils/types";
 
 interface ChatState {
   chats: ChatItem[];
-  completed: number;
+  completed: boolean;
 }
 
 const initialState: ChatState = {
   chats: [],
-  completed: 0,
+  completed: false,
 };
 
 const chatSlice = createSlice({
@@ -17,13 +17,13 @@ const chatSlice = createSlice({
   reducers: {
     resetChat: (state) => {
       state.chats = [];
-      state.completed = 0;
+      state.completed = false;
     },
     setChats: (state, action) => {
       state.chats = action.payload;
-      state.completed = action.payload.filter(
+      state.completed = action.payload.some(
         (c: ChatItem) => c.state === "success" || c.state === "error" || c.state === "disconnected"
-      ).length;
+      );
     },
     addTask: (state, action) => {
       state.chats = [
@@ -33,32 +33,28 @@ const chatSlice = createSlice({
           content: action.payload,
         },
       ];
-      state.completed = 0;
+      state.completed = false;
     },
     addAction: (state, action) => {
-      const indexes: number[] = [];
-      state.chats.forEach((chat, index) => {
-        if (chat.socketId === action.payload.socketId) {
-          indexes.push(index);
-        }
-      });
-      const lastIndex = indexes.length > 0 ? indexes[indexes.length - 1] : -1;
-      if (lastIndex >= 0 && state.chats[lastIndex].state === "thinking") {
-        const actionLength = state.chats[lastIndex].actions?.length || 0;
-        if (actionLength > 0 && state.chats[lastIndex].actions![actionLength - 1] === action.payload.action) {
+      const lastIndex = state.chats.length - 1;
+      const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
+
+      if (lastChat && lastChat.role === "assistant" && lastChat.state === "thinking") {
+        const actionLength = lastChat.actions?.length || 0;
+        if (actionLength > 0 && lastChat.actions![actionLength - 1] === action.payload.action) {
           return;
         }
 
         state.chats[lastIndex] = {
-          ...state.chats[lastIndex],
+          ...lastChat,
           thinking: action.payload.action,
-          actions: [...state.chats[lastIndex].actions!, action.payload.action],
+          actions: [...lastChat.actions!, action.payload.action],
           actionResults: [
-            ...state.chats[lastIndex].actionResults!,
+            ...lastChat.actionResults!,
             action.payload.previous_success,
           ],
           screenshots: [
-            ...(state.chats[lastIndex].screenshots || []),
+            ...(lastChat.screenshots || []),
             ...(action.payload.screenshot ? [action.payload.screenshot] : []),
           ],
         };
@@ -67,7 +63,6 @@ const chatSlice = createSlice({
           ...state.chats,
           {
             role: "assistant",
-            socketId: action.payload.socketId,
             thinking: action.payload.action,
             state: "thinking",
             actions: [action.payload.action],
@@ -78,30 +73,24 @@ const chatSlice = createSlice({
       }
     },
     addResult: (state, action) => {
-      const indexes: number[] = [];
-      state.chats.forEach((chat, index) => {
-        if (chat.socketId === action.payload.socketId) {
-          indexes.push(index);
-        }
-      });
-      const lastIndex = indexes.length > 0 ? indexes[indexes.length - 1] : -1;
-      if (lastIndex >= 0 && state.chats[lastIndex].state === "thinking") {
+      const lastIndex = state.chats.length - 1;
+      const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
+
+      if (lastChat && lastChat.role === "assistant" && lastChat.state === "thinking") {
         state.chats[lastIndex] = {
-          ...state.chats[lastIndex],
+          ...lastChat,
           content: action.payload.content,
           state: action.payload.state,
           actionResults: [
-            ...state.chats[lastIndex].actionResults!,
+            ...lastChat.actionResults!,
             action.payload.success,
           ],
         };
-        state.completed += 1;
       } else {
         state.chats = [
           ...state.chats,
           {
             role: "assistant",
-            socketId: action.payload.socketId,
             content: action.payload.content,
             state: action.payload.state,
             actionResults: [
@@ -109,8 +98,8 @@ const chatSlice = createSlice({
             ],
           },
         ];
-        state.completed += 1;
       }
+      state.completed = true;
     }
   },
 });

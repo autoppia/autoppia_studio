@@ -1,46 +1,64 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
-  faCompressAlt,
+  faExpand,
+  faCompress,
   faSave,
-  faUser,
 } from "@fortawesome/free-solid-svg-icons";
 import { faShareFromSquare } from "@fortawesome/free-regular-svg-icons";
 
-import ChatSidebar from "../components/operator/chat-sidebar";
-import BrowserLoading from "../components/operator/browser-loading";
-import ScreenshotStrip from "../components/operator/screenshot-strip";
-import ProfileSidebar from "../components/home/profile-sidebar";
+import ChatSidebar from "../components/session/chat-sidebar";
+import BrowserLoading from "../components/session/browser-loading";
+import ScreenshotStrip from "../components/session/screenshot-strip";
 import IconButton from "../components/common/icon-button";
 import { setChats, resetChat } from "../redux/chatSlice";
-import { resetSocket, disconnectBrowser, setLastUrl, setActionHistory } from "../redux/socketSlice";
+import {
+  resetSocket,
+  disconnectBrowser,
+  setSessionInfo,
+  setLastUrl,
+  setActionHistory,
+} from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
-import { ChatItem } from "../utils/types";
+import { ChatItem, HistoryItem } from "../utils/types";
 
 const IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
 function Session(): React.ReactElement {
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const browserContainerRef = useRef<HTMLDivElement | null>(null);
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { id: sessionId } = useParams<{ id: string }>();
+  const { sidebarExpanded, addHistoryItem } = useOutletContext<{
+    sidebarExpanded: boolean;
+    addHistoryItem: (item: HistoryItem) => void;
+  }>();
 
-  const [showChatSidebar, setShowChatSidebar] = useState(window.screen.width >= 1024);
-  const [profileSidebarOpen, setProfileSidebarOpen] = useState(false);
+  const [showChatSidebar, setShowChatSidebar] = useState(
+    window.screen.width >= 1024,
+  );
   const [historySaved, setHistorySaved] = useState(false);
-  const [selectedScreenshot, setSelectedScreenshot] = useState<number | null>(null);
+  const [selectedScreenshot, setSelectedScreenshot] = useState<number | null>(
+    null,
+  );
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [notFound, setNotFound] = useState(false);
 
   const chats = useSelector((state: any) => state.chat.chats);
   const completed = useSelector((state: any) => state.chat.completed);
-  const socketIds = useSelector((state: any) => state.socket.socketIds);
-  const liveUrls = useSelector((state: any) => state.socket.liveUrls);
+  const socketId = useSelector((state: any) => state.socket.socketId);
+  const liveUrl = useSelector((state: any) => state.socket.liveUrl);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
+  const prompt = useSelector((state: any) => state.socket.prompt);
+  const initialUrl = useSelector((state: any) => state.socket.initialUrl);
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
+  const user = useSelector((state: any) => state.user);
 
   // Track which session we've already loaded to avoid re-fetching
   const loadedSessionRef = useRef<string | null>(null);
@@ -58,24 +76,39 @@ function Session(): React.ReactElement {
     dispatch(resetChat());
     dispatch(resetSocket());
     setHistorySaved(false);
-    setProfileSidebarOpen(false);
     loadedSessionRef.current = sessionId;
 
     const loadSession = async () => {
       try {
         const res = await fetch(`${apiUrl}/sessions/${sessionId}`);
-        if (!res.ok) return;
+        if (!res.ok) {
+          if (res.status === 404) {
+            setNotFound(true);
+          }
+          return;
+        }
         const data = await res.json();
-        const history = data.session?.chatHistory;
+        const session = data.session;
+        if (!session) return;
+
+        dispatch(
+          setSessionInfo({
+            sessionId,
+            prompt: session.prompt || "",
+            initialUrl: session.initialUrl || "",
+          }),
+        );
+
+        const history = session.chatHistory;
         if (history && history.length > 0) {
           dispatch(setChats(history));
           setHistorySaved(true);
         }
-        if (data.session?.lastUrl) {
-          dispatch(setLastUrl(data.session.lastUrl));
+        if (session.lastUrl) {
+          dispatch(setLastUrl(session.lastUrl));
         }
-        if (data.session?.actionHistory) {
-          dispatch(setActionHistory(data.session.actionHistory));
+        if (session.actionHistory) {
+          dispatch(setActionHistory(session.actionHistory));
         }
       } catch (err) {
         console.error("Failed to load session:", err);
@@ -84,44 +117,76 @@ function Session(): React.ReactElement {
     loadSession();
   }, [sessionId, reduxSessionId, dispatch]);
 
-  // Save chat history to backend when all agents complete
-  const saveChatHistory = useCallback(async () => {
+  // Save session to backend when the task completes (upsert — creates on first completion, updates on subsequent)
+  const saveSession = useCallback(async () => {
     const sid = reduxSessionId || sessionId;
     if (!sid || chats.length === 0 || historySaved) return;
 
+    const sessionPrompt =
+      prompt ||
+      chats.find((c: ChatItem) => c.role === "user")?.content ||
+      "";
+
     try {
-      await fetch(`${apiUrl}/sessions/${sid}/history`, {
-        method: "PUT",
+      const res = await fetch(`${apiUrl}/sessions/save`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          sessionId: sid,
+          email: user.email || "",
+          prompt: sessionPrompt,
+          initialUrl: initialUrl || "",
           chatHistory: chats,
           lastUrl: lastUrl || "",
           actionHistory: actionHistory || [],
         }),
       });
       setHistorySaved(true);
-    } catch (err) {
-      console.error("Failed to save chat history:", err);
-    }
-  }, [reduxSessionId, sessionId, chats, historySaved, lastUrl, actionHistory]);
 
-  // Reset historySaved when a new task is submitted (addTask sets completed to 0)
+      // Add the new session to the sidebar history list
+      const data = await res.json();
+      if (data.created) {
+        addHistoryItem({
+          sessionId: sid,
+          email: user.email || "",
+          prompt: sessionPrompt,
+          initialUrl: initialUrl || "",
+          createdAt: new Date(),
+        } as HistoryItem);
+      }
+    } catch (err) {
+      console.error("Failed to save session:", err);
+    }
+  }, [
+    reduxSessionId,
+    sessionId,
+    chats,
+    historySaved,
+    lastUrl,
+    actionHistory,
+    user.email,
+    prompt,
+    initialUrl,
+    addHistoryItem,
+  ]);
+
+  // Reset historySaved when a new task is submitted
   useEffect(() => {
-    if (socketIds.length > 0 && completed === 0) {
+    if (socketId && !completed) {
       setHistorySaved(false);
     }
-  }, [completed, socketIds.length]);
+  }, [completed, socketId]);
 
   useEffect(() => {
-    // Save when all sockets have completed
-    if (socketIds.length > 0 && completed >= socketIds.length && !historySaved) {
-      saveChatHistory();
+    // Save when the task has completed
+    if (socketId && completed && !historySaved) {
+      saveSession();
     }
-  }, [completed, socketIds.length, historySaved, saveChatHistory]);
+  }, [completed, socketId, historySaved, saveSession]);
 
   // Idle timer: disconnect browser after 2 min of no new task
   useEffect(() => {
-    if (socketIds.length > 0 && completed >= socketIds.length) {
+    if (socketId && completed) {
       idleTimerRef.current = setTimeout(() => {
         dispatch(disconnectBrowser());
       }, IDLE_TIMEOUT_MS);
@@ -132,22 +197,35 @@ function Session(): React.ReactElement {
         idleTimerRef.current = null;
       }
     };
-  }, [completed, socketIds.length, dispatch]);
+  }, [completed, socketId, dispatch]);
 
   // Collect all screenshots from chat messages for the strip
   const allScreenshots = chats
     .filter((c: ChatItem) => c.role === "assistant" && c.screenshots)
     .flatMap((c: ChatItem) => c.screenshots || []);
-  const lastScreenshot = allScreenshots.length > 0
-    ? allScreenshots[allScreenshots.length - 1]
-    : null;
-  const displayedScreenshot = selectedScreenshot !== null && allScreenshots[selectedScreenshot]
-    ? allScreenshots[selectedScreenshot]
-    : lastScreenshot;
+  const lastScreenshot =
+    allScreenshots.length > 0
+      ? allScreenshots[allScreenshots.length - 1]
+      : null;
+  const displayedScreenshot =
+    selectedScreenshot !== null && allScreenshots[selectedScreenshot]
+      ? allScreenshots[selectedScreenshot]
+      : lastScreenshot;
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () =>
+      document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
 
   const handleFullScreen = () => {
-    if (iframeRef.current) {
-      iframeRef.current.requestFullscreen?.();
+    if (document.fullscreenElement) {
+      document.exitFullscreen?.();
+    } else if (browserContainerRef.current) {
+      browserContainerRef.current.requestFullscreen?.();
     }
   };
 
@@ -155,28 +233,12 @@ function Session(): React.ReactElement {
     setShowChatSidebar(!showChatSidebar);
   };
 
-  const generateClassName = (parent: boolean) => {
-    if (parent) {
-      if (socketIds.length > 1) {
-        return "flex flex-col xl:grid xl:grid-cols-2 gap-4 w-full flex-grow min-h-0 relative overflow-hidden mt-2";
-      } else {
-        return "flex w-full flex-grow min-h-0 relative overflow-hidden mt-2";
-      }
-    }
-
-    let className =
-      "flex relative bg-white dark:bg-dark-surface rounded-xl w-full shadow-soft flex-grow overflow-hidden border border-gray-200 dark:border-dark-border";
-
-    if (socketIds.length > 1) {
-      return className + " h-auto xl:h-full";
-    } else {
-      return className + " h-full";
-    }
-  };
+  const browserContainerClass =
+    "flex relative bg-white dark:bg-dark-surface rounded-xl w-full shadow-soft flex-grow overflow-hidden border border-gray-200 dark:border-dark-border h-full";
 
   return (
-    <div className="w-full h-screen flex relative bg-gray-100 dark:bg-dark-bg">
-      <div className="fixed w-full h-full hidden dark:block pointer-events-none">
+    <div className="w-full h-full flex flex-col relative bg-gray-100 dark:bg-dark-bg">
+      <div className="absolute inset-0 hidden dark:block pointer-events-none">
         <img
           src="/assets/images/bg/dark-bg.webp"
           alt=""
@@ -184,105 +246,144 @@ function Session(): React.ReactElement {
         />
       </div>
 
-      {/* Chat sidebar — left side */}
-      <ChatSidebar
-        open={showChatSidebar}
-        toggleSideBar={toggleChatSidebar}
-      />
-
-      {/* Browser view area — right, fills remaining space */}
-      <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-5 h-full relative overflow-hidden">
-        {/* Top toolbar */}
-        <div className="flex justify-between w-full animate-fade-in">
-          <div className="flex items-center gap-1">
-            {!showChatSidebar && (
-              <IconButton icon={faBars} onClick={toggleChatSidebar} className="dark:text-white dark:border-dark-border" />
-            )}
-            <div
-              className="flex items-center justify-center w-10 h-10 rounded-full cursor-pointer
-                transition-all duration-300 text-gray-500 dark:text-gray-400
-                hover:bg-gray-100 dark:hover:bg-dark-surface hover:text-gray-700 dark:hover:text-white"
-              onClick={handleFullScreen}
-            >
-              <FontAwesomeIcon icon={faCompressAlt} className="text-sm" />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-not-allowed
-              text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300">
-              <FontAwesomeIcon icon={faShareFromSquare} />
-              <span>Share</span>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-not-allowed
-              border border-gray-200 dark:border-dark-border text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300">
-              <FontAwesomeIcon icon={faSave} />
-              <span>Save Task</span>
-            </div>
-            <div
-              className="flex justify-center items-center p-2 sm:p-3 rounded-full
-                transition-all duration-200 cursor-pointer text-white
-                bg-gradient-primary"
-              onClick={() => setProfileSidebarOpen(true)}
-            >
-              <FontAwesomeIcon icon={faUser} />
-            </div>
-          </div>
-        </div>
-
-        {/* Browser view */}
-        <div className={generateClassName(true)}>
-          {socketIds.length > 0 ? (
-            socketIds.map((socketId: string, index: number) => {
-              const liveUrl = liveUrls[socketId];
-              return (
-                <div
-                  key={`${index}_live_main`}
-                  className={generateClassName(false)}
-                >
-                  {liveUrl ? (
-                    <iframe
-                      ref={index === 0 ? iframeRef : undefined}
-                      src={liveUrl}
-                      title={`Live browser session ${index + 1}`}
-                      sandbox="allow-same-origin allow-scripts"
-                      allow="clipboard-read; clipboard-write"
-                      className="w-full h-full border-0"
-                      style={{ pointerEvents: "none" }}
-                    />
-                  ) : (
-                    <BrowserLoading minHeight="600px" />
-                  )}
-                </div>
-              );
-            })
-          ) : displayedScreenshot ? (
-            <div className={generateClassName(false)}>
+      {/* Top header bar — full width, h-14 matches sidebar logo row */}
+      <div
+        className="flex items-center justify-between w-full h-14 px-5 border-b border-gray-200 dark:border-dark-border
+        bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm relative z-10 flex-shrink-0"
+      >
+        <div className="flex items-center">
+          {!sidebarExpanded && (
+            <>
               <img
-                src={`data:image/png;base64,${displayedScreenshot}`}
-                alt="Last browser state"
-                className="w-full h-full object-contain bg-white dark:bg-dark-surface"
+                src="/assets/images/logos/automata_dark.webp"
+                alt="Automata"
+                className="h-[14px] dark:block hidden"
               />
-            </div>
-          ) : null}
+              <img
+                src="/assets/images/logos/automata.webp"
+                alt="Automata"
+                className="h-[14px] dark:hidden block"
+              />
+            </>
+          )}
         </div>
-
-        {/* Screenshot strip — only when no task is actively running */}
-        {allScreenshots.length > 0 &&
-          (socketIds.length === 0 || completed >= socketIds.length) && (
-          <div className="w-full px-5 mt-2 flex-shrink-0">
-            <ScreenshotStrip
-              screenshots={allScreenshots}
-              selectedIndex={selectedScreenshot}
-              onSelect={setSelectedScreenshot}
-            />
+        <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-not-allowed
+            text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300
+            hover:bg-gray-50 dark:hover:bg-dark-surface"
+          >
+            <FontAwesomeIcon icon={faShareFromSquare} className="text-xs" />
+            <span>Share</span>
           </div>
-        )}
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-not-allowed
+            border border-gray-200 dark:border-dark-border text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300
+            hover:bg-gray-50 dark:hover:bg-dark-surface"
+          >
+            <FontAwesomeIcon icon={faSave} className="text-xs" />
+            <span>Save Task</span>
+          </div>
+          {!showChatSidebar && (
+            <IconButton
+              icon={faBars}
+              onClick={toggleChatSidebar}
+              className="dark:text-white dark:border-dark-border"
+            />
+          )}
+        </div>
       </div>
 
-      <ProfileSidebar
-        sidebarOpen={profileSidebarOpen}
-        setSidebarOpen={setProfileSidebarOpen}
-      />
+      {/* Content area — browser + chat sidebar */}
+      <div className="flex flex-1 min-h-0 relative">
+        {/* Browser view area */}
+        <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-4 h-full relative overflow-hidden">
+          {/* Browser view */}
+          <div className="flex w-full flex-grow min-h-0 relative overflow-hidden mt-2">
+            {socketId && liveUrl ? (
+              <div ref={browserContainerRef} className={browserContainerClass}>
+                <iframe
+                  src={liveUrl}
+                  title="Live browser session"
+                  sandbox="allow-same-origin allow-scripts"
+                  allow="clipboard-read; clipboard-write"
+                  className="w-full h-full border-0"
+                  style={{ pointerEvents: "none" }}
+                />
+                <button
+                  className="absolute top-7 right-5 z-10 flex items-center justify-center w-8 h-8 rounded-lg
+                    bg-black/40 hover:bg-black/60 text-white/80 hover:text-white
+                    transition-all duration-200 backdrop-blur-sm"
+                  onClick={handleFullScreen}
+                  title="Fullscreen"
+                >
+                  <FontAwesomeIcon
+                    icon={isFullscreen ? faCompress : faExpand}
+                    className="text-sm"
+                  />
+                </button>
+              </div>
+            ) : socketId && !liveUrl ? (
+              <div className={browserContainerClass}>
+                <BrowserLoading minHeight="600px" />
+              </div>
+            ) : displayedScreenshot ? (
+              <div ref={browserContainerRef} className={browserContainerClass}>
+                <img
+                  src={`data:image/png;base64,${displayedScreenshot}`}
+                  alt="Last browser state"
+                  className="w-full h-full object-contain bg-white dark:bg-dark-surface"
+                />
+                <button
+                  className="absolute top-6 right-3 z-10 flex items-center justify-center w-8 h-8 rounded-lg
+                    bg-black/40 hover:bg-black/60 text-white/80 hover:text-white
+                    transition-all duration-200 backdrop-blur-sm"
+                  onClick={handleFullScreen}
+                  title="Fullscreen"
+                >
+                  <FontAwesomeIcon icon={faExpand} className="text-xs" />
+                </button>
+              </div>
+            ) : null}
+          </div>
+
+          {/* Screenshot strip — only when no task is actively running */}
+          {allScreenshots.length > 0 && (!socketId || completed) && (
+            <div className="w-full px-5 mt-2 flex-shrink-0">
+              <ScreenshotStrip
+                screenshots={allScreenshots}
+                selectedIndex={selectedScreenshot}
+                onSelect={setSelectedScreenshot}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Chat sidebar — right side */}
+        <ChatSidebar open={showChatSidebar} toggleSideBar={toggleChatSidebar} />
+      </div>
+
+      {/* Session not found modal */}
+      {notFound && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-dark-surface rounded-2xl shadow-soft-lg border border-gray-200 dark:border-dark-border
+            px-8 py-7 max-w-sm w-full mx-4 text-center animate-slide-up">
+            <p className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+              Session not found
+            </p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+              This session may have been deleted or the link is invalid.
+            </p>
+            <button
+              onClick={() => navigate("/", { replace: true })}
+              className="mt-5 px-5 py-2 rounded-lg text-sm font-medium text-white
+                bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-300"
+            >
+              New Session
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

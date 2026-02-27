@@ -181,13 +181,20 @@ async def _perform_task(sid, max_steps=25):
             done, _valid = await operator.take_step()
 
             # For operators without per-action callback (e.g. BrowserUseOperator),
-            # still emit per-step action updates.
+            # still emit per-step action updates with screenshots.
             if not isinstance(operator, AutoppiaOperator):
                 model_thought = operator.get_model_thought()
                 if model_thought:
                     next_goal = model_thought['next_goal']
                     previous_success = model_thought['previous_success']
-                    await sio.emit('action', {'action': next_goal, 'previous_success': previous_success}, to=sid)
+                    payload = {'action': next_goal, 'previous_success': previous_success}
+                    try:
+                        screenshot = await operator.take_screenshot()
+                        if screenshot:
+                            payload['screenshot'] = screenshot
+                    except Exception as e:
+                        logger.warning(f"Failed to take screenshot: {e}")
+                    await sio.emit('action', payload, to=sid)
 
             if done:
                 break
@@ -198,6 +205,11 @@ async def _perform_task(sid, max_steps=25):
         if isinstance(operator, AutoppiaOperator):
             result['lastUrl'] = operator.browser_executor.get_current_url()
             result['actionHistory'] = operator.history
+        else:
+            try:
+                result['lastUrl'] = await operator.get_current_url()
+            except Exception as e:
+                logger.warning(f"Failed to get current URL: {e}")
 
         await sio.emit('result', result, to=sid)
 

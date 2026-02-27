@@ -1,6 +1,6 @@
 import { io } from "socket.io-client";
 
-import { addSocket, addSocketId, setLiveUrl, setLastUrl, setActionHistory } from "../../redux/socketSlice";
+import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory } from "../../redux/socketSlice";
 import { addAction, addResult } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
 
@@ -14,11 +14,10 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
 
   socket.on("connect", () => {
     console.log("Connected to the agent:", socket.id);
-    dispatch(addSocketId(socket.id));
+    dispatch(setSocketId(socket.id));
     if (!isRestore) {
       dispatch(
         addAction({
-          socketId: socket.id,
           action: "Initializing browser...",
         })
       );
@@ -29,7 +28,6 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
     console.log("Disconnected from the agent:", reason);
     dispatch(
       addResult({
-        socketId: socket.id,
         state: "disconnected",
       })
     );
@@ -40,22 +38,16 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
   });
 
   socket.on("live_url", ({ url }) => {
-    dispatch(
-      setLiveUrl({
-        socketId: socket.id,
-        url,
-      })
-    );
+    dispatch(setLiveUrl(url));
   });
 
   socket.on("action", (action) => {
-    dispatch(addAction({ socketId: socket.id, ...action }));
+    dispatch(addAction(action));
   });
 
   socket.on("result", (result) => {
     dispatch(
       addResult({
-        socketId: socket.id,
         content: result.content,
         success: result.success,
         state: result.success ? "success" : "error",
@@ -69,7 +61,7 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
     }
   });
 
-  dispatch(addSocket(socket));
+  dispatch(setSocket(socket));
 
   return socket;
 };

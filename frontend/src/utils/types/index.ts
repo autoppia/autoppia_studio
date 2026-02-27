@@ -13,7 +13,6 @@ export type HistoryItem = SessionItem;
 export interface ChatItem {
   role: string;
   content?: string;
-  socketId?: string;
   actions?: string[];
   actionResults?: boolean[];
   screenshots?: string[];

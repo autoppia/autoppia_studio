@@ -78,7 +78,7 @@ export default function BrowserLoading({ minHeight = "600px" }: BrowserLoadingPr
               Starting browser session
             </span>
             <span className="text-sm text-gray-400 dark:text-gray-500">
-              Connecting to operator
+              Connecting to agent
             </span>
           </div>
 

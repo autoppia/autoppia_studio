@@ -3,20 +3,22 @@ import type { RootState, AppDispatch } from './store';
 
 interface SocketState {
     sessionId: string;
-    sockets: any[];
-    socketIds: string[];
-    liveUrls: {
-        [key: string]: string | undefined;
-    };
+    prompt: string;
+    initialUrl: string;
+    socket: any;
+    socketId: string;
+    liveUrl: string;
     lastUrl: string;
     actionHistory: any[];
 }
 
 const initialState: SocketState = {
     sessionId: '',
-    sockets: [],
-    socketIds: [],
-    liveUrls: {},
+    prompt: '',
+    initialUrl: '',
+    socket: null,
+    socketId: '',
+    liveUrl: '',
     lastUrl: '',
     actionHistory: [],
 };
@@ -27,26 +29,30 @@ const socketSlice = createSlice({
     reducers: {
         clearSocketState: (state) => {
             state.sessionId = '';
-            state.sockets = [];
-            state.socketIds = [];
-            state.liveUrls = {};
+            state.prompt = '';
+            state.initialUrl = '';
+            state.socket = null;
+            state.socketId = '';
+            state.liveUrl = '';
             state.lastUrl = '';
             state.actionHistory = [];
         },
         setSessionId: (state, action) => {
             state.sessionId = action.payload;
         },
-        addSocket: (state, action) => {
-            state.sockets = [...state.sockets, action.payload];
+        setSessionInfo: (state, action) => {
+            state.sessionId = action.payload.sessionId;
+            state.prompt = action.payload.prompt;
+            state.initialUrl = action.payload.initialUrl;
         },
-        addSocketId: (state, action) => {
-            state.socketIds = [...state.socketIds, action.payload];
+        setSocket: (state, action) => {
+            state.socket = action.payload;
+        },
+        setSocketId: (state, action) => {
+            state.socketId = action.payload;
         },
         setLiveUrl: (state, action) => {
-            state.liveUrls = {
-                ...state.liveUrls,
-                [action.payload.socketId]: action.payload.url
-            };
+            state.liveUrl = action.payload;
         },
         setLastUrl: (state, action) => {
             state.lastUrl = action.payload;
@@ -55,34 +61,34 @@ const socketSlice = createSlice({
             state.actionHistory = action.payload;
         },
         clearBrowserState: (state) => {
-            // Clear sockets/liveUrls but preserve lastUrl, actionHistory, sessionId
+            // Clear socket/liveUrl but preserve lastUrl, actionHistory, sessionId, prompt, initialUrl
             // so the resume flow still works after idle disconnect
-            state.sockets = [];
-            state.socketIds = [];
-            state.liveUrls = {};
+            state.socket = null;
+            state.socketId = '';
+            state.liveUrl = '';
         },
     },
 });
 
-// Thunk: disconnect sockets outside the reducer, then clear state
+// Thunk: disconnect socket outside the reducer, then clear state
 export const resetSocket = () => (dispatch: AppDispatch, getState: () => RootState) => {
     const { socket } = getState();
-    socket.sockets.forEach((s: any) => {
-        s.removeAllListeners();
-        s.disconnect();
-    });
+    if (socket.socket) {
+        socket.socket.removeAllListeners();
+        socket.socket.disconnect();
+    }
     dispatch(clearSocketState());
 };
 
 // Thunk: disconnect browser but preserve lastUrl/actionHistory for resume
 export const disconnectBrowser = () => (dispatch: AppDispatch, getState: () => RootState) => {
     const { socket } = getState();
-    socket.sockets.forEach((s: any) => {
-        s.removeAllListeners();
-        s.disconnect();
-    });
+    if (socket.socket) {
+        socket.socket.removeAllListeners();
+        socket.socket.disconnect();
+    }
     dispatch(clearBrowserState());
 };
 
-export const { clearSocketState, clearBrowserState, setSessionId, addSocket, addSocketId, setLiveUrl, setLastUrl, setActionHistory } = socketSlice.actions;
+export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory } = socketSlice.actions;
 export default socketSlice.reducer;

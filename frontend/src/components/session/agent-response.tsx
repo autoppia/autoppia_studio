@@ -14,17 +14,16 @@ import {
   faCircleXmark,
 } from "@fortawesome/free-regular-svg-icons";
 
-interface OperatorResponseProps {
+interface AgentResponseProps {
   role: string;
   content?: string;
-  socketId?: string;
   actions?: string[];
   actionResults?: boolean[];
   thinking?: string;
   state?: string;
 }
 
-function OperatorResponse(props: OperatorResponseProps) {
+function AgentResponse(props: AgentResponseProps) {
   const { content, actions, actionResults, thinking, state } = props;
   const [collapse, setCollapse] = useState(false);
 
@@ -70,7 +69,7 @@ function OperatorResponse(props: OperatorResponseProps) {
                   icon={faCircleXmark}
                   className="me-3 text-lg text-red-500"
                 />
-                <span className="text-sm font-medium">Operator disconnected.</span>
+                <span className="text-sm font-medium">Agent disconnected.</span>
               </div>
             )}
             <button
@@ -132,4 +131,4 @@ function OperatorResponse(props: OperatorResponseProps) {
   );
 }
 
-export default OperatorResponse;
+export default AgentResponse;

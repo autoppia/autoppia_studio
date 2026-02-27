@@ -11,11 +11,13 @@ router = APIRouter()
 
 
 class SessionSaveRequest(BaseModel):
+    sessionId: str
     email: str
-    socketioPath: str
     prompt: str
-    initialUrl: str
-    sessionPath: str
+    initialUrl: str = ""
+    chatHistory: List[Any] = []
+    lastUrl: str = ""
+    actionHistory: List[Any] = []
 
 
 class ChatHistoryRequest(BaseModel):
@@ -34,10 +36,8 @@ async def get_sessions(email: str):
             sessions.append({
                 "sessionId": doc.get("sessionId", ""),
                 "email": doc["email"],
-                "socketioPath": doc.get("socketioPath", ""),
                 "prompt": doc["prompt"],
                 "initialUrl": doc.get("initialUrl", ""),
-                "sessionPath": doc.get("sessionPath", doc.get("historyPath", "")),
                 "createdAt": doc.get("createdAt"),
             })
         return {"sessions": sessions}
@@ -47,30 +47,32 @@ async def get_sessions(email: str):
 
 @router.post("/sessions/save")
 async def save_session(body: SessionSaveRequest):
-    """Save a new session entry."""
+    """Create or update a session entry (upsert by sessionId)."""
     try:
-        session_id = str(uuid.uuid4())
-        created_at = datetime.now(timezone.utc)
-        doc = {
-            "sessionId": session_id,
+        now = datetime.now(timezone.utc)
+        update_fields = {
             "email": body.email,
-            "socketioPath": body.socketioPath,
             "prompt": body.prompt,
             "initialUrl": body.initialUrl,
-            "sessionPath": body.sessionPath,
-            "createdAt": created_at,
+            "chatHistory": body.chatHistory,
         }
-        await sessions_collection.insert_one(doc)
+        if body.lastUrl:
+            update_fields["lastUrl"] = body.lastUrl
+        if body.actionHistory:
+            update_fields["actionHistory"] = body.actionHistory
+
+        result = await sessions_collection.update_one(
+            {"sessionId": body.sessionId},
+            {
+                "$set": update_fields,
+                "$setOnInsert": {"sessionId": body.sessionId, "createdAt": now},
+            },
+            upsert=True,
+        )
         return {
-            "session": {
-                "sessionId": session_id,
-                "email": body.email,
-                "socketioPath": body.socketioPath,
-                "prompt": body.prompt,
-                "initialUrl": body.initialUrl,
-                "sessionPath": body.sessionPath,
-                "createdAt": created_at.isoformat(),
-            }
+            "success": True,
+            "created": result.upserted_id is not None,
+            "sessionId": body.sessionId,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

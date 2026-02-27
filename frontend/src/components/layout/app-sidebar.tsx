@@ -1,0 +1,318 @@
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { useSelector } from "react-redux";
+import { useNavigate, useLocation } from "react-router-dom";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faHome,
+  faPlus,
+  faClock,
+  faUser,
+  faChevronLeft,
+  faCircleHalfStroke,
+} from "@fortawesome/free-solid-svg-icons";
+
+import { HistoryItem } from "../../utils/types";
+
+const apiUrl = process.env.REACT_APP_API_URL;
+
+const COLLAPSED_WIDTH = 56;
+const EXPANDED_WIDTH = 280;
+
+export interface AppSidebarHandle {
+  addHistoryItem: (item: HistoryItem) => void;
+}
+
+interface AppSidebarProps {
+  onExpandChange?: (expanded: boolean) => void;
+}
+
+/** Typewriter text — reveals characters one by one, then calls onComplete. */
+function TypewriterText({ text, speed = 30, onComplete }: { text: string; speed?: number; onComplete?: () => void }) {
+  const [displayed, setDisplayed] = useState("");
+  const indexRef = useRef(0);
+  const onCompleteRef = useRef(onComplete);
+  onCompleteRef.current = onComplete;
+
+  useEffect(() => {
+    indexRef.current = 0;
+    setDisplayed("");
+    const interval = setInterval(() => {
+      indexRef.current++;
+      if (indexRef.current >= text.length) {
+        setDisplayed(text);
+        clearInterval(interval);
+        onCompleteRef.current?.();
+      } else {
+        setDisplayed(text.slice(0, indexRef.current));
+      }
+    }, speed);
+    return () => clearInterval(interval);
+  }, [text, speed]);
+
+  return <>{displayed}<span className="animate-pulse">|</span></>;
+}
+
+const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSidebar({ onExpandChange }, ref) {
+  const [expanded, setExpanded] = useState(false);
+  const [histories, setHistories] = useState<HistoryItem[]>([]);
+  const [historiesLoaded, setHistoriesLoaded] = useState(false);
+  const [animatingId, setAnimatingId] = useState<string | null>(null);
+
+  useImperativeHandle(ref, () => ({
+    addHistoryItem: (item: HistoryItem) => {
+      setHistories((prev) => {
+        if (prev.some((h) => h.sessionId === item.sessionId)) return prev;
+        return [item, ...prev];
+      });
+      setAnimatingId(item.sessionId);
+    },
+  }), []);
+
+  const handleTypewriterComplete = useCallback(() => {
+    setAnimatingId(null);
+  }, []);
+
+  const navigate = useNavigate();
+  const location = useLocation();
+  const user = useSelector((state: any) => state.user);
+
+  const updateExpanded = (next: boolean) => {
+    setExpanded(next);
+    onExpandChange?.(next);
+  };
+
+  const toggleExpanded = () => {
+    const next = !expanded;
+    updateExpanded(next);
+    if (next && !historiesLoaded) {
+      loadHistories();
+    }
+  };
+
+  const loadHistories = async () => {
+    if (!user.email) return;
+    try {
+      const response = await fetch(`${apiUrl}/sessions?email=${user.email}`);
+      const data = await response.json();
+      setHistories(data.sessions || []);
+      setHistoriesLoaded(true);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleNewSession = () => {
+    navigate("/");
+  };
+
+  const handleGoHome = () => {
+    window.location.href = "https://autoppia.com/";
+  };
+
+  const darkThemeHandler = () => {
+    document.documentElement.classList.toggle("dark");
+  };
+
+  const getRelativeDate = (dateString: string | Date) => {
+    const now = new Date();
+    const past = new Date(dateString);
+    const days = (now.getTime() - past.getTime()) / (24 * 60 * 60 * 1000);
+    if (days < 1) return "Today";
+    if (days < 30) return `${Math.floor(days)}d ago`;
+    return "Months ago";
+  };
+
+  const isOnHome = location.pathname === "/";
+
+  return (
+    <>
+      {/* Backdrop for mobile when expanded */}
+      {expanded && (
+        <div
+          className="fixed inset-0 bg-black/30 z-20 lg:hidden"
+          onClick={() => updateExpanded(false)}
+        />
+      )}
+
+      <div
+        className="fixed left-0 top-0 h-full z-30 flex flex-col
+          bg-white dark:bg-dark-bg border-r border-gray-200 dark:border-dark-border
+          transition-all duration-300 overflow-hidden"
+        style={{ width: expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH }}
+      >
+        {/* Top section */}
+        <div className="flex flex-col flex-shrink-0">
+          {/* Logo / toggle */}
+          <div className={`flex items-center h-14 px-2 ${expanded ? "justify-between" : "justify-center"}`}>
+            {expanded ? (
+              <>
+                <div
+                  className="flex items-center gap-2 ml-1 cursor-pointer"
+                  onClick={toggleExpanded}
+                >
+                  <img
+                    src="/assets/images/logos/main.webp"
+                    alt="Autoppia"
+                    className="w-7 h-7 rounded-full"
+                  />
+                  <img
+                    src="/assets/images/logos/automata_dark.webp"
+                    alt="Automata"
+                    className="h-[14px] dark:block hidden"
+                  />
+                  <img
+                    src="/assets/images/logos/automata.webp"
+                    alt="Automata"
+                    className="h-[14px] dark:hidden block"
+                  />
+                </div>
+                <button
+                  onClick={toggleExpanded}
+                  className="flex items-center justify-center w-8 h-8 rounded-lg
+                    text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+                    transition-colors duration-200"
+                >
+                  <FontAwesomeIcon icon={faChevronLeft} className="text-xs" />
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={toggleExpanded}
+                className="flex items-center justify-center w-9 h-9 rounded-lg
+                  hover:bg-gray-100 dark:hover:bg-dark-surface
+                  transition-colors duration-200"
+              >
+                <img
+                  src="/assets/images/logos/main.webp"
+                  alt="Autoppia"
+                  className="w-8 h-8 rounded-full"
+                />
+              </button>
+            )}
+          </div>
+
+          {/* New session button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={handleNewSession}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}
+                ${isOnHome ? "bg-gray-100 dark:bg-dark-surface" : ""}`}
+              title="New session"
+            >
+              <FontAwesomeIcon icon={faPlus} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">New Session</span>}
+            </button>
+          </div>
+
+          {/* History label (expanded only) */}
+          {expanded && (
+            <div className="px-4 pt-3 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                History
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Session history list (expanded only) */}
+        {expanded && (
+          <div className="flex-grow overflow-y-auto px-2 scrollbar-thin">
+            {histories.map((item) => {
+              const isActive = location.pathname === `/session/${item.sessionId}`;
+              const isAnimating = animatingId === item.sessionId;
+              return (
+                <div
+                  key={`sidebar_history_${item.sessionId}`}
+                  className={`flex items-center gap-2 px-3 py-2 mb-0.5 rounded-lg cursor-pointer
+                    transition-colors duration-200 group
+                    ${isAnimating ? "animate-slide-up" : ""}
+                    ${isActive
+                      ? "bg-gray-100 dark:bg-dark-surface text-gray-900 dark:text-white"
+                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-dark-surface/50"
+                    }`}
+                  onClick={() => item.sessionId && navigate(`/session/${item.sessionId}`)}
+                >
+                  <FontAwesomeIcon icon={faClock} className="text-[10px] flex-shrink-0 opacity-50" />
+                  <div className="flex-grow min-w-0">
+                    <p className="text-xs truncate font-medium">
+                      {isAnimating
+                        ? <TypewriterText text={item.prompt} onComplete={handleTypewriterComplete} />
+                        : item.prompt}
+                    </p>
+                    <p className="text-[10px] truncate opacity-60">{item.initialUrl}</p>
+                  </div>
+                  {!isAnimating && (
+                    <span className="text-[10px] opacity-40 flex-shrink-0 hidden group-hover:block">
+                      {getRelativeDate(item.createdAt!)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Collapsed: icon-only nav */}
+        {!expanded && (
+          <div className="flex flex-col items-center gap-1 px-2 mt-2 flex-grow">
+            <button
+              onClick={() => { updateExpanded(true); if (!historiesLoaded) loadHistories(); }}
+              className="flex items-center justify-center w-9 h-9 rounded-lg
+                text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+                transition-colors duration-200"
+              title="History"
+            >
+              <FontAwesomeIcon icon={faClock} className="text-sm" />
+            </button>
+          </div>
+        )}
+
+        {/* Bottom section */}
+        <div className={`flex flex-col flex-shrink-0 border-t border-gray-200 dark:border-dark-border
+          ${expanded ? "px-2 py-2 gap-0.5" : "px-2 py-2 items-center gap-1"}`}>
+          <button
+            onClick={handleGoHome}
+            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
+              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
+            title="Autoppia Home"
+          >
+            <FontAwesomeIcon icon={faHome} className="text-sm" />
+            {expanded && <span className="text-xs">Autoppia Home</span>}
+          </button>
+          <button
+            onClick={darkThemeHandler}
+            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
+              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
+            title="Toggle theme"
+          >
+            <FontAwesomeIcon icon={faCircleHalfStroke} className="text-sm" />
+            {expanded && <span className="text-xs">Toggle Theme</span>}
+          </button>
+          {/* User avatar */}
+          {user.isAuthenticated && (
+            <div
+              className={`flex items-center gap-2 rounded-lg transition-colors duration-200
+                ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
+            >
+              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
+                <FontAwesomeIcon icon={faUser} className="text-[10px]" />
+              </div>
+              {expanded && (
+                <span className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                  {user.email.split("@")[0]}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+});
+
+export default AppSidebar;
+export { COLLAPSED_WIDTH, EXPANDED_WIDTH };
