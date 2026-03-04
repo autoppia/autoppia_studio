@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faUser, faXmark } from "@fortawesome/free-solid-svg-icons";
+import { faUser, faXmark, faRightFromBracket } from "@fortawesome/free-solid-svg-icons";
 
 import HistoryTab from "./history-tab";
 import ConfigTab from "./config-tab";
+import { logout } from "../../redux/userSlice";
 
 interface ProfileSidebarProps {
   sidebarOpen: boolean;
@@ -15,13 +16,11 @@ export default function ProfileSidebar(props: ProfileSidebarProps) {
   const { sidebarOpen, setSidebarOpen } = props;
   const [activeTab, setActiveTab] = useState<string>("history");
 
+  const dispatch = useDispatch();
   const user = useSelector((state: any) => state.user);
 
-  const handleLogin = () => {
-    const currentURL = window.location.href;
-    const url = new URL("https://app.autoppia.com/auth/sign-in");
-    url.searchParams.append("redirectURL", currentURL);
-    window.location.href = url.href;
+  const handleLogout = () => {
+    dispatch(logout());
   };
 
   return (
@@ -89,27 +88,20 @@ export default function ProfileSidebar(props: ProfileSidebarProps) {
               </button>
             </div>
             {activeTab === "history" ? <HistoryTab /> : <ConfigTab />}
-          </>
-        ) : (
-          <>
-            <div className="flex w-full justify-end items-center px-2 ms-2 md:ms-0">
-              <div
-                className="flex justify-center items-center cursor-pointer text-gray-700 dark:text-white"
-                onClick={() => setSidebarOpen(false)}
-              >
-                <FontAwesomeIcon icon={faXmark} />
-              </div>
-            </div>
-            <div className="flex flex-grow w-full h-full justify-center items-center">
+
+            {/* Logout */}
+            <div className="mt-auto pt-4 pb-2 border-t border-gray-200 dark:border-dark-border">
               <button
-                className="px-6 py-2 rounded-full bg-gradient-primary text-white"
-                onClick={handleLogin}
+                className="flex items-center gap-2 px-4 py-2 text-sm text-gray-500 dark:text-gray-400
+                  hover:text-gray-700 dark:hover:text-white transition-colors duration-200"
+                onClick={handleLogout}
               >
-                SignIn via Autoppia
+                <FontAwesomeIcon icon={faRightFromBracket} />
+                <span>Sign out</span>
               </button>
             </div>
           </>
-        )}
+        ) : null}
       </div>
     </div>
   );

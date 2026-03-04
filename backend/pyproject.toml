@@ -11,4 +11,7 @@ dependencies = [
     "autoppia_iwa @ git+https://github.com/autoppia/autoppia_iwa.git",
     "browserbase>=1.4.0",
     "motor>=3.7.1",
+    "bcrypt>=5.0.0",
+    "pyjwt>=2.11.0",
+    "pydantic[email]>=2.11.5",
 ]

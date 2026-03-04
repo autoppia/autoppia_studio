@@ -21,6 +21,7 @@ from app.middleware import verify_api_key
 from app.database import ensure_indexes
 from app.sio_app import sio
 from app.routes import operator, cua
+from app.routes import auth as auth_routes
 from app.routes import user as user_routes
 from app.routes import session as session_routes
 
@@ -42,6 +43,7 @@ fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depe
 fastapi_app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 # Web routes (no API key required — used by the frontend)
+fastapi_app.include_router(auth_routes.router)
 fastapi_app.include_router(user_routes.router)
 fastapi_app.include_router(session_routes.router)
 
@@ -54,6 +56,12 @@ async def health_check():
 @fastapi_app.on_event("startup")
 async def startup_event():
     await ensure_indexes()
+    # Migrate existing users: add is_verified and auth_provider fields
+    from app.database import users_collection
+    await users_collection.update_many(
+        {"is_verified": {"$exists": False}},
+        {"$set": {"is_verified": True, "auth_provider": "email"}},
+    )
 
 
 # Wrap FastAPI inside Socket.IO ASGI app so both share the same origin

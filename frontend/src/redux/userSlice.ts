@@ -1,4 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
+import Cookies from "js-cookie";
 
 interface UserState {
     isAuthenticated: boolean;
@@ -22,6 +23,7 @@ const userSlice = createSlice({
             state.instructions = action.payload.instructions;
         },
         logout: (state) => {
+            Cookies.remove("access_token");
             state.isAuthenticated = false;
             state.email = "";
             state.instructions = "";

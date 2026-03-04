@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
-import { useSelector } from "react-redux";
+import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -9,7 +9,10 @@ import {
   faUser,
   faChevronLeft,
   faCircleHalfStroke,
+  faRightFromBracket,
 } from "@fortawesome/free-solid-svg-icons";
+
+import { logout } from "../../redux/userSlice";
 
 import { HistoryItem } from "../../utils/types";
 
@@ -72,6 +75,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
     setAnimatingId(null);
   }, []);
 
+  const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const user = useSelector((state: any) => state.user);
@@ -291,6 +295,17 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           >
             <FontAwesomeIcon icon={faCircleHalfStroke} className="text-sm" />
             {expanded && <span className="text-xs">Toggle Theme</span>}
+          </button>
+          {/* Sign out */}
+          <button
+            onClick={() => dispatch(logout())}
+            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
+              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
+            title="Sign out"
+          >
+            <FontAwesomeIcon icon={faRightFromBracket} className="text-sm" />
+            {expanded && <span className="text-xs">Sign Out</span>}
           </button>
           {/* User avatar */}
           {user.isAuthenticated && (

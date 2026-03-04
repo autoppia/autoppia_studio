@@ -13,25 +13,19 @@ class UserUpdateRequest(BaseModel):
 
 @router.get("/user")
 async def get_user(email: str):
-    """Get user by email, create if doesn't exist."""
+    """Get user by email."""
     try:
         user = await users_collection.find_one({"email": email})
-        if user:
-            return {
-                "user": {
-                    "email": user["email"],
-                    "instructions": user.get("instructions", ""),
-                }
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return {
+            "user": {
+                "email": user["email"],
+                "instructions": user.get("instructions", ""),
             }
-        else:
-            new_user = {"email": email, "instructions": ""}
-            await users_collection.insert_one(new_user)
-            return {
-                "user": {
-                    "email": email,
-                    "instructions": "",
-                }
-            }
+        }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

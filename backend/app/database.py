@@ -5,10 +5,10 @@ from motor.motor_asyncio import AsyncIOMotorClient
 
 logger = logging.getLogger(__name__)
 
-MONGO_CONNECTION_URI = os.getenv("MONGO_CONNECTION_URI", "mongodb://localhost:27017/autoppia_automata")
+MONGO_CONNECTION_URI = os.getenv("MONGO_CONNECTION_URI", "mongodb://localhost:27017/automata")
 
 client = AsyncIOMotorClient(MONGO_CONNECTION_URI)
-db = client.get_default_database(default="autoppia_automata")
+db = client.get_default_database(default="automata")
 
 users_collection = db["users"]
 sessions_collection = db["sessions"]

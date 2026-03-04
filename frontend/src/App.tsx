@@ -1,70 +1,33 @@
 import { useEffect, useState } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { jwtDecode } from "jwt-decode";
 import Cookies from "js-cookie";
 import "./App.css";
 
 import Home from "./pages/home";
 import Session from "./pages/session";
+import SignIn from "./pages/signin";
+import SignUp from "./pages/signup";
+import VerifyOTP from "./pages/verify-otp";
 import MainLayout from "./components/layout/main-layout";
 import { ToastProvider } from "./components/common/toast";
 import { setUser } from "./redux/userSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
-const isDev = process.env.NODE_ENV === "development";
-const devEmail = process.env.REACT_APP_DEV_EMAIL || "dev@autoppia.com";
-
-function redirectToLogin() {
-  // Preserve the current path + search so the user lands back on the same page
-  const returnUrl = window.location.origin + window.location.pathname + window.location.search;
-  const url = new URL("https://app.autoppia.com/auth/sign-in");
-  url.searchParams.append("redirectURL", returnUrl);
-  window.location.href = url.href;
-}
-
-function getTokenFromUrl(): string | null {
-  const params = new URLSearchParams(window.location.search);
-  return params.get("access_token");
-}
-
-function cleanTokenFromUrl() {
-  const url = new URL(window.location.href);
-  url.searchParams.delete("access_token");
-  window.history.replaceState({}, "", url.pathname + (url.search || ""));
-}
 
 function App() {
   const dispatch = useDispatch();
-  const [authState, setAuthState] = useState<"checking" | "authenticated">("checking");
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const isAuthenticated = useSelector((state: any) => state.user.isAuthenticated);
 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // 1. Check if token was returned in URL (redirect from Autoppia)
-        const urlToken = getTokenFromUrl();
-        if (urlToken) {
-          Cookies.set("access_token", urlToken, { expires: 7 });
-          cleanTokenFromUrl();
-        }
-
-        const accessToken = urlToken || Cookies.get("access_token");
-
-        // In development, skip auth redirect and use a dev user
-        if (!accessToken && isDev) {
-          const response = await fetch(`${apiUrl}/user?email=${devEmail}`);
-          if (response.ok) {
-            const data = await response.json();
-            dispatch(setUser({ email: data.user.email, instructions: data.user.instructions }));
-          } else {
-            dispatch(setUser({ email: devEmail, instructions: "" }));
-          }
-          setAuthState("authenticated");
-          return;
-        }
+        const accessToken = Cookies.get("access_token");
 
         if (!accessToken) {
-          redirectToLogin();
+          setAuthState("unauthenticated");
           return;
         }
 
@@ -73,18 +36,7 @@ function App() {
         // Check if token is expired
         if (decodedToken.exp && decodedToken.exp * 1000 < Date.now()) {
           Cookies.remove("access_token");
-          if (isDev) {
-            const response = await fetch(`${apiUrl}/user?email=${devEmail}`);
-            if (response.ok) {
-              const data = await response.json();
-              dispatch(setUser({ email: data.user.email, instructions: data.user.instructions }));
-            } else {
-              dispatch(setUser({ email: devEmail, instructions: "" }));
-            }
-            setAuthState("authenticated");
-            return;
-          }
-          redirectToLogin();
+          setAuthState("unauthenticated");
           return;
         }
 
@@ -100,33 +52,33 @@ function App() {
           );
           setAuthState("authenticated");
         } else {
-          if (isDev) {
-            dispatch(setUser({ email, instructions: "" }));
-            setAuthState("authenticated");
-            return;
-          }
-          redirectToLogin();
+          Cookies.remove("access_token");
+          setAuthState("unauthenticated");
         }
       } catch (err) {
         console.error("Auth check failed:", err);
-        if (isDev) {
-          dispatch(setUser({ email: devEmail, instructions: "" }));
-          setAuthState("authenticated");
-          return;
-        }
         Cookies.remove("access_token");
-        redirectToLogin();
+        setAuthState("unauthenticated");
       }
     };
     checkAuth();
   }, [dispatch]);
+
+  // Sync authState with Redux isAuthenticated (sign-in/sign-up and logout)
+  useEffect(() => {
+    if (isAuthenticated && authState === "unauthenticated") {
+      setAuthState("authenticated");
+    } else if (!isAuthenticated && authState === "authenticated") {
+      setAuthState("unauthenticated");
+    }
+  }, [isAuthenticated, authState]);
 
   if (authState === "checking") {
     return (
       <div className="flex items-center justify-center h-screen bg-white dark:bg-dark-bg">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-[3px] border-gray-200 dark:border-dark-border border-t-orange-500 rounded-full animate-spin" />
-          <p className="text-sm text-gray-500 dark:text-gray-400">Authenticating...</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Loading...</p>
         </div>
       </div>
     );
@@ -136,10 +88,29 @@ function App() {
     <ToastProvider>
       <BrowserRouter>
         <Routes>
-          <Route element={<MainLayout />}>
-            <Route path="/" element={<Home />} />
-            <Route path="/session/:id" element={<Session />} />
-          </Route>
+          {authState === "authenticated" ? (
+            <>
+              {/* Protected routes */}
+              <Route element={<MainLayout />}>
+                <Route path="/" element={<Home />} />
+                <Route path="/session/:id" element={<Session />} />
+              </Route>
+              {/* Redirect auth pages to home if already logged in */}
+              <Route path="/signin" element={<Navigate to="/" replace />} />
+              <Route path="/signup" element={<Navigate to="/" replace />} />
+              <Route path="/verify-otp" element={<Navigate to="/" replace />} />
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </>
+          ) : (
+            <>
+              {/* Public routes */}
+              <Route path="/signin" element={<SignIn />} />
+              <Route path="/signup" element={<SignUp />} />
+              <Route path="/verify-otp" element={<VerifyOTP />} />
+              {/* Redirect everything else to signin */}
+              <Route path="*" element={<Navigate to="/signin" replace />} />
+            </>
+          )}
         </Routes>
       </BrowserRouter>
     </ToastProvider>
