@@ -28,11 +28,12 @@ async def start_task(sid, data):
     task = data.get("task")
     initial_url = data.get("initial_url")
     provider = data.get("provider")
+    context_id = data.get("context_id", "")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
         return
 
-    logger.info(f"Starting task: {task}, Initial URL: {initial_url}")
+    logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}")
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -44,7 +45,7 @@ async def start_task(sid, data):
         else:
             operator = AutoppiaOperator()
 
-        await operator.initialize(task, initial_url, storage_state_path)
+        await operator.initialize(task, initial_url, storage_state_path, context_id=context_id)
 
         sessions[sid] = operator
 
@@ -86,6 +87,7 @@ async def resume_task(sid, data):
     last_url = data.get("lastUrl")
     action_history = data.get("actionHistory", [])
     provider = data.get("provider", "autoppia")
+    context_id = data.get("context_id", "")
 
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
@@ -94,7 +96,7 @@ async def resume_task(sid, data):
         await sio.emit("error", {"message": "No lastUrl provided for resume"}, to=sid)
         return
 
-    logger.info(f"Resuming task: {task}, Last URL: {last_url}, History steps: {len(action_history)}")
+    logger.info(f"Resuming task: {task}, Last URL: {last_url}, History steps: {len(action_history)}, Context ID: {context_id}")
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -107,7 +109,7 @@ async def resume_task(sid, data):
             operator = AutoppiaOperator()
 
         # Initialize with the saved lastUrl as the starting URL
-        await operator.initialize(task, last_url, storage_state_path)
+        await operator.initialize(task, last_url, storage_state_path, context_id=context_id)
 
         # Pre-load action history so CUA has context of previous actions
         if isinstance(operator, AutoppiaOperator) and action_history:

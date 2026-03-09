@@ -26,6 +26,76 @@ export const websites = [
     favicon: "/assets/images/favicons/autoppia.png",
   },
   {
+    title: "AutoCinema",
+    url: "https://autocinema.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoBooks",
+    url: "https://autobooks.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "Autozone",
+    url: "https://autozone.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoDining",
+    url: "https://autodining.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoCRM",
+    url: "https://autocrm.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoMail",
+    url: "https://automail.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoDelivery",
+    url: "https://autodelivery.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoLodge",
+    url: "https://autolodge.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoConnect",
+    url: "https://autoconnect.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoWork",
+    url: "https://autowork.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoCalendar",
+    url: "https://autocalendar.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoList",
+    url: "https://autolist.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoDrive",
+    url: "https://autodrive.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
+    title: "AutoHealth",
+    url: "https://autohealth.autoppia.com",
+    favicon: "/assets/images/favicons/autoppia.png",
+  },
+  {
     title: "Bitrefill",
     url: "https://www.bitrefill.com",
     favicon: '/assets/images/favicons/bitrefill.png',

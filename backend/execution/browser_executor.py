@@ -1,4 +1,5 @@
 import os
+import asyncio
 import base64
 import logging
 from pathlib import Path
@@ -20,7 +21,7 @@ class BrowserExecutor:
         self._bb_session_id = None
         self.live_url = None
 
-    async def initialize(self, initial_url: str = None, storage_state_path: Path = None):
+    async def initialize(self, initial_url: str = None, storage_state_path: Path = None, context_id: str = ""):
         bb_api_key = os.getenv("BROWSERBASE_API_KEY", "")
         bb_project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
 
@@ -28,21 +29,41 @@ class BrowserExecutor:
 
         if bb_api_key and bb_project_id:
             self._bb_client = Browserbase(api_key=bb_api_key)
-            session = self._bb_client.sessions.create(
-                project_id=bb_project_id,
-                keep_alive=True,
-                api_timeout=900,  # 15 minutes before auto-expiry
-            )
+
+            session_kwargs = {
+                "project_id": bb_project_id,
+                "keep_alive": True,
+                "api_timeout": 900,
+                "browser_settings": {
+                    "viewport": {"width": 1280, "height": 720},
+                },
+            }
+            if context_id:
+                session_kwargs["browser_settings"]["context"] = {"id": context_id, "persist": True}
+                logger.info(f"Using BrowserBase context: {context_id}")
+
+            logger.info(f"Creating BrowserBase session with kwargs: {session_kwargs}")
+            session = self._bb_client.sessions.create(**session_kwargs)
             self._bb_session_id = session.id
+
+            # Verify the session was created with the context
+            session_info = self._bb_client.sessions.retrieve(session.id)
+            logger.info(f"Browserbase session created: {session.id}, context_id on session: {session_info.context_id}, status: {session_info.status}")
 
             debug_urls = self._bb_client.sessions.debug(session.id)
             self.live_url = debug_urls.debugger_fullscreen_url
-            logger.info(f"Browserbase session created: {session.id}")
             logger.info(f"Live URL: {self.live_url}")
 
             self.browser = await self.playwright.chromium.connect_over_cdp(session.connect_url)
+            logger.info(f"CDP connected. Browser contexts: {len(self.browser.contexts)}")
             self.context = self.browser.contexts[0]
             self.page = self.context.pages[0] if self.context.pages else await self.context.new_page()
+
+            # Log cookies to verify context loaded correctly
+            cookies = await self.context.cookies()
+            logger.info(f"Context has {len(cookies)} cookies after CDP connect")
+            for c in cookies[:5]:
+                logger.info(f"  Cookie: {c['name']} @ {c['domain']}")
         else:
             logger.warning("Browserbase credentials not set, falling back to local Chromium")
             self.browser = await self.playwright.chromium.launch(
@@ -53,7 +74,7 @@ class BrowserExecutor:
                 ]
             )
             self.context = await self.browser.new_context(
-                viewport={"width": 1024, "height": 768},
+                viewport={"width": 1440, "height": 900},
                 storage_state=str(storage_state_path) if storage_state_path else None
             )
             self.page = await self.context.new_page()
@@ -64,6 +85,10 @@ class BrowserExecutor:
         if not initial_url:
             initial_url = "https://duckduckgo.com"
         await self.page.goto(initial_url)
+
+        if context_id:
+            cookies_after = await self.context.cookies()
+            logger.info(f"Context has {len(cookies_after)} cookies after navigating to {initial_url}")
 
     async def _handle_new_page(self, page: Page):
         logger.info("New page created")
@@ -96,7 +121,7 @@ class BrowserExecutor:
         # Call release_session() separately when the user leaves.
 
     async def release_session(self):
-        """Release the Browserbase session to free credits."""
+        """Release the Browserbase session and wait for context to persist."""
         if self._bb_client and self._bb_session_id:
             try:
                 project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
@@ -105,7 +130,18 @@ class BrowserExecutor:
                     project_id=project_id,
                     status="REQUEST_RELEASE",
                 )
-                logger.info(f"Browserbase session released: {self._bb_session_id}")
+                logger.info(f"Browserbase session release requested: {self._bb_session_id}")
+
+                # Wait for session to complete so context is persisted
+                for _ in range(15):
+                    await asyncio.sleep(1)
+                    try:
+                        session_info = self._bb_client.sessions.retrieve(self._bb_session_id)
+                        if session_info.status in ("COMPLETED", "ERROR", "TIMED_OUT"):
+                            logger.info(f"Browserbase session {self._bb_session_id} status: {session_info.status}")
+                            break
+                    except Exception:
+                        break
             except Exception as e:
                 logger.warning(f"Failed to release Browserbase session: {e}")
 

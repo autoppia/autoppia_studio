@@ -7,6 +7,7 @@ import "./App.css";
 
 import Home from "./pages/home";
 import Session from "./pages/session";
+import Settings from "./pages/settings";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -94,6 +95,7 @@ function App() {
               <Route element={<MainLayout />}>
                 <Route path="/" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
+                <Route path="/settings" element={<Settings />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}
               <Route path="/signin" element={<Navigate to="/" replace />} />

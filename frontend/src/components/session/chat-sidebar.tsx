@@ -36,6 +36,8 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const liveUrl = useSelector((state: any) => state.socket.liveUrl);
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
+  const contextId = useSelector((state: any) => state.socket.contextId);
+  const provider = useSelector((state: any) => state.socket.provider);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
   const user = useSelector((state: any) => state.user);
 
@@ -73,19 +75,21 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       const newSocket = initializeSocket(dispatch);
 
       if (lastUrl) {
-        // Resume session
+        // Resume session with same operator
         newSocket.emit("resume-task", {
           task: taskWithInstructions,
           lastUrl,
           actionHistory: actionHistory || [],
-          provider: "autoppia",
+          provider: provider || "autoppia",
+          context_id: contextId || "",
         });
       } else {
         // Start fresh
         newSocket.emit("start-task", {
           task: taskWithInstructions,
           initial_url: "https://duckduckgo.com",
-          provider: "autoppia",
+          provider: provider || "autoppia",
+          context_id: contextId || "",
         });
       }
     }

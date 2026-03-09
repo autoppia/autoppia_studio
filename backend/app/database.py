@@ -12,6 +12,8 @@ db = client.get_default_database(default="automata")
 
 users_collection = db["users"]
 sessions_collection = db["sessions"]
+profiles_collection = db["profiles"]
+api_keys_collection = db["api_keys"]
 
 
 async def ensure_indexes():
@@ -19,4 +21,7 @@ async def ensure_indexes():
     await users_collection.create_index("email", unique=True)
     await sessions_collection.create_index("email")
     await sessions_collection.create_index("createdAt")
+    await profiles_collection.create_index("email")
+    await api_keys_collection.create_index("email")
+    await api_keys_collection.create_index("keyHash", unique=True)
     logger.info("MongoDB indexes ensured")

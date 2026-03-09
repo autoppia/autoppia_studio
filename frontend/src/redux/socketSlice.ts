@@ -10,6 +10,8 @@ interface SocketState {
     liveUrl: string;
     lastUrl: string;
     actionHistory: any[];
+    contextId: string;
+    provider: string;
 }
 
 const initialState: SocketState = {
@@ -21,6 +23,8 @@ const initialState: SocketState = {
     liveUrl: '',
     lastUrl: '',
     actionHistory: [],
+    contextId: '',
+    provider: 'autoppia',
 };
 
 const socketSlice = createSlice({
@@ -36,6 +40,8 @@ const socketSlice = createSlice({
             state.liveUrl = '';
             state.lastUrl = '';
             state.actionHistory = [];
+            state.contextId = '';
+            state.provider = 'autoppia';
         },
         setSessionId: (state, action) => {
             state.sessionId = action.payload;
@@ -59,6 +65,12 @@ const socketSlice = createSlice({
         },
         setActionHistory: (state, action) => {
             state.actionHistory = action.payload;
+        },
+        setContextId: (state, action) => {
+            state.contextId = action.payload;
+        },
+        setProvider: (state, action) => {
+            state.provider = action.payload;
         },
         clearBrowserState: (state) => {
             // Clear socket/liveUrl but preserve lastUrl, actionHistory, sessionId, prompt, initialUrl
@@ -90,5 +102,5 @@ export const disconnectBrowser = () => (dispatch: AppDispatch, getState: () => R
     dispatch(clearBrowserState());
 };
 
-export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory } = socketSlice.actions;
+export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setProvider } = socketSlice.actions;
 export default socketSlice.reducer;

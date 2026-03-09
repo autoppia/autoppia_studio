@@ -132,7 +132,8 @@ class AutoppiaOperator(BaseOperator):
         self,
         task: str,
         initial_url: str = None,
-        storage_state_path: Path = None
+        storage_state_path: Path = None,
+        context_id: str = "",
     ) -> None:
         self.task = task
         self.initial_url = initial_url
@@ -146,7 +147,8 @@ class AutoppiaOperator(BaseOperator):
         self.browser_executor = BrowserExecutor()
         await self.browser_executor.initialize(
             initial_url=initial_url,
-            storage_state_path=storage_state_path
+            storage_state_path=storage_state_path,
+            context_id=context_id,
         )
 
     async def take_step(self) -> tuple[bool, bool]:

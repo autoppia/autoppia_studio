@@ -6,9 +6,8 @@ import {
   faBars,
   faExpand,
   faCompress,
-  faSave,
+  faCoins,
 } from "@fortawesome/free-solid-svg-icons";
-import { faShareFromSquare } from "@fortawesome/free-regular-svg-icons";
 
 import ChatSidebar from "../components/session/chat-sidebar";
 import BrowserLoading from "../components/session/browser-loading";
@@ -21,6 +20,8 @@ import {
   setSessionInfo,
   setLastUrl,
   setActionHistory,
+  setContextId,
+  setProvider,
 } from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
 import { ChatItem, HistoryItem } from "../utils/types";
@@ -58,6 +59,8 @@ function Session(): React.ReactElement {
   const initialUrl = useSelector((state: any) => state.socket.initialUrl);
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
+  const contextId = useSelector((state: any) => state.socket.contextId);
+  const provider = useSelector((state: any) => state.socket.provider);
   const user = useSelector((state: any) => state.user);
 
   // Track which session we've already loaded to avoid re-fetching
@@ -110,6 +113,12 @@ function Session(): React.ReactElement {
         if (session.actionHistory) {
           dispatch(setActionHistory(session.actionHistory));
         }
+        if (session.contextId) {
+          dispatch(setContextId(session.contextId));
+        }
+        if (session.provider) {
+          dispatch(setProvider(session.provider));
+        }
       } catch (err) {
         console.error("Failed to load session:", err);
       }
@@ -139,6 +148,8 @@ function Session(): React.ReactElement {
           chatHistory: chats,
           lastUrl: lastUrl || "",
           actionHistory: actionHistory || [],
+          contextId: contextId || "",
+          provider: provider || "autoppia",
         }),
       });
       setHistorySaved(true);
@@ -167,6 +178,8 @@ function Session(): React.ReactElement {
     user.email,
     prompt,
     initialUrl,
+    contextId,
+    provider,
     addHistoryItem,
   ]);
 
@@ -251,38 +264,22 @@ function Session(): React.ReactElement {
         className="flex items-center justify-between w-full h-14 px-5 border-b border-gray-200 dark:border-dark-border
         bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm relative z-10 flex-shrink-0"
       >
-        <div className="flex items-center">
-          {!sidebarExpanded && (
-            <>
-              <img
-                src="/assets/images/logos/automata_dark.webp"
-                alt="Automata"
-                className="h-[14px] dark:block hidden"
-              />
-              <img
-                src="/assets/images/logos/automata.webp"
-                alt="Automata"
-                className="h-[14px] dark:hidden block"
-              />
-            </>
-          )}
+        <div className="flex items-center gap-3">
+          <span className="text-base font-semibold text-gray-800 dark:text-gray-100">
+            {provider === "browser_use" ? "Browser Use" : "Autoppia"}
+            <span className="text-gray-400 dark:text-gray-500 font-normal">
+              {" / "}
+              <span className="font-mono text-base">{sessionId}</span>
+            </span>
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-not-allowed
-            text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300
-            hover:bg-gray-50 dark:hover:bg-dark-surface"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg
+            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium"
           >
-            <FontAwesomeIcon icon={faShareFromSquare} className="text-xs" />
-            <span>Share</span>
-          </div>
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-not-allowed
-            border border-gray-200 dark:border-dark-border text-gray-400 dark:text-gray-500 text-sm font-medium transition-all duration-300
-            hover:bg-gray-50 dark:hover:bg-dark-surface"
-          >
-            <FontAwesomeIcon icon={faSave} className="text-xs" />
-            <span>Save Task</span>
+            <FontAwesomeIcon icon={faCoins} className="text-xs" />
+            <span>0.00 Credits</span>
           </div>
           {!showChatSidebar && (
             <IconButton
@@ -344,7 +341,16 @@ function Session(): React.ReactElement {
                   <FontAwesomeIcon icon={faExpand} className="text-xs" />
                 </button>
               </div>
-            ) : null}
+            ) : (
+              <div className={browserContainerClass}>
+                <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
+                  <div className="text-center">
+                    <p className="text-lg font-medium">No screenshot available</p>
+                    <p className="text-sm mt-1">Start a task to see the browser view here</p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Screenshot strip — only when no task is actively running */}

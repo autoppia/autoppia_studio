@@ -31,7 +31,8 @@ class BrowserUseOperator(BaseOperator):
         self,
         task: str,
         initial_url: str = None,
-        storage_state_path: Path = None
+        storage_state_path: Path = None,
+        context_id: str = "",
     ) -> None:
         self.task = task
         self.initial_url = initial_url
@@ -43,7 +44,19 @@ class BrowserUseOperator(BaseOperator):
         cdp_url = None
         if bb_api_key and bb_project_id:
             self._bb_client = Browserbase(api_key=bb_api_key)
-            session = self._bb_client.sessions.create(project_id=bb_project_id, keep_alive=True)
+
+            session_kwargs = {
+                "project_id": bb_project_id,
+                "keep_alive": True,
+                "browser_settings": {
+                    "viewport": {"width": 1280, "height": 720},
+                },
+            }
+            if context_id:
+                session_kwargs["browser_settings"]["context"] = {"id": context_id, "persist": True}
+                logger.info(f"Using BrowserBase context: {context_id}")
+
+            session = self._bb_client.sessions.create(**session_kwargs)
             self._bb_session_id = session.id
             cdp_url = session.connect_url
 

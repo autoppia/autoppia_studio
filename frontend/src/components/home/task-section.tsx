@@ -1,13 +1,23 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useCallback } from "react";
+import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faPaperPlane,
   faAngleDown,
   faGlobe,
+  faUserCircle,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { websites } from "../../utils/mock/mockDB";
 import useStartSession from "../../hooks/useStartSession";
+
+const apiUrl = process.env.REACT_APP_API_URL;
+
+interface Profile {
+  id: string;
+  name: string;
+  contextId: string;
+}
 
 interface TaskSectionProps {
   prompt: string;
@@ -31,8 +41,33 @@ export default function TaskSection(props: TaskSectionProps) {
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
   const [provider, setProvider] = useState("autoppia");
   const [submitting, setSubmitting] = useState(false);
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
 
+  const user = useSelector((state: any) => state.user);
   const startSession = useStartSession();
+
+  const loadProfiles = useCallback(async () => {
+    if (!user.email) return;
+    try {
+      const res = await fetch(`${apiUrl}/profiles?email=${user.email}`);
+      const data = await res.json();
+      setProfiles(data.profiles || []);
+    } catch (err) {
+      console.error("Failed to load profiles:", err);
+    }
+  }, [user.email]);
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
+
+  // Auto-select first profile if available
+  useEffect(() => {
+    if (profiles.length > 0 && !selectedProfile) {
+      setSelectedProfile(profiles[0]);
+    }
+  }, [profiles]);
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === "Enter") {
@@ -50,10 +85,28 @@ export default function TaskSection(props: TaskSectionProps) {
         website.url.toLowerCase().includes(value.toLowerCase())
       );
       setFilteredWebsites(filtered);
-      setOpenedDropdown("initialUrl");
     } else {
-      setFilteredWebsites([]);
+      setFilteredWebsites(websites);
+    }
+    setOpenedDropdown("initialUrl");
+  };
+
+  const handleUrlFocus = () => {
+    if (!initialUrl) {
+      setFilteredWebsites(websites);
+    }
+    setOpenedDropdown("initialUrl");
+  };
+
+  const toggleUrlDropdown = () => {
+    if (openedDropdown === "initialUrl") {
       setOpenedDropdown(null);
+    } else {
+      setFilteredWebsites(initialUrl
+        ? websites.filter((w) => w.url.toLowerCase().includes(initialUrl.toLowerCase()))
+        : websites
+      );
+      setOpenedDropdown("initialUrl");
     }
   };
 
@@ -61,7 +114,12 @@ export default function TaskSection(props: TaskSectionProps) {
     if (!prompt || submitting) return;
     setSubmitting(true);
     try {
-      await startSession(prompt, initialUrl, provider);
+      await startSession(
+        prompt,
+        initialUrl,
+        provider,
+        selectedProfile?.contextId || "",
+      );
     } finally {
       setSubmitting(false);
     }
@@ -71,6 +129,55 @@ export default function TaskSection(props: TaskSectionProps) {
     <div className="w-full xl:w-[900px] animate-slide-up" style={{ animationDelay: "0.1s" }}>
       {/* Dropdowns row */}
       <div className="flex justify-end mb-3 gap-2">
+        {/* Profile selector */}
+        <div className="relative text-sm font-medium">
+          <button
+            type="button"
+            className={`flex items-center gap-2 rounded-full px-4 py-1.5 transition-all duration-300
+              ${selectedProfile
+                ? "text-white bg-gradient-primary shadow-soft hover:shadow-glow"
+                : "border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-200 shadow-soft hover:shadow-soft-lg"
+              }`}
+            onClick={() => setOpenedDropdown("profile")}
+          >
+            <FontAwesomeIcon icon={faUserCircle} className={`text-xs ${selectedProfile ? "opacity-80" : "opacity-60"}`} />
+            <span>{selectedProfile ? selectedProfile.name : "No Profile"}</span>
+            <FontAwesomeIcon icon={faAngleDown} className={`text-xs ${selectedProfile ? "opacity-80" : "opacity-60"}`} />
+          </button>
+          <div
+            style={{
+              display: openedDropdown === "profile" ? "block" : "none",
+              width: 200,
+            }}
+            className="absolute left-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+          >
+            <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
+              {profiles.map((profile) => (
+                <button
+                  key={profile.id}
+                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                  onClick={() => {
+                    setSelectedProfile(profile);
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  {profile.name}
+                </button>
+              ))}
+              <button
+                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                onClick={() => {
+                  setSelectedProfile(null);
+                  setOpenedDropdown(null);
+                }}
+              >
+                No Profile
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Provider selector */}
         <div className="relative text-sm font-medium">
           <button
             type="button"
@@ -139,11 +246,18 @@ export default function TaskSection(props: TaskSectionProps) {
                 className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
                 value={initialUrl}
                 onChange={handleUrlChange}
+                onFocus={handleUrlFocus}
               />
-              <FontAwesomeIcon
-                icon={faAngleDown}
-                className="text-gray-400 text-xs"
-              />
+              <button
+                type="button"
+                onClick={toggleUrlDropdown}
+                className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+              >
+                <FontAwesomeIcon
+                  icon={faAngleDown}
+                  className="text-xs"
+                />
+              </button>
             </div>
             <div
               style={{

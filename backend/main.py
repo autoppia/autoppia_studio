@@ -20,10 +20,12 @@ import socketio
 from app.middleware import verify_api_key
 from app.database import ensure_indexes
 from app.sio_app import sio
-from app.routes import operator, cua
+from app.routes.api import operator, cua
 from app.routes import auth as auth_routes
 from app.routes import user as user_routes
 from app.routes import session as session_routes
+from app.routes import profile as profile_routes
+from app.routes import api_keys as api_keys_routes
 
 fastapi_app = FastAPI(
     title="Automata API",
@@ -46,6 +48,8 @@ fastapi_app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(v
 fastapi_app.include_router(auth_routes.router)
 fastapi_app.include_router(user_routes.router)
 fastapi_app.include_router(session_routes.router)
+fastapi_app.include_router(profile_routes.router)
+fastapi_app.include_router(api_keys_routes.router)
 
 
 @fastapi_app.get("/health")
