@@ -35,39 +35,37 @@ const chatSlice = createSlice({
       ];
       state.completed = false;
     },
+    // Called before each action executes — adds action with reasoning to the chat
     addAction: (state, action) => {
+      const { action: actionName, reasoning, previous_success } = action.payload;
       const lastIndex = state.chats.length - 1;
       const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
 
       if (lastChat && lastChat.role === "assistant" && lastChat.state === "thinking") {
-        const actionLength = lastChat.actions?.length || 0;
-        if (actionLength > 0 && lastChat.actions![actionLength - 1] === action.payload.action) {
-          return;
+        // Mark the previous action's result based on previous_success
+        const prevResults = [...(lastChat.actionResults || [])];
+        if (prevResults.length > 0 && prevResults[prevResults.length - 1] === undefined) {
+          prevResults[prevResults.length - 1] = previous_success !== false;
         }
 
         state.chats[lastIndex] = {
           ...lastChat,
-          thinking: action.payload.action,
-          actions: [...lastChat.actions!, action.payload.action],
-          actionResults: [
-            ...lastChat.actionResults!,
-            action.payload.previous_success,
-          ],
-          screenshots: [
-            ...(lastChat.screenshots || []),
-            ...(action.payload.screenshot ? [action.payload.screenshot] : []),
-          ],
+          thinking: reasoning || actionName || lastChat.thinking,
+          reasoning: reasoning || lastChat.reasoning,
+          actions: [...(lastChat.actions || []), actionName],
+          actionResults: [...prevResults, undefined], // current action is pending
         };
       } else {
         state.chats = [
           ...state.chats,
           {
             role: "assistant",
-            thinking: action.payload.action,
+            thinking: reasoning || actionName || "Thinking...",
             state: "thinking",
-            actions: [action.payload.action],
-            actionResults: [],
-            screenshots: action.payload.screenshot ? [action.payload.screenshot] : [],
+            actions: [actionName],
+            actionResults: [undefined], // pending
+            screenshots: [],
+            reasoning: reasoning || undefined,
           },
         ];
       }
@@ -77,14 +75,17 @@ const chatSlice = createSlice({
       const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
 
       if (lastChat && lastChat.role === "assistant" && lastChat.state === "thinking") {
+        // Mark the last pending action as done
+        const prevResults = [...(lastChat.actionResults || [])];
+        if (prevResults.length > 0 && prevResults[prevResults.length - 1] === undefined) {
+          prevResults[prevResults.length - 1] = action.payload.state === "success";
+        }
+
         state.chats[lastIndex] = {
           ...lastChat,
           content: action.payload.content,
           state: action.payload.state,
-          actionResults: [
-            ...lastChat.actionResults!,
-            action.payload.success,
-          ],
+          actionResults: prevResults,
         };
       } else {
         state.chats = [
@@ -93,9 +94,6 @@ const chatSlice = createSlice({
             role: "assistant",
             content: action.payload.content,
             state: action.payload.state,
-            actionResults: [
-              action.payload.success,
-            ],
           },
         ];
       }

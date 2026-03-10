@@ -14,8 +14,9 @@ export interface ChatItem {
   role: string;
   content?: string;
   actions?: string[];
-  actionResults?: boolean[];
+  actionResults?: (boolean | undefined)[];
   screenshots?: string[];
   thinking?: string;
   state?: string;
+  reasoning?: string;
 }

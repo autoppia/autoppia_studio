@@ -1,3 +1,3 @@
 export const APP_SIDEBAR_WIDTH = 56;
 export const APP_SIDEBAR_EXPANDED_WIDTH = 280;
-export const CHAT_SIDEBAR_WIDTH = 380;
+export const CHAT_SIDEBAR_WIDTH = 440;

@@ -5,12 +5,12 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
   faExpand,
-  faCompress,
   faCoins,
 } from "@fortawesome/free-solid-svg-icons";
 
 import ChatSidebar from "../components/session/chat-sidebar";
 import BrowserLoading from "../components/session/browser-loading";
+import BrowserTabs from "../components/session/browser-tabs";
 import ScreenshotStrip from "../components/session/screenshot-strip";
 import IconButton from "../components/common/icon-button";
 import { setChats, resetChat } from "../redux/chatSlice";
@@ -21,7 +21,8 @@ import {
   setLastUrl,
   setActionHistory,
   setContextId,
-  setProvider,
+  setActiveTabIndex,
+  setLiveUrl,
 } from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
 import { ChatItem, HistoryItem } from "../utils/types";
@@ -60,8 +61,16 @@ function Session(): React.ReactElement {
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
   const contextId = useSelector((state: any) => state.socket.contextId);
-  const provider = useSelector((state: any) => state.socket.provider);
+  const tabs = useSelector((state: any) => state.socket.tabs);
+  const activeTabIndex = useSelector((state: any) => state.socket.activeTabIndex);
   const user = useSelector((state: any) => state.user);
+
+  const handleSelectTab = (index: number) => {
+    dispatch(setActiveTabIndex(index));
+    if (tabs[index]?.debugger_fullscreen_url) {
+      dispatch(setLiveUrl(tabs[index].debugger_fullscreen_url));
+    }
+  };
 
   // Track which session we've already loaded to avoid re-fetching
   const loadedSessionRef = useRef<string | null>(null);
@@ -116,9 +125,6 @@ function Session(): React.ReactElement {
         if (session.contextId) {
           dispatch(setContextId(session.contextId));
         }
-        if (session.provider) {
-          dispatch(setProvider(session.provider));
-        }
       } catch (err) {
         console.error("Failed to load session:", err);
       }
@@ -149,7 +155,6 @@ function Session(): React.ReactElement {
           lastUrl: lastUrl || "",
           actionHistory: actionHistory || [],
           contextId: contextId || "",
-          provider: provider || "autoppia",
         }),
       });
       setHistorySaved(true);
@@ -179,7 +184,6 @@ function Session(): React.ReactElement {
     prompt,
     initialUrl,
     contextId,
-    provider,
     addHistoryItem,
   ]);
 
@@ -225,6 +229,13 @@ function Session(): React.ReactElement {
       ? allScreenshots[selectedScreenshot]
       : lastScreenshot;
 
+  // Disconnect the agent when leaving the session page
+  useEffect(() => {
+    return () => {
+      dispatch(disconnectBrowser());
+    };
+  }, [dispatch]);
+
   useEffect(() => {
     const onFullscreenChange = () => {
       setIsFullscreen(!!document.fullscreenElement);
@@ -266,7 +277,7 @@ function Session(): React.ReactElement {
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-gray-800 dark:text-gray-100">
-            {provider === "browser_use" ? "Browser Use" : "Autoppia"}
+            Autoppia
             <span className="text-gray-400 dark:text-gray-500 font-normal">
               {" / "}
               <span className="font-mono text-base">{sessionId}</span>
@@ -298,27 +309,22 @@ function Session(): React.ReactElement {
           {/* Browser view */}
           <div className="flex w-full flex-grow min-h-0 relative overflow-hidden mt-2">
             {socketId && liveUrl ? (
-              <div ref={browserContainerRef} className={browserContainerClass}>
+              <div ref={browserContainerRef} className={browserContainerClass + " flex-col"}>
+                <BrowserTabs
+                  tabs={tabs}
+                  activeIndex={activeTabIndex}
+                  onSelectTab={handleSelectTab}
+                  isFullscreen={isFullscreen}
+                  onFullscreen={handleFullScreen}
+                />
                 <iframe
                   src={liveUrl}
                   title="Live browser session"
                   sandbox="allow-same-origin allow-scripts"
                   allow="clipboard-read; clipboard-write"
-                  className="w-full h-full border-0"
+                  className="w-full flex-1 border-0"
                   style={{ pointerEvents: "none" }}
                 />
-                <button
-                  className="absolute top-7 right-5 z-10 flex items-center justify-center w-8 h-8 rounded-lg
-                    bg-black/40 hover:bg-black/60 text-white/80 hover:text-white
-                    transition-all duration-200 backdrop-blur-sm"
-                  onClick={handleFullScreen}
-                  title="Fullscreen"
-                >
-                  <FontAwesomeIcon
-                    icon={isFullscreen ? faCompress : faExpand}
-                    className="text-sm"
-                  />
-                </button>
               </div>
             ) : socketId && !liveUrl ? (
               <div className={browserContainerClass}>

@@ -6,30 +6,78 @@ import {
   faCircleNotch,
   faChevronDown,
   faChevronUp,
-  faCheck,
-  faXmark,
+  faMousePointer,
+  faKeyboard,
+  faCompass,
+  faArrowsUpDown,
+  faMagnifyingGlass,
+  faArrowLeft,
+  faClock,
+  faHandPointer,
+  faList,
+  faCode,
+  faFlagCheckered,
+  faGlobe,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   faCircleCheck,
   faCircleXmark,
 } from "@fortawesome/free-regular-svg-icons";
+import type { IconDefinition } from "@fortawesome/fontawesome-svg-core";
+
+const ACTION_ICONS: Record<string, IconDefinition> = {
+  "browser.click": faMousePointer,
+  "browser.dblclick": faMousePointer,
+  "browser.rightclick": faMousePointer,
+  "browser.tripleclick": faMousePointer,
+  "browser.middleclick": faMousePointer,
+  "browser.hover": faHandPointer,
+  "browser.input": faKeyboard,
+  "browser.send_keys": faKeyboard,
+  "browser.hold_key": faKeyboard,
+  "browser.navigate": faCompass,
+  "browser.go_back": faArrowLeft,
+  "browser.scroll": faArrowsUpDown,
+  "browser.search": faMagnifyingGlass,
+  "browser.wait": faClock,
+  "browser.select_dropdown": faList,
+  "browser.dropdown_options": faList,
+  "browser.evaluate": faCode,
+  "browser.extract": faCode,
+  "browser.screenshot": faGlobe,
+  "browser.done": faFlagCheckered,
+  "Initialize": faGlobe,
+  "Continue": faCompass,
+};
+
+function getActionIcon(actionName: string): IconDefinition {
+  return ACTION_ICONS[actionName] || faCircleNotch;
+}
+
+function formatToolName(toolName: string): string {
+  const name = toolName.replace("browser.", "").replace("user.", "");
+  return name
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
 
 interface AgentResponseProps {
   role: string;
   content?: string;
   actions?: string[];
-  actionResults?: boolean[];
+  actionResults?: (boolean | undefined)[];
   thinking?: string;
+  reasoning?: string;
   state?: string;
 }
 
 function AgentResponse(props: AgentResponseProps) {
-  const { content, actions, actionResults, thinking, state } = props;
-  const [collapse, setCollapse] = useState(false);
+  const { content, actions, actionResults, thinking, reasoning, state } = props;
+  const [collapsed, setCollapsed] = useState(false);
 
-  const handleCollapse = () => {
-    setCollapse(!collapse);
-  };
+  const hasActions = actions && actions.length > 0;
+  const showActions = hasActions && !collapsed;
 
   return (
     <div className="mb-4 animate-fade-in">
@@ -40,9 +88,11 @@ function AgentResponse(props: AgentResponseProps) {
               <div className="animate-pulse-soft text-gray-600 flex items-center dark:text-gray-300 w-full overflow-hidden">
                 <FontAwesomeIcon
                   icon={faCircleNotch}
-                  className="animate-spin me-3 text-primary text-lg"
+                  className="me-3 text-primary text-lg flex-shrink-0 animate-spin"
                 />
-                <span className="truncate w-full text-sm">{thinking}</span>
+                <span className="w-full text-sm break-words">
+                  {reasoning || thinking}
+                </span>
               </div>
             )}
             {state === "success" && (
@@ -72,53 +122,60 @@ function AgentResponse(props: AgentResponseProps) {
                 <span className="text-sm font-medium">Agent disconnected.</span>
               </div>
             )}
-            <button
-              onClick={handleCollapse}
-              className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-200 dark:hover:bg-dark-border transition-colors duration-200 flex-shrink-0 ml-2"
-            >
-              <FontAwesomeIcon
-                icon={!collapse ? faChevronDown : faChevronUp}
-                className="text-gray-400 text-xs"
-              />
-            </button>
+            {hasActions && (
+              <button
+                onClick={() => setCollapsed(!collapsed)}
+                className="flex items-center justify-center w-7 h-7 rounded-lg hover:bg-gray-200 dark:hover:bg-dark-border transition-colors duration-200 flex-shrink-0 ml-2"
+              >
+                <FontAwesomeIcon
+                  icon={collapsed ? faChevronDown : faChevronUp}
+                  className="text-gray-400 text-xs"
+                />
+              </button>
+            )}
           </div>
         )}
 
         <div
           className={`flex flex-col w-full items-end px-1 pb-3 ${
-            collapse ? "block" : "hidden"
+            showActions ? "block" : "hidden"
           }`}
         >
           {actions &&
-            actions.map((action, index) => (
-              <div
-                key={action + index}
-                className="w-full text-gray-600 dark:text-gray-300 rounded-lg p-2 text-sm transition-all duration-200 flex items-start gap-2"
-              >
-                <span className="flex-shrink-0 mt-0.5">
-                  {actionResults && actionResults[index] === true && (
-                    <FontAwesomeIcon
-                      icon={faCheck}
-                      className="text-emerald-500 text-xs"
-                    />
-                  )}
-                  {actionResults && actionResults[index] === false && (
-                    <FontAwesomeIcon
-                      icon={faXmark}
-                      className="text-red-500 text-xs"
-                    />
-                  )}
-                  {(actionResults === undefined ||
-                    (actionResults && actionResults[index] === undefined)) && (
-                    <FontAwesomeIcon
-                      icon={faCircleNotch}
-                      className="animate-spin text-primary text-xs"
-                    />
-                  )}
-                </span>
-                <span className="break-words leading-relaxed">{action}</span>
-              </div>
-            ))}
+            actions.map((action, index) => {
+              const icon = getActionIcon(action);
+              const result = actionResults?.[index];
+              const isPending = result === undefined;
+              const isSuccess = result === true;
+              const isFailed = result === false;
+
+              const iconColor = isSuccess
+                ? "text-emerald-500"
+                : isFailed
+                  ? "text-red-500"
+                  : "text-primary animate-pulse";
+
+              return (
+                <div
+                  key={action + index}
+                  className="w-full text-gray-600 dark:text-gray-300 rounded-lg p-2 text-sm transition-all duration-200"
+                >
+                  <div className="flex items-center gap-2">
+                    <span className="flex-shrink-0 w-4 text-center">
+                      <FontAwesomeIcon
+                        icon={icon}
+                        className={`text-xs ${iconColor}`}
+                      />
+                    </span>
+                    <span className="font-medium text-xs text-gray-500 dark:text-gray-400">
+                      {action.startsWith("browser.") || action.startsWith("user.")
+                        ? formatToolName(action)
+                        : action}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
         </div>
       </div>
 

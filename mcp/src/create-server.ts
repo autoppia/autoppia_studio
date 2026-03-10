@@ -17,7 +17,6 @@ interface TaskDetails {
     id: string;
     task: string;
     initial_url?: string | null;
-    provider: "browser_use" | "openai";
     status: string;
     steps: Array<Record<string, any>>;
     output?: string | null;
@@ -70,7 +69,6 @@ export const createServer = () => {
             inputSchema: {
                 task: z.string(),
                 initial_url: z.string().url().optional(),
-                provider: z.enum(["browser_use", "openai"]).optional(),
             }
         },
         async (input) => {

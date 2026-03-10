@@ -7,9 +7,8 @@ import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
-from cua.apified_cua import ApifiedCUA
-from operators.base_operator import BaseOperator
-from execution.browser_executor import BrowserExecutor
+from agent.apified_cua import ApifiedCUA
+from agent.browser_executor import BrowserExecutor
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -26,7 +25,6 @@ def _build_selector(sel) -> str:
     attr = sel.get("attribute", "")
     value = sel.get("value", "")
     if sel_type == "attributeValueSelector" and attr and value:
-        # "custom" attribute means value is already a Playwright selector
         if attr == "custom":
             return value
         return f'[{attr}="{value}"]'
@@ -36,7 +34,6 @@ def _build_selector(sel) -> str:
         return f"xpath={value}"
     if sel_type == "testIdSelector" and value:
         return f'[data-testid="{value}"]'
-    # Fallback
     if value:
         if attr and attr != "custom":
             return f'[{attr}="{value}"]'
@@ -44,69 +41,112 @@ def _build_selector(sel) -> str:
     return ""
 
 
-async def _execute_action(page, action: dict) -> None:
-    """Execute a raw action dict on a Playwright page."""
-    action_type = action.get("type", "")
+def _resolve_selector(args: dict) -> str:
+    """Resolve a selector from tool_call arguments.
 
-    if action_type == "ClickAction":
-        selector = _build_selector(action.get("selector"))
+    Supports: selector dict (legacy), element_id, css_selector, xpath.
+    """
+    if "selector" in args:
+        return _build_selector(args["selector"])
+    if "element_id" in args:
+        return f'[data-element-id="{args["element_id"]}"]'
+    if "css_selector" in args:
+        return args["css_selector"]
+    if "xpath" in args:
+        return f'xpath={args["xpath"]}'
+    return ""
+
+
+async def _execute_tool_call(page, tool_call: dict) -> None:
+    """Execute a tool_call dict (browser.* format) on a Playwright page."""
+    name = tool_call.get("name", "")
+    args = tool_call.get("arguments", {})
+
+    if name == "browser.click":
+        selector = _resolve_selector(args)
         if selector:
             await page.click(selector, timeout=5000)
-        else:
-            logger.warning(f"ClickAction missing selector: {action}")
 
-    elif action_type == "TypeAction":
-        selector = _build_selector(action.get("selector"))
-        text = action.get("text", "")
+    elif name == "browser.dblclick":
+        selector = _resolve_selector(args)
+        if selector:
+            await page.dblclick(selector, timeout=5000)
+
+    elif name == "browser.rightclick":
+        selector = _resolve_selector(args)
+        if selector:
+            await page.click(selector, button="right", timeout=5000)
+
+    elif name == "browser.hover":
+        selector = _resolve_selector(args)
+        if selector:
+            await page.hover(selector, timeout=5000)
+
+    elif name == "browser.input":
+        selector = _resolve_selector(args)
+        text = args.get("text", "")
         if selector and text:
             try:
                 await page.fill(selector, text, timeout=5000)
             except Exception:
-                # Fallback: click the element then type via keyboard
                 await page.click(selector, timeout=5000)
                 await page.keyboard.type(text, delay=50)
-        else:
-            logger.warning(f"TypeAction missing selector or text: {action}")
 
-    elif action_type == "NavigateAction":
-        url = action.get("url", "")
-        go_back = action.get("go_back", False)
-        go_forward = action.get("go_forward", False)
-        if go_back:
-            await page.go_back()
-        elif go_forward:
-            await page.go_forward()
-        elif url:
+    elif name == "browser.navigate":
+        url = args.get("url", "")
+        if url:
             await page.goto(url, timeout=15000)
-        else:
-            logger.warning(f"NavigateAction missing url: {action}")
 
-    elif action_type == "ScrollAction":
-        down = action.get("down", True)
-        pixels = 500
-        if down:
-            await page.evaluate(f"window.scrollBy(0, {pixels})")
-        else:
-            await page.evaluate(f"window.scrollBy(0, -{pixels})")
+    elif name == "browser.go_back":
+        await page.go_back()
 
-    elif action_type == "WaitAction":
-        wait_time = float(action.get("time_seconds", 1.0))
-        logger.info(f"Waiting {wait_time}s")
+    elif name == "browser.scroll":
+        direction = args.get("direction", "down")
+        amount = int(args.get("amount", 500))
+        delta = amount if direction == "down" else -amount
+        await page.evaluate(f"window.scrollBy(0, {delta})")
+
+    elif name == "browser.search":
+        query = args.get("query", "")
+        if query:
+            await page.goto(f"https://www.google.com/search?q={query}", timeout=15000)
+
+    elif name == "browser.wait":
+        wait_time = float(args.get("seconds", args.get("time_seconds", 1.0)))
         await asyncio.sleep(wait_time)
 
-    elif action_type == "SelectDropDownOptionAction":
-        selector = _build_selector(action.get("selector"))
-        text = action.get("text", "")
+    elif name == "browser.select_dropdown":
+        selector = _resolve_selector(args)
+        text = args.get("text", "")
         if selector and text:
             await page.select_option(selector, label=text, timeout=5000)
-        else:
-            logger.warning(f"SelectDropDownOptionAction missing selector or text: {action}")
+
+    elif name == "browser.send_keys":
+        keys = args.get("keys", "")
+        if keys:
+            await page.keyboard.press(keys)
+
+    elif name == "browser.hold_key":
+        key = args.get("key", "")
+        if key:
+            await page.keyboard.down(key)
+            await asyncio.sleep(0.1)
+            await page.keyboard.up(key)
+
+    elif name == "browser.evaluate":
+        script = args.get("script", args.get("expression", ""))
+        if script:
+            await page.evaluate(script)
+
+    elif name in ("browser.screenshot", "browser.done", "browser.extract",
+                   "browser.dropdown_options"):
+        pass  # handled at the step level or no-op
 
     else:
-        logger.warning(f"Unknown action type: {action_type}")
+        logger.warning(f"Unknown tool_call name: {name}")
 
 
-class AutoppiaOperator(BaseOperator):
+class AutoppiaOperator:
     def __init__(self):
         self.task_id = str(uuid.uuid4())
         self.step_index = 0
@@ -121,10 +161,11 @@ class AutoppiaOperator(BaseOperator):
         self.browser_executor = None
         self._last_thought = None
         self._on_action = None
+        self._state = {}  # state roundtrip for autoppia_operator
 
     def set_on_action(self, callback):
-        """Set an async callback called after each individual action executes.
-        Signature: async callback(action_type: str, screenshot: str | None, success: bool)
+        """Called before each action is executed.
+        Signature: async callback(reasoning: str | None, action: str, previous_success: bool)
         """
         self._on_action = callback
 
@@ -152,77 +193,106 @@ class AutoppiaOperator(BaseOperator):
         )
 
     async def take_step(self) -> tuple[bool, bool]:
+        # Bail out immediately if the browser page is gone (unrecoverable)
+        if not self.browser_executor or not self.browser_executor.page:
+            logger.error("Browser page is None — cannot continue")
+            self.result = {"content": "Browser session lost", "success": False}
+            return True, False
+
         try:
             url = self.browser_executor.get_current_url()
             snapshot_html = await self.browser_executor.get_snapshot_html()
 
-            actions = await self.cua.act(
+            response = await self.cua.act(
                 task_id=self.task_id,
                 prompt=self.task,
                 snapshot_html=snapshot_html,
                 url=url,
                 step_index=self.step_index,
-                history=self.history
+                history=self.history,
+                state_in=self._state,
             )
 
-            # None = CUA signalled task is done
-            if actions is None:
-                logger.info("Task done — CUA returned no actions")
+            # Log the full /act response for debugging
+            log_resp = {k: v for k, v in response.items() if k not in ("state_out", "snapshot_html")}
+            logger.info(f"/act response: {log_resp}")
+
+            tool_calls = response.get("tool_calls", [])
+            reasoning = response.get("reasoning")
+            content = response.get("content")
+            done = response.get("done", False)
+            state_out = response.get("state_out", {})
+
+            # Update state for next roundtrip
+            self._state = state_out
+
+            # Extract action names for the step callback
+            action_names = [tc.get("name", "unknown") for tc in tool_calls]
+
+            # Task done — no actions to execute
+            if done or not tool_calls:
+                logger.info("Task done — operator signalled completion")
                 self.result = {
-                    "content": "Task completed",
-                    "success": True
+                    "content": content or "Task completed",
+                    "success": True,
                 }
+                if self._on_action and reasoning:
+                    try:
+                        await self._on_action(reasoning, "browser.done", True)
+                    except Exception as e:
+                        logger.error(f"Error in on_action callback: {e}")
                 self.step_index += 1
                 return True, True
 
             # Store thought
-            action_descriptions = [a.get("type", "unknown") for a in actions]
             self._last_thought = {
-                "next_goal": ", ".join(action_descriptions),
-                "evaluation_previous_goal": "Starting" if self.step_index == 0 else "Success",
-                "previous_success": True
+                "reasoning": reasoning,
+                "action": ", ".join(action_names),
+                "previous_success": True,
             }
             self.model_thoughts.append(self._last_thought)
 
-            # Execute actions one by one
+            # Execute tool_calls one by one
             executed_any = False
-            for action in actions:
-                action_type = action.get("type", "unknown")
+            previous_success = True
+            for i, tool_call in enumerate(tool_calls):
+                tool_name = tool_call.get("name", "unknown")
+
+                # Emit action BEFORE executing it
+                if self._on_action:
+                    try:
+                        await self._on_action(reasoning, tool_name, previous_success)
+                    except Exception as e:
+                        logger.error(f"Error in on_action callback: {e}")
+
                 success = False
                 try:
-                    await _execute_action(self.browser_executor.page, action)
+                    await _execute_tool_call(self.browser_executor.page, tool_call)
                     executed_any = True
                     success = True
                     self.history.append({
                         "step_index": self.step_index,
-                        "action": action,
+                        "tool_call": tool_call,
                     })
                 except Exception as e:
-                    logger.error(f"Error executing action {action_type}: {e}")
+                    logger.error(f"Error executing {tool_name}: {e}")
                     self._last_thought["previous_success"] = False
-                    self._last_thought["evaluation_previous_goal"] = f"Failed: {str(e)}"
                     self.history.append({
                         "step_index": self.step_index,
-                        "action": action,
+                        "tool_call": tool_call,
                         "error": str(e),
                     })
 
-                # Screenshot after each action (skip for WaitAction)
-                screenshot = None
-                if action_type != "WaitAction":
+                previous_success = success
+
+                # Screenshot after each action (skip for wait)
+                if tool_name != "browser.wait":
                     try:
                         screenshot = await self.browser_executor.screenshot()
                         if screenshot:
                             self.screenshots.append(screenshot)
                     except Exception as e:
                         logger.error(f"Error taking screenshot: {e}")
-
-                # Notify per-action callback
-                if self._on_action:
-                    try:
-                        await self._on_action(action_type, screenshot, success)
-                    except Exception as e:
-                        logger.error(f"Error in on_action callback: {e}")
 
             self.step_index += 1
             return False, executed_any
@@ -238,6 +308,10 @@ class AutoppiaOperator(BaseOperator):
         except Exception as e:
             logger.error(f"Error in take_step: {e}")
             self.step_index += 1
+            # If the page is gone, stop immediately
+            if not self.browser_executor.page:
+                self.result = {"content": "Browser session lost", "success": False}
+                return True, False
             return False, False
 
     async def take_screenshot(self) -> str:
@@ -268,6 +342,7 @@ class AutoppiaOperator(BaseOperator):
             self.step_index = 0
             self.history = []
             self.model_thoughts = []
+            self._state = {}
         self.result = {}
 
     def get_model_thought(self) -> dict:

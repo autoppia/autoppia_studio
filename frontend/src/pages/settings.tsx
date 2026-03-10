@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
@@ -19,6 +19,8 @@ import {
   faTimes,
   faCopy,
 } from "@fortawesome/free-solid-svg-icons";
+import BrowserTabs from "../components/session/browser-tabs";
+import type { BrowserTab } from "../redux/socketSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -140,6 +142,11 @@ function ProfilesTab() {
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
   const [stoppingId, setStoppingId] = useState<string | null>(null);
 
+  // Tab state for profile browser
+  const [profileTabs, setProfileTabs] = useState<BrowserTab[]>([]);
+  const [profileActiveTabIndex, setProfileActiveTabIndex] = useState(0);
+  const tabPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const loadProfiles = useCallback(async () => {
     if (!user.email) return;
     try {
@@ -184,8 +191,11 @@ function ProfilesTab() {
       await fetch(`${apiUrl}/profiles/${id}`, { method: "DELETE" });
       setProfiles((prev) => prev.filter((p) => p.id !== id));
       if (activeProfileId === id) {
+        stopTabPolling();
         setActiveProfileId(null);
         setLiveUrl(null);
+        setProfileTabs([]);
+        setProfileActiveTabIndex(0);
       }
     } catch (err) {
       console.error("Failed to delete profile:", err);
@@ -225,6 +235,36 @@ function ProfilesTab() {
     }
   };
 
+  const refreshTabs = useCallback(async (profileId: string) => {
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${profileId}/tabs`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.tabs) {
+          setProfileTabs(data.tabs);
+        }
+      }
+    } catch {
+      // ignore polling errors
+    }
+  }, []);
+
+  const startTabPolling = useCallback((profileId: string) => {
+    if (tabPollRef.current) clearInterval(tabPollRef.current);
+    tabPollRef.current = setInterval(() => refreshTabs(profileId), 5000);
+  }, [refreshTabs]);
+
+  const stopTabPolling = useCallback(() => {
+    if (tabPollRef.current) {
+      clearInterval(tabPollRef.current);
+      tabPollRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => stopTabPolling();
+  }, [stopTabPolling]);
+
   const handleRun = async (id: string) => {
     setRunningId(id);
     try {
@@ -233,6 +273,11 @@ function ProfilesTab() {
       if (data.liveUrl) {
         setActiveProfileId(id);
         setLiveUrl(data.liveUrl);
+        if (data.tabs && data.tabs.length > 0) {
+          setProfileTabs(data.tabs);
+          setProfileActiveTabIndex(0);
+        }
+        startTabPolling(id);
       }
     } catch (err) {
       console.error("Failed to run profile:", err);
@@ -241,12 +286,66 @@ function ProfilesTab() {
     }
   };
 
+  const handleSelectProfileTab = (index: number) => {
+    setProfileActiveTabIndex(index);
+    if (profileTabs[index]?.debugger_fullscreen_url) {
+      setLiveUrl(profileTabs[index].debugger_fullscreen_url);
+    }
+  };
+
+  const handleCloseProfileTab = async (index: number) => {
+    if (!activeProfileId) return;
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${activeProfileId}/close-tab`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tab_index: index }),
+      });
+      const data = await res.json();
+      if (data.tabs) {
+        setProfileTabs(data.tabs);
+        const newIndex = data.activeIndex ?? 0;
+        setProfileActiveTabIndex(newIndex);
+        if (data.tabs[newIndex]?.debugger_fullscreen_url) {
+          setLiveUrl(data.tabs[newIndex].debugger_fullscreen_url);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to close tab:", err);
+    }
+  };
+
+  const handleNewProfileTab = async () => {
+    if (!activeProfileId) return;
+    try {
+      const res = await fetch(`${apiUrl}/profiles/${activeProfileId}/new-tab`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (data.tabs) {
+        setProfileTabs(data.tabs);
+        const newIndex = data.activeIndex ?? data.tabs.length - 1;
+        setProfileActiveTabIndex(newIndex);
+        if (data.tabs[newIndex]?.debugger_fullscreen_url) {
+          setLiveUrl(data.tabs[newIndex].debugger_fullscreen_url);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to open new tab:", err);
+    }
+  };
+
   const handleStop = async (id: string) => {
     setStoppingId(id);
+    stopTabPolling();
     try {
       await fetch(`${apiUrl}/profiles/${id}/stop`, { method: "POST" });
       setActiveProfileId(null);
       setLiveUrl(null);
+      setProfileTabs([]);
+      setProfileActiveTabIndex(0);
     } catch (err) {
       console.error("Failed to stop profile:", err);
     } finally {
@@ -424,9 +523,9 @@ function ProfilesTab() {
       {activeProfileId && liveUrl && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-          <div className="relative w-full max-w-4xl mx-4 flex flex-col bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border overflow-hidden"
-            style={{ height: "85vh" }}>
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-200 dark:border-dark-border flex-shrink-0">
+          <div className="relative w-full max-w-5xl mx-4 flex flex-col bg-dark-bg overflow-hidden rounded-xl"
+            style={{ height: "90vh" }}>
+            <div className="flex items-center justify-between px-4 py-2 flex-shrink-0 bg-gray-100 dark:bg-dark-surface">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1.5 text-xs text-green-600">
                   <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -443,7 +542,7 @@ function ProfilesTab() {
                 <button
                   onClick={() => handleStop(activeProfileId)}
                   disabled={stoppingId === activeProfileId}
-                  className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium
                     text-red-600 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20
                     transition-colors duration-200"
                 >
@@ -456,6 +555,14 @@ function ProfilesTab() {
                 </button>
               </div>
             </div>
+            <BrowserTabs
+              tabs={profileTabs}
+              activeIndex={profileActiveTabIndex}
+              onSelectTab={handleSelectProfileTab}
+              onNewTab={handleNewProfileTab}
+              onCloseTab={handleCloseProfileTab}
+              compact
+            />
             <iframe
               src={liveUrl}
               sandbox="allow-same-origin allow-scripts"

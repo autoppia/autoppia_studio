@@ -3,6 +3,7 @@ import asyncio
 import base64
 import logging
 from pathlib import Path
+from typing import Callable, Optional
 
 from browserbase import Browserbase
 from playwright.async_api import async_playwright, Page
@@ -20,6 +21,13 @@ class BrowserExecutor:
         self._bb_client = None
         self._bb_session_id = None
         self.live_url = None
+        self._on_tab_change: Optional[Callable] = None
+
+    def set_on_tab_change(self, callback):
+        """Set an async callback called when tabs are created or closed.
+        Signature: async callback()
+        """
+        self._on_tab_change = callback
 
     async def initialize(self, initial_url: str = None, storage_state_path: Path = None, context_id: str = ""):
         bb_api_key = os.getenv("BROWSERBASE_API_KEY", "")
@@ -94,6 +102,9 @@ class BrowserExecutor:
         logger.info("New page created")
         self.page = page
         page.on("close", self._handle_page_close)
+        # Schedule tab change notification in background (don't block Playwright event handler)
+        if self._on_tab_change:
+            asyncio.create_task(self._delayed_fire_tab_change(1.0))
 
     async def _handle_page_close(self, page: Page):
         logger.info("Page closed")
@@ -103,6 +114,73 @@ class BrowserExecutor:
             else:
                 logger.warning("All pages have been closed.")
                 self.page = None
+        if self._on_tab_change:
+            asyncio.create_task(self._delayed_fire_tab_change(0.5))
+
+    async def _delayed_fire_tab_change(self, delay: float):
+        """Wait then fire the tab-change callback in a background task."""
+        await asyncio.sleep(delay)
+        await self._fire_tab_change()
+
+    async def _fire_tab_change(self):
+        """Safely invoke the tab-change callback."""
+        try:
+            if self._on_tab_change:
+                await self._on_tab_change()
+        except Exception as e:
+            logger.error(f"Error in tab-change callback: {e}")
+
+    def get_tabs(self) -> list[dict]:
+        """Fetch the current list of open tabs from BrowserBase.
+        Returns list of {id, url, title, favicon_url, debugger_fullscreen_url}.
+        Falls back to Playwright pages if not using BrowserBase.
+        """
+        if self._bb_client and self._bb_session_id:
+            try:
+                debug_urls = self._bb_client.sessions.debug(self._bb_session_id)
+                tabs = []
+                for p in debug_urls.pages:
+                    tabs.append({
+                        "id": p.id,
+                        "url": p.url,
+                        "title": p.title,
+                        "favicon_url": p.favicon_url,
+                        "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                    })
+                return tabs
+            except Exception as e:
+                logger.warning(f"Failed to get tabs from BrowserBase: {e}")
+
+        # Fallback for local Chromium — no per-tab debug URLs
+        if self.context:
+            tabs = []
+            for i, p in enumerate(self.context.pages):
+                tabs.append({
+                    "id": str(i),
+                    "url": p.url if not p.is_closed() else "",
+                    "title": "",
+                    "favicon_url": "",
+                    "debugger_fullscreen_url": "",
+                })
+            return tabs
+        return []
+
+    def get_active_page_index(self) -> int:
+        """Return the index of the active page in the context's pages list."""
+        if self.context and self.page:
+            for i, p in enumerate(self.context.pages):
+                if p == self.page:
+                    return i
+        return 0
+
+    async def open_new_tab(self, url: str = "about:blank") -> list[dict]:
+        """Open a new tab, navigate to url, and return updated tabs list."""
+        if self.context:
+            new_page = await self.context.new_page()
+            self.page = new_page
+            if url and url != "about:blank":
+                await new_page.goto(url, timeout=15000)
+        return self.get_tabs()
 
     async def close(self):
         if self.page and not self.page.is_closed():

@@ -22,12 +22,12 @@ class ApifiedCUA:
         url: str,
         step_index: int,
         history: Optional[List[Dict[str, Any]]] = None,
-    ) -> Optional[List[Dict[str, Any]]]:
+        state_in: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
         """Call the autoppia_operator /act endpoint.
 
-        Returns:
-            list[dict] — raw action dicts to execute
-            None — the CUA signalled the task is done (API returned empty actions)
+        Returns the full response dict with tool_calls, done, content,
+        reasoning, state_out, etc.
         """
         payload: Dict[str, Any] = {
             "task_id": task_id,
@@ -35,9 +35,12 @@ class ApifiedCUA:
             "snapshot_html": snapshot_html,
             "url": url,
             "step_index": int(step_index),
+            "include_reasoning": True,
         }
         if history is not None:
             payload["history"] = history
+        if state_in:
+            payload["state_in"] = state_in
 
         last_error = None
         async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -45,19 +48,10 @@ class ApifiedCUA:
                 try:
                     response = await client.post(f"{self.base_url}{path}", json=payload)
                     response.raise_for_status()
-                    data = response.json()
-                    actions_data = data.get("actions", [])
-
-                    # API returned empty actions = task done
-                    if not actions_data:
-                        return None
-
-                    return actions_data
+                    return response.json()
                 except Exception as e:
                     logger.warning(f"Request to {path} failed ({type(e).__name__}): {e}")
                     last_error = e
                     continue
 
-        # All endpoints failed — raise so the caller knows it's an error,
-        # not a "task done" signal.
         raise ConnectionError(f"CUA agent unreachable: {last_error}")

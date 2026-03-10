@@ -1,6 +1,14 @@
 import { createSlice } from '@reduxjs/toolkit';
 import type { RootState, AppDispatch } from './store';
 
+export interface BrowserTab {
+    id: string;
+    url: string;
+    title: string;
+    favicon_url: string;
+    debugger_fullscreen_url: string;
+}
+
 interface SocketState {
     sessionId: string;
     prompt: string;
@@ -11,7 +19,8 @@ interface SocketState {
     lastUrl: string;
     actionHistory: any[];
     contextId: string;
-    provider: string;
+    tabs: BrowserTab[];
+    activeTabIndex: number;
 }
 
 const initialState: SocketState = {
@@ -24,7 +33,8 @@ const initialState: SocketState = {
     lastUrl: '',
     actionHistory: [],
     contextId: '',
-    provider: 'autoppia',
+    tabs: [],
+    activeTabIndex: 0,
 };
 
 const socketSlice = createSlice({
@@ -41,7 +51,8 @@ const socketSlice = createSlice({
             state.lastUrl = '';
             state.actionHistory = [];
             state.contextId = '';
-            state.provider = 'autoppia';
+            state.tabs = [];
+            state.activeTabIndex = 0;
         },
         setSessionId: (state, action) => {
             state.sessionId = action.payload;
@@ -69,15 +80,18 @@ const socketSlice = createSlice({
         setContextId: (state, action) => {
             state.contextId = action.payload;
         },
-        setProvider: (state, action) => {
-            state.provider = action.payload;
+        setTabs: (state, action) => {
+            state.tabs = action.payload;
+        },
+        setActiveTabIndex: (state, action) => {
+            state.activeTabIndex = action.payload;
         },
         clearBrowserState: (state) => {
-            // Clear socket/liveUrl but preserve lastUrl, actionHistory, sessionId, prompt, initialUrl
-            // so the resume flow still works after idle disconnect
             state.socket = null;
             state.socketId = '';
             state.liveUrl = '';
+            state.tabs = [];
+            state.activeTabIndex = 0;
         },
     },
 });
@@ -102,5 +116,5 @@ export const disconnectBrowser = () => (dispatch: AppDispatch, getState: () => R
     dispatch(clearBrowserState());
 };
 
-export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setProvider } = socketSlice.actions;
+export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setTabs, setActiveTabIndex } = socketSlice.actions;
 export default socketSlice.reducer;

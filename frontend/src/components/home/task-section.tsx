@@ -39,7 +39,7 @@ export default function TaskSection(props: TaskSectionProps) {
   } = props;
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
-  const [provider, setProvider] = useState("autoppia");
+  const [operator, setOperator] = useState("autoppia");
   const [submitting, setSubmitting] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
@@ -117,7 +117,6 @@ export default function TaskSection(props: TaskSectionProps) {
       await startSession(
         prompt,
         initialUrl,
-        provider,
         selectedProfile?.contextId || "",
       );
     } finally {
@@ -177,20 +176,20 @@ export default function TaskSection(props: TaskSectionProps) {
           </div>
         </div>
 
-        {/* Provider selector */}
+        {/* Operator selector */}
         <div className="relative text-sm font-medium">
           <button
             type="button"
             className="flex items-center gap-2 rounded-full px-4 py-1.5 text-white bg-gradient-primary
               shadow-soft hover:shadow-glow transition-all duration-300"
-            onClick={() => setOpenedDropdown("provider")}
+            onClick={() => setOpenedDropdown("operator")}
           >
-            <span>{provider === "autoppia" ? "Autoppia Operator" : "Browser Use"}</span>
+            <span>Autoppia Operator</span>
             <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-80" />
           </button>
           <div
             style={{
-              display: openedDropdown === "provider" ? "block" : "none",
+              display: openedDropdown === "operator" ? "block" : "none",
               width: 190,
             }}
             className="absolute left-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
@@ -199,20 +198,11 @@ export default function TaskSection(props: TaskSectionProps) {
               <button
                 className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                 onClick={() => {
-                  setProvider("autoppia");
+                  setOperator("autoppia");
                   setOpenedDropdown(null);
                 }}
               >
                 Autoppia Operator
-              </button>
-              <button
-                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
-                onClick={() => {
-                  setProvider("browser_use");
-                  setOpenedDropdown(null);
-                }}
-              >
-                Browser Use
               </button>
             </div>
           </div>

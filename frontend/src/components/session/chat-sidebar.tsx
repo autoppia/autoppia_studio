@@ -37,7 +37,6 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
   const contextId = useSelector((state: any) => state.socket.contextId);
-  const provider = useSelector((state: any) => state.socket.provider);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
   const user = useSelector((state: any) => state.user);
 
@@ -52,7 +51,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       // Active socket — continue the task (no health check needed)
       dispatch(addTask(task));
       setTask("");
-      dispatch(addAction({ action: "Continuing task..." }));
+      dispatch(addAction({ action: "Continue", reasoning: "Continuing task...", previous_success: true }));
       socket.emit("continue-task", { task: taskWithInstructions });
     } else {
       // Need a new socket connection — check backend health first
@@ -72,15 +71,15 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         dispatch(setSessionId(sessionId));
       }
 
-      const newSocket = initializeSocket(dispatch);
+      const targetUrl = lastUrl || "https://duckduckgo.com";
+      const newSocket = initializeSocket(dispatch, false, targetUrl);
 
       if (lastUrl) {
-        // Resume session with same operator
+        // Resume session
         newSocket.emit("resume-task", {
           task: taskWithInstructions,
           lastUrl,
           actionHistory: actionHistory || [],
-          provider: provider || "autoppia",
           context_id: contextId || "",
         });
       } else {
@@ -88,7 +87,6 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         newSocket.emit("start-task", {
           task: taskWithInstructions,
           initial_url: "https://duckduckgo.com",
-          provider: provider || "autoppia",
           context_id: contextId || "",
         });
       }

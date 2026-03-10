@@ -7,10 +7,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # autoppia_iwa pollutes sys.path with its internal 'src/' directory on import,
-# which shadows our local 'execution' package. Pin our backend dir at the front.
+# which shadows our local packages. Pin our backend dir at the front.
 _backend_dir = str(Path(__file__).resolve().parent)
 sys.path.insert(0, _backend_dir)
-import execution.browser_executor  # noqa: F401 — cache before autoppia_iwa can interfere
+import agent.browser_executor  # noqa: F401 — cache before autoppia_iwa can interfere
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +20,7 @@ import socketio
 from app.middleware import verify_api_key
 from app.database import ensure_indexes
 from app.sio_app import sio
-from app.routes.api import operator, cua
+from app.routes.api import operator
 from app.routes import auth as auth_routes
 from app.routes import user as user_routes
 from app.routes import session as session_routes
@@ -42,7 +42,6 @@ fastapi_app.add_middleware(
 )
 
 fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-fastapi_app.include_router(cua.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 # Web routes (no API key required — used by the frontend)
 fastapi_app.include_router(auth_routes.router)

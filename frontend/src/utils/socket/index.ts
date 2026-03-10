@@ -1,12 +1,12 @@
 import { io } from "socket.io-client";
 
-import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory } from "../../redux/socketSlice";
+import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setTabs, setActiveTabIndex } from "../../redux/socketSlice";
 import { addAction, addResult } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = false) => {
+export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = false, initialUrl?: string) => {
   const socket = io(`${apiUrl}`, {
     timeout: 60000,
     reconnection: false,
@@ -18,7 +18,9 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
     if (!isRestore) {
       dispatch(
         addAction({
-          action: "Initializing browser...",
+          action: "Initialize",
+          reasoning: "Initializing browser...",
+          previous_success: true,
         })
       );
     }
@@ -33,16 +35,31 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
     );
   });
 
-  socket.on("error", ({ error }) => {
-    console.error("Socket error:", error);
+  socket.on("error", ({ message }) => {
+    console.error("Socket error:", message);
+    dispatch(
+      addResult({
+        content: message || "An error occurred",
+        state: "error",
+      })
+    );
   });
 
   socket.on("live_url", ({ url }) => {
     dispatch(setLiveUrl(url));
   });
 
-  socket.on("action", (action) => {
-    dispatch(addAction(action));
+  socket.on("tabs", ({ tabs, activeIndex }) => {
+    dispatch(setTabs(tabs));
+    dispatch(setActiveTabIndex(activeIndex));
+    if (tabs && tabs[activeIndex]) {
+      dispatch(setLiveUrl(tabs[activeIndex].debugger_fullscreen_url));
+    }
+  });
+
+  // Emitted before each action executes
+  socket.on("action", ({ reasoning, action, previous_success }) => {
+    dispatch(addAction({ action, reasoning, previous_success }));
   });
 
   socket.on("result", (result) => {

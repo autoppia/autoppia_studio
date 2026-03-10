@@ -3,8 +3,7 @@ import logging
 import socketio
 from pathlib import Path
 
-from operators.autoppia_operator import AutoppiaOperator
-from operators.browser_use_operator import BrowserUseOperator
+from agent.autoppia_operator import AutoppiaOperator
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -27,7 +26,6 @@ async def connect(sid, environ):
 async def start_task(sid, data):
     task = data.get("task")
     initial_url = data.get("initial_url")
-    provider = data.get("provider")
     context_id = data.get("context_id", "")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
@@ -40,11 +38,14 @@ async def start_task(sid, data):
         storage_state_path = None
 
     try:
-        if provider == "browser_use":
-            operator = BrowserUseOperator()
-        else:
-            operator = AutoppiaOperator()
+        # Notify frontend of initial navigation before browser launches
+        await sio.emit('action', {
+            'action': 'browser.navigate',
+            'reasoning': f'Navigating to {initial_url or "https://duckduckgo.com"}...',
+            'previous_success': True,
+        }, to=sid)
 
+        operator = AutoppiaOperator()
         await operator.initialize(task, initial_url, storage_state_path, context_id=context_id)
 
         sessions[sid] = operator
@@ -54,10 +55,8 @@ async def start_task(sid, data):
         if live_url:
             await sio.emit('live_url', {'url': live_url}, to=sid)
 
-        # Only emit initial NavigateAction for AutoppiaOperator;
-        # BrowserUseOperator handles its own navigation internally.
-        if isinstance(operator, AutoppiaOperator):
-            await sio.emit('action', {'action': 'NavigateAction', 'previous_success': True}, to=sid)
+        # Send initial tabs list
+        await _emit_tabs(sid, operator)
 
         await _perform_task(sid)
     except Exception as e:
@@ -69,8 +68,8 @@ async def continue_task(sid, data):
     task = data.get('task')
     if not task:
         await sio.emit('error', {'message': 'No task provided'}, to=sid)
-        return    
-    
+        return
+
     logger.info(f"Continuing task: {task}")
 
     operator = sessions.get(sid)
@@ -86,7 +85,6 @@ async def resume_task(sid, data):
     task = data.get("task")
     last_url = data.get("lastUrl")
     action_history = data.get("actionHistory", [])
-    provider = data.get("provider", "autoppia")
     context_id = data.get("context_id", "")
 
     if not task:
@@ -103,16 +101,20 @@ async def resume_task(sid, data):
         storage_state_path = None
 
     try:
-        if provider == "browser_use":
-            operator = BrowserUseOperator()
-        else:
-            operator = AutoppiaOperator()
+        # Notify frontend of navigation before browser launches
+        await sio.emit('action', {
+            'action': 'browser.navigate',
+            'reasoning': f'Resuming session at {last_url}...',
+            'previous_success': True,
+        }, to=sid)
+
+        operator = AutoppiaOperator()
 
         # Initialize with the saved lastUrl as the starting URL
         await operator.initialize(task, last_url, storage_state_path, context_id=context_id)
 
         # Pre-load action history so CUA has context of previous actions
-        if isinstance(operator, AutoppiaOperator) and action_history:
+        if action_history:
             operator.history = action_history
             operator.step_index = len(action_history)
 
@@ -122,8 +124,7 @@ async def resume_task(sid, data):
         if live_url:
             await sio.emit('live_url', {'url': live_url}, to=sid)
 
-        if isinstance(operator, AutoppiaOperator):
-            await sio.emit('action', {'action': 'Resuming from previous session...', 'previous_success': True}, to=sid)
+        await _emit_tabs(sid, operator)
 
         await _perform_task(sid)
     except Exception as e:
@@ -144,6 +145,19 @@ async def disconnect(sid):
         del sessions[sid]
 
 
+async def _emit_tabs(sid, operator):
+    """Emit the current tabs list to the frontend."""
+    try:
+        be = getattr(operator, 'browser_executor', None)
+        if be:
+            tabs = be.get_tabs()
+            active_index = be.get_active_page_index()
+            if tabs:
+                await sio.emit('tabs', {'tabs': tabs, 'activeIndex': active_index}, to=sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit tabs: {e}")
+
+
 async def _keepalive_loop(sid, interval=30):
     """Periodically ping the browser to keep the Browserbase session alive."""
     try:
@@ -152,11 +166,10 @@ async def _keepalive_loop(sid, interval=30):
             operator = sessions.get(sid)
             if not operator:
                 break
-            if isinstance(operator, AutoppiaOperator):
-                alive = await operator.browser_executor.keep_alive_ping()
-                if not alive:
-                    logger.warning(f"Keep-alive ping failed for {sid}, stopping loop")
-                    break
+            alive = await operator.browser_executor.keep_alive_ping()
+            if not alive:
+                logger.warning(f"Keep-alive ping failed for {sid}, stopping loop")
+                break
     except asyncio.CancelledError:
         pass
 
@@ -164,39 +177,24 @@ async def _keepalive_loop(sid, interval=30):
 async def _perform_task(sid, max_steps=25):
     operator = sessions[sid]
 
-    # Wire up per-action callback for AutoppiaOperator so the frontend
-    # receives action descriptions after every single action.
-    if isinstance(operator, AutoppiaOperator):
-        async def on_action(action_type: str, screenshot: str | None, success: bool):
-            payload = {
-                'action': action_type,
-                'previous_success': success,
-            }
-            if screenshot:
-                payload['screenshot'] = screenshot
-            await sio.emit('action', payload, to=sid)
+    # Emit each action before it executes (with reasoning and previous_success)
+    async def on_action(reasoning: str | None, action: str, previous_success: bool):
+        payload = {'action': action, 'previous_success': previous_success}
+        if reasoning:
+            payload['reasoning'] = reasoning
+        await sio.emit('action', payload, to=sid)
 
-        operator.set_on_action(on_action)
+    operator.set_on_action(on_action)
+
+    # Wire up tab-change callback so frontend updates tab bar on new tab / close
+    async def on_tab_change():
+        await _emit_tabs(sid, operator)
+
+    operator.browser_executor.set_on_tab_change(on_tab_change)
 
     try:
         for _ in range(max_steps):
             done, _valid = await operator.take_step()
-
-            # For operators without per-action callback (e.g. BrowserUseOperator),
-            # still emit per-step action updates with screenshots.
-            if not isinstance(operator, AutoppiaOperator):
-                model_thought = operator.get_model_thought()
-                if model_thought:
-                    next_goal = model_thought['next_goal']
-                    previous_success = model_thought['previous_success']
-                    payload = {'action': next_goal, 'previous_success': previous_success}
-                    try:
-                        screenshot = await operator.take_screenshot()
-                        if screenshot:
-                            payload['screenshot'] = screenshot
-                    except Exception as e:
-                        logger.warning(f"Failed to take screenshot: {e}")
-                    await sio.emit('action', payload, to=sid)
 
             if done:
                 break
@@ -204,14 +202,11 @@ async def _perform_task(sid, max_steps=25):
         result = operator.get_result()
 
         # Attach lastUrl and actionHistory for session persistence and resume
-        if isinstance(operator, AutoppiaOperator):
+        try:
             result['lastUrl'] = operator.browser_executor.get_current_url()
-            result['actionHistory'] = operator.history
-        else:
-            try:
-                result['lastUrl'] = await operator.get_current_url()
-            except Exception as e:
-                logger.warning(f"Failed to get current URL: {e}")
+        except Exception as e:
+            logger.warning(f"Failed to get current URL: {e}")
+        result['actionHistory'] = operator.history
 
         await sio.emit('result', result, to=sid)
 
