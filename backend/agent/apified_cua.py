@@ -14,6 +14,18 @@ class ApifiedCUA:
         self.base_url = base_url.rstrip("/")
         self.timeout = float(timeout)
 
+    async def health_check(self) -> bool:
+        """Return True if the CUA agent is reachable."""
+        async with httpx.AsyncClient(timeout=10) as client:
+            for path in ("/health", "/"):
+                try:
+                    response = await client.get(f"{self.base_url}{path}")
+                    if response.status_code < 500:
+                        return True
+                except Exception:
+                    continue
+        return False
+
     async def act(
         self,
         task_id: str,

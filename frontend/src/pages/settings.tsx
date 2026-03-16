@@ -20,6 +20,7 @@ import {
   faCopy,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserTabs from "../components/session/browser-tabs";
+import ConfirmModal from "../components/common/confirm-modal";
 import type { BrowserTab } from "../redux/socketSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
@@ -129,6 +130,7 @@ function ProfilesTab() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Rename state
@@ -497,7 +499,7 @@ function ProfilesTab() {
 
                   {/* Delete button */}
                   <button
-                    onClick={() => handleDelete(profile.id)}
+                    onClick={() => setConfirmDeleteId(profile.id)}
                     disabled={deletingId === profile.id || activeProfileId === profile.id}
                     className="flex items-center justify-center w-8 h-8 rounded-lg
                       text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10
@@ -518,6 +520,15 @@ function ProfilesTab() {
           ))
         )}
       </div>
+
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Delete Profile"
+          message="Are you sure you want to delete this profile? All saved browser state will be lost."
+          onConfirm={() => { handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
 
       {/* Live browser modal - portaled to body so backdrop covers full page */}
       {activeProfileId && liveUrl && createPortal(
@@ -676,6 +687,7 @@ function APIKeysTab() {
   const [loading, setLoading] = useState(true);
   const [creating, setCreating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
   // Newly created key (shown once)
@@ -918,7 +930,7 @@ function APIKeysTab() {
 
                   {/* Delete button */}
                   <button
-                    onClick={() => handleDelete(apiKey.id)}
+                    onClick={() => setConfirmDeleteId(apiKey.id)}
                     disabled={deletingId === apiKey.id}
                     className="flex items-center justify-center w-8 h-8 rounded-lg
                       text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10
@@ -938,6 +950,15 @@ function APIKeysTab() {
           ))
         )}
       </div>
+
+      {confirmDeleteId && (
+        <ConfirmModal
+          title="Delete API Key"
+          message="Are you sure you want to delete this API key? Any integrations using it will stop working."
+          onConfirm={() => { handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
+          onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
     </div>
   );
 }

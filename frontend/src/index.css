@@ -9,6 +9,31 @@
     -moz-osx-font-smoothing: grayscale;
   }
 
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(156, 163, 175, 0.35) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  *::-webkit-scrollbar-thumb {
+    background-color: rgba(156, 163, 175, 0.35);
+    border-radius: 999px;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(156, 163, 175, 0.6);
+  }
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: rgba(82, 82, 91, 0.5);
+  }
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(82, 82, 91, 0.8);
+  }
+
   ::selection {
     background-color: rgba(255, 153, 109, 0.3);
     color: inherit;

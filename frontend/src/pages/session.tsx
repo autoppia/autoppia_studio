@@ -1,6 +1,6 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useParams, useNavigate, useOutletContext } from "react-router-dom";
+import { useParams, useNavigate, useOutletContext, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
@@ -36,7 +36,15 @@ function Session(): React.ReactElement {
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const { id: sessionId } = useParams<{ id: string }>();
-  const { sidebarExpanded, addHistoryItem } = useOutletContext<{
+  const location = useLocation();
+  const locationState = location.state as {
+    activeSessionId?: string;
+    skillMode?: boolean;
+    skillName?: string;
+    skillGoal?: string;
+    skillInstructions?: string;
+  } | null;
+  const { addHistoryItem } = useOutletContext<{
     sidebarExpanded: boolean;
     addHistoryItem: (item: HistoryItem) => void;
   }>();
@@ -53,6 +61,7 @@ function Session(): React.ReactElement {
 
   const chats = useSelector((state: any) => state.chat.chats);
   const completed = useSelector((state: any) => state.chat.completed);
+  const socket = useSelector((state: any) => state.socket.socket);
   const socketId = useSelector((state: any) => state.socket.socketId);
   const liveUrl = useSelector((state: any) => state.socket.liveUrl);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
@@ -81,6 +90,12 @@ function Session(): React.ReactElement {
     if (!sessionId) return;
     // This is the active session we just created — don't overwrite live chats
     if (reduxSessionId === sessionId) return;
+    // Session was just launched via useStartSession (activeSessionId in nav state is reliable,
+    // unlike reduxSessionId which may not have propagated yet at effect time)
+    if (locationState?.activeSessionId === sessionId) {
+      loadedSessionRef.current = sessionId;
+      return;
+    }
     // Already loaded this session's history
     if (loadedSessionRef.current === sessionId) return;
 
@@ -130,6 +145,7 @@ function Session(): React.ReactElement {
       }
     };
     loadSession();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId, reduxSessionId, dispatch]);
 
   // Save session to backend when the task completes (upsert — creates on first completion, updates on subsequent)
@@ -229,12 +245,18 @@ function Session(): React.ReactElement {
       ? allScreenshots[selectedScreenshot]
       : lastScreenshot;
 
-  // Disconnect the agent when leaving the session page
+  // Disconnect the agent when navigating away from the session page
+  const socketRef = useRef<any>(null);
+  socketRef.current = socket;
+
   useEffect(() => {
     return () => {
-      dispatch(disconnectBrowser());
+      if (socketRef.current?.connected) {
+        socketRef.current.removeAllListeners();
+        socketRef.current.disconnect();
+      }
     };
-  }, [dispatch]);
+  }, []);
 
   useEffect(() => {
     const onFullscreenChange = () => {
@@ -372,7 +394,14 @@ function Session(): React.ReactElement {
         </div>
 
         {/* Chat sidebar — right side */}
-        <ChatSidebar open={showChatSidebar} toggleSideBar={toggleChatSidebar} />
+        <ChatSidebar
+          open={showChatSidebar}
+          toggleSideBar={toggleChatSidebar}
+          skillMode={locationState?.skillMode}
+          skillName={locationState?.skillName}
+          skillGoal={locationState?.skillGoal}
+          skillInstructions={locationState?.skillInstructions}
+        />
       </div>
 
       {/* Session not found modal */}

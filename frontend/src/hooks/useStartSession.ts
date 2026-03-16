@@ -14,7 +14,7 @@ export default function useStartSession() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
 
-  return async (prompt: string, initialUrl: string, contextId = "") => {
+  return async (prompt: string, initialUrl: string, contextId = "", extraNavState?: Record<string, any>) => {
     const healthy = await checkBackendHealth();
     if (!healthy) {
       showToast("Unable to reach the server. Please try again later.", "error");
@@ -39,6 +39,6 @@ export default function useStartSession() {
       context_id: contextId,
     });
 
-    navigate(`/session/${sessionId}`);
+    navigate(`/session/${sessionId}`, { state: { activeSessionId: sessionId, ...(extraNavState || {}) } });
   };
 }

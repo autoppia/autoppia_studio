@@ -1,5 +1,4 @@
 import sys
-import logging
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -26,6 +25,7 @@ from app.routes import user as user_routes
 from app.routes import session as session_routes
 from app.routes import profile as profile_routes
 from app.routes import api_keys as api_keys_routes
+from app.routes import skills as skills_routes
 
 fastapi_app = FastAPI(
     title="Automata API",
@@ -49,6 +49,7 @@ fastapi_app.include_router(user_routes.router)
 fastapi_app.include_router(session_routes.router)
 fastapi_app.include_router(profile_routes.router)
 fastapi_app.include_router(api_keys_routes.router)
+fastapi_app.include_router(skills_routes.router)
 
 
 @fastapi_app.get("/health")

@@ -8,6 +8,10 @@ import "./App.css";
 import Home from "./pages/home";
 import Session from "./pages/session";
 import Settings from "./pages/settings";
+import Skills from "./pages/skills";
+import CreateSkill from "./pages/create-skill";
+import SkillDetail from "./pages/skill-detail";
+import RecordSkill from "./pages/record-skill";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -96,6 +100,10 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/skills" element={<Skills />} />
+                <Route path="/skills/create" element={<CreateSkill />} />
+                <Route path="/skills/record" element={<RecordSkill />} />
+                <Route path="/skills/:skillId" element={<SkillDetail />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}
               <Route path="/signin" element={<Navigate to="/" replace />} />

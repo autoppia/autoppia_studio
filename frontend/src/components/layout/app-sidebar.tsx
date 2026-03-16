@@ -4,13 +4,14 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faHome,
-  faPlus,
+  faPenToSquare,
   faClock,
   faUser,
   faChevronLeft,
   faCircleHalfStroke,
   faRightFromBracket,
   faGear,
+  faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { logout } from "../../redux/userSlice";
@@ -129,6 +130,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
 
   const isOnHome = location.pathname === "/";
   const isOnSettings = location.pathname === "/settings";
+  const isOnSkills = location.pathname === "/skills";
 
   return (
     <>
@@ -198,7 +200,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           </div>
 
           {/* New session button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+          <div className={`px-2 mt-3 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
               onClick={handleNewSession}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
@@ -207,8 +209,42 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                 ${isOnHome ? "bg-gray-100 dark:bg-dark-surface" : ""}`}
               title="New session"
             >
-              <FontAwesomeIcon icon={faPlus} className="text-sm" />
+              <FontAwesomeIcon icon={faPenToSquare} className="text-sm" />
               {expanded && <span className="text-sm font-medium">New Session</span>}
+            </button>
+          </div>
+
+          {/* Skills button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/skills")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-dark-surface
+                ${isOnSkills
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
+                  : "text-gray-700 dark:text-gray-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Skills"
+            >
+              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Skills</span>}
+            </button>
+          </div>
+
+          {/* Settings button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/settings")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-dark-surface
+                ${isOnSettings
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
+                  : "text-gray-700 dark:text-gray-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Settings"
+            >
+              <FontAwesomeIcon icon={faGear} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Settings</span>}
             </button>
           </div>
 
@@ -297,20 +333,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           >
             <FontAwesomeIcon icon={faCircleHalfStroke} className="text-sm" />
             {expanded && <span className="text-xs">Toggle Theme</span>}
-          </button>
-          {/* Settings */}
-          <button
-            onClick={() => navigate("/settings")}
-            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              hover:bg-gray-100 dark:hover:bg-dark-surface
-              ${isOnSettings
-                ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                : "text-gray-500 dark:text-gray-400"}
-              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
-            title="Settings"
-          >
-            <FontAwesomeIcon icon={faGear} className="text-sm" />
-            {expanded && <span className="text-xs">Settings</span>}
           </button>
           {/* Sign out */}
           <button

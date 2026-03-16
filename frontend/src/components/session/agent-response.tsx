@@ -18,6 +18,7 @@ import {
   faCode,
   faFlagCheckered,
   faGlobe,
+  faBrain,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   faCircleCheck,
@@ -62,6 +63,15 @@ function formatToolName(toolName: string): string {
     .join(" ");
 }
 
+/** Get the latest action name, formatted for display. */
+function getLatestActionLabel(actions: string[]): string {
+  const last = actions[actions.length - 1];
+  if (last.startsWith("browser.") || last.startsWith("user.")) {
+    return formatToolName(last);
+  }
+  return last;
+}
+
 interface AgentResponseProps {
   role: string;
   content?: string;
@@ -77,7 +87,17 @@ function AgentResponse(props: AgentResponseProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const hasActions = actions && actions.length > 0;
-  const showActions = hasActions && !collapsed;
+  const showExpanded = hasActions && !collapsed;
+
+  // Latest action icon & color for the collapsed header
+  const latestAction = hasActions ? actions[actions.length - 1] : null;
+  const latestIcon = latestAction ? getActionIcon(latestAction) : faCircleNotch;
+  const latestResult = hasActions ? actionResults?.[actions.length - 1] : undefined;
+  const latestIconColor = latestResult === true
+    ? "text-emerald-500"
+    : latestResult === false
+      ? "text-red-500"
+      : "text-primary animate-pulse";
 
   return (
     <div className="mb-4 animate-fade-in">
@@ -87,11 +107,11 @@ function AgentResponse(props: AgentResponseProps) {
             {state === "thinking" && (
               <div className="animate-pulse-soft text-gray-600 flex items-center dark:text-gray-300 w-full overflow-hidden">
                 <FontAwesomeIcon
-                  icon={faCircleNotch}
-                  className="me-3 text-primary text-lg flex-shrink-0 animate-spin"
+                  icon={latestIcon}
+                  className={`me-3 text-lg flex-shrink-0 ${latestIconColor}`}
                 />
-                <span className="w-full text-sm break-words">
-                  {reasoning || thinking}
+                <span className="truncate w-full text-sm">
+                  {hasActions ? getLatestActionLabel(actions) : thinking}
                 </span>
               </div>
             )}
@@ -137,15 +157,33 @@ function AgentResponse(props: AgentResponseProps) {
         )}
 
         <div
-          className={`flex flex-col w-full items-end px-1 pb-3 ${
-            showActions ? "block" : "hidden"
+          className={`flex flex-col w-full px-1 pb-3 ${
+            showExpanded ? "block" : "hidden"
           }`}
         >
+          {/* Reasoning with brain icon */}
+          {reasoning && (
+            <div className="flex items-start gap-2 text-gray-500 dark:text-gray-400 mb-2">
+              <FontAwesomeIcon
+                icon={faBrain}
+                className="text-xs mt-0.5 flex-shrink-0 text-purple-400"
+              />
+              <span className="text-xs leading-relaxed break-words">
+                {reasoning}
+              </span>
+            </div>
+          )}
+
+          {/* Separator */}
+          {reasoning && hasActions && (
+            <div className="border-t border-gray-200 dark:border-dark-border mb-1" />
+          )}
+
+          {/* Action list */}
           {actions &&
             actions.map((action, index) => {
               const icon = getActionIcon(action);
               const result = actionResults?.[index];
-              const isPending = result === undefined;
               const isSuccess = result === true;
               const isFailed = result === false;
 

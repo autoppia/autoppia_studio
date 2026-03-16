@@ -20,3 +20,27 @@ export interface ChatItem {
   state?: string;
   reasoning?: string;
 }
+
+export interface SkillParameter {
+  name: string;
+  description: string;
+  defaultValue: string;
+}
+
+export interface Skill {
+  skillId: string;
+  name: string;
+  goal: string;
+  instructions: string;
+  parameters: SkillParameter[];
+  actions: any[];
+  createdAt?: string;
+}
+
+export interface ParameterizeResult {
+  name: string;
+  goal: string;
+  instructions: string;
+  parameters: SkillParameter[];
+  actions: any[];
+}

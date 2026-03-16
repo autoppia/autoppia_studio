@@ -6,6 +6,7 @@ import {
   faAngleDown,
   faGlobe,
   faUserCircle,
+  faRobot,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { websites } from "../../utils/mock/mockDB";
@@ -39,7 +40,7 @@ export default function TaskSection(props: TaskSectionProps) {
   } = props;
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
-  const [operator, setOperator] = useState("autoppia");
+  const [, setOperator] = useState("autoppia");
   const [submitting, setSubmitting] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
@@ -67,13 +68,21 @@ export default function TaskSection(props: TaskSectionProps) {
     if (profiles.length > 0 && !selectedProfile) {
       setSelectedProfile(profiles[0]);
     }
-  }, [profiles]);
+  }, [profiles]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
       handleSubmit();
       setPrompt("");
     }
+  };
+
+  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
+    setPrompt(event.target.value);
+    // Auto-resize
+    event.target.style.height = "auto";
+    event.target.style.height = `${event.target.scrollHeight}px`;
   };
 
   const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -126,108 +135,27 @@ export default function TaskSection(props: TaskSectionProps) {
 
   return (
     <div className="w-full xl:w-[900px] animate-slide-up" style={{ animationDelay: "0.1s" }}>
-      {/* Dropdowns row */}
-      <div className="flex justify-end mb-3 gap-2">
-        {/* Profile selector */}
-        <div className="relative text-sm font-medium">
-          <button
-            type="button"
-            className={`flex items-center gap-2 rounded-full px-4 py-1.5 transition-all duration-300
-              ${selectedProfile
-                ? "text-white bg-gradient-primary shadow-soft hover:shadow-glow"
-                : "border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface text-gray-700 dark:text-gray-200 shadow-soft hover:shadow-soft-lg"
-              }`}
-            onClick={() => setOpenedDropdown("profile")}
-          >
-            <FontAwesomeIcon icon={faUserCircle} className={`text-xs ${selectedProfile ? "opacity-80" : "opacity-60"}`} />
-            <span>{selectedProfile ? selectedProfile.name : "No Profile"}</span>
-            <FontAwesomeIcon icon={faAngleDown} className={`text-xs ${selectedProfile ? "opacity-80" : "opacity-60"}`} />
-          </button>
-          <div
-            style={{
-              display: openedDropdown === "profile" ? "block" : "none",
-              width: 200,
-            }}
-            className="absolute left-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
-          >
-            <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
-              {profiles.map((profile) => (
-                <button
-                  key={profile.id}
-                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
-                  onClick={() => {
-                    setSelectedProfile(profile);
-                    setOpenedDropdown(null);
-                  }}
-                >
-                  {profile.name}
-                </button>
-              ))}
-              <button
-                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
-                onClick={() => {
-                  setSelectedProfile(null);
-                  setOpenedDropdown(null);
-                }}
-              >
-                No Profile
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Operator selector */}
-        <div className="relative text-sm font-medium">
-          <button
-            type="button"
-            className="flex items-center gap-2 rounded-full px-4 py-1.5 text-white bg-gradient-primary
-              shadow-soft hover:shadow-glow transition-all duration-300"
-            onClick={() => setOpenedDropdown("operator")}
-          >
-            <span>Autoppia Operator</span>
-            <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-80" />
-          </button>
-          <div
-            style={{
-              display: openedDropdown === "operator" ? "block" : "none",
-              width: 190,
-            }}
-            className="absolute left-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
-          >
-            <div className="p-1">
-              <button
-                className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
-                onClick={() => {
-                  setOperator("autoppia");
-                  setOpenedDropdown(null);
-                }}
-              >
-                Autoppia Operator
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Main input card */}
       <div className="flex flex-col p-4 bg-white dark:bg-dark-surface rounded-2xl w-full shadow-soft
         border border-gray-200 dark:border-dark-border
         focus-within:shadow-soft-lg focus-within:border-gray-300 dark:focus-within:border-gray-600
         transition-all duration-300">
         {/* Prompt input */}
-        <input
-          className="border-none outline-none flex-grow text-gray-900 dark:text-white dark:bg-transparent p-2 text-base placeholder:text-gray-400"
+        <textarea
+          className="border-none outline-none w-full resize-none text-gray-900 dark:text-white dark:bg-transparent p-2 text-base placeholder:text-gray-400 scrollbar-thin"
           placeholder="Ask me anything..."
+          rows={1}
           value={prompt}
-          onChange={(e) => setPrompt(e.target.value)}
+          onChange={handlePromptChange}
           onKeyDown={handleKeyDown}
+          style={{ minHeight: "2.5rem", maxHeight: "8rem", overflowY: "auto" }}
         />
 
         {/* Bottom toolbar */}
-        <div className="flex items-center justify-between mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
+        <div className="flex items-center mt-3 pt-3 border-t border-gray-100 dark:border-dark-border gap-2">
           {/* URL input */}
-          <div className="relative flex-grow mr-3">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border
+          <div className="relative w-64">
+            <div className="flex items-center gap-2 px-3 h-9 rounded-xl bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border
               focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-300">
               <FontAwesomeIcon icon={faGlobe} className="text-gray-400 text-sm" />
               <input
@@ -279,11 +207,89 @@ export default function TaskSection(props: TaskSectionProps) {
             </div>
           </div>
 
+          {/* Profile selector */}
+          <div className="relative text-sm font-medium flex-shrink-0">
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-xl px-3 h-9 transition-all duration-300
+                border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
+              onClick={() => setOpenedDropdown("profile")}
+            >
+              <FontAwesomeIcon icon={faUserCircle} className={`text-xs ${selectedProfile ? "text-primary" : "opacity-60"}`} />
+              <span className="whitespace-nowrap">{selectedProfile ? selectedProfile.name : "No Profile"}</span>
+              <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
+            </button>
+            <div
+              style={{
+                display: openedDropdown === "profile" ? "block" : "none",
+                width: 200,
+              }}
+              className="absolute right-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+            >
+              <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
+                {profiles.map((profile) => (
+                  <button
+                    key={profile.id}
+                    className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                    onClick={() => {
+                      setSelectedProfile(profile);
+                      setOpenedDropdown(null);
+                    }}
+                  >
+                    {profile.name}
+                  </button>
+                ))}
+                <button
+                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                  onClick={() => {
+                    setSelectedProfile(null);
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  No Profile
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Operator selector */}
+          <div className="relative text-sm font-medium flex-shrink-0">
+            <button
+              type="button"
+              className="flex items-center gap-2 rounded-xl px-3 h-9 transition-all duration-300
+                border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
+              onClick={() => setOpenedDropdown("operator")}
+            >
+              <FontAwesomeIcon icon={faRobot} className="text-xs text-primary" />
+              <span className="whitespace-nowrap">Autoppia Operator</span>
+              <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
+            </button>
+            <div
+              style={{
+                display: openedDropdown === "operator" ? "block" : "none",
+                width: 190,
+              }}
+              className="absolute right-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
+            >
+              <div className="p-1">
+                <button
+                  className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
+                  onClick={() => {
+                    setOperator("autoppia");
+                    setOpenedDropdown(null);
+                  }}
+                >
+                  Autoppia Operator
+                </button>
+              </div>
+            </div>
+          </div>
+
           {/* Submit button */}
           <button
             onClick={handleSubmit}
             disabled={!prompt || submitting}
-            className={`flex items-center justify-center w-10 h-10 rounded-xl
+            className={`flex items-center justify-center w-9 h-9 rounded-xl flex-shrink-0 ml-auto
               transition-all duration-300
               ${prompt && !submitting
                 ? "bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 cursor-pointer"

@@ -14,6 +14,7 @@ users_collection = db["users"]
 sessions_collection = db["sessions"]
 profiles_collection = db["profiles"]
 api_keys_collection = db["api_keys"]
+skills_collection = db["skills"]
 
 
 async def ensure_indexes():
@@ -24,4 +25,6 @@ async def ensure_indexes():
     await profiles_collection.create_index("email")
     await api_keys_collection.create_index("email")
     await api_keys_collection.create_index("keyHash", unique=True)
+    await skills_collection.create_index("email")
+    await skills_collection.create_index("skillId", unique=True)
     logger.info("MongoDB indexes ensured")

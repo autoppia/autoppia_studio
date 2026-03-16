@@ -4,3 +4,4 @@ browser-use
 Pillow
 bcrypt
 PyJWT
+anthropic

@@ -1,9 +1,12 @@
 import asyncio
+import json
 import logging
+import time
 import socketio
 from pathlib import Path
 
-from agent.autoppia_operator import AutoppiaOperator
+from agent.autoppia_operator import AutoppiaOperator, _execute_tool_call
+from agent.browser_executor import BrowserExecutor
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -131,6 +134,430 @@ async def resume_task(sid, data):
         logger.error(f"Error in resume_task: {e}", exc_info=True)
         await sio.emit('error', {'message': str(e)}, to=sid)
 
+@sio.on("play-actions")
+async def play_actions(sid, data):
+    """Execute a list of recorded actions directly without the AI agent."""
+    actions = data.get("actions", [])
+    initial_url = data.get("initial_url", "https://duckduckgo.com")
+    context_id = data.get("context_id", "")
+    action_delay = data.get("delay", 1.0)
+
+    if not actions:
+        await sio.emit("error", {"message": "No actions provided"}, to=sid)
+        return
+
+    logger.info(f"Playing {len(actions)} actions, initial URL: {initial_url}, Context ID: {context_id}")
+
+    storage_state_path = storage_state_dir / "automata.json"
+    if not storage_state_path.exists():
+        storage_state_path = None
+
+    try:
+        # Notify frontend of initial navigation
+        await sio.emit('action', {
+            'action': 'browser.navigate',
+            'reasoning': f'Navigating to {initial_url}...',
+            'previous_success': True,
+        }, to=sid)
+
+        operator = AutoppiaOperator()
+        await operator.initialize("Skill playback", initial_url, storage_state_path, context_id=context_id)
+        sessions[sid] = operator
+
+        live_url = operator.get_live_url()
+        if live_url:
+            await sio.emit('live_url', {'url': live_url}, to=sid)
+
+        await _emit_tabs(sid, operator)
+
+        page = operator.browser_executor.page
+        history = []
+        previous_success = True
+
+        for i, action_entry in enumerate(actions):
+            action_name = action_entry.get("action", "")
+            args = action_entry.get("args", {})
+
+            if not action_name or action_name in ("browser.screenshot", "browser.done"):
+                continue
+
+            # Skip the first navigate if it matches our initial_url (already navigated)
+            if i == 0 and action_name == "browser.navigate" and args.get("url") == initial_url:
+                continue
+
+            # Emit action event before execution
+            await sio.emit('action', {
+                'action': action_name,
+                'reasoning': f'Step {i + 1}: executing {action_name}',
+                'previous_success': previous_success,
+            }, to=sid)
+
+            tool_call = {"name": action_name, "arguments": args}
+            try:
+                await _execute_tool_call(page, tool_call)
+                previous_success = True
+                history.append({"step_index": i, "tool_call": tool_call})
+            except Exception as e:
+                logger.error(f"Error executing {action_name}: {e}")
+                previous_success = False
+                history.append({"step_index": i, "tool_call": tool_call, "error": str(e)})
+
+            # Wait between actions
+            await asyncio.sleep(action_delay)
+
+        # Emit final result
+        result = {
+            'content': 'Skill playback completed',
+            'success': previous_success,
+        }
+        try:
+            result['lastUrl'] = operator.browser_executor.get_current_url()
+        except Exception:
+            pass
+        result['actionHistory'] = history
+
+        await sio.emit('result', result, to=sid)
+
+        # Start keep-alive
+        old_task = keepalive_tasks.pop(sid, None)
+        if old_task:
+            old_task.cancel()
+        keepalive_tasks[sid] = asyncio.create_task(_keepalive_loop(sid))
+
+    except Exception as e:
+        logger.error(f"Error in play_actions: {e}", exc_info=True)
+        await sio.emit('error', {'message': str(e)}, to=sid)
+
+
+RECORDER_SCRIPT = """
+(function() {
+  if (window.__recorder_installed) return;
+  window.__recorder_installed = true;
+
+  function cssSelector(el) {
+    if (el.id) return '#' + CSS.escape(el.id);
+    var parts = [];
+    while (el && el !== document.body && el !== document.documentElement) {
+      var sel = el.tagName.toLowerCase();
+      if (el.id) { parts.unshift('#' + CSS.escape(el.id)); break; }
+      if (el.className && typeof el.className === 'string') {
+        var cls = el.className.trim().split(/\\s+/).filter(function(c) {
+          return c && !c.startsWith('hover') && !c.startsWith('focus') && c.length < 40;
+        }).slice(0, 2);
+        if (cls.length) sel += '.' + cls.map(function(c) { return CSS.escape(c); }).join('.');
+      }
+      var parent = el.parentElement;
+      if (parent) {
+        var siblings = Array.from(parent.children).filter(function(c) { return c.tagName === el.tagName; });
+        if (siblings.length > 1) sel += ':nth-of-type(' + (siblings.indexOf(el) + 1) + ')';
+      }
+      parts.unshift(sel);
+      el = el.parentElement;
+    }
+    return parts.join(' > ');
+  }
+
+  var CLICKABLE = 'a, button, [role="button"], [role="tab"], [role="menuitem"], [role="option"], [role="link"], [type="submit"], [type="checkbox"], [type="radio"], summary';
+
+  function isTextInput(el) {
+    if (el.tagName === 'TEXTAREA' || el.isContentEditable) return true;
+    if (el.tagName === 'INPUT') {
+      var t = (el.type || 'text').toLowerCase();
+      return ['text','password','email','search','tel','url','number'].indexOf(t) !== -1;
+    }
+    return false;
+  }
+
+  var dirtyFields = {};
+
+  // Click: only record when landing on a recognized interactive element
+  document.addEventListener('click', function(e) {
+    var el = e.target;
+    // Skip text inputs — typing handles those
+    if (isTextInput(el)) return;
+    // Find the nearest clickable ancestor
+    var target = el.closest(CLICKABLE);
+    if (!target) return;  // Not a meaningful click — skip
+    window.__recordAction(JSON.stringify({
+      action: 'browser.click',
+      args: { css_selector: cssSelector(target) }
+    }));
+  }, true);
+
+  // Track typing — mark dirty, emit on blur or Enter
+  document.addEventListener('input', function(e) {
+    var el = e.target;
+    if (isTextInput(el)) {
+      dirtyFields[cssSelector(el)] = el;
+    }
+  }, true);
+
+  // Emit text input on blur (user finished typing and left the field)
+  document.addEventListener('focusout', function(e) {
+    var el = e.target;
+    if (!isTextInput(el)) return;
+    var selector = cssSelector(el);
+    if (!dirtyFields[selector]) return;
+    delete dirtyFields[selector];
+    var value = el.value || el.textContent || '';
+    if (!value) return;
+    window.__recordAction(JSON.stringify({
+      action: 'browser.input',
+      args: { css_selector: selector, text: value }
+    }));
+  }, true);
+
+  // Dropdown / select changes
+  document.addEventListener('change', function(e) {
+    var el = e.target;
+    if (el.tagName === 'SELECT') {
+      var label = el.options[el.selectedIndex] ? el.options[el.selectedIndex].text : '';
+      window.__recordAction(JSON.stringify({
+        action: 'browser.select_dropdown',
+        args: { css_selector: cssSelector(el), label: label }
+      }));
+    }
+  }, true);
+
+  // Enter key — flush pending input then record Enter
+  document.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+      var el = e.target;
+      if (isTextInput(el)) {
+        var selector = cssSelector(el);
+        if (dirtyFields[selector]) {
+          delete dirtyFields[selector];
+          var value = el.value || el.textContent || '';
+          if (value) {
+            window.__recordAction(JSON.stringify({
+              action: 'browser.input',
+              args: { css_selector: selector, text: value }
+            }));
+          }
+        }
+      }
+      if (!el.matches('textarea')) {
+        window.__recordAction(JSON.stringify({
+          action: 'browser.send_keys',
+          args: { keys: 'Enter' }
+        }));
+      }
+    }
+  }, true);
+})();
+"""
+
+# Store recorded actions per sid
+recording_actions = {}
+
+
+@sio.on("start-record")
+async def start_record(sid, data):
+    initial_url = data.get("initial_url", "https://duckduckgo.com")
+    context_id = data.get("context_id", "")
+
+    logger.info(f"Starting recording for {sid}, initial URL: {initial_url}")
+
+    storage_state_path = storage_state_dir / "automata.json"
+    if not storage_state_path.exists():
+        storage_state_path = None
+
+    try:
+        await sio.emit('action', {
+            'action': 'browser.navigate',
+            'reasoning': f'Opening {initial_url}...',
+            'previous_success': True,
+        }, to=sid)
+
+        be = BrowserExecutor()
+        await be.initialize(initial_url=initial_url, storage_state_path=storage_state_path, context_id=context_id)
+
+        sessions[sid] = {"browser_executor": be, "recording": True}
+        recording_actions[sid] = []
+
+        live_url = be.get_live_url()
+        if live_url:
+            await sio.emit('live_url', {'url': live_url}, to=sid)
+
+        # Emit initial tabs
+        tabs = be.get_tabs()
+        active_index = be.get_active_page_index()
+        if tabs:
+            await sio.emit('tabs', {'tabs': tabs, 'activeIndex': active_index}, to=sid)
+
+        # Add the initial navigate as the first action
+        recording_actions[sid].append({
+            "action": "browser.navigate",
+            "args": {"url": initial_url}
+        })
+        await sio.emit('recorded-action', {
+            "action": "browser.navigate",
+            "args": {"url": initial_url},
+            "index": 0,
+        }, to=sid)
+
+        # Use raw CDP to inject recorder — Playwright's expose_function/add_init_script
+        # don't work reliably over remote CDP connections (Browserbase).
+        page = be.page
+        cdp = await page.context.new_cdp_session(page)
+
+        # Enable required CDP domains
+        await cdp.send("Runtime.enable")
+        await cdp.send("Page.enable")
+
+        # Register a JS binding via CDP — this survives navigations
+        await cdp.send("Runtime.addBinding", {"name": "__recordAction"})
+
+        # Inject recorder script on every new document load via CDP
+        await cdp.send("Page.addScriptToEvaluateOnNewDocument", {"source": RECORDER_SCRIPT})
+
+        # Also run on the current page immediately
+        await cdp.send("Runtime.evaluate", {"expression": RECORDER_SCRIPT})
+
+        # Deduplication: track timestamp of last click
+        last_click_time = {"t": 0}
+
+        def _is_duplicate(action_data, actions):
+            """Skip if identical to the last recorded action."""
+            if not actions:
+                return False
+            last = actions[-1]
+            return last.get("action") == action_data.get("action") and last.get("args") == action_data.get("args")
+
+        # Listen for binding calls from the injected script
+        async def on_binding_called(params):
+            if params.get("name") != "__recordAction":
+                return
+            try:
+                action_data = json.loads(params.get("payload", "{}"))
+                actions = recording_actions.get(sid, [])
+                # Skip consecutive duplicates
+                if _is_duplicate(action_data, actions):
+                    return
+                if action_data.get("action") == "browser.click":
+                    last_click_time["t"] = time.monotonic()
+                actions.append(action_data)
+                await sio.emit('recorded-action', {
+                    **action_data,
+                    "index": len(actions) - 1,
+                }, to=sid)
+                logger.info(f"Recorded action #{len(actions)}: {action_data.get('action')}")
+            except Exception as e:
+                logger.error(f"Error processing recorded action: {e}")
+
+        cdp.on("Runtime.bindingCalled", lambda params: asyncio.create_task(on_binding_called(params)))
+
+        # Store CDP session so it doesn't get GC'd
+        sessions[sid]["cdp"] = cdp
+
+        # Track navigations via Playwright events — but suppress navigates
+        # caused by a recent click (the click already captures the intent)
+        async def on_frame_navigated(frame):
+            try:
+                p = frame.page
+                if frame != p.main_frame:
+                    return
+                url = p.url
+                # Skip about:blank and browser-internal URLs
+                if not url or url == "about:blank" or url.startswith("chrome"):
+                    return
+                actions = recording_actions.get(sid, [])
+                # Skip if same URL as last navigate
+                if actions and actions[-1].get("action") == "browser.navigate" and actions[-1].get("args", {}).get("url") == url:
+                    return
+                # Suppress navigate if a click happened within the last 2s (click caused it)
+                if time.monotonic() - last_click_time["t"] < 2.0:
+                    return
+                nav_action = {"action": "browser.navigate", "args": {"url": url}}
+                actions.append(nav_action)
+                await sio.emit('recorded-action', {**nav_action, "index": len(actions) - 1}, to=sid)
+            except Exception:
+                pass
+
+        page.on("framenavigated", lambda frame: asyncio.create_task(on_frame_navigated(frame)))
+
+        # Handle new tabs
+        async def on_new_page_record(new_page):
+            be.page = new_page
+            # Set up CDP recorder for the new page too
+            try:
+                new_cdp = await new_page.context.new_cdp_session(new_page)
+                await new_cdp.send("Runtime.enable")
+                await new_cdp.send("Page.enable")
+                await new_cdp.send("Runtime.addBinding", {"name": "__recordAction"})
+                await new_cdp.send("Page.addScriptToEvaluateOnNewDocument", {"source": RECORDER_SCRIPT})
+                await new_cdp.send("Runtime.evaluate", {"expression": RECORDER_SCRIPT})
+                new_cdp.on("Runtime.bindingCalled", lambda params: asyncio.create_task(on_binding_called(params)))
+            except Exception as e:
+                logger.warning(f"Failed to set up recorder on new page: {e}")
+
+            new_page.on("framenavigated", lambda frame: asyncio.create_task(on_frame_navigated(frame)))
+
+            url = new_page.url
+            if url and url != "about:blank":
+                actions = recording_actions.get(sid, [])
+                nav_action = {"action": "browser.navigate", "args": {"url": url}}
+                actions.append(nav_action)
+                await sio.emit('recorded-action', {**nav_action, "index": len(actions) - 1}, to=sid)
+
+        be.context.on("page", on_new_page_record)
+
+        # Start keep-alive
+        old_task = keepalive_tasks.pop(sid, None)
+        if old_task:
+            old_task.cancel()
+        keepalive_tasks[sid] = asyncio.create_task(_keepalive_loop_record(sid))
+
+    except Exception as e:
+        logger.error(f"Error in start_record: {e}", exc_info=True)
+        await sio.emit('error', {'message': str(e)}, to=sid)
+
+
+@sio.on("stop-record")
+async def stop_record(sid, data=None):
+    logger.info(f"Stopping recording for {sid}")
+
+    actions = recording_actions.pop(sid, [])
+    session_data = sessions.get(sid)
+
+    last_url = ""
+    if session_data and isinstance(session_data, dict) and session_data.get("recording"):
+        be = session_data.get("browser_executor")
+        if be:
+            try:
+                last_url = be.get_current_url()
+            except Exception:
+                pass
+
+    # Cancel keep-alive
+    task = keepalive_tasks.pop(sid, None)
+    if task:
+        task.cancel()
+
+    await sio.emit('record-result', {
+        'actions': actions,
+        'lastUrl': last_url,
+    }, to=sid)
+
+
+async def _keepalive_loop_record(sid, interval=30):
+    """Keep-alive loop for recording sessions."""
+    try:
+        while True:
+            await asyncio.sleep(interval)
+            session_data = sessions.get(sid)
+            if not session_data:
+                break
+            be = session_data.get("browser_executor") if isinstance(session_data, dict) else getattr(session_data, 'browser_executor', None)
+            if be:
+                alive = await be.keep_alive_ping()
+                if not alive:
+                    logger.warning(f"Record keep-alive ping failed for {sid}")
+                    break
+    except asyncio.CancelledError:
+        pass
+
+
 @sio.on("disconnect")
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
@@ -138,10 +565,18 @@ async def disconnect(sid):
     task = keepalive_tasks.pop(sid, None)
     if task:
         task.cancel()
-    operator = sessions.get(sid)
-    if operator:
-        await operator.close()
-        await operator.release_session()
+    # Clean up recording actions
+    recording_actions.pop(sid, None)
+    session_data = sessions.get(sid)
+    if session_data:
+        if isinstance(session_data, dict) and session_data.get("recording"):
+            be = session_data.get("browser_executor")
+            if be:
+                await be.close()
+                await be.release_session()
+        else:
+            await session_data.close()
+            await session_data.release_session()
         del sessions[sid]
 
 
@@ -193,6 +628,11 @@ async def _perform_task(sid, max_steps=25):
     operator.browser_executor.set_on_tab_change(on_tab_change)
 
     try:
+        # Check CUA availability before running steps
+        if not await operator.cua.health_check():
+            await sio.emit('error', {'message': 'Agent is not working. Please try again later.'}, to=sid)
+            return
+
         for _ in range(max_steps):
             done, _valid = await operator.take_step()
 

@@ -40,7 +40,7 @@ export default function SliderSection(props: SliderSectionProps) {
         setInitialUrl(item.url);
       }}
     >
-      <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-xl
+      <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-lg
         shadow-glow group-hover/card:shadow-glow-lg transition-all duration-300">
         <FontAwesomeIcon icon={item.icon} className="text-white text-sm" />
       </div>

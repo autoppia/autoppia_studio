@@ -2,11 +2,12 @@ import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPaperPlane } from "@fortawesome/free-solid-svg-icons";
+import { faPaperPlane, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
 
 import AgentResponse from "./agent-response";
 import UserMessage from "./user-message";
 import BrowserLoading from "./browser-loading";
+import ConvertToSkillModal from "./convert-to-skill-modal";
 import { addAction, addTask } from "../../redux/chatSlice";
 import { setSessionId } from "../../redux/socketSlice";
 import { initializeSocket } from "../../utils/socket";
@@ -18,13 +19,18 @@ import { AppDispatch } from "../../redux/store";
 interface ChatSidebarProps {
   open: boolean;
   toggleSideBar: () => void;
+  skillMode?: boolean;
+  skillName?: string;
+  skillGoal?: string;
+  skillInstructions?: string;
 }
 
 export default function ChatSidebar(props: ChatSidebarProps) {
-  const { open, toggleSideBar } = props;
+  const { open, skillName, skillGoal, skillInstructions } = props;
 
   const [task, setTask] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [showConvertModal, setShowConvertModal] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
   const { id: sessionId } = useParams<{ id: string }>();
@@ -38,7 +44,13 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
   const contextId = useSelector((state: any) => state.socket.contextId);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
+  const prompt = useSelector((state: any) => state.socket.prompt);
+  const initialUrl = useSelector((state: any) => state.socket.initialUrl);
   const user = useSelector((state: any) => state.user);
+
+  const isRunning = !!socketId && !completed;
+  const lastChat = chats[chats.length - 1];
+  const taskSucceeded = completed && lastChat?.state === "success";
 
   const handleSubmit = async () => {
     if (!task.trim() || submitting) return;
@@ -48,13 +60,11 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       : task;
 
     if (socket?.connected) {
-      // Active socket — continue the task (no health check needed)
       dispatch(addTask(task));
       setTask("");
       dispatch(addAction({ action: "Continue", reasoning: "Continuing task...", previous_success: true }));
       socket.emit("continue-task", { task: taskWithInstructions });
     } else {
-      // Need a new socket connection — check backend health first
       setSubmitting(true);
       const healthy = await checkBackendHealth();
       setSubmitting(false);
@@ -75,7 +85,6 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       const newSocket = initializeSocket(dispatch, false, targetUrl);
 
       if (lastUrl) {
-        // Resume session
         newSocket.emit("resume-task", {
           task: taskWithInstructions,
           lastUrl,
@@ -83,7 +92,6 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           context_id: contextId || "",
         });
       } else {
-        // Start fresh
         newSocket.emit("start-task", {
           task: taskWithInstructions,
           initial_url: "https://duckduckgo.com",
@@ -97,12 +105,49 @@ export default function ChatSidebar(props: ChatSidebarProps) {
     setTask(event.target.value);
   };
   const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Enter") {
-      handleSubmit();
-    }
+    if (event.key === "Enter") handleSubmit();
   };
 
-  const isRunning = !!socketId && !completed;
+  const inputArea = (
+    <div className="flex flex-col px-1 mb-4 gap-2">
+      {/* Save as Skill button — shown only on successful task completion */}
+      {taskSucceeded && (
+        <button
+          onClick={() => setShowConvertModal(true)}
+          className="flex items-center justify-center gap-2 w-full h-9 rounded-xl text-sm font-medium
+            border border-primary/30 text-primary bg-primary/5 dark:bg-primary/10
+            hover:bg-primary/10 dark:hover:bg-primary/20 hover:border-primary/50
+            transition-all duration-200"
+        >
+          <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />
+          Save as Skill
+        </button>
+      )}
+      <div
+        className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
+        focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"
+      >
+        <input
+          className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
+          placeholder="Type here ..."
+          value={task}
+          disabled={isRunning || submitting}
+          onChange={handleChangeTask}
+          onKeyDown={handleKeyDown}
+        />
+        <button
+          className={`flex items-center justify-center w-8 h-8 rounded-lg ml-2 transition-all duration-300
+            ${task
+              ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
+              : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            }`}
+          onClick={handleSubmit}
+        >
+          <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <>
@@ -119,41 +164,12 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           <div className="flex flex-col flex-grow">
             {chats.map((message: any, index: number) => {
               if (message.role === "assistant")
-                return (
-                  <AgentResponse key={"AgentRES" + index} {...message} />
-                );
+                return <AgentResponse key={"AgentRES" + index} {...message} />;
               else return <UserMessage key={"UserRES" + index} {...message} />;
             })}
           </div>
         </div>
-
-        {/* Input area */}
-        <div className="flex items-center px-1 mb-4">
-          <div
-            className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
-            focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"
-          >
-            <input
-              className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
-              placeholder="Type here ..."
-              value={task}
-              disabled={isRunning || submitting}
-              onChange={handleChangeTask}
-              onKeyDown={handleKeyDown}
-            />
-            <button
-              className={`flex items-center justify-center w-8 h-8 rounded-lg ml-2 transition-all duration-300
-                ${
-                  task
-                    ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
-                    : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                }`}
-              onClick={handleSubmit}
-            >
-              <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
-            </button>
-          </div>
-        </div>
+        {inputArea}
       </div>
 
       {/* Mobile: full-width overlay */}
@@ -163,27 +179,17 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           bg-white dark:bg-dark-bg
           ${open ? "" : "hidden"}`}
       >
-        {/* Chat messages + mobile browser preview */}
         <div className="w-full px-1 flex flex-col flex-grow overflow-auto mb-4 scrollbar-thin">
           <div className="flex flex-col flex-grow">
             {chats.map((message: any, index: number) => {
               if (message.role === "assistant")
-                return (
-                  <AgentResponse
-                    key={"AgentRES_m" + index}
-                    {...message}
-                  />
-                );
-              else
-                return <UserMessage key={"UserRES_m" + index} {...message} />;
+                return <AgentResponse key={"AgentRES_m" + index} {...message} />;
+              else return <UserMessage key={"UserRES_m" + index} {...message} />;
             })}
           </div>
 
-          {/* Mobile browser preview */}
           {socketId && (
-            <div
-              className="flex flex-col relative bg-white dark:bg-dark-surface rounded-2xl w-full self-center flex-shrink-0 mt-3 overflow-hidden shadow-soft border border-gray-200 dark:border-dark-border"
-            >
+            <div className="flex flex-col relative bg-white dark:bg-dark-surface rounded-2xl w-full self-center flex-shrink-0 mt-3 overflow-hidden shadow-soft border border-gray-200 dark:border-dark-border">
               {liveUrl ? (
                 <iframe
                   src={liveUrl}
@@ -199,35 +205,22 @@ export default function ChatSidebar(props: ChatSidebarProps) {
             </div>
           )}
         </div>
-
-        {/* Input area */}
-        <div className="flex items-center px-1 mb-4">
-          <div
-            className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
-            focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"
-          >
-            <input
-              className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
-              placeholder="Type here ..."
-              value={task}
-              disabled={isRunning || submitting}
-              onChange={handleChangeTask}
-              onKeyDown={handleKeyDown}
-            />
-            <button
-              className={`flex items-center justify-center w-8 h-8 rounded-lg ml-2 transition-all duration-300
-                ${
-                  task
-                    ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
-                    : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                }`}
-              onClick={handleSubmit}
-            >
-              <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
-            </button>
-          </div>
-        </div>
+        {inputArea}
       </div>
+
+      {/* Convert to Skill modal */}
+      {showConvertModal && (
+        <ConvertToSkillModal
+          onClose={() => setShowConvertModal(false)}
+          actionHistory={actionHistory || []}
+          prompt={prompt || chats.find((c: any) => c.role === "user")?.content || ""}
+          initialUrl={initialUrl || ""}
+          skillName={skillName}
+          skillGoal={skillGoal}
+          skillInstructions={skillInstructions}
+          userEmail={user.email || ""}
+        />
+      )}
     </>
   );
 }
