@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPaperPlane, faWandMagicSparkles } from "@fortawesome/free-solid-svg-icons";
+import { faPaperPlane, faWandMagicSparkles, faStop } from "@fortawesome/free-solid-svg-icons";
 
 import AgentResponse from "./agent-response";
 import UserMessage from "./user-message";
@@ -49,8 +49,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const user = useSelector((state: any) => state.user);
 
   const isRunning = !!socketId && !completed;
-  const lastChat = chats[chats.length - 1];
-  const taskSucceeded = completed && lastChat?.state === "success";
+  const canSaveAsSkill = !isRunning && chats.length > 0;
 
   const handleSubmit = async () => {
     if (!task.trim() || submitting) return;
@@ -108,10 +107,16 @@ export default function ChatSidebar(props: ChatSidebarProps) {
     if (event.key === "Enter") handleSubmit();
   };
 
+  const handleStop = () => {
+    if (socket?.connected) {
+      socket.emit("stop-task");
+    }
+  };
+
   const inputArea = (
     <div className="flex flex-col px-1 mb-4 gap-2">
       {/* Save as Skill button — shown only on successful task completion */}
-      {taskSucceeded && (
+      {canSaveAsSkill && (
         <button
           onClick={() => setShowConvertModal(true)}
           className="flex items-center justify-center gap-2 w-full h-9 rounded-xl text-sm font-medium
@@ -123,29 +128,40 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           Save as Skill
         </button>
       )}
-      <div
-        className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
-        focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"
-      >
-        <input
-          className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
-          placeholder="Type here ..."
-          value={task}
-          disabled={isRunning || submitting}
-          onChange={handleChangeTask}
-          onKeyDown={handleKeyDown}
-        />
+      {isRunning ? (
         <button
-          className={`flex items-center justify-center w-8 h-8 rounded-lg ml-2 transition-all duration-300
-            ${task
-              ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
-              : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            }`}
-          onClick={handleSubmit}
+          onClick={handleStop}
+          className="flex items-center justify-center gap-2 w-full h-10 rounded-xl text-sm font-semibold
+            bg-red-500 hover:bg-red-600 text-white transition-all duration-200 cursor-pointer"
         >
-          <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
+          <FontAwesomeIcon icon={faStop} className="text-xs" />
+          Stop Agent
         </button>
-      </div>
+      ) : (
+        <div
+          className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
+          focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"
+        >
+          <input
+            className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
+            placeholder="Type here ..."
+            value={task}
+            disabled={submitting}
+            onChange={handleChangeTask}
+            onKeyDown={handleKeyDown}
+          />
+          <button
+            className={`flex items-center justify-center w-8 h-8 rounded-lg ml-2 transition-all duration-300
+              ${task
+                ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
+                : "text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+              }`}
+            onClick={handleSubmit}
+          >
+            <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
+          </button>
+        </div>
+      )}
     </div>
   );
 

@@ -16,6 +16,7 @@ socket_app = None  # Will be set in main.py after FastAPI app is created
 
 sessions = {}
 keepalive_tasks = {}  # sid -> asyncio.Task for browser keep-alive pings
+running_tasks = {}  # sid -> asyncio.Task for the currently running _perform_task
 
 home_dir = Path.home()
 storage_state_dir = home_dir / ".automata" / "storage_states"
@@ -61,7 +62,7 @@ async def start_task(sid, data):
         # Send initial tabs list
         await _emit_tabs(sid, operator)
 
-        await _perform_task(sid)
+        running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
         logger.error(f"Error in start_task: {e}", exc_info=True)
         await sio.emit('error', {'message': str(e)}, to=sid)
@@ -81,7 +82,7 @@ async def continue_task(sid, data):
         return
 
     await operator.add_new_task(task, preserve_history=True)
-    await _perform_task(sid)
+    running_tasks[sid] = asyncio.create_task(_perform_task(sid))
 
 @sio.on("resume-task")
 async def resume_task(sid, data):
@@ -129,10 +130,41 @@ async def resume_task(sid, data):
 
         await _emit_tabs(sid, operator)
 
-        await _perform_task(sid)
+        running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
         logger.error(f"Error in resume_task: {e}", exc_info=True)
         await sio.emit('error', {'message': str(e)}, to=sid)
+
+@sio.on("stop-task")
+async def stop_task(sid, data=None):
+    """Stop the running CUA agent but keep the browser session alive."""
+    logger.info(f"Stopping task for {sid}")
+
+    # Cancel the running task
+    task = running_tasks.pop(sid, None)
+    if task:
+        task.cancel()
+
+    operator = sessions.get(sid)
+    result = {
+        'content': 'Task stopped by user',
+        'success': False,
+    }
+    if operator:
+        try:
+            result['lastUrl'] = operator.browser_executor.get_current_url()
+        except Exception:
+            pass
+        result['actionHistory'] = getattr(operator, 'history', [])
+
+        # Start keep-alive to keep browser session open
+        old_ka = keepalive_tasks.pop(sid, None)
+        if old_ka:
+            old_ka.cancel()
+        keepalive_tasks[sid] = asyncio.create_task(_keepalive_loop(sid))
+
+    await sio.emit('result', result, to=sid)
+
 
 @sio.on("play-actions")
 async def play_actions(sid, data):
@@ -476,7 +508,17 @@ async def start_record(sid, data):
 
         page.on("framenavigated", lambda frame: asyncio.create_task(on_frame_navigated(frame)))
 
-        # Handle new tabs
+        # Helper: emit current tabs list to frontend
+        async def emit_record_tabs():
+            try:
+                tab_list = be.get_tabs()
+                active_idx = be.get_active_page_index()
+                if tab_list:
+                    await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': active_idx}, to=sid)
+            except Exception as e:
+                logger.warning(f"Failed to emit record tabs: {e}")
+
+        # Handle new tabs opened by user interaction
         async def on_new_page_record(new_page):
             be.page = new_page
             # Set up CDP recorder for the new page too
@@ -493,14 +535,14 @@ async def start_record(sid, data):
 
             new_page.on("framenavigated", lambda frame: asyncio.create_task(on_frame_navigated(frame)))
 
-            url = new_page.url
-            if url and url != "about:blank":
-                actions = recording_actions.get(sid, [])
-                nav_action = {"action": "browser.navigate", "args": {"url": url}}
-                actions.append(nav_action)
-                await sio.emit('recorded-action', {**nav_action, "index": len(actions) - 1}, to=sid)
+            # Emit tabs update
+            await asyncio.sleep(0.5)
+            await emit_record_tabs()
 
         be.context.on("page", on_new_page_record)
+
+        # Emit initial tabs
+        await emit_record_tabs()
 
         # Start keep-alive
         old_task = keepalive_tasks.pop(sid, None)
@@ -510,6 +552,75 @@ async def start_record(sid, data):
 
     except Exception as e:
         logger.error(f"Error in start_record: {e}", exc_info=True)
+        await sio.emit('error', {'message': str(e)}, to=sid)
+
+
+@sio.on("new-tab-record")
+async def new_tab_record(sid, data=None):
+    """Open a new tab in the recording browser session."""
+    session_data = sessions.get(sid)
+    if not session_data or not isinstance(session_data, dict) or not session_data.get("recording"):
+        return
+
+    be = session_data.get("browser_executor")
+    if not be:
+        return
+
+    try:
+        await be.open_new_tab("about:blank")
+
+        # Record the action
+        actions = recording_actions.get(sid, [])
+        new_tab_action = {"action": "browser.new_tab", "args": {"url": "about:blank"}}
+        actions.append(new_tab_action)
+        await sio.emit('recorded-action', {**new_tab_action, "index": len(actions) - 1}, to=sid)
+
+        # Emit updated tabs
+        await asyncio.sleep(0.5)
+        tab_list = be.get_tabs()
+        active_idx = be.get_active_page_index()
+        if tab_list:
+            await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': active_idx}, to=sid)
+
+        logger.info(f"New tab opened for recording session {sid}")
+    except Exception as e:
+        logger.error(f"Error opening new tab in recording: {e}")
+        await sio.emit('error', {'message': str(e)}, to=sid)
+
+
+@sio.on("switch-tab-record")
+async def switch_tab_record(sid, data):
+    """Switch to a different tab in the recording browser session."""
+    session_data = sessions.get(sid)
+    if not session_data or not isinstance(session_data, dict) or not session_data.get("recording"):
+        return
+
+    be = session_data.get("browser_executor")
+    if not be or not be.context:
+        return
+
+    index = data.get("index", 0) if data else 0
+    pages = be.context.pages
+    if index < 0 or index >= len(pages):
+        return
+
+    try:
+        be.page = pages[index]
+
+        # Record the action
+        actions = recording_actions.get(sid, [])
+        switch_action = {"action": "browser.switch_tab", "args": {"tab_index": index}}
+        actions.append(switch_action)
+        await sio.emit('recorded-action', {**switch_action, "index": len(actions) - 1}, to=sid)
+
+        # Emit updated tabs with new active index
+        tab_list = be.get_tabs()
+        if tab_list:
+            await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': index}, to=sid)
+
+        logger.info(f"Switched to tab {index} for recording session {sid}")
+    except Exception as e:
+        logger.error(f"Error switching tab in recording: {e}")
         await sio.emit('error', {'message': str(e)}, to=sid)
 
 
@@ -561,6 +672,10 @@ async def _keepalive_loop_record(sid, interval=30):
 @sio.on("disconnect")
 async def disconnect(sid):
     logger.info(f"Client disconnected: {sid}")
+    # Cancel any running CUA task
+    rt = running_tasks.pop(sid, None)
+    if rt:
+        rt.cancel()
     # Cancel any running keep-alive task
     task = keepalive_tasks.pop(sid, None)
     if task:
@@ -655,6 +770,10 @@ async def _perform_task(sid, max_steps=25):
         if old_task:
             old_task.cancel()
         keepalive_tasks[sid] = asyncio.create_task(_keepalive_loop(sid))
+    except asyncio.CancelledError:
+        logger.info(f"Task cancelled for {sid}")
     except Exception as e:
         logger.error(f"Error in _perform_task: {e}", exc_info=True)
         await sio.emit('error', {'message': str(e)}, to=sid)
+    finally:
+        running_tasks.pop(sid, None)

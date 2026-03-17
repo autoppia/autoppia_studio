@@ -8,6 +8,7 @@ import {
   faArrowRight,
   faChevronDown,
   faChevronRight,
+  faTrash,
 } from "@fortawesome/free-solid-svg-icons";
 import { useToast } from "../common/toast";
 import { SkillParameter } from "../../utils/types";
@@ -131,6 +132,18 @@ export default function ConvertToSkillModal(props: ConvertToSkillModalProps) {
         i === actionIndex ? { ...a, args: { ...a.args, [key]: value } } : a
       )
     );
+  };
+
+  const deleteAction = (actionIndex: number) => {
+    setActions((prev) => prev.filter((_, i) => i !== actionIndex));
+    setExpandedActions((prev) => {
+      const next = new Set<number>();
+      prev.forEach((i) => {
+        if (i < actionIndex) next.add(i);
+        else if (i > actionIndex) next.add(i - 1);
+      });
+      return next;
+    });
   };
 
   const handleSave = async () => {
@@ -288,23 +301,35 @@ export default function ConvertToSkillModal(props: ConvertToSkillModalProps) {
                     .join(", ");
 
                   return (
-                    <div key={ai} className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg overflow-hidden">
+                    <div key={ai} className="group/action rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg overflow-hidden">
                       {/* Collapsible header */}
-                      <button
-                        type="button"
-                        onClick={() => toggleAction(ai)}
-                        className="w-full flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-dark-surface/60 transition-colors text-left"
-                      >
-                        <FontAwesomeIcon
-                          icon={isExpanded ? faChevronDown : faChevronRight}
-                          className="text-[9px] text-gray-400 flex-shrink-0"
-                        />
-                        <span className="text-[10px] text-gray-400 font-mono w-4 text-right flex-shrink-0">{ai + 1}.</span>
-                        <span className="text-xs font-mono font-semibold text-primary flex-shrink-0">{action.action}</span>
-                        {!isExpanded && argSummary && (
-                          <span className="text-xs text-gray-400 dark:text-gray-500 truncate ml-1">{argSummary}</span>
-                        )}
-                      </button>
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => toggleAction(ai)}
+                          className="flex-1 flex items-center gap-2 px-3 py-2 hover:bg-gray-100 dark:hover:bg-dark-surface/60 transition-colors text-left min-w-0"
+                        >
+                          <FontAwesomeIcon
+                            icon={isExpanded ? faChevronDown : faChevronRight}
+                            className="text-[9px] text-gray-400 flex-shrink-0"
+                          />
+                          <span className="text-[10px] text-gray-400 font-mono w-4 text-right flex-shrink-0">{ai + 1}.</span>
+                          <span className="text-xs font-mono font-semibold text-primary flex-shrink-0">{action.action}</span>
+                          {!isExpanded && argSummary && (
+                            <span className="text-xs text-gray-400 dark:text-gray-500 truncate ml-1">{argSummary}</span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteAction(ai)}
+                          className="flex items-center justify-center w-7 h-7 mr-1 rounded flex-shrink-0
+                            opacity-0 group-hover/action:opacity-100 text-gray-400 hover:text-red-500
+                            hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-150"
+                          title="Remove action"
+                        >
+                          <FontAwesomeIcon icon={faTrash} className="text-[10px]" />
+                        </button>
+                      </div>
 
                       {/* Expanded args */}
                       {isExpanded && argEntries.length > 0 && (

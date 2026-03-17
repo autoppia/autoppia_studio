@@ -12,7 +12,9 @@ import {
   faArrowLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserLoading from "../components/session/browser-loading";
+import BrowserTabs from "../components/session/browser-tabs";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
+import type { BrowserTab } from "../redux/socketSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -40,6 +42,8 @@ export default function RecordSkill() {
   const [finalActions, setFinalActions] = useState<any[]>([]);
   const [expandedActions, setExpandedActions] = useState<Set<number>>(new Set());
   const [elapsed, setElapsed] = useState(0);
+  const [tabs, setTabs] = useState<BrowserTab[]>([]);
+  const [activeTabIndex, setActiveTabIndex] = useState(0);
 
   const socketRef = useRef<Socket | null>(null);
   const startTimeRef = useRef<number>(0);
@@ -73,6 +77,14 @@ export default function RecordSkill() {
 
     socket.on("live_url", ({ url }) => {
       setLiveUrl(url);
+    });
+
+    socket.on("tabs", ({ tabs: tabsData, activeIndex }) => {
+      setTabs(tabsData || []);
+      setActiveTabIndex(activeIndex || 0);
+      if (tabsData && tabsData[activeIndex]) {
+        setLiveUrl(tabsData[activeIndex].debugger_fullscreen_url);
+      }
     });
 
     socket.on("recorded-action", (data: RecordedAction) => {
@@ -113,6 +125,20 @@ export default function RecordSkill() {
     if (!socketRef.current) return;
     setStopping(true);
     socketRef.current.emit("stop-record");
+  }, []);
+
+  const handleSelectTab = useCallback((index: number) => {
+    if (!socketRef.current) return;
+    setActiveTabIndex(index);
+    if (tabs[index]?.debugger_fullscreen_url) {
+      setLiveUrl(tabs[index].debugger_fullscreen_url);
+    }
+    socketRef.current.emit("switch-tab-record", { index });
+  }, [tabs]);
+
+  const handleNewTab = useCallback(() => {
+    if (!socketRef.current) return;
+    socketRef.current.emit("new-tab-record");
   }, []);
 
   const toggleAction = (i: number) => {
@@ -172,17 +198,30 @@ export default function RecordSkill() {
         <div className="flex-1 flex overflow-hidden">
           {/* Left — Live browser */}
           <div className="flex-1 flex flex-col min-w-0 p-4">
-            <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-soft">
-              {liveUrl ? (
-                <iframe
-                  src={liveUrl}
-                  title="Record browser session"
-                  allow="clipboard-read; clipboard-write"
-                  className="w-full h-full border-0"
+            <div className="flex-1 rounded-xl overflow-hidden border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-soft flex flex-col">
+              {/* Browser tabs */}
+              {tabs.length > 0 && (
+                <BrowserTabs
+                  tabs={tabs}
+                  activeIndex={activeTabIndex}
+                  onSelectTab={handleSelectTab}
+                  onNewTab={handleNewTab}
+                  compact
                 />
-              ) : (
-                <BrowserLoading minHeight="400px" />
               )}
+              {/* Browser iframe */}
+              <div className="flex-1 min-h-0">
+                {liveUrl ? (
+                  <iframe
+                    src={liveUrl}
+                    title="Record browser session"
+                    allow="clipboard-read; clipboard-write"
+                    className="w-full h-full border-0"
+                  />
+                ) : (
+                  <BrowserLoading minHeight="400px" />
+                )}
+              </div>
             </div>
           </div>
 

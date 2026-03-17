@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import useStartSession from "../hooks/useStartSession";
@@ -9,7 +9,11 @@ import {
   faCoins,
   faArrowLeft,
   faChevronDown,
+  faGlobe,
+  faAngleDown,
+  faUserCircle,
 } from "@fortawesome/free-solid-svg-icons";
+import { websites } from "../utils/mock/mockDB";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -37,10 +41,14 @@ export default function CreateSkill() {
   const [goal, setGoal] = useState("");
   const [mode, setMode] = useState<GenerationMode>("agent");
   const [agentInstructions, setAgentInstructions] = useState("");
-  const [recordUrl, setRecordUrl] = useState("");
+  const [initialUrl, setInitialUrl] = useState("");
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
+  const [urlDropdownOpen, setUrlDropdownOpen] = useState(false);
+  const [filteredWebsites, setFilteredWebsites] = useState(websites);
+  const [, setOperator] = useState("autoppia");
+  const [operatorDropdownOpen, setOperatorDropdownOpen] = useState(false);
   const goalRef = useRef<HTMLTextAreaElement>(null);
   const instructionsRef = useRef<HTMLTextAreaElement>(null);
 
@@ -52,14 +60,19 @@ export default function CreateSkill() {
       .catch(() => {});
   }, [user.email]);
 
+  // Auto-select first profile
+  const autoSelected = useRef(false);
+  useEffect(() => {
+    if (profiles.length > 0 && !autoSelected.current) {
+      setSelectedProfileId(profiles[0].id);
+      autoSelected.current = true;
+    }
+  }, [profiles]);
+
   const handleGoalChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setGoal(e.target.value);
     e.target.style.height = "auto";
     e.target.style.height = `${e.target.scrollHeight}px`;
-    if (instructionsRef.current) {
-      instructionsRef.current.style.height = "auto";
-      instructionsRef.current.style.height = `${e.target.scrollHeight}px`;
-    }
   };
 
   const handleInstructionsChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
@@ -68,30 +81,49 @@ export default function CreateSkill() {
     e.target.style.height = `${e.target.scrollHeight}px`;
   };
 
+  const handleUrlChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setInitialUrl(value);
+    if (value) {
+      setFilteredWebsites(websites.filter((w) => w.url.toLowerCase().includes(value.toLowerCase())));
+    } else {
+      setFilteredWebsites(websites);
+    }
+    setUrlDropdownOpen(true);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!goal.trim()) return;
 
+    const profile = profiles.find((p) => p.id === selectedProfileId);
+    const contextId = profile?.contextId || "";
+
     if (mode === "agent") {
       if (!agentInstructions.trim()) return;
-      // Agent instructions are the real task prompt; goal is just a description label
-      await startSession(agentInstructions.trim(), "", "", {
+      await startSession(agentInstructions.trim(), initialUrl.trim(), contextId, {
         skillMode: true,
         skillName: name.trim(),
         skillGoal: goal.trim(),
         skillInstructions: agentInstructions.trim(),
       });
     } else {
-      const profile = profiles.find((p) => p.id === selectedProfileId);
       navigate("/skills/record", {
         state: {
           skillName: name.trim(),
           skillGoal: goal.trim(),
-          initialUrl: recordUrl.trim() || "https://duckduckgo.com",
-          contextId: profile?.contextId || "",
+          initialUrl: initialUrl.trim() || "https://duckduckgo.com",
+          contextId,
         },
       });
     }
+  };
+
+  // Close dropdowns when clicking outside
+  const closeDropdowns = () => {
+    setUrlDropdownOpen(false);
+    setProfileDropdownOpen(false);
+    setOperatorDropdownOpen(false);
   };
 
   return (
@@ -126,7 +158,7 @@ export default function CreateSkill() {
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-8">
+        <div className="flex-1 overflow-auto px-6 py-8" onClick={closeDropdowns}>
           <div className="max-w-2xl mx-auto">
             <form onSubmit={handleSubmit} className="space-y-8">
 
@@ -232,7 +264,7 @@ export default function CreateSkill() {
                 </div>
               </div>
 
-              {mode === "agent" ? (
+              {mode === "agent" && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
                     Agent Instructions <span className="text-red-500 ml-0.5">*</span>
@@ -248,56 +280,101 @@ export default function CreateSkill() {
                     onChange={handleInstructionsChange}
                   />
                 </div>
-              ) : (
-                <>
-                  {/* Starting URL */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Starting URL <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
-                    </label>
+              )}
+
+              {/* Website URL — shared by both modes */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  Website URL <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+                </label>
+                <div className="relative" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-2 px-3 h-10 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
+                    focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-200">
+                    <FontAwesomeIcon icon={faGlobe} className="text-gray-400 text-sm flex-shrink-0" />
                     <input
                       type="text"
                       placeholder="https://duckduckgo.com"
-                      className="w-full h-10 px-3 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
-                        text-sm text-gray-900 dark:text-white placeholder:text-gray-400 font-mono
-                        outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200"
-                      value={recordUrl}
-                      onChange={(e) => setRecordUrl(e.target.value)}
+                      className="w-full outline-none bg-transparent text-sm text-gray-900 dark:text-white placeholder:text-gray-400 font-mono"
+                      value={initialUrl}
+                      onChange={handleUrlChange}
+                      onFocus={() => {
+                        if (!initialUrl) setFilteredWebsites(websites);
+                        setUrlDropdownOpen(true);
+                      }}
                     />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setFilteredWebsites(initialUrl
+                          ? websites.filter((w) => w.url.toLowerCase().includes(initialUrl.toLowerCase()))
+                          : websites
+                        );
+                        setUrlDropdownOpen((v) => !v);
+                      }}
+                      className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      <FontAwesomeIcon icon={faAngleDown} className="text-xs" />
+                    </button>
                   </div>
+                  {urlDropdownOpen && filteredWebsites.length > 0 && (
+                    <div className="absolute z-20 mt-1 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-200 dark:border-dark-border overflow-hidden">
+                      <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
+                        {filteredWebsites.map((website) => (
+                          <div
+                            key={website.url}
+                            className="cursor-pointer p-2.5 rounded-lg flex items-center hover:bg-gradient-primary hover:text-white
+                              text-gray-700 dark:text-gray-200 transition-colors duration-200"
+                            onClick={() => {
+                              setInitialUrl(website.url);
+                              setUrlDropdownOpen(false);
+                            }}
+                          >
+                            <img alt="" src={website.favicon} className="w-5 h-5 rounded me-2.5" />
+                            <span className="text-sm font-medium">{website.title}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-                  {/* Profile selection */}
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Profile <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
-                    </label>
-                    <div className="relative">
-                      <button
-                        type="button"
-                        onClick={() => setProfileDropdownOpen((v) => !v)}
-                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
-                          text-sm text-left flex items-center justify-between
-                          outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200 cursor-pointer"
-                      >
-                        <span className={selectedProfileId ? "text-gray-900 dark:text-white" : "text-gray-400"}>
-                          {selectedProfileId
-                            ? profiles.find((p) => p.id === selectedProfileId)?.name || "Unknown"
-                            : "No profile (fresh session)"}
-                        </span>
-                        <FontAwesomeIcon
-                          icon={faChevronDown}
-                          className={`text-[10px] text-gray-400 transition-transform duration-200 ${profileDropdownOpen ? "rotate-180" : ""}`}
-                        />
-                      </button>
-                      {profileDropdownOpen && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setProfileDropdownOpen(false)} />
-                          <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl bg-white dark:bg-dark-surface
-                            border border-gray-200 dark:border-dark-border shadow-lg overflow-hidden">
+              {/* Profile & Operator — inline row */}
+              <div className="flex items-start gap-4">
+                {/* Profile selector */}
+                <div className="flex-1 space-y-2">
+                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Profile <span className="text-gray-400 dark:text-gray-500 font-normal">(optional)</span>
+                  </label>
+                  <div className="relative" onClick={(e) => e.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={() => setProfileDropdownOpen((v) => !v)}
+                      className="w-full h-10 px-3 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
+                        text-sm text-left flex items-center gap-2
+                        outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200 cursor-pointer"
+                    >
+                      <FontAwesomeIcon icon={faUserCircle} className={`text-xs flex-shrink-0 ${selectedProfileId ? "text-primary" : "text-gray-400"}`} />
+                      <span className={`flex-1 truncate ${selectedProfileId ? "text-gray-900 dark:text-white" : "text-gray-400"}`}>
+                        {selectedProfileId
+                          ? profiles.find((p) => p.id === selectedProfileId)?.name || "Unknown"
+                          : "No profile"}
+                      </span>
+                      <FontAwesomeIcon
+                        icon={faChevronDown}
+                        className={`text-[10px] text-gray-400 transition-transform duration-200 flex-shrink-0 ${profileDropdownOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {profileDropdownOpen && (
+                      <>
+                        <div className="fixed inset-0 z-10" onClick={() => setProfileDropdownOpen(false)} />
+                        <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl bg-white dark:bg-dark-surface
+                          border border-gray-200 dark:border-dark-border shadow-lg overflow-hidden">
+                          <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
                             <button
                               type="button"
                               onClick={() => { setSelectedProfileId(""); setProfileDropdownOpen(false); }}
-                              className={`w-full text-left px-3 py-2 text-sm transition-colors
+                              className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors
                                 ${!selectedProfileId
                                   ? "bg-primary/5 text-primary font-medium"
                                   : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"}`}
@@ -309,7 +386,7 @@ export default function CreateSkill() {
                                 key={p.id}
                                 type="button"
                                 onClick={() => { setSelectedProfileId(p.id); setProfileDropdownOpen(false); }}
-                                className={`w-full text-left px-3 py-2 text-sm transition-colors
+                                className={`w-full text-left px-3 py-2 text-sm rounded-lg transition-colors
                                   ${selectedProfileId === p.id
                                     ? "bg-primary/5 text-primary font-medium"
                                     : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"}`}
@@ -318,15 +395,54 @@ export default function CreateSkill() {
                               </button>
                             ))}
                           </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                </div>
+
+                {/* Operator selector */}
+                {mode === "agent" && (
+                  <div className="flex-1 space-y-2">
+                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      Operator
+                    </label>
+                    <div className="relative" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        type="button"
+                        onClick={() => setOperatorDropdownOpen((v) => !v)}
+                        className="w-full h-10 px-3 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
+                          text-sm text-left flex items-center gap-2
+                          outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200 cursor-pointer"
+                      >
+                        <FontAwesomeIcon icon={faRobot} className="text-xs text-primary flex-shrink-0" />
+                        <span className="flex-1 truncate text-gray-900 dark:text-white">Autoppia Operator</span>
+                        <FontAwesomeIcon
+                          icon={faChevronDown}
+                          className={`text-[10px] text-gray-400 transition-transform duration-200 flex-shrink-0 ${operatorDropdownOpen ? "rotate-180" : ""}`}
+                        />
+                      </button>
+                      {operatorDropdownOpen && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setOperatorDropdownOpen(false)} />
+                          <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl bg-white dark:bg-dark-surface
+                            border border-gray-200 dark:border-dark-border shadow-lg overflow-hidden">
+                            <div className="p-1">
+                              <button
+                                type="button"
+                                onClick={() => { setOperator("autoppia"); setOperatorDropdownOpen(false); }}
+                                className="w-full text-left px-3 py-2 text-sm rounded-lg bg-primary/5 text-primary font-medium"
+                              >
+                                Autoppia Operator
+                              </button>
+                            </div>
+                          </div>
                         </>
                       )}
                     </div>
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500">
-                      Select a profile to reuse saved browser state (cookies, logins).
-                    </p>
                   </div>
-                </>
-              )}
+                )}
+              </div>
 
               {/* Submit */}
               <button
