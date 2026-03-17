@@ -70,11 +70,6 @@ function initActions(initialActions?: any[], actionHistory?: any[]): ActionEntry
       ),
     }));
 
-  // Auto-insert navigate to duckduckgo if first action isn't a navigate
-  if (filtered.length === 0 || filtered[0].action !== "browser.navigate") {
-    filtered.unshift({ action: "browser.navigate", args: { url: "https://duckduckgo.com" } });
-  }
-
   return filtered;
 }
 

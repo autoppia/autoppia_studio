@@ -253,7 +253,7 @@ function ProfilesTab() {
 
   const startTabPolling = useCallback((profileId: string) => {
     if (tabPollRef.current) clearInterval(tabPollRef.current);
-    tabPollRef.current = setInterval(() => refreshTabs(profileId), 5000);
+    tabPollRef.current = setInterval(() => refreshTabs(profileId), 2000);
   }, [refreshTabs]);
 
   const stopTabPolling = useCallback(() => {

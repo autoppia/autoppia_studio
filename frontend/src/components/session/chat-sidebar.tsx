@@ -80,7 +80,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         dispatch(setSessionId(sessionId));
       }
 
-      const targetUrl = lastUrl || "https://duckduckgo.com";
+      const targetUrl = lastUrl || "";
       const newSocket = initializeSocket(dispatch, false, targetUrl);
 
       if (lastUrl) {
@@ -93,7 +93,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       } else {
         newSocket.emit("start-task", {
           task: taskWithInstructions,
-          initial_url: "https://duckduckgo.com",
+          initial_url: "",
           context_id: contextId || "",
         });
       }

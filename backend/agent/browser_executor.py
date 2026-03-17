@@ -89,10 +89,12 @@ class BrowserExecutor:
 
         self.context.on("page", self._handle_new_page)
         self.page.on("close", self._handle_page_close)
+        self.page.on("framenavigated", self._handle_frame_navigated)
 
-        if not initial_url:
-            initial_url = "https://duckduckgo.com"
-        await self.page.goto(initial_url)
+        if initial_url:
+            await self.page.goto(initial_url)
+        else:
+            await self.page.set_content("<html><head><title>New Tab</title></head><body></body></html>")
 
         if context_id:
             cookies_after = await self.context.cookies()
@@ -102,6 +104,7 @@ class BrowserExecutor:
         logger.info("New page created")
         self.page = page
         page.on("close", self._handle_page_close)
+        page.on("framenavigated", self._handle_frame_navigated)
         # Schedule tab change notification in background (don't block Playwright event handler)
         if self._on_tab_change:
             asyncio.create_task(self._delayed_fire_tab_change(1.0))
@@ -115,6 +118,11 @@ class BrowserExecutor:
                 logger.warning("All pages have been closed.")
                 self.page = None
         if self._on_tab_change:
+            asyncio.create_task(self._delayed_fire_tab_change(0.5))
+
+    def _handle_frame_navigated(self, frame):
+        """Update tab titles when a page navigates (only for main frames)."""
+        if frame.parent_frame is None and self._on_tab_change:
             asyncio.create_task(self._delayed_fire_tab_change(0.5))
 
     async def _delayed_fire_tab_change(self, delay: float):
@@ -158,7 +166,7 @@ class BrowserExecutor:
                 tabs.append({
                     "id": str(i),
                     "url": p.url if not p.is_closed() else "",
-                    "title": "",
+                    "title": p.url.split("/")[2] if not p.is_closed() and "://" in p.url else "",
                     "favicon_url": "",
                     "debugger_fullscreen_url": "",
                 })
@@ -173,13 +181,15 @@ class BrowserExecutor:
                     return i
         return 0
 
-    async def open_new_tab(self, url: str = "about:blank") -> list[dict]:
+    async def open_new_tab(self, url: str = "") -> list[dict]:
         """Open a new tab, navigate to url, and return updated tabs list."""
         if self.context:
             new_page = await self.context.new_page()
             self.page = new_page
-            if url and url != "about:blank":
+            if url:
                 await new_page.goto(url, timeout=15000)
+            else:
+                await new_page.set_content("<html><head><title>New Tab</title></head><body></body></html>")
         return self.get_tabs()
 
     async def close(self):

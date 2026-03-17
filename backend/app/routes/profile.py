@@ -246,9 +246,11 @@ async def new_tab(profile_id: str, body: NewTabRequest = NewTabRequest()):
         # Open a new page via Playwright
         if context:
             new_page = await context.new_page()
-            url = body.url or "about:blank"
-            if url and url != "about:blank":
+            url = body.url or ""
+            if url:
                 await new_page.goto(url, timeout=15000)
+            else:
+                await new_page.set_content("<html><head><title>New Tab</title></head><body></body></html>")
 
         # Wait briefly for BrowserBase to register the new page
         await asyncio.sleep(1.0)

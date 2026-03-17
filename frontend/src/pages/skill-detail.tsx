@@ -133,9 +133,9 @@ export default function SkillDetail() {
       ),
     }));
 
-    // Determine initial URL from first navigate action, or duckduckgo
+    // Determine initial URL from first navigate action
     const firstNav = resolvedActions.find((a: any) => a.action === "browser.navigate");
-    const initialUrl: string = String(firstNav?.args?.url || "https://duckduckgo.com");
+    const initialUrl: string = String(firstNav?.args?.url || "");
 
     // Set up session (same pattern as useStartSession)
     dispatch(resetSocket());

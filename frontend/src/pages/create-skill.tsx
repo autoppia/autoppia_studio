@@ -112,7 +112,7 @@ export default function CreateSkill() {
         state: {
           skillName: name.trim(),
           skillGoal: goal.trim(),
-          initialUrl: initialUrl.trim() || "https://duckduckgo.com",
+          initialUrl: initialUrl.trim(),
           contextId,
         },
       });
@@ -293,7 +293,7 @@ export default function CreateSkill() {
                     <FontAwesomeIcon icon={faGlobe} className="text-gray-400 text-sm flex-shrink-0" />
                     <input
                       type="text"
-                      placeholder="https://duckduckgo.com"
+                      placeholder="https://google.com"
                       className="w-full outline-none bg-transparent text-sm text-gray-900 dark:text-white placeholder:text-gray-400 font-mono"
                       value={initialUrl}
                       onChange={handleUrlChange}

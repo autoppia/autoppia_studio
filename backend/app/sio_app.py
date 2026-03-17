@@ -45,7 +45,7 @@ async def start_task(sid, data):
         # Notify frontend of initial navigation before browser launches
         await sio.emit('action', {
             'action': 'browser.navigate',
-            'reasoning': f'Navigating to {initial_url or "https://duckduckgo.com"}...',
+            'reasoning': f'Navigating to {initial_url}...' if initial_url else 'Initializing browser...',
             'previous_success': True,
         }, to=sid)
 
@@ -170,7 +170,7 @@ async def stop_task(sid, data=None):
 async def play_actions(sid, data):
     """Execute a list of recorded actions directly without the AI agent."""
     actions = data.get("actions", [])
-    initial_url = data.get("initial_url", "https://duckduckgo.com")
+    initial_url = data.get("initial_url", "")
     context_id = data.get("context_id", "")
     action_delay = data.get("delay", 1.0)
 
@@ -201,6 +201,12 @@ async def play_actions(sid, data):
             await sio.emit('live_url', {'url': live_url}, to=sid)
 
         await _emit_tabs(sid, operator)
+
+        # Wire up tab-change callback so frontend updates tab bar on navigation
+        async def on_tab_change_play():
+            await _emit_tabs(sid, operator)
+
+        operator.browser_executor.set_on_tab_change(on_tab_change_play)
 
         page = operator.browser_executor.page
         history = []
@@ -385,7 +391,7 @@ recording_actions = {}
 
 @sio.on("start-record")
 async def start_record(sid, data):
-    initial_url = data.get("initial_url", "https://duckduckgo.com")
+    initial_url = data.get("initial_url", "")
     context_id = data.get("context_id", "")
 
     logger.info(f"Starting recording for {sid}, initial URL: {initial_url}")
@@ -493,6 +499,11 @@ async def start_record(sid, data):
                 # Skip about:blank and browser-internal URLs
                 if not url or url == "about:blank" or url.startswith("chrome"):
                     return
+
+                # Update tab titles/URLs on every main-frame navigation
+                await asyncio.sleep(0.5)
+                await emit_record_tabs()
+
                 actions = recording_actions.get(sid, [])
                 # Skip if same URL as last navigate
                 if actions and actions[-1].get("action") == "browser.navigate" and actions[-1].get("args", {}).get("url") == url:
@@ -567,11 +578,11 @@ async def new_tab_record(sid, data=None):
         return
 
     try:
-        await be.open_new_tab("about:blank")
+        await be.open_new_tab()
 
         # Record the action
         actions = recording_actions.get(sid, [])
-        new_tab_action = {"action": "browser.new_tab", "args": {"url": "about:blank"}}
+        new_tab_action = {"action": "browser.new_tab", "args": {}}
         actions.append(new_tab_action)
         await sio.emit('recorded-action', {**new_tab_action, "index": len(actions) - 1}, to=sid)
 

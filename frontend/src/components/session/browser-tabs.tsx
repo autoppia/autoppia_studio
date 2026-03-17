@@ -14,7 +14,12 @@ interface BrowserTabsProps {
   compact?: boolean;
 }
 
+function isBlankUrl(url: string): boolean {
+  return !url || url === "about:blank" || url.startsWith("chrome");
+}
+
 function extractDomain(url: string): string {
+  if (isBlankUrl(url)) return "";
   try {
     const u = new URL(url);
     return u.hostname;
@@ -41,7 +46,7 @@ export default function BrowserTabs({
       <div className={`flex items-end gap-0.5 flex-1 min-w-0 overflow-x-auto scrollbar-thin ${compact ? "pt-0.5" : "pt-2"}`}>
         {tabs.map((tab, index) => {
           const isActive = index === activeIndex;
-          const title = tab.title || extractDomain(tab.url) || `Tab ${index + 1}`;
+          const title = (tab.title && tab.title !== "about:blank") ? tab.title : extractDomain(tab.url) || "New Tab";
 
           return (
             <div

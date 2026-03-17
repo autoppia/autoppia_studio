@@ -196,7 +196,7 @@ async def _parameterize_with_llm(
             "Rules:\n"
             "- Parameter names must be snake_case\n"
             "- Passwords/secrets: set defaultValue to empty string\n"
-            "- Fixed infrastructure URLs (google.com, duckduckgo.com) should NOT be parameterized\n"
+            "- Fixed infrastructure URLs (google.com) should NOT be parameterized\n"
             "- If skill_goal is provided, use it as the 'goal' field (it's the user's label)\n"
             "- Keep actions list concise — only the core steps"
         )

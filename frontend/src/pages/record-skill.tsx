@@ -31,7 +31,7 @@ export default function RecordSkill() {
 
   const skillName = (location.state as any)?.skillName || "";
   const skillGoal = (location.state as any)?.skillGoal || "";
-  const initialUrl = (location.state as any)?.initialUrl || "https://duckduckgo.com";
+  const initialUrl = (location.state as any)?.initialUrl || "";
   const contextId = (location.state as any)?.contextId || "";
 
   const [liveUrl, setLiveUrl] = useState<string | null>(null);
