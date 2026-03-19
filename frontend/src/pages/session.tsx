@@ -35,7 +35,7 @@ function Session(): React.ReactElement {
   const browserContainerRef = useRef<HTMLDivElement | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
-  const { id: sessionId } = useParams<{ id: string }>();
+  const { id: sessionId, evalId: evalIdFromParam } = useParams<{ id: string; evalId: string }>();
   const location = useLocation();
   const locationState = location.state as {
     activeSessionId?: string;
@@ -43,7 +43,11 @@ function Session(): React.ReactElement {
     skillName?: string;
     skillGoal?: string;
     skillInstructions?: string;
+    evalMode?: boolean;
+    evalId?: string;
+    runId?: string;
   } | null;
+  const isEvalMode = locationState?.evalMode || location.pathname.startsWith("/evals/");
   const { addHistoryItem } = useOutletContext<{
     sidebarExpanded: boolean;
     addHistoryItem: (item: HistoryItem) => void;
@@ -330,7 +334,7 @@ function Session(): React.ReactElement {
         <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-4 h-full relative overflow-hidden">
           {/* Browser view */}
           <div className="flex w-full flex-grow min-h-0 relative overflow-hidden mt-2">
-            {socketId && liveUrl ? (
+            {socketId && liveUrl && !completed ? (
               <div ref={browserContainerRef} className={browserContainerClass + " flex-col"}>
                 <BrowserTabs
                   tabs={tabs}
@@ -348,7 +352,7 @@ function Session(): React.ReactElement {
                   style={{ pointerEvents: "none" }}
                 />
               </div>
-            ) : socketId && !liveUrl ? (
+            ) : socketId && !liveUrl && !completed ? (
               <div className={browserContainerClass}>
                 <BrowserLoading minHeight="600px" />
               </div>
@@ -401,6 +405,9 @@ function Session(): React.ReactElement {
           skillName={locationState?.skillName}
           skillGoal={locationState?.skillGoal}
           skillInstructions={locationState?.skillInstructions}
+          evalMode={isEvalMode}
+          evalId={locationState?.evalId || evalIdFromParam}
+          runId={locationState?.runId}
         />
       </div>
 

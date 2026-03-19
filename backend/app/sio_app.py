@@ -156,6 +156,7 @@ async def stop_task(sid, data=None):
         except Exception:
             pass
         result['actionHistory'] = getattr(operator, 'history', [])
+        result['screenshots'] = getattr(operator, 'screenshots', [])
 
         # Start keep-alive to keep browser session open
         old_ka = keepalive_tasks.pop(sid, None)
@@ -253,6 +254,7 @@ async def play_actions(sid, data):
         except Exception:
             pass
         result['actionHistory'] = history
+        result['screenshots'] = getattr(operator, 'screenshots', [])
 
         await sio.emit('result', result, to=sid)
 
@@ -423,16 +425,17 @@ async def start_record(sid, data):
         if tabs:
             await sio.emit('tabs', {'tabs': tabs, 'activeIndex': active_index}, to=sid)
 
-        # Add the initial navigate as the first action
-        recording_actions[sid].append({
-            "action": "browser.navigate",
-            "args": {"url": initial_url}
-        })
-        await sio.emit('recorded-action', {
-            "action": "browser.navigate",
-            "args": {"url": initial_url},
-            "index": 0,
-        }, to=sid)
+        # Add the initial navigate as the first action (only if a URL was provided)
+        if initial_url:
+            recording_actions[sid].append({
+                "action": "browser.navigate",
+                "args": {"url": initial_url}
+            })
+            await sio.emit('recorded-action', {
+                "action": "browser.navigate",
+                "args": {"url": initial_url},
+                "index": 0,
+            }, to=sid)
 
         # Use raw CDP to inject recorder — Playwright's expose_function/add_init_script
         # don't work reliably over remote CDP connections (Browserbase).
@@ -773,6 +776,7 @@ async def _perform_task(sid, max_steps=25):
         except Exception as e:
             logger.warning(f"Failed to get current URL: {e}")
         result['actionHistory'] = operator.history
+        result['screenshots'] = operator.screenshots or []
 
         await sio.emit('result', result, to=sid)
 

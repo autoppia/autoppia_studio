@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPaperPlane, faWandMagicSparkles, faStop } from "@fortawesome/free-solid-svg-icons";
+import { faPaperPlane, faWandMagicSparkles, faStop, faThumbsUp, faThumbsDown } from "@fortawesome/free-solid-svg-icons";
 
 import AgentResponse from "./agent-response";
 import UserMessage from "./user-message";
@@ -16,6 +16,8 @@ import { useToast } from "../common/toast";
 import { CHAT_SIDEBAR_WIDTH } from "../../constants/layout";
 import { AppDispatch } from "../../redux/store";
 
+const apiUrl = process.env.REACT_APP_API_URL;
+
 interface ChatSidebarProps {
   open: boolean;
   toggleSideBar: () => void;
@@ -23,16 +25,21 @@ interface ChatSidebarProps {
   skillName?: string;
   skillGoal?: string;
   skillInstructions?: string;
+  evalMode?: boolean;
+  evalId?: string;
+  runId?: string;
 }
 
 export default function ChatSidebar(props: ChatSidebarProps) {
-  const { open, skillName, skillGoal, skillInstructions } = props;
+  const { open, skillMode, skillName, skillGoal, skillInstructions, evalMode, evalId, runId } = props;
 
   const [task, setTask] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
+  const [evalSaving, setEvalSaving] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
+  const navigate = useNavigate();
   const { id: sessionId } = useParams<{ id: string }>();
   const { showToast } = useToast();
   const chats = useSelector((state: any) => state.chat.chats);
@@ -49,7 +56,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const user = useSelector((state: any) => state.user);
 
   const isRunning = !!socketId && !completed;
-  const canSaveAsSkill = !isRunning && chats.length > 0;
+  const showPostActions = !isRunning && chats.length > 0;
 
   const handleSubmit = async () => {
     if (!task.trim() || submitting) return;
@@ -113,15 +120,67 @@ export default function ChatSidebar(props: ChatSidebarProps) {
     }
   };
 
+  const handleEvalLabel = async (label: "pass" | "fail") => {
+    if (evalSaving || !evalId || !runId) return;
+    setEvalSaving(true);
+    try {
+      // Extract all screenshots from chat history
+      const allScreenshots = chats
+        .filter((c: any) => c.role === "assistant" && c.screenshots)
+        .flatMap((c: any) => c.screenshots || []);
+
+      const res = await fetch(`${apiUrl}/evals/${evalId}/runs/${runId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          label,
+          actions: actionHistory || [],
+          sessionId: sessionId || reduxSessionId || "",
+          screenshots: allScreenshots,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to save eval");
+      showToast(`Eval marked as ${label}`, "success");
+      navigate(`/evals/${evalId}`);
+    } catch (err) {
+      console.error("Failed to save eval:", err);
+      showToast("Failed to save eval", "error");
+    } finally {
+      setEvalSaving(false);
+    }
+  };
+
   const inputArea = (
     <div className="flex flex-col px-1 mb-4 gap-2">
-      {/* Save as Skill button — shown only on successful task completion */}
-      {canSaveAsSkill && (
+      {/* Post-completion actions — mode-specific */}
+      {showPostActions && evalMode && (
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleEvalLabel("pass")}
+            disabled={evalSaving}
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl text-sm font-semibold
+              bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-[1.02]
+              transition-all duration-200"
+          >
+            <FontAwesomeIcon icon={faThumbsUp} className="text-xs" />
+            Pass
+          </button>
+          <button
+            onClick={() => handleEvalLabel("fail")}
+            disabled={evalSaving}
+            className="flex-1 flex items-center justify-center gap-2 h-10 rounded-xl text-sm font-semibold
+              bg-red-500 hover:bg-red-600 text-white transition-all duration-200 cursor-pointer"
+          >
+            <FontAwesomeIcon icon={faThumbsDown} className="text-xs" />
+            Fail
+          </button>
+        </div>
+      )}
+      {showPostActions && skillMode && (
         <button
           onClick={() => setShowConvertModal(true)}
           className="flex items-center justify-center gap-2 w-full h-9 rounded-xl text-sm font-medium
-            border border-primary/30 text-primary bg-primary/5 dark:bg-primary/10
-            hover:bg-primary/10 dark:hover:bg-primary/20 hover:border-primary/50
+            bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-[1.02]
             transition-all duration-200"
         >
           <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />
@@ -137,7 +196,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           <FontAwesomeIcon icon={faStop} className="text-xs" />
           Stop Agent
         </button>
-      ) : (
+      ) : !evalMode && (
         <div
           className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
           focus-within:border-gray-300 dark:focus-within:border-gray-600 focus-within:shadow-soft transition-all duration-300 px-4 py-1"

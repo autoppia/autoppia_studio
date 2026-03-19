@@ -86,6 +86,7 @@ const chatSlice = createSlice({
           content: action.payload.content,
           state: action.payload.state,
           actionResults: prevResults,
+          screenshots: action.payload.screenshots || lastChat.screenshots || [],
         };
       } else {
         state.chats = [
@@ -94,6 +95,7 @@ const chatSlice = createSlice({
             role: "assistant",
             content: action.payload.content,
             state: action.payload.state,
+            screenshots: action.payload.screenshots || [],
           },
         ];
       }

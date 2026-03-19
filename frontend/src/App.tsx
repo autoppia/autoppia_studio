@@ -12,6 +12,8 @@ import Skills from "./pages/skills";
 import CreateSkill from "./pages/create-skill";
 import SkillDetail from "./pages/skill-detail";
 import RecordSkill from "./pages/record-skill";
+import Evals from "./pages/evals";
+import EvalDetail from "./pages/eval-detail";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -104,6 +106,9 @@ function App() {
                 <Route path="/skills/create" element={<CreateSkill />} />
                 <Route path="/skills/record" element={<RecordSkill />} />
                 <Route path="/skills/:skillId" element={<SkillDetail />} />
+                <Route path="/evals" element={<Evals />} />
+                <Route path="/evals/:evalId" element={<EvalDetail />} />
+                <Route path="/evals/:evalId/run/:id" element={<Session />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}
               <Route path="/signin" element={<Navigate to="/" replace />} />

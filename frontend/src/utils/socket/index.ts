@@ -68,6 +68,7 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
         content: result.content,
         success: result.success,
         state: result.success ? "success" : "error",
+        screenshots: result.screenshots || [],
       })
     );
     if (result.lastUrl) {

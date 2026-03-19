@@ -37,6 +37,23 @@ export interface Skill {
   createdAt?: string;
 }
 
+export interface EvalItem {
+  evalId: string;
+  prompt: string;
+  initialUrl: string;
+  createdAt?: string;
+}
+
+export interface EvalRun {
+  runId: string;
+  evalId: string;
+  sessionId: string;
+  actions: any[];
+  label: "pass" | "fail" | "pending";
+  screenshots?: string[];
+  createdAt?: string;
+}
+
 export interface ParameterizeResult {
   name: string;
   goal: string;
