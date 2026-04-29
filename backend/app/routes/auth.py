@@ -47,6 +47,12 @@ class GoogleAuthRequest(BaseModel):
     access_token: str
 
 
+class ChangePasswordRequest(BaseModel):
+    email: EmailStr
+    current_password: str
+    new_password: str
+
+
 # ── Helpers ──────────────────────────────────────────────────────
 
 def _create_token(email: str) -> str:
@@ -252,3 +258,32 @@ async def google_auth(body: GoogleAuthRequest):
             "instructions": user.get("instructions", ""),
         },
     }
+
+
+@router.post("/change-password")
+async def change_password(body: ChangePasswordRequest):
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user = await users_collection.find_one({"email": body.email})
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    if user.get("auth_provider") == "google" and not user.get("password"):
+        raise HTTPException(
+            status_code=400,
+            detail="This account uses Google sign-in. Use Google account settings to change your password.",
+        )
+
+    stored_password = user.get("password", "")
+    if not stored_password or not bcrypt.checkpw(
+        body.current_password.encode("utf-8"), stored_password.encode("utf-8")
+    ):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+
+    hashed = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt())
+    await users_collection.update_one(
+        {"email": body.email},
+        {"$set": {"password": hashed.decode("utf-8")}},
+    )
+    return {"message": "Password changed successfully"}

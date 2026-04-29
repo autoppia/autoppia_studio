@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle, FormEvent } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -13,9 +13,18 @@ import {
   faGear,
   faWandMagicSparkles,
   faClipboardCheck,
+  faLock,
+  faTrash,
+  faXmark,
+  faEye,
+  faEyeSlash,
+  faWallet,
+  faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { logout } from "../../redux/userSlice";
+import ConfirmModal from "../common/confirm-modal";
+import { useToast } from "../common/toast";
 
 import { HistoryItem } from "../../utils/types";
 
@@ -58,11 +67,120 @@ function TypewriterText({ text, speed = 30, onComplete }: { text: string; speed?
   return <>{displayed}<span className="animate-pulse">|</span></>;
 }
 
+function ChangePasswordModal({ email, onClose }: { email: string; onClose: () => void }) {
+  const { showToast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!currentPassword || !newPassword || !confirmPassword || submitting) return;
+
+    if (newPassword.length < 6) {
+      showToast("New password must be at least 6 characters", "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast("Passwords do not match", "error");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await fetch(`${apiUrl}/auth/change-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, current_password: currentPassword, new_password: newPassword }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(data?.detail || "Failed to change password", "error");
+        return;
+      }
+      showToast("Password changed successfully", "success");
+      onClose();
+    } catch {
+      showToast("Unable to reach the server. Please try again later.", "error");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const inputClass = `w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 dark:border-dark-border
+    bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
+    placeholder-gray-400 dark:placeholder-gray-500 outline-none
+    focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border p-6">
+        <div className="flex items-center justify-between mb-5">
+          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Change Password</h3>
+          <button
+            onClick={onClose}
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
+          >
+            <FontAwesomeIcon icon={faXmark} className="text-sm" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {[
+            { label: "Current Password", value: currentPassword, setValue: setCurrentPassword, show: showCurrent, setShow: setShowCurrent, placeholder: "Enter current password", autoFocus: true },
+            { label: "New Password", value: newPassword, setValue: setNewPassword, show: showNew, setShow: setShowNew, placeholder: "At least 6 characters", autoFocus: false },
+            { label: "Confirm New Password", value: confirmPassword, setValue: setConfirmPassword, show: showConfirm, setShow: setShowConfirm, placeholder: "Repeat new password", autoFocus: false },
+          ].map(({ label, value, setValue, show, setShow, placeholder, autoFocus }) => (
+            <div key={label}>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>
+              <div className="relative">
+                <input
+                  type={show ? "text" : "password"}
+                  value={value}
+                  onChange={(e) => setValue(e.target.value)}
+                  placeholder={placeholder}
+                  autoFocus={autoFocus}
+                  className={inputClass}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShow((v: boolean) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <FontAwesomeIcon icon={show ? faEyeSlash : faEye} className="text-sm" />
+                </button>
+              </div>
+            </div>
+          ))}
+
+          <button
+            type="submit"
+            disabled={!currentPassword || !newPassword || !confirmPassword || submitting}
+            className="w-full h-10 rounded-xl text-sm font-medium text-white bg-gradient-primary
+              disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
+          >
+            {submitting ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Change Password"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSidebar({ onExpandChange }, ref) {
   const [expanded, setExpanded] = useState(false);
   const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [historiesLoaded, setHistoriesLoaded] = useState(false);
   const [animatingId, setAnimatingId] = useState<string | null>(null);
+  const [profilePanelOpen, setProfilePanelOpen] = useState(false);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [confirmDeleteChats, setConfirmDeleteChats] = useState(false);
+  const { showToast } = useToast();
 
   useImperativeHandle(ref, () => ({
     addHistoryItem: (item: HistoryItem) => {
@@ -105,6 +223,23 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
       setHistoriesLoaded(true);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleDeleteAllChats = async () => {
+    setConfirmDeleteChats(false);
+    try {
+      const res = await fetch(`${apiUrl}/sessions/all?email=${user.email}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(data?.detail || "Failed to delete chats", "error");
+        return;
+      }
+      setHistories([]);
+      setHistoriesLoaded(false);
+      showToast("All chats deleted", "success");
+    } catch {
+      showToast("Unable to reach the server. Please try again later.", "error");
     }
   };
 
@@ -364,11 +499,15 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             <FontAwesomeIcon icon={faRightFromBracket} className="text-sm" />
             {expanded && <span className="text-xs">Sign Out</span>}
           </button>
-          {/* User avatar */}
+          {/* User avatar — opens profile panel */}
           {user.isAuthenticated && (
-            <div
+            <button
+              onClick={() => setProfilePanelOpen((v) => !v)}
               className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-                ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
+                hover:bg-gray-100 dark:hover:bg-dark-surface
+                ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}
+                ${profilePanelOpen ? "bg-gray-100 dark:bg-dark-surface" : ""}`}
+              title="My profile"
             >
               <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
                 <FontAwesomeIcon icon={faUser} className="text-[10px]" />
@@ -378,10 +517,87 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                   {user.email.split("@")[0]}
                 </span>
               )}
-            </div>
+            </button>
           )}
         </div>
       </div>
+
+      {/* Profile panel */}
+      {profilePanelOpen && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setProfilePanelOpen(false)} />
+          <div
+            className="fixed z-50 w-64 bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border p-4"
+            style={{ bottom: 16, left: (expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH) + 8 }}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
+                  <FontAwesomeIcon icon={faUser} className="text-[10px]" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
+                    {user.email.split("@")[0]}
+                  </p>
+                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setProfilePanelOpen(false)}
+                className="w-6 h-6 flex items-center justify-center rounded-md text-gray-400
+                  hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors flex-shrink-0"
+              >
+                <FontAwesomeIcon icon={faXmark} className="text-xs" />
+              </button>
+            </div>
+
+            <div className="h-px bg-gray-100 dark:bg-dark-border mb-3" />
+
+            <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-dark-bg mb-3">
+              <div className="flex items-center gap-1.5 mb-0.5">
+                <FontAwesomeIcon icon={faWallet} className="text-[10px] text-gray-400" />
+                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                  Available Credit
+                </span>
+              </div>
+              <p className="text-lg font-bold text-gray-800 dark:text-gray-100">$0.00</p>
+              <p className="text-[10px] text-gray-400 dark:text-gray-500">Free Beta</p>
+            </div>
+
+            <button
+              onClick={() => { setProfilePanelOpen(false); setChangePasswordOpen(true); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+                text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors mb-1"
+            >
+              <FontAwesomeIcon icon={faLock} className="text-xs" />
+              Change Password
+            </button>
+
+            <button
+              onClick={() => { setProfilePanelOpen(false); setConfirmDeleteChats(true); }}
+              className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
+                text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+            >
+              <FontAwesomeIcon icon={faTrash} className="text-xs" />
+              Delete All Chats
+            </button>
+          </div>
+        </>
+      )}
+
+      {changePasswordOpen && (
+        <ChangePasswordModal email={user.email} onClose={() => setChangePasswordOpen(false)} />
+      )}
+
+      {confirmDeleteChats && (
+        <ConfirmModal
+          title="Delete All Chats"
+          message="Are you sure you want to delete all your chat history? This action cannot be undone."
+          confirmLabel="Delete All"
+          onConfirm={handleDeleteAllChats}
+          onCancel={() => setConfirmDeleteChats(false)}
+        />
+      )}
     </>
   );
 });

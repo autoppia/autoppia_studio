@@ -112,6 +112,16 @@ async def get_session(session_id: str):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.delete("/sessions/all")
+async def delete_all_sessions(email: str):
+    """Delete all sessions for a user."""
+    try:
+        result = await sessions_collection.delete_many({"email": email})
+        return {"success": True, "deleted": result.deleted_count}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.put("/sessions/{session_id}/history")
 async def save_chat_history(session_id: str, body: ChatHistoryRequest):
     """Save chat history for a session."""
