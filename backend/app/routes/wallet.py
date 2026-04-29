@@ -46,12 +46,7 @@ async def list_transactions(
 
 @router.post("/topup", response_model=TopUpResponse)
 async def create_topup(body: TopUpRequest, email: CurrentEmail):
-    """Initiate a wallet top-up.
-
-    - **Mock mode** (PAYMENT_PROVIDER=mock): credits wallet immediately; returns status="completed".
-    - **Stripe mode** (PAYMENT_PROVIDER=stripe): creates a PaymentIntent and returns the
-      client_secret for frontend confirmation. Wallet is credited via the Stripe webhook.
-    """
+    raise HTTPException(status_code=503, detail="Payment integration not yet available.")
     try:
         provider = pp_module.get_payment_provider()
     except RuntimeError as exc:
