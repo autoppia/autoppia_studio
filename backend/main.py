@@ -27,6 +27,8 @@ from app.routes import profile as profile_routes
 from app.routes import api_keys as api_keys_routes
 from app.routes import skills as skills_routes
 from app.routes import evals as evals_routes
+from app.routes import wallet as wallet_routes
+from app.routes import payments as payments_routes
 
 fastapi_app = FastAPI(
     title="Automata API",
@@ -52,6 +54,8 @@ fastapi_app.include_router(profile_routes.router)
 fastapi_app.include_router(api_keys_routes.router)
 fastapi_app.include_router(skills_routes.router)
 fastapi_app.include_router(evals_routes.router)
+fastapi_app.include_router(wallet_routes.router)
+fastapi_app.include_router(payments_routes.router)
 
 
 @fastapi_app.get("/health")

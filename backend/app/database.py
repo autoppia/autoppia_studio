@@ -17,6 +17,8 @@ api_keys_collection = db["api_keys"]
 skills_collection = db["skills"]
 evals_collection = db["evals"]
 eval_runs_collection = db["eval_runs"]
+wallets_collection = db["wallets"]
+wallet_transactions_collection = db["wallet_transactions"]
 
 
 async def ensure_indexes():
@@ -33,4 +35,10 @@ async def ensure_indexes():
     await evals_collection.create_index("evalId", unique=True)
     await eval_runs_collection.create_index("evalId")
     await eval_runs_collection.create_index("runId", unique=True)
+    # Wallet indexes
+    await wallets_collection.create_index("email", unique=True)
+    await wallet_transactions_collection.create_index("email")
+    await wallet_transactions_collection.create_index("provider_payment_id", unique=True, sparse=True)
+    await wallet_transactions_collection.create_index("idempotency_key", unique=True)
+    await wallet_transactions_collection.create_index("created_at")
     logger.info("MongoDB indexes ensured")
