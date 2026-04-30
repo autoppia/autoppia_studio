@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useSearchParams } from "react-router-dom";
-import { useSelector, useDispatch } from "react-redux";
+import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCreditCard,
@@ -27,11 +27,23 @@ import {
 import BrowserTabs from "../components/session/browser-tabs";
 import ConfirmModal from "../components/common/confirm-modal";
 import type { BrowserTab } from "../redux/socketSlice";
-import { setWallet, setWalletLoading } from "../redux/walletSlice";
-import { fetchWallet, fetchTransactions } from "../api/wallet";
-import type { TransactionData } from "../api/wallet";
 
 const apiUrl = process.env.REACT_APP_API_URL;
+
+// UI-only placeholder until the wallet backend ships.
+const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR", loading: false };
+
+interface TransactionData {
+  id: string;
+  type: string;
+  amount: string;
+  currency: string;
+  status: string;
+  provider: string;
+  provider_payment_id: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
 
 const TABS = [
   { id: "profiles", label: "Profiles", icon: faUserCircle },
@@ -1095,21 +1107,8 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
 }
 
 function CreditTab() {
-  const dispatch = useDispatch();
-  const wallet = useSelector((state: any) => state.wallet);
+  const wallet = WALLET_PLACEHOLDER;
   const [modalOpen, setModalOpen] = useState(false);
-
-  const loadWallet = useCallback(async () => {
-    try {
-      dispatch(setWalletLoading(true));
-      const data = await fetchWallet();
-      dispatch(setWallet(data));
-    } catch {
-      dispatch(setWalletLoading(false));
-    }
-  }, [dispatch]);
-
-  useEffect(() => { loadWallet(); }, [loadWallet]);
 
   const currencySymbol = wallet.currency === "EUR" ? "€" : "$";
 
@@ -1181,25 +1180,12 @@ function txLabel(type: string) {
 }
 
 function InvoicesTab() {
-  const wallet = useSelector((state: any) => state.wallet);
-  const [transactions, setTransactions] = useState<TransactionData[]>([]);
-  const [txTotal, setTxTotal] = useState(0);
-  const [loading, setLoading] = useState(true);
+  const wallet = WALLET_PLACEHOLDER;
+  const transactions: TransactionData[] = [];
+  const txTotal = 0;
+  const loading = false;
   const [page, setPage] = useState(1);
   const LIMIT = 10;
-
-  const load = useCallback(async (p: number) => {
-    setLoading(true);
-    try {
-      const data = await fetchTransactions(p, LIMIT);
-      setTransactions(data.transactions);
-      setTxTotal(data.total);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { load(page); }, [load, page]);
 
   const currencySymbol = wallet.currency === "EUR" ? "€" : "$";
   const totalPages = Math.ceil(txTotal / LIMIT);
@@ -1310,7 +1296,7 @@ function TabContent({ tab }: { tab: TabId }) {
 export default function Settings(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "profiles";
-  const wallet = useSelector((state: any) => state.wallet);
+  const wallet = WALLET_PLACEHOLDER;
 
   const handleTabChange = (tab: TabId) => {
     setSearchParams({ tab });

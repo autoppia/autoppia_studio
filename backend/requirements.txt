@@ -5,4 +5,3 @@ Pillow
 bcrypt
 PyJWT
 anthropic
-stripe>=8.0.0
