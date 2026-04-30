@@ -34,13 +34,15 @@ async def get_sessions(email: str):
         cursor = sessions_collection.find({"email": email}).sort("createdAt", -1)
         sessions = []
         async for doc in cursor:
-            sessions.append({
-                "sessionId": doc.get("sessionId", ""),
-                "email": doc["email"],
-                "prompt": doc["prompt"],
-                "initialUrl": doc.get("initialUrl", ""),
-                "createdAt": doc.get("createdAt"),
-            })
+            sessions.append(
+                {
+                    "sessionId": doc.get("sessionId", ""),
+                    "email": doc["email"],
+                    "prompt": doc["prompt"],
+                    "initialUrl": doc.get("initialUrl", ""),
+                    "createdAt": doc.get("createdAt"),
+                }
+            )
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

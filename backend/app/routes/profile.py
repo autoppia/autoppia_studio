@@ -36,12 +36,14 @@ async def get_profiles(email: str):
         cursor = profiles_collection.find({"email": email}).sort("createdAt", -1)
         profiles = []
         async for doc in cursor:
-            profiles.append({
-                "id": str(doc["_id"]),
-                "name": doc["name"],
-                "contextId": doc["contextId"],
-                "createdAt": doc.get("createdAt"),
-            })
+            profiles.append(
+                {
+                    "id": str(doc["_id"]),
+                    "name": doc["name"],
+                    "contextId": doc["contextId"],
+                    "createdAt": doc.get("createdAt"),
+                }
+            )
         return {"profiles": profiles}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -147,13 +149,15 @@ async def run_profile(profile_id: str):
         # Build tabs list from pages
         tabs = []
         for p in debug_urls.pages:
-            tabs.append({
-                "id": p.id,
-                "url": p.url,
-                "title": p.title,
-                "favicon_url": p.favicon_url,
-                "debugger_fullscreen_url": p.debugger_fullscreen_url,
-            })
+            tabs.append(
+                {
+                    "id": p.id,
+                    "url": p.url,
+                    "title": p.title,
+                    "favicon_url": p.favicon_url,
+                    "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                }
+            )
 
         # Track active session so we can release it later
         _active_profile_sessions[profile_id] = {
@@ -259,13 +263,15 @@ async def new_tab(profile_id: str, body: NewTabRequest = NewTabRequest()):
         debug_urls = bb.sessions.debug(bb_session_id)
         tabs = []
         for p in debug_urls.pages:
-            tabs.append({
-                "id": p.id,
-                "url": p.url,
-                "title": p.title,
-                "favicon_url": p.favicon_url,
-                "debugger_fullscreen_url": p.debugger_fullscreen_url,
-            })
+            tabs.append(
+                {
+                    "id": p.id,
+                    "url": p.url,
+                    "title": p.title,
+                    "favicon_url": p.favicon_url,
+                    "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                }
+            )
 
         return {
             "tabs": tabs,
@@ -301,13 +307,15 @@ async def close_tab(profile_id: str, body: CloseTabRequest):
         debug_urls = bb.sessions.debug(bb_session_id)
         tabs = []
         for p in debug_urls.pages:
-            tabs.append({
-                "id": p.id,
-                "url": p.url,
-                "title": p.title,
-                "favicon_url": p.favicon_url,
-                "debugger_fullscreen_url": p.debugger_fullscreen_url,
-            })
+            tabs.append(
+                {
+                    "id": p.id,
+                    "url": p.url,
+                    "title": p.title,
+                    "favicon_url": p.favicon_url,
+                    "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                }
+            )
 
         active_index = min(body.tab_index, len(tabs) - 1) if tabs else 0
         return {
@@ -333,13 +341,15 @@ async def get_profile_tabs(profile_id: str):
         debug_urls = bb.sessions.debug(bb_session_id)
         tabs = []
         for p in debug_urls.pages:
-            tabs.append({
-                "id": p.id,
-                "url": p.url,
-                "title": p.title,
-                "favicon_url": p.favicon_url,
-                "debugger_fullscreen_url": p.debugger_fullscreen_url,
-            })
+            tabs.append(
+                {
+                    "id": p.id,
+                    "url": p.url,
+                    "title": p.title,
+                    "favicon_url": p.favicon_url,
+                    "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                }
+            )
         return {"tabs": tabs, "activeIndex": 0}
     except Exception as e:
         logger.error(f"Failed to get tabs: {e}", exc_info=True)
