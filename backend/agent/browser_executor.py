@@ -79,12 +79,9 @@ class BrowserExecutor:
                 args=[
                     "--disable-extensions",
                     "--disable-file-system",
-                ]
+                ],
             )
-            self.context = await self.browser.new_context(
-                viewport={"width": 1440, "height": 900},
-                storage_state=str(storage_state_path) if storage_state_path else None
-            )
+            self.context = await self.browser.new_context(viewport={"width": 1440, "height": 900}, storage_state=str(storage_state_path) if storage_state_path else None)
             self.page = await self.context.new_page()
 
         self.context.on("page", self._handle_new_page)
@@ -148,13 +145,15 @@ class BrowserExecutor:
                 debug_urls = self._bb_client.sessions.debug(self._bb_session_id)
                 tabs = []
                 for p in debug_urls.pages:
-                    tabs.append({
-                        "id": p.id,
-                        "url": p.url,
-                        "title": p.title,
-                        "favicon_url": p.favicon_url,
-                        "debugger_fullscreen_url": p.debugger_fullscreen_url,
-                    })
+                    tabs.append(
+                        {
+                            "id": p.id,
+                            "url": p.url,
+                            "title": p.title,
+                            "favicon_url": p.favicon_url,
+                            "debugger_fullscreen_url": p.debugger_fullscreen_url,
+                        }
+                    )
                 return tabs
             except Exception as e:
                 logger.warning(f"Failed to get tabs from BrowserBase: {e}")
@@ -163,13 +162,15 @@ class BrowserExecutor:
         if self.context:
             tabs = []
             for i, p in enumerate(self.context.pages):
-                tabs.append({
-                    "id": str(i),
-                    "url": p.url if not p.is_closed() else "",
-                    "title": p.url.split("/")[2] if not p.is_closed() and "://" in p.url else "",
-                    "favicon_url": "",
-                    "debugger_fullscreen_url": "",
-                })
+                tabs.append(
+                    {
+                        "id": str(i),
+                        "url": p.url if not p.is_closed() else "",
+                        "title": p.url.split("/")[2] if not p.is_closed() and "://" in p.url else "",
+                        "favicon_url": "",
+                        "debugger_fullscreen_url": "",
+                    }
+                )
             return tabs
         return []
 

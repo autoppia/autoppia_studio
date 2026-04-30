@@ -63,6 +63,7 @@ async def startup_event():
     await ensure_indexes()
     # Migrate existing users: add is_verified and auth_provider fields
     from app.database import users_collection
+
     await users_collection.update_many(
         {"is_verified": {"$exists": False}},
         {"$set": {"is_verified": True, "auth_provider": "email"}},

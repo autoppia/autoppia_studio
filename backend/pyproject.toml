@@ -14,3 +14,10 @@ dependencies = [
     "pyjwt>=2.11.0",
     "pydantic[email]>=2.11.5",
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# load_dotenv + sys.path before local `agent` import
+"main.py" = ["E402"]
+
+[tool.ruff]
+line-length = 200

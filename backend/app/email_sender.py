@@ -27,10 +27,7 @@ class EmailSender:
         from_email = EMAIL_HOST_USERNAME
         from_password = EMAIL_HOST_PASSWORD
         if not from_email or not from_password:
-            raise RuntimeError(
-                "Missing EMAIL_HOST_USERNAME or EMAIL_HOST_PASSWORD env vars. "
-                "For local testing set EMAIL_BACKEND=console in .env (OTP is logged here)."
-            )
+            raise RuntimeError("Missing EMAIL_HOST_USERNAME or EMAIL_HOST_PASSWORD env vars. For local testing set EMAIL_BACKEND=console in .env (OTP is logged here).")
 
         msg = MIMEMultipart()
         msg["Subject"] = subject

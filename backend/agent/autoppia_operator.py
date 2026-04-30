@@ -53,7 +53,7 @@ def _resolve_selector(args: dict) -> str:
     if "css_selector" in args:
         return args["css_selector"]
     if "xpath" in args:
-        return f'xpath={args["xpath"]}'
+        return f"xpath={args['xpath']}"
     return ""
 
 
@@ -138,8 +138,7 @@ async def _execute_tool_call(page, tool_call: dict) -> None:
         if script:
             await page.evaluate(script)
 
-    elif name in ("browser.screenshot", "browser.done", "browser.extract",
-                   "browser.dropdown_options"):
+    elif name in ("browser.screenshot", "browser.done", "browser.extract", "browser.dropdown_options"):
         pass  # handled at the step level or no-op
 
     else:
@@ -270,18 +269,22 @@ class AutoppiaOperator:
                     await _execute_tool_call(self.browser_executor.page, tool_call)
                     executed_any = True
                     success = True
-                    self.history.append({
-                        "step_index": self.step_index,
-                        "tool_call": tool_call,
-                    })
+                    self.history.append(
+                        {
+                            "step_index": self.step_index,
+                            "tool_call": tool_call,
+                        }
+                    )
                 except Exception as e:
                     logger.error(f"Error executing {tool_name}: {e}")
                     self._last_thought["previous_success"] = False
-                    self.history.append({
-                        "step_index": self.step_index,
-                        "tool_call": tool_call,
-                        "error": str(e),
-                    })
+                    self.history.append(
+                        {
+                            "step_index": self.step_index,
+                            "tool_call": tool_call,
+                            "error": str(e),
+                        }
+                    )
 
                 previous_success = success
 
@@ -299,10 +302,7 @@ class AutoppiaOperator:
 
         except ConnectionError as e:
             logger.error(f"CUA connection failed: {e}")
-            self.result = {
-                "content": f"Agent error: {e}",
-                "success": False
-            }
+            self.result = {"content": f"Agent error: {e}", "success": False}
             self.step_index += 1
             return True, False
         except Exception as e:
@@ -351,10 +351,7 @@ class AutoppiaOperator:
     def get_result(self) -> dict:
         if self.result:
             return self.result
-        return {
-            "content": None,
-            "success": False
-        }
+        return {"content": None, "success": False}
 
     def generate_gif(self, output_path: Path) -> str:
         try:
@@ -372,16 +369,10 @@ class AutoppiaOperator:
             if not frames:
                 return "GIF"
 
-            frames[0].save(
-                str(output_path),
-                save_all=True,
-                append_images=frames[1:],
-                duration=1000,
-                loop=0
-            )
+            frames[0].save(str(output_path), save_all=True, append_images=frames[1:], duration=1000, loop=0)
 
-            with open(output_path, 'rb') as f:
-                return base64.b64encode(f.read()).decode('utf-8')
+            with open(output_path, "rb") as f:
+                return base64.b64encode(f.read()).decode("utf-8")
 
         except Exception as e:
             logger.error(f"Error generating GIF: {e}")

@@ -33,12 +33,14 @@ async def get_api_keys(email: str):
         cursor = api_keys_collection.find({"email": email}).sort("createdAt", -1)
         keys = []
         async for doc in cursor:
-            keys.append({
-                "id": str(doc["_id"]),
-                "name": doc["name"],
-                "prefix": doc["prefix"],
-                "createdAt": doc.get("createdAt"),
-            })
+            keys.append(
+                {
+                    "id": str(doc["_id"]),
+                    "name": doc["name"],
+                    "prefix": doc["prefix"],
+                    "createdAt": doc.get("createdAt"),
+                }
+            )
         return {"apiKeys": keys}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

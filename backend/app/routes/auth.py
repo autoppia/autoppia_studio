@@ -21,8 +21,8 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_DAYS = 7
 
 
-
 # ── Request models ───────────────────────────────────────────────
+
 
 class SignUpRequest(BaseModel):
     email: EmailStr
@@ -55,6 +55,7 @@ class ChangePasswordRequest(BaseModel):
 
 # ── Helpers ──────────────────────────────────────────────────────
 
+
 def _create_token(email: str) -> str:
     payload = {
         "email": email,
@@ -78,6 +79,7 @@ def _send_otp_email(email: str, code: str) -> None:
 
 # ── Endpoints ────────────────────────────────────────────────────
 
+
 @router.post("/signup")
 async def signup(body: SignUpRequest):
     if len(body.password) < 6:
@@ -95,11 +97,13 @@ async def signup(body: SignUpRequest):
         # Unverified user re-signing up: update password and resend OTP
         await users_collection.update_one(
             {"email": body.email},
-            {"$set": {
-                "password": hashed.decode("utf-8"),
-                "verification_code": code,
-                "verification_code_expiry": expiry,
-            }},
+            {
+                "$set": {
+                    "password": hashed.decode("utf-8"),
+                    "verification_code": code,
+                    "verification_code_expiry": expiry,
+                }
+            },
         )
     else:
         new_user = {
@@ -130,9 +134,7 @@ async def signin(body: SignInRequest):
         )
 
     stored_password = user.get("password", "")
-    if not stored_password or not bcrypt.checkpw(
-        body.password.encode("utf-8"), stored_password.encode("utf-8")
-    ):
+    if not stored_password or not bcrypt.checkpw(body.password.encode("utf-8"), stored_password.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
 
     if not user.get("is_verified", False):
@@ -172,11 +174,13 @@ async def verify_otp(body: VerifyOTPRequest):
 
     await users_collection.update_one(
         {"email": body.email},
-        {"$set": {
-            "is_verified": True,
-            "verification_code": "",
-            "verification_code_expiry": None,
-        }},
+        {
+            "$set": {
+                "is_verified": True,
+                "verification_code": "",
+                "verification_code_expiry": None,
+            }
+        },
     )
     token = _create_token(body.email)
     return {
@@ -210,10 +214,12 @@ async def resend_otp(body: ResendOTPRequest):
     code = _generate_verification_code()
     await users_collection.update_one(
         {"email": body.email},
-        {"$set": {
-            "verification_code": code,
-            "verification_code_expiry": datetime.datetime.utcnow() + datetime.timedelta(minutes=1),
-        }},
+        {
+            "$set": {
+                "verification_code": code,
+                "verification_code_expiry": datetime.datetime.utcnow() + datetime.timedelta(minutes=1),
+            }
+        },
     )
     _send_otp_email(body.email, code)
     return {"message": "Verification code sent successfully"}
@@ -276,9 +282,7 @@ async def change_password(body: ChangePasswordRequest):
         )
 
     stored_password = user.get("password", "")
-    if not stored_password or not bcrypt.checkpw(
-        body.current_password.encode("utf-8"), stored_password.encode("utf-8")
-    ):
+    if not stored_password or not bcrypt.checkpw(body.current_password.encode("utf-8"), stored_password.encode("utf-8")):
         raise HTTPException(status_code=401, detail="Current password is incorrect")
 
     hashed = bcrypt.hashpw(body.new_password.encode("utf-8"), bcrypt.gensalt())

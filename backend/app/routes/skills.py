@@ -45,15 +45,17 @@ async def get_skills(email: str):
         cursor = skills_collection.find({"email": email}).sort("createdAt", -1)
         skills = []
         async for doc in cursor:
-            skills.append({
-                "skillId": doc.get("skillId", ""),
-                "name": doc.get("name", ""),
-                "goal": doc.get("goal", ""),
-                "instructions": doc.get("instructions", ""),
-                "parameters": doc.get("parameters", []),
-                "actions": doc.get("actions", []),
-                "createdAt": doc.get("createdAt"),
-            })
+            skills.append(
+                {
+                    "skillId": doc.get("skillId", ""),
+                    "name": doc.get("name", ""),
+                    "goal": doc.get("goal", ""),
+                    "instructions": doc.get("instructions", ""),
+                    "parameters": doc.get("parameters", []),
+                    "actions": doc.get("actions", []),
+                    "createdAt": doc.get("createdAt"),
+                }
+            )
         return {"skills": skills}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -105,13 +107,15 @@ async def update_skill(skill_id: str, body: SkillCreateRequest):
     try:
         result = await skills_collection.update_one(
             {"skillId": skill_id},
-            {"$set": {
-                "name": body.name,
-                "goal": body.goal,
-                "instructions": body.instructions,
-                "parameters": [p.model_dump() for p in body.parameters],
-                "actions": body.actions,
-            }},
+            {
+                "$set": {
+                    "name": body.name,
+                    "goal": body.goal,
+                    "instructions": body.instructions,
+                    "parameters": [p.model_dump() for p in body.parameters],
+                    "actions": body.actions,
+                }
+            },
         )
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Skill not found")
@@ -155,16 +159,13 @@ async def _parameterize_with_llm(
         if name in ("browser.screenshot", "browser.wait", "browser.done"):
             continue
         # Simplify args: only keep meaningful keys
-        simplified = {k: v for k, v in args.items()
-                      if k in ("url", "text", "query", "keys", "direction", "script")}
+        simplified = {k: v for k, v in args.items() if k in ("url", "text", "query", "keys", "direction", "script")}
         action_summary.append({"action": name, "args": simplified})
 
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         logger.warning("ANTHROPIC_API_KEY not set — returning basic skill structure")
-        return _basic_skill_structure(
-            prompt, initial_url, skill_name, skill_goal, skill_instructions, action_summary
-        )
+        return _basic_skill_structure(prompt, initial_url, skill_name, skill_goal, skill_instructions, action_summary)
 
     try:
         import anthropic
@@ -238,9 +239,7 @@ async def _parameterize_with_llm(
 
     except Exception as e:
         logger.error(f"LLM parameterization failed: {e}", exc_info=True)
-        return _basic_skill_structure(
-            prompt, initial_url, skill_name, skill_goal, skill_instructions, action_summary
-        )
+        return _basic_skill_structure(prompt, initial_url, skill_name, skill_goal, skill_instructions, action_summary)
 
 
 def _basic_skill_structure(
@@ -255,7 +254,7 @@ def _basic_skill_structure(
     return {
         "name": skill_name or prompt[:60],
         "goal": skill_goal or prompt[:100],  # goal is the label/description
-        "instructions": prompt,              # instructions = the actual prompt
+        "instructions": prompt,  # instructions = the actual prompt
         "parameters": [],
         "actions": action_summary,
     }

@@ -33,8 +33,8 @@ export default function ProfileSidebar(props: ProfileSidebarProps) {
       )}
       <div
         className={`fixed w-full sm:w-[500px] h-full flex flex-col px-6 py-8
-                    transition-all duration-300 bg-secondary dark:bg-[#0E0C16] 
-                    shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.5)] dark:shadow-[-2px_0_4px_-1px_rgba(255,255,255,0.5)] 
+                    transition-all duration-300 bg-secondary dark:bg-[#0E0C16]
+                    shadow-[-2px_0_4px_-1px_rgba(0,0,0,0.5)] dark:shadow-[-2px_0_4px_-1px_rgba(255,255,255,0.5)]
                     ${
                       sidebarOpen
                         ? "right-0"
@@ -46,8 +46,8 @@ export default function ProfileSidebar(props: ProfileSidebarProps) {
             <div className="flex w-full justify-between items-center px-2 ms-2 md:ms-0">
               <div className="flex w-[calc(100%-50px)] items-center">
                 <div
-                  className={`flex justify-center items-center p-2 sm:p-3 rounded-full 
-                                    transition-all duration-200 cursor-pointer text-gray-700 text-white 
+                  className={`flex justify-center items-center p-2 sm:p-3 rounded-full
+                                    transition-all duration-200 cursor-pointer text-gray-700 text-white
                                     bg-gradient-primary`}
                 >
                   <FontAwesomeIcon icon={faUser} />
@@ -66,7 +66,7 @@ export default function ProfileSidebar(props: ProfileSidebarProps) {
             <div className="flex mt-6">
               <button
                 onClick={() => setActiveTab("history")}
-                className={`px-6 py-2 text-xl font-bold 
+                className={`px-6 py-2 text-xl font-bold
                 ${
                   activeTab === "history"
                     ? "border-b-2 border-gray-700 dark:border-white text-gray-700 dark:text-white"
