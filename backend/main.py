@@ -2,14 +2,13 @@ import sys
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env before any imports that depend on env vars (e.g. autoppia_iwa needs OPENAI_API_KEY)
+# Load .env before agent imports that read OPENAI_API_KEY / Browserbase env vars.
 load_dotenv()
 
-# autoppia_iwa pollutes sys.path with its internal 'src/' directory on import,
-# which shadows our local packages. Pin our backend dir at the front.
+# Pin backend dir first so local package `agent` resolves reliably.
 _backend_dir = str(Path(__file__).resolve().parent)
 sys.path.insert(0, _backend_dir)
-import agent.browser_executor  # noqa: F401 — cache before autoppia_iwa can interfere
+import agent.browser_executor  # noqa: F401 — warm import; keeps `agent` from sys.path races
 
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
