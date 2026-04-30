@@ -991,9 +991,10 @@ const QUICK_AMOUNTS = [10, 25, 50, 100];
 function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [amount, setAmount] = useState("");
   const [amountError, setAmountError] = useState("");
+  const [showComingSoon, setShowComingSoon] = useState(false);
 
   useEffect(() => {
-    if (open) { setAmount(""); setAmountError(""); }
+    if (open) { setAmount(""); setAmountError(""); setShowComingSoon(false); }
   }, [open]);
 
   if (!open) return null;
@@ -1001,15 +1002,17 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
   const handleQuick = (val: number) => {
     setAmount(String(val));
     setAmountError("");
+    setShowComingSoon(false);
   };
 
   const handlePayClick = () => {
     const parsed = parseFloat(amount);
     if (isNaN(parsed) || parsed < 1 || parsed > 1000) {
       setAmountError("Enter an amount between €1.00 and €1,000.00");
+      setShowComingSoon(false);
       return;
     }
-    // Payment integration coming soon — button is intentionally non-functional
+    setShowComingSoon(true);
   };
 
   return createPortal(
@@ -1071,7 +1074,7 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
               step="0.01"
               placeholder="0.00"
               value={amount}
-              onChange={(e) => { setAmount(e.target.value); setAmountError(""); }}
+              onChange={(e) => { setAmount(e.target.value); setAmountError(""); setShowComingSoon(false); }}
               className="w-full pl-7 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
                 bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
                 outline-none focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all"
@@ -1082,6 +1085,21 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
             : <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">Min €1.00 · Max €1,000.00</p>
           }
         </div>
+
+        {/* Coming soon notice */}
+        {showComingSoon && (
+          <div className="rounded-xl border border-[#FF7E5F]/30 bg-[#FF7E5F]/10 px-4 py-3 flex items-start gap-2.5">
+            <FontAwesomeIcon icon={faClock} className="text-[#FF7E5F] mt-0.5 text-sm flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                Card payments are not available yet
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                This feature is coming soon. We'll enable it shortly — stay tuned!
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Pay button */}
         <button
