@@ -15,12 +15,15 @@ home_dir = Path.home()
 history_gif_dir = home_dir / ".automata" / "history"
 history_gif_dir.mkdir(parents=True, exist_ok=True)
 
+
 class TaskRequest(BaseModel):
     task: str
     initial_url: str = None
 
+
 class TaskResponse(BaseModel):
     task_id: str
+
 
 class TaskDetails(BaseModel):
     id: str
@@ -30,11 +33,14 @@ class TaskDetails(BaseModel):
     steps: list[dict]
     output: str | None
 
+
 class TaskStatus(BaseModel):
     status: str
 
+
 class TaskScreenshots(BaseModel):
     screenshots: list[str]
+
 
 class TaskGif(BaseModel):
     gif: str
@@ -65,6 +71,7 @@ async def run_task(request: TaskRequest):
 
     return {"task_id": task_id}
 
+
 @router.get("/task/{task_id}", tags=["Operator"], response_model=TaskDetails)
 async def get_task(task_id: str):
     task = tasks.get(task_id)
@@ -80,6 +87,7 @@ async def get_task(task_id: str):
         "output": task["output"],
     }
 
+
 @router.get("/task/{task_id}/status", tags=["Operator"], response_model=TaskStatus)
 async def get_task_status(task_id: str):
     task = tasks.get(task_id)
@@ -87,6 +95,7 @@ async def get_task_status(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found")
 
     return {"status": task["status"]}
+
 
 @router.get("/task/{task_id}/screenshots", tags=["Operator"], response_model=TaskScreenshots)
 async def get_task_screenshots(task_id: str):
@@ -96,6 +105,7 @@ async def get_task_screenshots(task_id: str):
 
     return {"screenshots": task["screenshots"]}
 
+
 @router.get("/task/{task_id}/gif", tags=["Operator"], response_model=TaskGif)
 async def get_task_gif(task_id: str):
     task = tasks.get(task_id)
@@ -103,6 +113,7 @@ async def get_task_gif(task_id: str):
         raise HTTPException(status_code=404, detail="Task not found")
 
     return {"gif": task["gif"]}
+
 
 async def _perform_task(task_id: str, max_steps: int = 25):
     tasks[task_id]["status"] = "running"
@@ -118,10 +129,12 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     async def on_action(action_type: str, screenshot: str | None, success: bool):
         if screenshot:
             tasks[task_id]["screenshots"].append(screenshot)
-        tasks[task_id]["steps"].append({
-            "action": action_type,
-            "success": success,
-        })
+        tasks[task_id]["steps"].append(
+            {
+                "action": action_type,
+                "success": success,
+            }
+        )
 
     operator.set_on_action(on_action)
 

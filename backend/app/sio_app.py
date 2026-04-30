@@ -22,9 +22,11 @@ home_dir = Path.home()
 storage_state_dir = home_dir / ".automata" / "storage_states"
 storage_state_dir.mkdir(parents=True, exist_ok=True)
 
+
 @sio.on("connect")
 async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
+
 
 @sio.on("start-task")
 async def start_task(sid, data):
@@ -43,11 +45,15 @@ async def start_task(sid, data):
 
     try:
         # Notify frontend of initial navigation before browser launches
-        await sio.emit('action', {
-            'action': 'browser.navigate',
-            'reasoning': f'Navigating to {initial_url}...' if initial_url else 'Initializing browser...',
-            'previous_success': True,
-        }, to=sid)
+        await sio.emit(
+            "action",
+            {
+                "action": "browser.navigate",
+                "reasoning": f"Navigating to {initial_url}..." if initial_url else "Initializing browser...",
+                "previous_success": True,
+            },
+            to=sid,
+        )
 
         operator = AutoppiaOperator()
         await operator.initialize(task, initial_url, storage_state_path, context_id=context_id)
@@ -57,7 +63,7 @@ async def start_task(sid, data):
         # Send the Browserbase live URL to the frontend for iframe embedding
         live_url = operator.get_live_url()
         if live_url:
-            await sio.emit('live_url', {'url': live_url}, to=sid)
+            await sio.emit("live_url", {"url": live_url}, to=sid)
 
         # Send initial tabs list
         await _emit_tabs(sid, operator)
@@ -65,24 +71,26 @@ async def start_task(sid, data):
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
         logger.error(f"Error in start_task: {e}", exc_info=True)
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
+
 
 @sio.on("continue-task")
 async def continue_task(sid, data):
-    task = data.get('task')
+    task = data.get("task")
     if not task:
-        await sio.emit('error', {'message': 'No task provided'}, to=sid)
+        await sio.emit("error", {"message": "No task provided"}, to=sid)
         return
 
     logger.info(f"Continuing task: {task}")
 
     operator = sessions.get(sid)
     if not operator:
-        await sio.emit('error', {'message': 'No existing session for this sid'}, to=sid)
+        await sio.emit("error", {"message": "No existing session for this sid"}, to=sid)
         return
 
     await operator.add_new_task(task, preserve_history=True)
     running_tasks[sid] = asyncio.create_task(_perform_task(sid))
+
 
 @sio.on("resume-task")
 async def resume_task(sid, data):
@@ -106,11 +114,15 @@ async def resume_task(sid, data):
 
     try:
         # Notify frontend of navigation before browser launches
-        await sio.emit('action', {
-            'action': 'browser.navigate',
-            'reasoning': f'Resuming session at {last_url}...',
-            'previous_success': True,
-        }, to=sid)
+        await sio.emit(
+            "action",
+            {
+                "action": "browser.navigate",
+                "reasoning": f"Resuming session at {last_url}...",
+                "previous_success": True,
+            },
+            to=sid,
+        )
 
         operator = AutoppiaOperator()
 
@@ -126,14 +138,15 @@ async def resume_task(sid, data):
 
         live_url = operator.get_live_url()
         if live_url:
-            await sio.emit('live_url', {'url': live_url}, to=sid)
+            await sio.emit("live_url", {"url": live_url}, to=sid)
 
         await _emit_tabs(sid, operator)
 
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
         logger.error(f"Error in resume_task: {e}", exc_info=True)
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
+
 
 @sio.on("stop-task")
 async def stop_task(sid, data=None):
@@ -147,16 +160,16 @@ async def stop_task(sid, data=None):
 
     operator = sessions.get(sid)
     result = {
-        'content': 'Task stopped by user',
-        'success': False,
+        "content": "Task stopped by user",
+        "success": False,
     }
     if operator:
         try:
-            result['lastUrl'] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = operator.browser_executor.get_current_url()
         except Exception:
             pass
-        result['actionHistory'] = getattr(operator, 'history', [])
-        result['screenshots'] = getattr(operator, 'screenshots', [])
+        result["actionHistory"] = getattr(operator, "history", [])
+        result["screenshots"] = getattr(operator, "screenshots", [])
 
         # Start keep-alive to keep browser session open
         old_ka = keepalive_tasks.pop(sid, None)
@@ -164,7 +177,7 @@ async def stop_task(sid, data=None):
             old_ka.cancel()
         keepalive_tasks[sid] = asyncio.create_task(_keepalive_loop(sid))
 
-    await sio.emit('result', result, to=sid)
+    await sio.emit("result", result, to=sid)
 
 
 @sio.on("play-actions")
@@ -187,11 +200,15 @@ async def play_actions(sid, data):
 
     try:
         # Notify frontend of initial navigation
-        await sio.emit('action', {
-            'action': 'browser.navigate',
-            'reasoning': f'Navigating to {initial_url}...',
-            'previous_success': True,
-        }, to=sid)
+        await sio.emit(
+            "action",
+            {
+                "action": "browser.navigate",
+                "reasoning": f"Navigating to {initial_url}...",
+                "previous_success": True,
+            },
+            to=sid,
+        )
 
         operator = AutoppiaOperator()
         await operator.initialize("Skill playback", initial_url, storage_state_path, context_id=context_id)
@@ -199,7 +216,7 @@ async def play_actions(sid, data):
 
         live_url = operator.get_live_url()
         if live_url:
-            await sio.emit('live_url', {'url': live_url}, to=sid)
+            await sio.emit("live_url", {"url": live_url}, to=sid)
 
         await _emit_tabs(sid, operator)
 
@@ -225,11 +242,15 @@ async def play_actions(sid, data):
                 continue
 
             # Emit action event before execution
-            await sio.emit('action', {
-                'action': action_name,
-                'reasoning': f'Step {i + 1}: executing {action_name}',
-                'previous_success': previous_success,
-            }, to=sid)
+            await sio.emit(
+                "action",
+                {
+                    "action": action_name,
+                    "reasoning": f"Step {i + 1}: executing {action_name}",
+                    "previous_success": previous_success,
+                },
+                to=sid,
+            )
 
             tool_call = {"name": action_name, "arguments": args}
             try:
@@ -246,17 +267,17 @@ async def play_actions(sid, data):
 
         # Emit final result
         result = {
-            'content': 'Skill playback completed',
-            'success': previous_success,
+            "content": "Skill playback completed",
+            "success": previous_success,
         }
         try:
-            result['lastUrl'] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = operator.browser_executor.get_current_url()
         except Exception:
             pass
-        result['actionHistory'] = history
-        result['screenshots'] = getattr(operator, 'screenshots', [])
+        result["actionHistory"] = history
+        result["screenshots"] = getattr(operator, "screenshots", [])
 
-        await sio.emit('result', result, to=sid)
+        await sio.emit("result", result, to=sid)
 
         # Start keep-alive
         old_task = keepalive_tasks.pop(sid, None)
@@ -266,7 +287,7 @@ async def play_actions(sid, data):
 
     except Exception as e:
         logger.error(f"Error in play_actions: {e}", exc_info=True)
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
 
 
 RECORDER_SCRIPT = """
@@ -403,11 +424,15 @@ async def start_record(sid, data):
         storage_state_path = None
 
     try:
-        await sio.emit('action', {
-            'action': 'browser.navigate',
-            'reasoning': f'Opening {initial_url}...',
-            'previous_success': True,
-        }, to=sid)
+        await sio.emit(
+            "action",
+            {
+                "action": "browser.navigate",
+                "reasoning": f"Opening {initial_url}...",
+                "previous_success": True,
+            },
+            to=sid,
+        )
 
         be = BrowserExecutor()
         await be.initialize(initial_url=initial_url, storage_state_path=storage_state_path, context_id=context_id)
@@ -417,25 +442,26 @@ async def start_record(sid, data):
 
         live_url = be.get_live_url()
         if live_url:
-            await sio.emit('live_url', {'url': live_url}, to=sid)
+            await sio.emit("live_url", {"url": live_url}, to=sid)
 
         # Emit initial tabs
         tabs = be.get_tabs()
         active_index = be.get_active_page_index()
         if tabs:
-            await sio.emit('tabs', {'tabs': tabs, 'activeIndex': active_index}, to=sid)
+            await sio.emit("tabs", {"tabs": tabs, "activeIndex": active_index}, to=sid)
 
         # Add the initial navigate as the first action (only if a URL was provided)
         if initial_url:
-            recording_actions[sid].append({
-                "action": "browser.navigate",
-                "args": {"url": initial_url}
-            })
-            await sio.emit('recorded-action', {
-                "action": "browser.navigate",
-                "args": {"url": initial_url},
-                "index": 0,
-            }, to=sid)
+            recording_actions[sid].append({"action": "browser.navigate", "args": {"url": initial_url}})
+            await sio.emit(
+                "recorded-action",
+                {
+                    "action": "browser.navigate",
+                    "args": {"url": initial_url},
+                    "index": 0,
+                },
+                to=sid,
+            )
 
         # Use raw CDP to inject recorder — Playwright's expose_function/add_init_script
         # don't work reliably over remote CDP connections (Browserbase).
@@ -478,10 +504,14 @@ async def start_record(sid, data):
                 if action_data.get("action") == "browser.click":
                     last_click_time["t"] = time.monotonic()
                 actions.append(action_data)
-                await sio.emit('recorded-action', {
-                    **action_data,
-                    "index": len(actions) - 1,
-                }, to=sid)
+                await sio.emit(
+                    "recorded-action",
+                    {
+                        **action_data,
+                        "index": len(actions) - 1,
+                    },
+                    to=sid,
+                )
                 logger.info(f"Recorded action #{len(actions)}: {action_data.get('action')}")
             except Exception as e:
                 logger.error(f"Error processing recorded action: {e}")
@@ -516,7 +546,7 @@ async def start_record(sid, data):
                     return
                 nav_action = {"action": "browser.navigate", "args": {"url": url}}
                 actions.append(nav_action)
-                await sio.emit('recorded-action', {**nav_action, "index": len(actions) - 1}, to=sid)
+                await sio.emit("recorded-action", {**nav_action, "index": len(actions) - 1}, to=sid)
             except Exception:
                 pass
 
@@ -528,7 +558,7 @@ async def start_record(sid, data):
                 tab_list = be.get_tabs()
                 active_idx = be.get_active_page_index()
                 if tab_list:
-                    await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': active_idx}, to=sid)
+                    await sio.emit("tabs", {"tabs": tab_list, "activeIndex": active_idx}, to=sid)
             except Exception as e:
                 logger.warning(f"Failed to emit record tabs: {e}")
 
@@ -566,7 +596,7 @@ async def start_record(sid, data):
 
     except Exception as e:
         logger.error(f"Error in start_record: {e}", exc_info=True)
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
 
 
 @sio.on("new-tab-record")
@@ -587,19 +617,19 @@ async def new_tab_record(sid, data=None):
         actions = recording_actions.get(sid, [])
         new_tab_action = {"action": "browser.new_tab", "args": {}}
         actions.append(new_tab_action)
-        await sio.emit('recorded-action', {**new_tab_action, "index": len(actions) - 1}, to=sid)
+        await sio.emit("recorded-action", {**new_tab_action, "index": len(actions) - 1}, to=sid)
 
         # Emit updated tabs
         await asyncio.sleep(0.5)
         tab_list = be.get_tabs()
         active_idx = be.get_active_page_index()
         if tab_list:
-            await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': active_idx}, to=sid)
+            await sio.emit("tabs", {"tabs": tab_list, "activeIndex": active_idx}, to=sid)
 
         logger.info(f"New tab opened for recording session {sid}")
     except Exception as e:
         logger.error(f"Error opening new tab in recording: {e}")
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
 
 
 @sio.on("switch-tab-record")
@@ -625,17 +655,17 @@ async def switch_tab_record(sid, data):
         actions = recording_actions.get(sid, [])
         switch_action = {"action": "browser.switch_tab", "args": {"tab_index": index}}
         actions.append(switch_action)
-        await sio.emit('recorded-action', {**switch_action, "index": len(actions) - 1}, to=sid)
+        await sio.emit("recorded-action", {**switch_action, "index": len(actions) - 1}, to=sid)
 
         # Emit updated tabs with new active index
         tab_list = be.get_tabs()
         if tab_list:
-            await sio.emit('tabs', {'tabs': tab_list, 'activeIndex': index}, to=sid)
+            await sio.emit("tabs", {"tabs": tab_list, "activeIndex": index}, to=sid)
 
         logger.info(f"Switched to tab {index} for recording session {sid}")
     except Exception as e:
         logger.error(f"Error switching tab in recording: {e}")
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
 
 
 @sio.on("stop-record")
@@ -659,10 +689,14 @@ async def stop_record(sid, data=None):
     if task:
         task.cancel()
 
-    await sio.emit('record-result', {
-        'actions': actions,
-        'lastUrl': last_url,
-    }, to=sid)
+    await sio.emit(
+        "record-result",
+        {
+            "actions": actions,
+            "lastUrl": last_url,
+        },
+        to=sid,
+    )
 
 
 async def _keepalive_loop_record(sid, interval=30):
@@ -673,7 +707,7 @@ async def _keepalive_loop_record(sid, interval=30):
             session_data = sessions.get(sid)
             if not session_data:
                 break
-            be = session_data.get("browser_executor") if isinstance(session_data, dict) else getattr(session_data, 'browser_executor', None)
+            be = session_data.get("browser_executor") if isinstance(session_data, dict) else getattr(session_data, "browser_executor", None)
             if be:
                 alive = await be.keep_alive_ping()
                 if not alive:
@@ -712,12 +746,12 @@ async def disconnect(sid):
 async def _emit_tabs(sid, operator):
     """Emit the current tabs list to the frontend."""
     try:
-        be = getattr(operator, 'browser_executor', None)
+        be = getattr(operator, "browser_executor", None)
         if be:
             tabs = be.get_tabs()
             active_index = be.get_active_page_index()
             if tabs:
-                await sio.emit('tabs', {'tabs': tabs, 'activeIndex': active_index}, to=sid)
+                await sio.emit("tabs", {"tabs": tabs, "activeIndex": active_index}, to=sid)
     except Exception as e:
         logger.warning(f"Failed to emit tabs: {e}")
 
@@ -743,10 +777,10 @@ async def _perform_task(sid, max_steps=25):
 
     # Emit each action before it executes (with reasoning and previous_success)
     async def on_action(reasoning: str | None, action: str, previous_success: bool):
-        payload = {'action': action, 'previous_success': previous_success}
+        payload = {"action": action, "previous_success": previous_success}
         if reasoning:
-            payload['reasoning'] = reasoning
-        await sio.emit('action', payload, to=sid)
+            payload["reasoning"] = reasoning
+        await sio.emit("action", payload, to=sid)
 
     operator.set_on_action(on_action)
 
@@ -759,7 +793,7 @@ async def _perform_task(sid, max_steps=25):
     try:
         # Check CUA availability before running steps
         if not await operator.cua.health_check():
-            await sio.emit('error', {'message': 'Agent is not working. Please try again later.'}, to=sid)
+            await sio.emit("error", {"message": "Agent is not working. Please try again later."}, to=sid)
             return
 
         for _ in range(max_steps):
@@ -772,13 +806,13 @@ async def _perform_task(sid, max_steps=25):
 
         # Attach lastUrl and actionHistory for session persistence and resume
         try:
-            result['lastUrl'] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = operator.browser_executor.get_current_url()
         except Exception as e:
             logger.warning(f"Failed to get current URL: {e}")
-        result['actionHistory'] = operator.history
-        result['screenshots'] = operator.screenshots or []
+        result["actionHistory"] = operator.history
+        result["screenshots"] = operator.screenshots or []
 
-        await sio.emit('result', result, to=sid)
+        await sio.emit("result", result, to=sid)
 
         # Start keep-alive pings to prevent Browserbase session from timing out
         old_task = keepalive_tasks.pop(sid, None)
@@ -789,6 +823,6 @@ async def _perform_task(sid, max_steps=25):
         logger.info(f"Task cancelled for {sid}")
     except Exception as e:
         logger.error(f"Error in _perform_task: {e}", exc_info=True)
-        await sio.emit('error', {'message': str(e)}, to=sid)
+        await sio.emit("error", {"message": str(e)}, to=sid)
     finally:
         running_tasks.pop(sid, None)

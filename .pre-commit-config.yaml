@@ -1,0 +1,25 @@
+# Hook config shared with autoppia_iwa (.pre-commit-config.yaml).
+#
+# Local installs:
+#   - Prek (Rust, drop-in): https://github.com/j178/prek — then `prek install`
+#   - Classic: pip install pre-commit && pre-commit install
+#
+# CI: .github/workflows/quality-checks.yml (prek-action).
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-added-large-files
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+        exclude: ^\.vscode/
+      - id: mixed-line-ending
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.10.0
+    hooks:
+      - id: ruff
+        args: ["--fix", "--line-length", "200"]
+      - id: ruff-format
+        args: ["--line-length", "200"]

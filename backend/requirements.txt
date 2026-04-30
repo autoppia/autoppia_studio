@@ -1,6 +1,10 @@
 fastapi[standard]
+motor
+python-dotenv
 python-socketio
 browser-use
+browserbase
+playwright
 Pillow
 bcrypt
 PyJWT

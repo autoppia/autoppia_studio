@@ -18,6 +18,11 @@ import {
   faCheck,
   faTimes,
   faCopy,
+  faArrowUp,
+  faCheckCircle,
+  faTimesCircle,
+  faClock,
+  faReceipt,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserTabs from "../components/session/browser-tabs";
 import ConfirmModal from "../components/common/confirm-modal";
@@ -25,10 +30,26 @@ import type { BrowserTab } from "../redux/socketSlice";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
+// UI-only placeholder until the wallet backend ships.
+const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR", loading: false };
+
+interface TransactionData {
+  id: string;
+  type: string;
+  amount: string;
+  currency: string;
+  status: string;
+  provider: string;
+  provider_payment_id: string | null;
+  created_at: string;
+  metadata: Record<string, unknown>;
+}
+
 const TABS = [
   { id: "profiles", label: "Profiles", icon: faUserCircle },
   { id: "api-keys", label: "API Keys", icon: faKey },
   { id: "credit", label: "Credit", icon: faCreditCard },
+  { id: "invoices", label: "Invoices", icon: faReceipt },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -965,36 +986,315 @@ function APIKeysTab() {
 
 // ── Credit Tab ──────────────────────────────────────────────────────
 
+const QUICK_AMOUNTS = [10, 25, 50, 100];
+
+function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [amount, setAmount] = useState("");
+  const [amountError, setAmountError] = useState("");
+  const [showComingSoon, setShowComingSoon] = useState(false);
+
+  useEffect(() => {
+    if (open) { setAmount(""); setAmountError(""); setShowComingSoon(false); }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleQuick = (val: number) => {
+    setAmount(String(val));
+    setAmountError("");
+    setShowComingSoon(false);
+  };
+
+  const handlePayClick = () => {
+    const parsed = parseFloat(amount);
+    if (isNaN(parsed) || parsed < 1 || parsed > 1000) {
+      setAmountError("Enter an amount between €1.00 and €1,000.00");
+      setShowComingSoon(false);
+      return;
+    }
+    setShowComingSoon(true);
+  };
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+
+      <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-dark-surface rounded-2xl
+        shadow-xl border border-gray-200 dark:border-dark-border p-6 flex flex-col gap-5">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-lg bg-gradient-primary flex items-center justify-center">
+              <FontAwesomeIcon icon={faArrowUp} className="text-white text-xs" />
+            </div>
+            <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Add funds</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center
+              text-gray-400 hover:text-gray-600 hover:bg-gray-100
+              dark:hover:text-gray-200 dark:hover:bg-dark-border transition-colors"
+          >
+            <FontAwesomeIcon icon={faTimes} className="text-xs" />
+          </button>
+        </div>
+
+        {/* Quick amounts */}
+        <div>
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Quick select</p>
+          <div className="grid grid-cols-4 gap-2">
+            {QUICK_AMOUNTS.map((val) => (
+              <button
+                key={val}
+                onClick={() => handleQuick(val)}
+                className={`py-2 rounded-xl text-sm font-semibold border transition-all duration-150
+                  ${amount === String(val)
+                    ? "bg-gradient-primary text-white border-transparent shadow-glow"
+                    : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:border-[#FF7E5F] hover:text-[#FF7E5F]"
+                  }`}
+              >
+                €{val}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Custom amount input */}
+        <div>
+          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+            Or enter a custom amount
+          </p>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">€</span>
+            <input
+              type="number"
+              min="1"
+              max="1000"
+              step="0.01"
+              placeholder="0.00"
+              value={amount}
+              onChange={(e) => { setAmount(e.target.value); setAmountError(""); setShowComingSoon(false); }}
+              className="w-full pl-7 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+                bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
+                outline-none focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all"
+            />
+          </div>
+          {amountError
+            ? <p className="text-xs text-red-500 mt-1.5">{amountError}</p>
+            : <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">Min €1.00 · Max €1,000.00</p>
+          }
+        </div>
+
+        {/* Coming soon notice */}
+        {showComingSoon && (
+          <div className="rounded-xl border border-[#FF7E5F]/30 bg-[#FF7E5F]/10 px-4 py-3 flex items-start gap-2.5">
+            <FontAwesomeIcon icon={faClock} className="text-[#FF7E5F] mt-0.5 text-sm flex-shrink-0" />
+            <div>
+              <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+                Card payments are not available yet
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+                This feature is coming soon. We'll enable it shortly — stay tuned!
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Pay button */}
+        <button
+          onClick={handlePayClick}
+          className="w-full flex items-center justify-center gap-2.5 py-3 rounded-xl
+            text-sm font-semibold text-white bg-gradient-primary shadow-glow
+            hover:shadow-glow-lg transition-all duration-200"
+        >
+          <FontAwesomeIcon icon={faCreditCard} className="text-sm" />
+          Pay with card
+          {amount && !isNaN(parseFloat(amount)) && parseFloat(amount) > 0 && (
+            <span className="opacity-80">· €{parseFloat(amount).toFixed(2)}</span>
+          )}
+        </button>
+
+        <p className="text-center text-xs text-gray-400 dark:text-gray-500">
+          Payments powered by Stripe · Coming soon
+        </p>
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 function CreditTab() {
+  const wallet = WALLET_PLACEHOLDER;
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const currencySymbol = wallet.currency === "EUR" ? "€" : "$";
+
   return (
     <div className="space-y-6">
-      {/* Credit balance card */}
+      {/* Balance card */}
       <div className="relative overflow-hidden rounded-xl bg-gradient-primary p-6 text-white">
         <div className="absolute top-0 right-0 w-32 h-32 -mr-8 -mt-8 rounded-full bg-white/10" />
         <div className="absolute bottom-0 left-0 w-24 h-24 -ml-6 -mb-6 rounded-full bg-white/10" />
-        <div className="relative">
-          <div className="flex items-center gap-2 mb-1">
-            <FontAwesomeIcon icon={faWallet} className="text-sm opacity-80" />
-            <span className="text-sm font-medium opacity-80">Available Balance</span>
+        <div className="relative flex items-end justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <FontAwesomeIcon icon={faWallet} className="text-sm opacity-80" />
+              <span className="text-sm font-medium opacity-80">Available Balance</span>
+            </div>
+            {wallet.loading ? (
+              <div className="h-10 w-28 bg-white/20 rounded-lg animate-pulse mt-1" />
+            ) : (
+              <p className="text-4xl font-bold tracking-tight">
+                {currencySymbol}{parseFloat(wallet.balance).toFixed(2)}
+              </p>
+            )}
+            <p className="text-sm mt-1 opacity-70">{wallet.currency}</p>
           </div>
-          <p className="text-4xl font-bold tracking-tight">
-            $0.00
-          </p>
-          <p className="text-sm mt-1 opacity-70">USD</p>
+          <button
+            onClick={() => setModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/20 hover:bg-white/30
+              text-white text-sm font-semibold transition-colors backdrop-blur-sm"
+          >
+            <FontAwesomeIcon icon={faArrowUp} className="text-xs" />
+            Add funds
+          </button>
         </div>
       </div>
 
-      {/* Free beta notice */}
-      <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-5">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-2 h-2 rounded-full bg-gray-400 dark:bg-gray-500 animate-pulse" />
-          <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">Free Beta</h3>
+      {/* Info notice */}
+      <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4
+        flex items-start gap-3">
+        <FontAwesomeIcon icon={faCreditCard} className="text-gray-400 mt-0.5 text-sm flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Card payments coming soon</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+            Top-up via card will be available shortly. Your balance will be used to run automations
+            once usage-based billing is live.
+          </p>
         </div>
-        <p className="text-sm text-gray-600 dark:text-gray-400 leading-relaxed">
-          Automata is currently in free beta. All features are available at no cost during this period.
-          No top-up is required.
-        </p>
       </div>
+
+      <AddFundsModal open={modalOpen} onClose={() => setModalOpen(false)} />
+    </div>
+  );
+}
+
+// ── Invoices Tab ─────────────────────────────────────────────────────
+
+function txStatusIcon(status: string) {
+  if (status === "completed")
+    return <FontAwesomeIcon icon={faCheckCircle} className="text-green-500 text-xs" />;
+  if (status === "failed" || status === "refunded")
+    return <FontAwesomeIcon icon={faTimesCircle} className="text-red-500 text-xs" />;
+  return <FontAwesomeIcon icon={faClock} className="text-yellow-500 text-xs" />;
+}
+
+function txLabel(type: string) {
+  if (type === "topup_credit") return "Top-up";
+  if (type === "topup_refund") return "Refund";
+  if (type === "adjustment") return "Adjustment";
+  return type;
+}
+
+function InvoicesTab() {
+  const wallet = WALLET_PLACEHOLDER;
+  const transactions: TransactionData[] = [];
+  const txTotal = 0;
+  const loading = false;
+  const [page, setPage] = useState(1);
+  const LIMIT = 10;
+
+  const currencySymbol = wallet.currency === "EUR" ? "€" : "$";
+  const totalPages = Math.ceil(txTotal / LIMIT);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+          Transaction history
+          {txTotal > 0 && (
+            <span className="ml-1.5 text-xs font-normal text-gray-400">({txTotal})</span>
+          )}
+        </h3>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="h-14 rounded-xl bg-gray-100 dark:bg-dark-bg animate-pulse" />
+          ))}
+        </div>
+      ) : transactions.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-14 gap-3 text-gray-400 dark:text-gray-500">
+          <FontAwesomeIcon icon={faReceipt} className="text-3xl opacity-30" />
+          <p className="text-sm">No invoices yet.</p>
+          <p className="text-xs text-center max-w-xs">
+            Your payment history will appear here once you add funds to your wallet.
+          </p>
+        </div>
+      ) : (
+        <>
+          <div className="divide-y divide-gray-100 dark:divide-dark-border rounded-xl border
+            border-gray-200 dark:border-dark-border overflow-hidden">
+            {transactions.map((tx) => (
+              <div
+                key={tx.id}
+                className="flex items-center justify-between px-4 py-3.5
+                  bg-white dark:bg-dark-surface hover:bg-gray-50 dark:hover:bg-dark-bg transition-colors"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-dark-border flex items-center justify-center flex-shrink-0">
+                    {txStatusIcon(tx.status)}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200">
+                      {txLabel(tx.type)}
+                    </p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">
+                      {new Date(tx.created_at).toLocaleDateString(undefined, {
+                        month: "short", day: "numeric", year: "numeric",
+                      })}
+                      <span className="mx-1.5">·</span>
+                      <span className="capitalize">{tx.status}</span>
+                    </p>
+                  </div>
+                </div>
+                <span className="text-sm font-semibold text-gray-800 dark:text-gray-200 tabular-nums">
+                  +{currencySymbol}{parseFloat(tx.amount).toFixed(2)}
+                </span>
+              </div>
+            ))}
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between pt-1">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300
+                  border border-gray-200 dark:border-dark-border hover:bg-gray-100 dark:hover:bg-dark-border
+                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Previous
+              </button>
+              <span className="text-xs text-gray-400">
+                Page {page} of {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 dark:text-gray-300
+                  border border-gray-200 dark:border-dark-border hover:bg-gray-100 dark:hover:bg-dark-border
+                  disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Next
+              </button>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -1005,6 +1305,7 @@ function TabContent({ tab }: { tab: TabId }) {
   if (tab === "profiles") return <ProfilesTab />;
   if (tab === "api-keys") return <APIKeysTab />;
   if (tab === "credit") return <CreditTab />;
+  if (tab === "invoices") return <InvoicesTab />;
   return null;
 }
 
@@ -1013,6 +1314,7 @@ function TabContent({ tab }: { tab: TabId }) {
 export default function Settings(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
   const activeTab = (searchParams.get("tab") as TabId) || "profiles";
+  const wallet = WALLET_PLACEHOLDER;
 
   const handleTabChange = (tab: TabId) => {
     setSearchParams({ tab });
@@ -1040,7 +1342,10 @@ export default function Settings(): React.ReactElement {
             border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium"
           >
             <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>0.00 Credits</span>
+            <span>
+              {wallet.currency === "EUR" ? "€" : "$"}
+              {parseFloat(wallet.balance).toFixed(2)}
+            </span>
           </div>
         </div>
 

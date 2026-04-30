@@ -110,9 +110,7 @@ async def create_run(eval_id: str, body: RunCreateRequest):
 
 @router.get("/evals/{eval_id}/runs/{run_id}")
 async def get_run(eval_id: str, run_id: str):
-    doc = await eval_runs_collection.find_one(
-        {"runId": run_id, "evalId": eval_id}, {"_id": 0}
-    )
+    doc = await eval_runs_collection.find_one({"runId": run_id, "evalId": eval_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Run not found")
     return {"run": doc}
@@ -123,9 +121,7 @@ async def update_run(eval_id: str, run_id: str, body: RunUpdateRequest):
     update = {}
     if body.label is not None:
         if body.label not in ("pass", "fail", "pending"):
-            raise HTTPException(
-                status_code=400, detail="Label must be 'pass', 'fail', or 'pending'"
-            )
+            raise HTTPException(status_code=400, detail="Label must be 'pass', 'fail', or 'pending'")
         update["label"] = body.label
     if body.actions is not None:
         update["actions"] = body.actions
@@ -137,9 +133,7 @@ async def update_run(eval_id: str, run_id: str, body: RunUpdateRequest):
     if not update:
         raise HTTPException(status_code=400, detail="Nothing to update")
 
-    result = await eval_runs_collection.update_one(
-        {"runId": run_id, "evalId": eval_id}, {"$set": update}
-    )
+    result = await eval_runs_collection.update_one({"runId": run_id, "evalId": eval_id}, {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Run not found")
     return {"success": True}
@@ -147,9 +141,7 @@ async def update_run(eval_id: str, run_id: str, body: RunUpdateRequest):
 
 @router.delete("/evals/{eval_id}/runs/{run_id}")
 async def delete_run(eval_id: str, run_id: str):
-    result = await eval_runs_collection.delete_one(
-        {"runId": run_id, "evalId": eval_id}
-    )
+    result = await eval_runs_collection.delete_one({"runId": run_id, "evalId": eval_id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Run not found")
     return {"success": True}

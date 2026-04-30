@@ -34,13 +34,15 @@ async def get_sessions(email: str):
         cursor = sessions_collection.find({"email": email}).sort("createdAt", -1)
         sessions = []
         async for doc in cursor:
-            sessions.append({
-                "sessionId": doc.get("sessionId", ""),
-                "email": doc["email"],
-                "prompt": doc["prompt"],
-                "initialUrl": doc.get("initialUrl", ""),
-                "createdAt": doc.get("createdAt"),
-            })
+            sessions.append(
+                {
+                    "sessionId": doc.get("sessionId", ""),
+                    "email": doc["email"],
+                    "prompt": doc["prompt"],
+                    "initialUrl": doc.get("initialUrl", ""),
+                    "createdAt": doc.get("createdAt"),
+                }
+            )
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -108,6 +110,16 @@ async def get_session(session_id: str):
         }
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.delete("/sessions/all")
+async def delete_all_sessions(email: str):
+    """Delete all sessions for a user."""
+    try:
+        result = await sessions_collection.delete_many({"email": email})
+        return {"success": True, "deleted": result.deleted_count}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
