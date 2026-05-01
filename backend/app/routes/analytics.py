@@ -81,11 +81,13 @@ async def get_analytics(
         over_time = []
         for key in _empty_buckets(range, now):
             slot = bucket_counts.get(key, {"with_tasks": 0, "no_tasks": 0})
-            over_time.append({
-                "bucket": key,
-                "with_tasks": slot["with_tasks"],
-                "no_tasks": slot["no_tasks"],
-            })
+            over_time.append(
+                {
+                    "bucket": key,
+                    "with_tasks": slot["with_tasks"],
+                    "no_tasks": slot["no_tasks"],
+                }
+            )
 
         return {
             "range": range,
