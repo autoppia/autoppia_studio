@@ -8,7 +8,6 @@ import {
   faKey,
   faUserCircle,
   faWallet,
-  faCoins,
   faPlus,
   faTrash,
   faSpinner,
@@ -45,14 +44,42 @@ interface TransactionData {
   metadata: Record<string, unknown>;
 }
 
-const TABS = [
-  { id: "profiles", label: "Profiles", icon: faUserCircle },
-  { id: "api-keys", label: "API Keys", icon: faKey },
-  { id: "credit", label: "Credit", icon: faCreditCard },
-  { id: "invoices", label: "Invoices", icon: faReceipt },
-] as const;
+interface SettingsTab {
+  id: string;
+  label: string;
+  icon: typeof faUserCircle;
+}
 
-type TabId = (typeof TABS)[number]["id"];
+interface SettingsSection {
+  label: string;
+  items: SettingsTab[];
+}
+
+const SETTINGS_SECTIONS: SettingsSection[] = [
+  {
+    label: "Account",
+    items: [
+      { id: "profiles", label: "Profiles", icon: faUserCircle },
+    ],
+  },
+  {
+    label: "Developer",
+    items: [
+      { id: "api-keys", label: "API Keys", icon: faKey },
+    ],
+  },
+  {
+    label: "Billing",
+    items: [
+      { id: "credit", label: "Credit", icon: faCreditCard },
+      { id: "invoices", label: "Invoices", icon: faReceipt },
+    ],
+  },
+];
+
+const ALL_TABS: SettingsTab[] = SETTINGS_SECTIONS.flatMap((s) => s.items);
+const TAB_IDS = ALL_TABS.map((t) => t.id);
+type TabId = (typeof TAB_IDS)[number];
 
 interface Profile {
   id: string;
@@ -1302,26 +1329,37 @@ function InvoicesTab() {
 // ── Tab Content Router ──────────────────────────────────────────────
 
 function TabContent({ tab }: { tab: TabId }) {
-  if (tab === "profiles") return <ProfilesTab />;
-  if (tab === "api-keys") return <APIKeysTab />;
-  if (tab === "credit") return <CreditTab />;
-  if (tab === "invoices") return <InvoicesTab />;
-  return null;
+  switch (tab) {
+    case "profiles":
+      return <ProfilesTab />;
+    case "api-keys":
+      return <APIKeysTab />;
+    case "credit":
+      return <CreditTab />;
+    case "invoices":
+      return <InvoicesTab />;
+    default:
+      return null;
+  }
 }
 
 // ── Settings Page ───────────────────────────────────────────────────
 
+const DEFAULT_TAB: TabId = "profiles";
+
 export default function Settings(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
-  const activeTab = (searchParams.get("tab") as TabId) || "profiles";
-  const wallet = WALLET_PLACEHOLDER;
+  const rawTab = searchParams.get("tab");
+  const activeTab: TabId = TAB_IDS.includes(rawTab as TabId) ? (rawTab as TabId) : DEFAULT_TAB;
 
   const handleTabChange = (tab: TabId) => {
     setSearchParams({ tab });
   };
 
+  const activeMeta = ALL_TABS.find((t) => t.id === activeTab);
+
   return (
-    <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
+    <div className="w-full h-full flex relative overflow-hidden bg-gray-100 dark:bg-dark-bg">
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
         <img
           src="/assets/images/bg/dark-bg.webp"
@@ -1330,48 +1368,61 @@ export default function Settings(): React.ReactElement {
         />
       </div>
 
-      <div className="flex flex-col w-full h-full relative">
-        {/* Header */}
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
-          bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
-            Settings
-          </h1>
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium"
-          >
-            <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>
-              {wallet.currency === "EUR" ? "€" : "$"}
-              {parseFloat(wallet.balance).toFixed(2)}
-            </span>
+      <div className="flex w-full h-full relative">
+        {/* Settings vertical nav */}
+        <aside
+          className="w-60 flex-shrink-0 flex flex-col border-r border-gray-200 dark:border-dark-border
+            bg-white/60 dark:bg-dark-bg/60 backdrop-blur-sm overflow-y-auto"
+        >
+          <div className="px-5 pt-6 pb-4">
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">
+              Settings
+            </h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              Manage your account and integrations
+            </p>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto px-6 py-6">
+          <nav className="flex-1 px-2 pb-4 space-y-4">
+            {SETTINGS_SECTIONS.map((section) => (
+              <div key={section.label}>
+                <div className="px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+                  {section.label}
+                </div>
+                <div className="space-y-0.5">
+                  {section.items.map((tab) => {
+                    const isActive = activeTab === tab.id;
+                    return (
+                      <button
+                        key={tab.id}
+                        onClick={() => handleTabChange(tab.id as TabId)}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150
+                          ${
+                            isActive
+                              ? "bg-gradient-primary/10 text-[#FF7E5F] font-semibold"
+                              : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface"
+                          }`}
+                      >
+                        <FontAwesomeIcon icon={tab.icon} className="text-xs w-4" />
+                        <span className="flex-1 text-left">{tab.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </nav>
+        </aside>
+
+        {/* Main content */}
+        <div className="flex-1 overflow-auto px-6 py-8">
           <div className="max-w-3xl mx-auto">
-            {/* Tabs */}
-            <div className="flex gap-1 p-1 bg-gray-200/60 dark:bg-dark-surface rounded-lg mb-6">
-              {TABS.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => handleTabChange(tab.id)}
-                  className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 flex-1 justify-center
-                    ${
-                      activeTab === tab.id
-                        ? "bg-white dark:bg-dark-border text-gray-900 dark:text-white shadow-sm"
-                        : "text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300"
-                    }`}
-                >
-                  <FontAwesomeIcon icon={tab.icon} className="text-xs" />
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </div>
+            {activeMeta && (
+              <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-6">
+                {activeMeta.label}
+              </h2>
+            )}
 
-            {/* Tab content */}
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-6 shadow-soft">
               <TabContent tab={activeTab} />
             </div>
