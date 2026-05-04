@@ -5,10 +5,7 @@ import {
   faKey,
   faArrowUp,
   faCoins,
-  faBookOpen,
 } from "@fortawesome/free-solid-svg-icons";
-
-const DOCS_URL = "https://docs.autoppia.com";
 
 const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR" };
 
@@ -66,19 +63,6 @@ export default function TopBar() {
         <FontAwesomeIcon icon={faKey} className="text-[10px]" />
         <span className="hidden md:inline">API Key</span>
       </button>
-
-      {/* Docs */}
-      <a
-        href={DOCS_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex items-center justify-center w-8 h-8 rounded-lg
-          text-gray-500 dark:text-gray-400
-          hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
-        title="Docs"
-      >
-        <FontAwesomeIcon icon={faBookOpen} className="text-xs" />
-      </a>
     </header>
   );
 }
