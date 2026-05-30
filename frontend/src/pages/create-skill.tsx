@@ -6,7 +6,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faRobot,
   faHand,
-  faCoins,
   faArrowLeft,
   faChevronDown,
   faGlobe,
@@ -149,11 +148,6 @@ export default function CreateSkill() {
               <FontAwesomeIcon icon={faArrowLeft} className="text-sm" />
             </button>
             <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Create Skill</h1>
-          </div>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium">
-            <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>0.00 Credits</span>
           </div>
         </div>
 

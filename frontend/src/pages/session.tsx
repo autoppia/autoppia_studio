@@ -5,7 +5,6 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
   faExpand,
-  faCoins,
 } from "@fortawesome/free-solid-svg-icons";
 
 import ChatSidebar from "../components/session/chat-sidebar";
@@ -311,13 +310,6 @@ function Session(): React.ReactElement {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <div
-            className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium"
-          >
-            <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>0.00 Credits</span>
-          </div>
           {!showChatSidebar && (
             <IconButton
               icon={faBars}

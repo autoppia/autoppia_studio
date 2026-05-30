@@ -16,7 +16,6 @@ export default function TopBar() {
   if (!user.isAuthenticated) return null;
 
   const wallet = WALLET_PLACEHOLDER;
-  const currencySymbol = wallet.currency === "EUR" ? "€" : "$";
 
   return (
     <header
@@ -34,10 +33,7 @@ export default function TopBar() {
         title="Available credit"
       >
         <FontAwesomeIcon icon={faCoins} className="text-[10px] text-[#FF7E5F]" />
-        <span>
-          {currencySymbol}
-          {parseFloat(wallet.balance).toFixed(2)}
-        </span>
+        <span>{parseFloat(wallet.balance).toFixed(2)} Credits</span>
       </button>
 
       {/* Upgrade CTA */}

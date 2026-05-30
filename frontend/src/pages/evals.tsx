@@ -4,7 +4,6 @@ import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faClipboardCheck,
-  faCoins,
   faMagnifyingGlass,
   faPlay,
   faSpinner,
@@ -214,11 +213,6 @@ export default function Evals() {
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Evals</h1>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium">
-            <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>0.00 Credits</span>
-          </div>
         </div>
 
         <div className="flex-1 overflow-auto px-8 lg:px-16 xl:px-28 py-8">

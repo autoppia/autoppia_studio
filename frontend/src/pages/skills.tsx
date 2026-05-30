@@ -8,7 +8,6 @@ import {
   faMagnifyingGlass,
   faTrash,
   faPen,
-  faCoins,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 import { Skill } from "../utils/types";
@@ -82,11 +81,6 @@ export default function Skills() {
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Skills</h1>
-          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-            border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium">
-            <FontAwesomeIcon icon={faCoins} className="text-xs" />
-            <span>0.00 Credits</span>
-          </div>
         </div>
 
         {/* Content */}

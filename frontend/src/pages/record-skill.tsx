@@ -8,7 +8,6 @@ import {
   faStop,
   faChevronDown,
   faChevronRight,
-  faCoins,
   faArrowLeft,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserLoading from "../components/session/browser-loading";
@@ -186,11 +185,6 @@ export default function RecordSkill() {
                 </span>
               </div>
             )}
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg
-              border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 text-sm font-medium">
-              <FontAwesomeIcon icon={faCoins} className="text-xs" />
-              <span>0.00 Credits</span>
-            </div>
           </div>
         </div>
 
