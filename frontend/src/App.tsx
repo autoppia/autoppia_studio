@@ -15,6 +15,7 @@ import RecordSkill from "./pages/record-skill";
 import Evals from "./pages/evals";
 import EvalDetail from "./pages/eval-detail";
 import Operators from "./pages/operators";
+import OperatorDetail from "./pages/operator-detail";
 import Analytics from "./pages/analytics";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
@@ -105,6 +106,7 @@ function App() {
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/skills" element={<Skills />} />
+                <Route path="/trajectories" element={<Skills />} />
                 <Route path="/skills/create" element={<CreateSkill />} />
                 <Route path="/skills/record" element={<RecordSkill />} />
                 <Route path="/skills/:skillId" element={<SkillDetail />} />
@@ -112,6 +114,7 @@ function App() {
                 <Route path="/evals/:evalId" element={<EvalDetail />} />
                 <Route path="/evals/:evalId/run/:id" element={<Session />} />
                 <Route path="/operators" element={<Operators />} />
+                <Route path="/operators/:operatorId" element={<OperatorDetail />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}

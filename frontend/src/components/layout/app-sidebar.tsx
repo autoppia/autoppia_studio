@@ -268,7 +268,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
 
   const isOnHome = location.pathname === "/";
   const isOnSettings = location.pathname === "/settings";
-  const isOnSkills = location.pathname.startsWith("/skills");
+  const isOnSkills = location.pathname.startsWith("/skills") || location.pathname.startsWith("/trajectories");
   const isOnEvals = location.pathname.startsWith("/evals");
   const isOnOperators = location.pathname.startsWith("/operators");
   const isOnAnalytics = location.pathname.startsWith("/analytics");
@@ -355,20 +355,20 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Skills button */}
+          {/* Trajectories button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
-              onClick={() => navigate("/skills")}
+              onClick={() => navigate("/trajectories")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
                 hover:bg-gray-100 dark:hover:bg-dark-surface
                 ${isOnSkills
                   ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
                   : "text-gray-700 dark:text-gray-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Skills"
+              title="Trajectories"
             >
               <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Skills</span>}
+              {expanded && <span className="text-sm font-medium">Trajectories</span>}
             </button>
           </div>
 

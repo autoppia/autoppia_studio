@@ -74,9 +74,42 @@ export interface OperatorTask {
 }
 
 export interface OperatorTrajectory {
+  trajectoryId?: string;
+  operatorId?: string;
+  webId?: string;
   name?: string;
+  taskName?: string;
+  prompt?: string;
+  successCriteria?: string;
   status?: string;
   source?: string;
+  actions?: any[];
+  screenshots?: string[];
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OperatorWeb {
+  webId: string;
+  operatorId: string;
+  name: string;
+  baseUrl: string;
+  authRequired: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface OperatorCapability {
+  capabilityId: string;
+  operatorId: string;
+  webId?: string;
+  name: string;
+  description: string;
+  parameters: any[];
+  trajectoryIds: string[];
+  runtime: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Operator {

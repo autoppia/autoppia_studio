@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faRobot,
@@ -55,6 +56,7 @@ function prettify(value: string) {
 
 export default function Operators() {
   const user = useSelector((state: any) => state.user);
+  const navigate = useNavigate();
 
   const [operators, setOperators] = useState<Operator[]>([]);
   const [loading, setLoading] = useState(true);
@@ -250,10 +252,11 @@ export default function Operators() {
               {filtered.map((op) => (
                 <div
                   key={op.operatorId}
+                  onClick={() => navigate(`/operators/${op.operatorId}`)}
                   className="group relative flex flex-col bg-white dark:bg-dark-surface rounded-xl
                     border border-gray-200 dark:border-dark-border shadow-soft
                     hover:shadow-soft-lg hover:border-gray-300 dark:hover:border-gray-600
-                    transition-all duration-200 p-5"
+                    transition-all duration-200 p-5 cursor-pointer"
                 >
                   {/* Icon */}
                   <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-primary shadow-glow mb-4 flex-shrink-0">

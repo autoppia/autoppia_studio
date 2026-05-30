@@ -26,6 +26,7 @@ from app.routes import profile as profile_routes
 from app.routes import api_keys as api_keys_routes
 from app.routes import skills as skills_routes
 from app.routes import operators as operators_routes
+from app.routes import operator_assets as operator_assets_routes
 from app.routes import evals as evals_routes
 from app.routes import analytics as analytics_routes
 
@@ -53,6 +54,7 @@ fastapi_app.include_router(profile_routes.router)
 fastapi_app.include_router(api_keys_routes.router)
 fastapi_app.include_router(skills_routes.router)
 fastapi_app.include_router(operators_routes.router)
+fastapi_app.include_router(operator_assets_routes.router)
 fastapi_app.include_router(evals_routes.router)
 fastapi_app.include_router(analytics_routes.router)
 

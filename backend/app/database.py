@@ -18,6 +18,9 @@ skills_collection = db["skills"]
 operators_collection = db["operators"]
 evals_collection = db["evals"]
 eval_runs_collection = db["eval_runs"]
+operator_webs_collection = db["operator_webs"]
+trajectories_collection = db["trajectories"]
+capabilities_collection = db["capabilities"]
 
 
 async def ensure_indexes():
@@ -39,4 +42,12 @@ async def ensure_indexes():
     await eval_runs_collection.create_index("email")
     await eval_runs_collection.create_index("operatorId")
     await eval_runs_collection.create_index("runId", unique=True)
+    await operator_webs_collection.create_index("operatorId")
+    await operator_webs_collection.create_index("webId", unique=True)
+    await trajectories_collection.create_index("operatorId")
+    await trajectories_collection.create_index("webId")
+    await trajectories_collection.create_index("trajectoryId", unique=True)
+    await capabilities_collection.create_index("operatorId")
+    await capabilities_collection.create_index("webId")
+    await capabilities_collection.create_index("capabilityId", unique=True)
     logger.info("MongoDB indexes ensured")
