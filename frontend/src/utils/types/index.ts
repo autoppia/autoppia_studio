@@ -54,6 +54,37 @@ export interface EvalRun {
   createdAt?: string;
 }
 
+export interface OperatorTask {
+  name: string;
+  prompt: string;
+  successCriteria?: string;
+  status?: string;
+  trajectoryId?: string;
+}
+
+export interface OperatorTrajectory {
+  name?: string;
+  status?: string;
+  source?: string;
+}
+
+export interface Operator {
+  operatorId: string;
+  email: string;
+  name: string;
+  websiteUrl: string;
+  runtimeEndpoint: string;
+  runtimeType: string;
+  status: string;
+  trainingStatus: string;
+  harvester?: string;
+  tasks: OperatorTask[];
+  trajectories: OperatorTrajectory[];
+  successCriteria: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ParameterizeResult {
   name: string;
   goal: string;

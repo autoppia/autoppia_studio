@@ -13,6 +13,7 @@ import {
   faGear,
   faWandMagicSparkles,
   faClipboardCheck,
+  faRobot,
   faChartLine,
   faLock,
   faTrash,
@@ -269,6 +270,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
   const isOnSettings = location.pathname === "/settings";
   const isOnSkills = location.pathname.startsWith("/skills");
   const isOnEvals = location.pathname.startsWith("/evals");
+  const isOnOperators = location.pathname.startsWith("/operators");
   const isOnAnalytics = location.pathname.startsWith("/analytics");
 
   return (
@@ -384,6 +386,23 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             >
               <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
               {expanded && <span className="text-sm font-medium">Evals</span>}
+            </button>
+          </div>
+
+          {/* Operators button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/operators")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-dark-surface
+                ${isOnOperators
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
+                  : "text-gray-700 dark:text-gray-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Operators"
+            >
+              <FontAwesomeIcon icon={faRobot} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Operators</span>}
             </button>
           </div>
 
