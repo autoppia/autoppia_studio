@@ -19,6 +19,8 @@ class SessionSaveRequest(BaseModel):
     actionHistory: List[Any] = []
     contextId: str = ""
     provider: str = "autoppia"
+    operatorId: str = ""
+    operatorName: str = ""
 
 
 class ChatHistoryRequest(BaseModel):
@@ -67,6 +69,10 @@ async def save_session(body: SessionSaveRequest):
             update_fields["contextId"] = body.contextId
         if body.provider:
             update_fields["provider"] = body.provider
+        if body.operatorId:
+            update_fields["operatorId"] = body.operatorId
+        if body.operatorName:
+            update_fields["operatorName"] = body.operatorName
 
         result = await sessions_collection.update_one(
             {"sessionId": body.sessionId},
@@ -106,6 +112,8 @@ async def get_session(session_id: str):
                 "actionHistory": doc.get("actionHistory", []),
                 "contextId": doc.get("contextId", ""),
                 "provider": doc.get("provider", "autoppia"),
+                "operatorId": doc.get("operatorId", ""),
+                "operatorName": doc.get("operatorName", ""),
             }
         }
     except HTTPException:

@@ -7,6 +7,7 @@ from pathlib import Path
 
 from agent.autoppia_operator import AutoppiaOperator, _execute_tool_call
 from agent.browser_executor import BrowserExecutor
+from app.database import operators_collection
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -23,6 +24,18 @@ storage_state_dir = home_dir / ".automata" / "storage_states"
 storage_state_dir.mkdir(parents=True, exist_ok=True)
 
 
+async def _agent_base_url_for_operator(operator_id: str) -> str:
+    if not operator_id:
+        return ""
+    operator = await operators_collection.find_one({"operatorId": operator_id}, {"_id": 0, "runtimeEndpoint": 1, "status": 1})
+    if not operator:
+        raise ValueError("Selected operator was not found.")
+    endpoint = str(operator.get("runtimeEndpoint") or "").strip()
+    if not endpoint:
+        raise ValueError("Selected operator is not deployed yet.")
+    return endpoint
+
+
 @sio.on("connect")
 async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
@@ -33,11 +46,12 @@ async def start_task(sid, data):
     task = data.get("task")
     initial_url = data.get("initial_url")
     context_id = data.get("context_id", "")
+    operator_id = data.get("operator_id", "")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
         return
 
-    logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}")
+    logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}, Operator ID: {operator_id}")
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -56,7 +70,14 @@ async def start_task(sid, data):
         )
 
         operator = AutoppiaOperator()
-        await operator.initialize(task, initial_url, storage_state_path, context_id=context_id)
+        agent_base_url = await _agent_base_url_for_operator(operator_id)
+        await operator.initialize(
+            task,
+            initial_url,
+            storage_state_path,
+            context_id=context_id,
+            agent_base_url=agent_base_url,
+        )
 
         sessions[sid] = operator
 

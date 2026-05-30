@@ -172,7 +172,8 @@ export default function EvalDetail() {
         evalItem.initialUrl || "",
         contextId,
         { evalMode: true, evalId, runId },
-        `/evals/${evalId}/run`
+        `/evals/${evalId}/run`,
+        evalItem.operatorId ? { operatorId: evalItem.operatorId, operatorName: evalItem.operatorName || "" } : undefined,
       );
     } catch (err) {
       console.error("Failed to create run:", err);

@@ -200,7 +200,8 @@ export default function OperatorDetail() {
         evalItem.initialUrl || "",
         "",
         { evalMode: true, evalId: evalItem.evalId, runId: data.runId },
-        `/evals/${evalItem.evalId}/run`
+        `/evals/${evalItem.evalId}/run`,
+        { operatorId, operatorName: operator?.name || "" },
       );
     } catch (err) {
       console.error("Failed to run task:", err);
@@ -233,7 +234,8 @@ export default function OperatorDetail() {
           benchmarkId: operatorId,
           benchmarkRunId: data.benchmarkRunId,
         },
-        `/evals/${firstTask.evalId}/run`
+        `/evals/${firstTask.evalId}/run`,
+        { operatorId, operatorName: operator?.name || "" },
       );
     } catch (err) {
       console.error("Failed to run benchmark:", err);

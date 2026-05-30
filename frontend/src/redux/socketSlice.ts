@@ -19,6 +19,8 @@ interface SocketState {
     lastUrl: string;
     actionHistory: any[];
     contextId: string;
+    operatorId: string;
+    operatorName: string;
     tabs: BrowserTab[];
     activeTabIndex: number;
 }
@@ -33,6 +35,8 @@ const initialState: SocketState = {
     lastUrl: '',
     actionHistory: [],
     contextId: '',
+    operatorId: '',
+    operatorName: '',
     tabs: [],
     activeTabIndex: 0,
 };
@@ -51,6 +55,8 @@ const socketSlice = createSlice({
             state.lastUrl = '';
             state.actionHistory = [];
             state.contextId = '';
+            state.operatorId = '';
+            state.operatorName = '';
             state.tabs = [];
             state.activeTabIndex = 0;
         },
@@ -79,6 +85,10 @@ const socketSlice = createSlice({
         },
         setContextId: (state, action) => {
             state.contextId = action.payload;
+        },
+        setOperatorInfo: (state, action) => {
+            state.operatorId = action.payload.operatorId || '';
+            state.operatorName = action.payload.operatorName || '';
         },
         setTabs: (state, action) => {
             state.tabs = action.payload;
@@ -116,5 +126,5 @@ export const disconnectBrowser = () => (dispatch: AppDispatch, getState: () => R
     dispatch(clearBrowserState());
 };
 
-export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setTabs, setActiveTabIndex } = socketSlice.actions;
+export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setOperatorInfo, setTabs, setActiveTabIndex } = socketSlice.actions;
 export default socketSlice.reducer;

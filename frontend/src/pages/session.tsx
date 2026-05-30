@@ -20,6 +20,7 @@ import {
   setLastUrl,
   setActionHistory,
   setContextId,
+  setOperatorInfo,
   setActiveTabIndex,
   setLiveUrl,
 } from "../redux/socketSlice";
@@ -45,6 +46,8 @@ function Session(): React.ReactElement {
     evalMode?: boolean;
     evalId?: string;
     runId?: string;
+    operatorId?: string;
+    operatorName?: string;
   } | null;
   const isEvalMode = locationState?.evalMode || location.pathname.startsWith("/evals/");
   const { addHistoryItem } = useOutletContext<{
@@ -73,6 +76,8 @@ function Session(): React.ReactElement {
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
   const contextId = useSelector((state: any) => state.socket.contextId);
+  const operatorId = useSelector((state: any) => state.socket.operatorId);
+  const operatorName = useSelector((state: any) => state.socket.operatorName);
   const tabs = useSelector((state: any) => state.socket.tabs);
   const activeTabIndex = useSelector((state: any) => state.socket.activeTabIndex);
   const user = useSelector((state: any) => state.user);
@@ -143,6 +148,9 @@ function Session(): React.ReactElement {
         if (session.contextId) {
           dispatch(setContextId(session.contextId));
         }
+        if (session.operatorId) {
+          dispatch(setOperatorInfo({ operatorId: session.operatorId, operatorName: session.operatorName || "" }));
+        }
       } catch (err) {
         console.error("Failed to load session:", err);
       }
@@ -174,6 +182,8 @@ function Session(): React.ReactElement {
           lastUrl: lastUrl || "",
           actionHistory: actionHistory || [],
           contextId: contextId || "",
+          operatorId: operatorId || locationState?.operatorId || "",
+          operatorName: operatorName || locationState?.operatorName || "",
         }),
       });
       setHistorySaved(true);
@@ -203,6 +213,10 @@ function Session(): React.ReactElement {
     prompt,
     initialUrl,
     contextId,
+    operatorId,
+    operatorName,
+    locationState?.operatorId,
+    locationState?.operatorName,
     addHistoryItem,
   ]);
 

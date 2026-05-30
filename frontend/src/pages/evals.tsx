@@ -139,7 +139,8 @@ export default function Evals() {
         evalItem.initialUrl || "",
         "",
         { evalMode: true, evalId: evalItem.evalId, runId: data.runId },
-        `/evals/${evalItem.evalId}/run`
+        `/evals/${evalItem.evalId}/run`,
+        evalItem.operatorId ? { operatorId: evalItem.operatorId, operatorName: evalItem.operatorName || "" } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark task:", err);
@@ -173,7 +174,8 @@ export default function Evals() {
           benchmarkId: benchmark.benchmarkId,
           benchmarkRunId: data.benchmarkRunId,
         },
-        `/evals/${firstTask.evalId}/run`
+        `/evals/${firstTask.evalId}/run`,
+        benchmark.operatorId ? { operatorId: benchmark.operatorId, operatorName: benchmark.name } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark:", err);

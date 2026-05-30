@@ -204,14 +204,20 @@ class AutoppiaOperator:
         initial_url: str = None,
         storage_state_path: Path = None,
         context_id: str = "",
+        agent_base_url: str = "",
     ) -> None:
         self.task = task
         self.initial_url = initial_url
         self.storage_state_path = storage_state_path
 
-        base_url = os.getenv("AUTOPPIA_AGENT_BASE_URL", "")
+        base_url = agent_base_url or os.getenv("AUTOPPIA_AGENT_BASE_URL", "")
         if not base_url:
             raise ValueError("AUTOPPIA_AGENT_BASE_URL environment variable is not set.")
+
+        if base_url.endswith("/act"):
+            base_url = base_url[:-4]
+        elif base_url.endswith("/step"):
+            base_url = base_url[:-5]
 
         self.cua = ApifiedCUA(base_url=base_url)
         self.browser_executor = BrowserExecutor()
