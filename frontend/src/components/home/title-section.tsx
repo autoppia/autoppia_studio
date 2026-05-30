@@ -18,9 +18,6 @@ export default function TitleSection() {
           </span>
         </a>
       </h2>
-      <p className="w-full text-center mb-10 text-base md:text-lg font-normal text-gray-500 dark:text-gray-400">
-        What can I help you with?
-      </p>
     </div>
   );
 }
