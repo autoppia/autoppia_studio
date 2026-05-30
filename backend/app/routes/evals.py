@@ -22,6 +22,10 @@ class RunCreateRequest(BaseModel):
     sessionId: str = ""
 
 
+class BenchmarkRunCreateRequest(BaseModel):
+    sessionId: str = ""
+
+
 class RunUpdateRequest(BaseModel):
     label: str | None = None
     actions: List[Any] | None = None
@@ -63,6 +67,48 @@ async def list_all_runs(email: str):
         run["operatorName"] = ev.get("operatorName", "")
         run["operatorTaskName"] = ev.get("operatorTaskName", "")
     return {"runs": runs}
+
+
+@router.post("/benchmarks/{operator_id}/runs")
+async def create_benchmark_run(operator_id: str, body: BenchmarkRunCreateRequest):
+    eval_cursor = evals_collection.find(
+        {"operatorId": operator_id},
+        {"_id": 0},
+    ).sort("createdAt", 1)
+    evals = await eval_cursor.to_list(length=200)
+    if not evals:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+
+    benchmark_run_id = str(uuid4())
+    created = []
+    now = datetime.now(timezone.utc).isoformat()
+    for ev in evals:
+        run_id = str(uuid4())
+        doc = {
+            "runId": run_id,
+            "benchmarkRunId": benchmark_run_id,
+            "evalId": ev.get("evalId", ""),
+            "email": ev.get("email", ""),
+            "operatorId": ev.get("operatorId", ""),
+            "operatorName": ev.get("operatorName", ""),
+            "operatorTaskName": ev.get("operatorTaskName", ""),
+            "sessionId": body.sessionId,
+            "actions": [],
+            "label": "pending",
+            "screenshots": [],
+            "createdAt": now,
+        }
+        await eval_runs_collection.insert_one(doc)
+        created.append(
+            {
+                "runId": run_id,
+                "evalId": ev.get("evalId", ""),
+                "prompt": ev.get("prompt", ""),
+                "initialUrl": ev.get("initialUrl", ""),
+                "operatorTaskName": ev.get("operatorTaskName", ""),
+            }
+        )
+    return {"success": True, "benchmarkRunId": benchmark_run_id, "runs": created}
 
 
 @router.get("/evals/{eval_id}")
@@ -121,6 +167,7 @@ async def create_run(eval_id: str, body: RunCreateRequest):
     doc = {
         "runId": run_id,
         "evalId": eval_id,
+        "benchmarkRunId": "",
         "email": ev.get("email", ""),
         "operatorId": ev.get("operatorId", ""),
         "operatorName": ev.get("operatorName", ""),

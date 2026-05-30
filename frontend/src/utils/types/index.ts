@@ -51,6 +51,7 @@ export interface EvalItem {
 
 export interface EvalRun {
   runId: string;
+  benchmarkRunId?: string;
   evalId: string;
   sessionId: string;
   prompt?: string;

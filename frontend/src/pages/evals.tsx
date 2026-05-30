@@ -56,6 +56,7 @@ export default function Evals() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [runningEvalId, setRunningEvalId] = useState<string | null>(null);
+  const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
   const [savingRunId, setSavingRunId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -144,6 +145,40 @@ export default function Evals() {
     } catch (err) {
       console.error("Failed to run benchmark task:", err);
       setRunningEvalId(null);
+    }
+  };
+
+  const runBenchmark = async (benchmark: Benchmark) => {
+    if (runningBenchmarkId || runningEvalId || benchmark.tasks.length === 0) return;
+    setRunningBenchmarkId(benchmark.benchmarkId);
+    try {
+      const res = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmark.operatorId)}/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: "" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const firstRun = data.runs?.[0];
+      if (!firstRun) throw new Error("Benchmark has no runnable tasks");
+      const firstTask = benchmark.tasks.find((task) => task.evalId === firstRun.evalId) || benchmark.tasks[0];
+      await startSession(
+        firstTask.prompt,
+        firstTask.initialUrl || "",
+        "",
+        {
+          evalMode: true,
+          evalId: firstTask.evalId,
+          runId: firstRun.runId,
+          benchmarkMode: true,
+          benchmarkId: benchmark.benchmarkId,
+          benchmarkRunId: data.benchmarkRunId,
+        },
+        `/evals/${firstTask.evalId}/run`
+      );
+    } catch (err) {
+      console.error("Failed to run benchmark:", err);
+      setRunningBenchmarkId(null);
     }
   };
 
@@ -262,10 +297,21 @@ export default function Evals() {
                           </p>
                         )}
                       </div>
-                      <div className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium
-                        bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300">
-                        <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
-                        {benchmark.tasks.length} tasks
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <div className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-medium
+                          bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300">
+                          <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
+                          {benchmark.tasks.length} tasks
+                        </div>
+                        <button
+                          onClick={() => runBenchmark(benchmark)}
+                          disabled={runningBenchmarkId === benchmark.benchmarkId || !!runningEvalId}
+                          className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+                            bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg disabled:opacity-60 transition-all"
+                        >
+                          <FontAwesomeIcon icon={runningBenchmarkId === benchmark.benchmarkId ? faSpinner : faPlay} className={`text-[10px] ${runningBenchmarkId === benchmark.benchmarkId ? "animate-spin" : ""}`} />
+                          Run Benchmark
+                        </button>
                       </div>
                     </div>
 
