@@ -4,6 +4,7 @@ import uuid
 import asyncio
 import base64
 import logging
+import json
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -57,6 +58,35 @@ def _resolve_selector(args: dict) -> str:
     return ""
 
 
+def _normalize_tool_call(tool_call: dict) -> dict:
+    if not isinstance(tool_call, dict):
+        return {"name": "unknown", "arguments": {}}
+    fn = tool_call.get("function") if isinstance(tool_call.get("function"), dict) else None
+    if fn is None:
+        return {
+            "name": str(tool_call.get("name") or ""),
+            "arguments": tool_call.get("arguments") if isinstance(tool_call.get("arguments"), dict) else {},
+        }
+
+    raw_args = fn.get("arguments")
+    if isinstance(raw_args, dict):
+        args = raw_args
+    elif isinstance(raw_args, str):
+        try:
+            parsed = json.loads(raw_args)
+            args = parsed if isinstance(parsed, dict) else {}
+        except Exception:
+            args = {}
+    else:
+        args = {}
+    return {"name": str(fn.get("name") or ""), "arguments": args}
+
+
+def _action_from_tool_call(tool_call: dict) -> dict:
+    args = tool_call.get("arguments") if isinstance(tool_call.get("arguments"), dict) else {}
+    return args if isinstance(args, dict) else {}
+
+
 async def _execute_tool_call(page, tool_call: dict) -> None:
     """Execute a tool_call dict (browser.* format) on a Playwright page."""
     name = tool_call.get("name", "")
@@ -82,7 +112,7 @@ async def _execute_tool_call(page, tool_call: dict) -> None:
         if selector:
             await page.hover(selector, timeout=5000)
 
-    elif name == "browser.input":
+    elif name in ("browser.input", "browser.type"):
         selector = _resolve_selector(args)
         text = args.get("text", "")
         if selector and text:
@@ -138,7 +168,7 @@ async def _execute_tool_call(page, tool_call: dict) -> None:
         if script:
             await page.evaluate(script)
 
-    elif name in ("browser.screenshot", "browser.done", "browser.extract", "browser.dropdown_options"):
+    elif name in ("browser.screenshot", "browser.done", "browser.finish", "browser.extract", "browser.dropdown_options"):
         pass  # handled at the step level or no-op
 
     else:
@@ -216,7 +246,7 @@ class AutoppiaOperator:
             log_resp = {k: v for k, v in response.items() if k not in ("state_out", "snapshot_html")}
             logger.info(f"/act response: {log_resp}")
 
-            tool_calls = response.get("tool_calls", [])
+            tool_calls = [_normalize_tool_call(tc) for tc in response.get("tool_calls", [])]
             reasoning = response.get("reasoning")
             content = response.get("content")
             done = response.get("done", False)
@@ -273,6 +303,8 @@ class AutoppiaOperator:
                         {
                             "step_index": self.step_index,
                             "tool_call": tool_call,
+                            "action": _action_from_tool_call(tool_call),
+                            "success": True,
                         }
                     )
                 except Exception as e:
@@ -282,6 +314,8 @@ class AutoppiaOperator:
                         {
                             "step_index": self.step_index,
                             "tool_call": tool_call,
+                            "action": _action_from_tool_call(tool_call),
+                            "success": False,
                             "error": str(e),
                         }
                     )

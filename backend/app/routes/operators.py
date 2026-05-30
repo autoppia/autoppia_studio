@@ -5,17 +5,15 @@ from typing import Any, List
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.database import operators_collection
+from app.database import evals_collection, operators_collection
 
 router = APIRouter()
 
 
 AUTOCINEMA_TASKS = [
-    {"name": "Login", "prompt": "Log in to Autocinema with the provided username and password.", "status": "verified"},
-    {"name": "Contact", "prompt": "Open the contact page and send a support message.", "status": "verified"},
-    {"name": "Search film", "prompt": "Search for a film by title.", "status": "verified"},
-    {"name": "Film detail", "prompt": "Open a film detail page.", "status": "verified"},
-    {"name": "Filter films", "prompt": "Filter films by genre.", "status": "verified"},
+    {"name": "Login", "prompt": "Log in to Autocinema with username user1 and password Passw0rd!", "status": "verified"},
+    {"name": "Search film", "prompt": "Search for The Matrix in Autocinema", "status": "verified"},
+    {"name": "Film detail", "prompt": "Open a film detail page in Autocinema", "status": "verified"},
 ]
 
 
@@ -58,6 +56,53 @@ def _serialize_operator(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
+
+
+async def _ensure_operator_evals(
+    *,
+    email: str,
+    operator_id: str,
+    operator_name: str,
+    website_url: str,
+    tasks: list[dict[str, Any]],
+) -> list[str]:
+    eval_ids: list[str] = []
+    now = datetime.now(timezone.utc).isoformat()
+    for task in tasks:
+        prompt = str(task.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        eval_id = str(uuid.uuid4())
+        result = await evals_collection.update_one(
+            {
+                "email": email,
+                "operatorId": operator_id,
+                "prompt": prompt,
+            },
+            {
+                "$setOnInsert": {
+                    "evalId": eval_id,
+                    "email": email,
+                    "prompt": prompt,
+                    "initialUrl": website_url,
+                    "operatorId": operator_id,
+                    "operatorName": operator_name,
+                    "operatorTaskName": str(task.get("name") or ""),
+                    "createdAt": now,
+                }
+            },
+            upsert=True,
+        )
+        if result.upserted_id is not None:
+            eval_ids.append(eval_id)
+        else:
+            existing = await evals_collection.find_one(
+                {"email": email, "operatorId": operator_id, "prompt": prompt},
+                {"_id": 0, "evalId": 1},
+            )
+            if existing and existing.get("evalId"):
+                eval_ids.append(str(existing["evalId"]))
+    return eval_ids
 
 
 @router.get("/operators")
@@ -112,7 +157,14 @@ async def create_operator(body: OperatorCreateRequest):
             "updatedAt": now,
         }
         await operators_collection.insert_one(doc)
-        return {"success": True, "operatorId": operator_id}
+        eval_ids = await _ensure_operator_evals(
+            email=body.email,
+            operator_id=operator_id,
+            operator_name=body.name,
+            website_url=body.websiteUrl,
+            tasks=[task.model_dump() for task in body.tasks],
+        )
+        return {"success": True, "operatorId": operator_id, "evalIds": eval_ids}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -144,7 +196,19 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
                 {"$set": updates},
             )
             refreshed = await operators_collection.find_one({"operatorId": existing.get("operatorId")})
-            return {"success": True, "operatorId": existing.get("operatorId"), "operator": _serialize_operator(refreshed or existing)}
+            eval_ids = await _ensure_operator_evals(
+                email=body.email,
+                operator_id=str(existing.get("operatorId") or ""),
+                operator_name="Autocinema",
+                website_url="http://84.247.180.192:8000",
+                tasks=AUTOCINEMA_TASKS,
+            )
+            return {
+                "success": True,
+                "operatorId": existing.get("operatorId"),
+                "operator": _serialize_operator(refreshed or existing),
+                "evalIds": eval_ids,
+            }
 
         now = datetime.now(timezone.utc)
         operator_id = str(uuid.uuid4())
@@ -168,6 +232,13 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             "updatedAt": now,
         }
         await operators_collection.insert_one(doc)
-        return {"success": True, "operatorId": operator_id, "operator": _serialize_operator(doc)}
+        eval_ids = await _ensure_operator_evals(
+            email=body.email,
+            operator_id=operator_id,
+            operator_name="Autocinema",
+            website_url="http://84.247.180.192:8000",
+            tasks=AUTOCINEMA_TASKS,
+        )
+        return {"success": True, "operatorId": operator_id, "operator": _serialize_operator(doc), "evalIds": eval_ids}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

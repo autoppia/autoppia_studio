@@ -34,6 +34,7 @@ async def ensure_indexes():
     await operators_collection.create_index("operatorId", unique=True)
     await evals_collection.create_index("email")
     await evals_collection.create_index("evalId", unique=True)
+    await evals_collection.create_index("operatorId")
     await eval_runs_collection.create_index("evalId")
     await eval_runs_collection.create_index("runId", unique=True)
     logger.info("MongoDB indexes ensured")
