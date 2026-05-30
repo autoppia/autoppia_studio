@@ -69,10 +69,10 @@ export default function SliderSection(props: SliderSectionProps) {
 
   const settings = {
     accessibility: false,
-    infinite: true,
+    infinite: promptSlides.length > 1,
     arrows: false,
     speed: 500,
-    autoplay: true,
+    autoplay: promptSlides.length > 1,
     autoplaySpeed: 5000,
     slidesToShow: 1,
     slidesToScroll: 1,
@@ -107,39 +107,45 @@ export default function SliderSection(props: SliderSectionProps) {
     </div>
   );
 
-  return (
-    <div className="w-full xl:w-[900px] mx-auto mt-6 mb-4 animate-slide-up" style={{ animationDelay: "0.2s" }}>
-      <Slider
-        ref={(slider) => {
-          sliderRef.current = slider;
-        }}
-        {...settings}
-      >
-        {promptSlides.map((slide, slideNumber) => (
-          <div className="py-2 px-1" key={`operator-examples-${slideNumber}`}>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-              {slide.map((item, index) => (
-                <PromptCard key={`${item.title}-${index}`} item={item} index={index} group={`operator-${slideNumber}`} />
-              ))}
-              {slide.length < 4 && Array.from({ length: 4 - slide.length }).map((_, index) => (
-                <div
-                  key={`placeholder-${index}`}
-                  className="hidden lg:flex border border-dashed border-gray-200 dark:border-dark-border bg-white/50 dark:bg-dark-surface/50
-                    px-4 py-4 rounded-2xl items-center gap-3 text-gray-400 dark:text-gray-500"
-                >
-                  <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-gray-100 dark:bg-dark-border">
-                    <FontAwesomeIcon icon={faListCheck} className="text-sm" />
-                  </div>
-                  <span className="text-sm font-medium">Train more tasks</span>
-                </div>
-              ))}
+  const renderSlide = (slide: any[], slideNumber: number) => (
+    <div className="py-2 px-1" key={`operator-examples-${slideNumber}`}>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+        {slide.map((item, index) => (
+          <PromptCard key={`${item.title}-${index}`} item={item} index={index} group={`operator-${slideNumber}`} />
+        ))}
+        {slide.length < 4 && Array.from({ length: 4 - slide.length }).map((_, index) => (
+          <div
+            key={`placeholder-${index}`}
+            className="hidden lg:flex border border-dashed border-gray-200 dark:border-dark-border bg-white/50 dark:bg-dark-surface/50
+              px-4 py-4 rounded-2xl items-center gap-3 text-gray-400 dark:text-gray-500"
+          >
+            <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 rounded-lg bg-gray-100 dark:bg-dark-border">
+              <FontAwesomeIcon icon={faListCheck} className="text-sm" />
             </div>
+            <span className="text-sm font-medium">Train more tasks</span>
           </div>
         ))}
-      </Slider>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="w-full xl:w-[900px] mx-auto mt-6 mb-4 animate-slide-up" style={{ animationDelay: "0.2s" }}>
+      {promptSlides.length === 1 ? (
+        renderSlide(promptSlides[0], 0)
+      ) : (
+        <Slider
+          ref={(slider) => {
+            sliderRef.current = slider;
+          }}
+          {...settings}
+        >
+          {promptSlides.map((slide, slideNumber) => renderSlide(slide, slideNumber))}
+        </Slider>
+      )}
 
       {/* Slide indicators */}
-      <div className="flex justify-center mt-3 gap-2">
+      {promptSlides.length > 1 && <div className="flex justify-center mt-3 gap-2">
         {promptSlides.map((_, i) => (
           <button
             key={i}
@@ -151,7 +157,7 @@ export default function SliderSection(props: SliderSectionProps) {
             onClick={() => sliderRef.current?.slickGoTo(i)}
           />
         ))}
-      </div>
+      </div>}
     </div>
   );
 }
