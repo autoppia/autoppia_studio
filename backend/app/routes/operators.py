@@ -13,12 +13,9 @@ router = APIRouter()
 AUTOCINEMA_TASKS = [
     {"name": "Login", "prompt": "Log in to Autocinema with the provided username and password.", "status": "verified"},
     {"name": "Contact", "prompt": "Open the contact page and send a support message.", "status": "verified"},
-    {"name": "Film detail", "prompt": "Open a film detail page.", "status": "verified"},
     {"name": "Search film", "prompt": "Search for a film by title.", "status": "verified"},
+    {"name": "Film detail", "prompt": "Open a film detail page.", "status": "verified"},
     {"name": "Filter films", "prompt": "Filter films by genre.", "status": "verified"},
-    {"name": "Logout", "prompt": "Log out of the current account.", "status": "verified"},
-    {"name": "Add comment", "prompt": "Add a comment to a film.", "status": "verified"},
-    {"name": "Add to watchlist", "prompt": "Add a film to the watchlist.", "status": "verified"},
 ]
 
 
@@ -127,7 +124,27 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             {"email": body.email, "name": "Autocinema"}
         )
         if existing:
-            return {"success": True, "operatorId": existing.get("operatorId"), "operator": _serialize_operator(existing)}
+            updates = {
+                "websiteUrl": "http://84.247.180.192:8000",
+                "runtimeEndpoint": "http://127.0.0.1:5060/act",
+                "runtimeType": "standard_replay_recovery",
+                "status": "ready",
+                "trainingStatus": "verified",
+                "harvester": "Automata Operator",
+                "tasks": AUTOCINEMA_TASKS,
+                "trajectories": [
+                    {"name": task["name"], "status": "verified", "source": "bundled_autocinema_package"}
+                    for task in AUTOCINEMA_TASKS
+                ],
+                "successCriteria": "IWA benchmark success for the matched Autocinema task.",
+                "updatedAt": datetime.now(timezone.utc),
+            }
+            await operators_collection.update_one(
+                {"operatorId": existing.get("operatorId")},
+                {"$set": updates},
+            )
+            refreshed = await operators_collection.find_one({"operatorId": existing.get("operatorId")})
+            return {"success": True, "operatorId": existing.get("operatorId"), "operator": _serialize_operator(refreshed or existing)}
 
         now = datetime.now(timezone.utc)
         operator_id = str(uuid.uuid4())
@@ -137,13 +154,13 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             "name": "Autocinema",
             "websiteUrl": "http://84.247.180.192:8000",
             "runtimeEndpoint": "http://127.0.0.1:5060/act",
-            "runtimeType": "replay",
+            "runtimeType": "standard_replay_recovery",
             "status": "ready",
             "trainingStatus": "verified",
             "harvester": "Automata Operator",
             "tasks": AUTOCINEMA_TASKS,
             "trajectories": [
-                {"name": task["name"], "status": "verified", "source": "bundled_autocinema_seed_templates"}
+                {"name": task["name"], "status": "verified", "source": "bundled_autocinema_package"}
                 for task in AUTOCINEMA_TASKS
             ],
             "successCriteria": "IWA benchmark success for the matched Autocinema task.",
