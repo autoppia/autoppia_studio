@@ -1,33 +1,48 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faClipboardCheck,
-  faMagnifyingGlass,
-  faTrash,
-  faSpinner,
-  faPlus,
-  faGlobe,
-  faAngleDown,
-  faPlay,
   faCoins,
+  faMagnifyingGlass,
+  faPlay,
+  faSpinner,
+  faCheck,
+  faXmark,
+  faGlobe,
+  faListCheck,
+  faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
-import { EvalItem } from "../utils/types";
-import ConfirmModal from "../components/common/confirm-modal";
+import { EvalItem, EvalRun } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
-import { websites } from "../utils/mock/mockDB";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-function formatDate(iso: string) {
+type TabKey = "benchmarks" | "runs";
+
+interface Benchmark {
+  benchmarkId: string;
+  name: string;
+  websiteUrl: string;
+  operatorId: string;
+  tasks: EvalItem[];
+}
+
+function formatDate(iso?: string) {
+  if (!iso) return "";
   return new Date(iso).toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
-    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+function labelClass(label: string) {
+  if (label === "pass") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (label === "fail") return "bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/30";
+  return "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/30";
 }
 
 export default function Evals() {
@@ -35,107 +50,82 @@ export default function Evals() {
   const navigate = useNavigate();
   const startSession = useStartSession();
 
+  const [activeTab, setActiveTab] = useState<TabKey>("benchmarks");
   const [evals, setEvals] = useState<EvalItem[]>([]);
+  const [runs, setRuns] = useState<EvalRun[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [deletingEvalId, setDeletingEvalId] = useState<string | null>(null);
-
-  // Add task modal
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [prompt, setPrompt] = useState("");
-  const [initialUrl, setInitialUrl] = useState("");
-  const [submitting, setSubmitting] = useState(false);
-  const [filteredWebsites, setFilteredWebsites] = useState(websites);
-  const [showUrlDropdown, setShowUrlDropdown] = useState(false);
+  const [runningEvalId, setRunningEvalId] = useState<string | null>(null);
+  const [savingRunId, setSavingRunId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user.email) return;
-    fetchEvals();
+    fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.email]);
 
-  // Close URL dropdown on outside click
-  useEffect(() => {
-    if (!showUrlDropdown) return;
-    const handler = () => setShowUrlDropdown(false);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, [showUrlDropdown]);
-
-  const fetchEvals = async () => {
+  const fetchData = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
-      setEvals(data.evals || []);
+      const [evalsRes, runsRes] = await Promise.all([
+        fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
+        fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
+      ]);
+      if (!evalsRes.ok) throw new Error(await evalsRes.text());
+      const evalsData = await evalsRes.json();
+      setEvals(evalsData.evals || []);
+      if (runsRes.ok) {
+        const runsData = await runsRes.json();
+        setRuns(runsData.runs || []);
+      }
     } catch (err) {
-      console.error("Failed to fetch evals:", err);
+      console.error("Failed to fetch benchmark data:", err);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleDelete = async (evalId: string) => {
-    try {
-      const res = await fetch(`${apiUrl}/evals/${evalId}`, { method: "DELETE" });
-      if (!res.ok) throw new Error(await res.text());
-      setEvals((prev) => prev.filter((e) => e.evalId !== evalId));
-    } catch (err) {
-      console.error("Failed to delete eval:", err);
-    }
-  };
-
-  const handleAddTask = async () => {
-    if (!prompt.trim() || submitting) return;
-    setSubmitting(true);
-    try {
-      const res = await fetch(`${apiUrl}/evals`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          email: user.email,
-          prompt: prompt.trim(),
-          initialUrl: initialUrl.trim(),
-        }),
+  const benchmarks = useMemo<Benchmark[]>(() => {
+    const grouped = new Map<string, Benchmark>();
+    for (const item of evals) {
+      const key = item.operatorId || `manual:${item.initialUrl || "default"}`;
+      const existing = grouped.get(key);
+      if (existing) {
+        existing.tasks.push(item);
+        continue;
+      }
+      grouped.set(key, {
+        benchmarkId: key,
+        name: item.operatorName || "Manual Benchmark",
+        websiteUrl: item.initialUrl || "",
+        operatorId: item.operatorId || "",
+        tasks: [item],
       });
-      if (!res.ok) throw new Error(await res.text());
-      setPrompt("");
-      setInitialUrl("");
-      setShowAddModal(false);
-      await fetchEvals();
-    } catch (err) {
-      console.error("Failed to add task:", err);
-    } finally {
-      setSubmitting(false);
     }
-  };
+    return Array.from(grouped.values());
+  }, [evals]);
 
-  const handlePromptChange = (event: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setPrompt(event.target.value);
-    event.target.style.height = "auto";
-    event.target.style.height = `${event.target.scrollHeight}px`;
-  };
+  const filteredBenchmarks = benchmarks.filter((benchmark) => {
+    const q = search.toLowerCase();
+    return (
+      benchmark.name.toLowerCase().includes(q) ||
+      benchmark.websiteUrl.toLowerCase().includes(q) ||
+      benchmark.tasks.some((task) => task.prompt.toLowerCase().includes(q))
+    );
+  });
 
-  const handleUrlChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const value = event.target.value;
-    setInitialUrl(value);
-    if (value) {
-      setFilteredWebsites(websites.filter((w) => w.url.toLowerCase().includes(value.toLowerCase())));
-    } else {
-      setFilteredWebsites(websites);
-    }
-    setShowUrlDropdown(true);
-  };
+  const filteredRuns = runs.filter((run) => {
+    const q = search.toLowerCase();
+    return (
+      (run.operatorName || "").toLowerCase().includes(q) ||
+      (run.prompt || "").toLowerCase().includes(q) ||
+      (run.label || "").toLowerCase().includes(q)
+    );
+  });
 
-  const handleModalKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key === "Enter" && !event.shiftKey) {
-      event.preventDefault();
-      handleAddTask();
-    }
-  };
-
-  const handleRunEval = async (evalItem: EvalItem) => {
+  const runEval = async (evalItem: EvalItem) => {
+    if (runningEvalId) return;
+    setRunningEvalId(evalItem.evalId);
     try {
       const res = await fetch(`${apiUrl}/evals/${evalItem.evalId}/runs`, {
         method: "POST",
@@ -144,23 +134,40 @@ export default function Evals() {
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      const runId = data.runId;
-
       await startSession(
         evalItem.prompt,
         evalItem.initialUrl || "",
         "",
-        { evalMode: true, evalId: evalItem.evalId, runId },
+        { evalMode: true, evalId: evalItem.evalId, runId: data.runId },
         `/evals/${evalItem.evalId}/run`
       );
     } catch (err) {
-      console.error("Failed to run eval:", err);
+      console.error("Failed to run benchmark task:", err);
+      setRunningEvalId(null);
     }
   };
 
-  const filtered = evals.filter(
-    (e) => e.prompt.toLowerCase().includes(search.toLowerCase())
-  );
+  const updateRunLabel = async (run: EvalRun, label: "pass" | "fail") => {
+    if (savingRunId) return;
+    setSavingRunId(run.runId);
+    try {
+      const res = await fetch(`${apiUrl}/evals/${run.evalId}/runs/${run.runId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setRuns((prev) => prev.map((r) => (r.runId === run.runId ? { ...r, label } : r)));
+    } catch (err) {
+      console.error("Failed to update run label:", err);
+    } finally {
+      setSavingRunId(null);
+    }
+  };
+
+  const passCount = runs.filter((run) => run.label === "pass").length;
+  const failCount = runs.filter((run) => run.label === "fail").length;
+  const pendingCount = runs.filter((run) => run.label === "pending").length;
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -169,7 +176,6 @@ export default function Evals() {
       </div>
 
       <div className="flex flex-col w-full h-full relative">
-        {/* Header */}
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Evals</h1>
@@ -180,104 +186,170 @@ export default function Evals() {
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-auto px-12 lg:px-24 xl:px-40 py-8">
-          {/* Search + Add Task row */}
-          <div className="flex items-center gap-3 mb-6">
+        <div className="flex-1 overflow-auto px-8 lg:px-16 xl:px-28 py-8">
+          <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border">
+              {[
+                { key: "benchmarks" as TabKey, label: "Benchmarks", icon: faClipboardCheck },
+                { key: "runs" as TabKey, label: "Runs", icon: faClockRotateLeft },
+              ].map((tab) => (
+                <button
+                  key={tab.key}
+                  onClick={() => setActiveTab(tab.key)}
+                  className={`flex items-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors
+                    ${activeTab === tab.key
+                      ? "bg-gradient-primary text-white shadow-glow"
+                      : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border"
+                    }`}
+                >
+                  <FontAwesomeIcon icon={tab.icon} className="text-xs" />
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
             <div className="flex items-center gap-2 px-3 h-10 rounded-xl bg-white dark:bg-dark-surface flex-1
               border border-gray-200 dark:border-dark-border
               focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-200">
               <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
               <input
                 type="text"
-                placeholder="Search tasks..."
+                placeholder={activeTab === "benchmarks" ? "Search benchmarks..." : "Search runs..."}
                 className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <button
-              onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-2 px-4 h-10 rounded-xl text-sm font-medium flex-shrink-0
-                bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 transition-all duration-300"
-            >
-              <FontAwesomeIcon icon={faPlus} className="text-xs" />
-              Add Task
-            </button>
+
+            <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-gray-400">
+              <span className="px-2 py-1 rounded-md bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border">
+                {benchmarks.length} benchmarks
+              </span>
+              <span className="px-2 py-1 rounded-md bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
+                {pendingCount} pending
+              </span>
+              <span className="px-2 py-1 rounded-md bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400">
+                {passCount} pass
+              </span>
+              <span className="px-2 py-1 rounded-md bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400">
+                {failCount} fail
+              </span>
+            </div>
           </div>
 
-          {/* Task list */}
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <FontAwesomeIcon icon={faSpinner} className="text-primary text-2xl animate-spin" />
-              <p className="text-sm text-gray-400 dark:text-gray-500">Loading tasks...</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">Loading evals...</p>
             </div>
-          ) : filtered.length === 0 && !search ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-primary shadow-glow mb-4">
-                <FontAwesomeIcon icon={faClipboardCheck} className="text-white text-xl" />
+          ) : activeTab === "benchmarks" ? (
+            filteredBenchmarks.length === 0 ? (
+              <EmptyState text="No benchmarks yet. Create an operator to generate a benchmark." />
+            ) : (
+              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                {filteredBenchmarks.map((benchmark) => (
+                  <div
+                    key={benchmark.benchmarkId}
+                    className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft p-5"
+                  >
+                    <div className="flex items-start justify-between gap-4 mb-4">
+                      <div className="min-w-0">
+                        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">{benchmark.name}</h2>
+                        {benchmark.websiteUrl && (
+                          <p className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 font-mono truncate mt-1">
+                            <FontAwesomeIcon icon={faGlobe} className="text-[10px]" />
+                            {benchmark.websiteUrl}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-1.5 px-2.5 h-7 rounded-lg text-xs font-medium
+                        bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300">
+                        <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
+                        {benchmark.tasks.length} tasks
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      {benchmark.tasks.map((task) => (
+                        <div
+                          key={task.evalId}
+                          className="flex items-center gap-3 rounded-lg border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-3"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                              {task.operatorTaskName || "Task"}
+                            </p>
+                            <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
+                          </div>
+                          <button
+                            onClick={() => runEval(task)}
+                            disabled={runningEvalId === task.evalId}
+                            className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+                              bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg disabled:opacity-60 transition-all"
+                          >
+                            <FontAwesomeIcon icon={runningEvalId === task.evalId ? faSpinner : faPlay} className={`text-[10px] ${runningEvalId === task.evalId ? "animate-spin" : ""}`} />
+                            Run
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
-              <p className="text-gray-500 dark:text-gray-400 text-sm">
-                No tasks yet. Click "Add Task" to create one.
-              </p>
-            </div>
-          ) : filtered.length === 0 && search ? (
-            <div className="flex flex-col items-center justify-center py-16 text-center">
-              <p className="text-gray-500 dark:text-gray-400 text-sm">No tasks matching "{search}"</p>
-            </div>
+            )
+          ) : filteredRuns.length === 0 ? (
+            <EmptyState text="No runs yet. Run a benchmark task, then confirm pass or fail here." />
           ) : (
             <div className="flex flex-col gap-3">
-              {filtered.map((evalItem) => (
+              {filteredRuns.map((run) => (
                 <div
-                  key={evalItem.evalId}
-                  onClick={() => navigate(`/evals/${evalItem.evalId}`)}
-                  className="group flex items-center gap-4 bg-white dark:bg-dark-surface rounded-xl
-                    border border-gray-200 dark:border-dark-border shadow-soft
-                    hover:shadow-soft-lg hover:border-gray-300 dark:hover:border-gray-600
-                    transition-all duration-200 px-6 py-4 cursor-pointer"
+                  key={run.runId}
+                  className="flex items-center gap-4 bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4"
                 >
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white leading-relaxed">
-                      {evalItem.prompt}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${labelClass(run.label)}`}>
+                        {run.label}
+                      </span>
+                      <span className="text-xs text-gray-400 dark:text-gray-500">
+                        {formatDate(run.createdAt)}
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                      {run.prompt || run.evalId}
                     </p>
-                    {evalItem.initialUrl && (
-                      <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-1 font-mono">
-                        {evalItem.initialUrl}
-                      </p>
-                    )}
+                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                      {(run.operatorName || "Benchmark")} {run.operatorTaskName ? ` / ${run.operatorTaskName}` : ""}
+                    </p>
                   </div>
 
-                  {/* Meta + actions */}
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {evalItem.createdAt && (
-                      <span className="text-xs text-gray-400 dark:text-gray-600 hidden sm:block whitespace-nowrap mr-1">
-                        {formatDate(evalItem.createdAt)}
-                      </span>
-                    )}
-
-                    {/* Run */}
                     <button
-                      onClick={(e) => { e.stopPropagation(); handleRunEval(evalItem); }}
-                      className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                        bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 transition-all duration-200"
-                      title="Run this task"
+                      onClick={() => navigate(`/evals/${run.evalId}/run/${run.sessionId || run.runId}`, { state: { evalMode: true, evalId: run.evalId, runId: run.runId } })}
+                      className="px-3 h-8 rounded-lg text-xs font-medium border border-gray-200 dark:border-dark-border
+                        text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
                     >
-                      <FontAwesomeIcon icon={faPlay} className="text-[10px]" />
-                      Run
+                      View
                     </button>
-
-                    {/* Delete */}
                     <button
-                      onClick={(e) => { e.stopPropagation(); setDeletingEvalId(evalItem.evalId); }}
+                      onClick={() => updateRunLabel(run, "pass")}
+                      disabled={savingRunId === run.runId}
                       className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                        text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-dark-border
-                        hover:text-red-500 dark:hover:text-red-400 hover:border-red-200 dark:hover:border-red-500/30
-                        hover:bg-red-50 dark:hover:bg-red-500/10 transition-all duration-200"
-                      title="Delete"
+                        bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400
+                        border border-green-200 dark:border-green-500/30 hover:bg-green-100 dark:hover:bg-green-500/20 disabled:opacity-60 transition-colors"
                     >
-                      <FontAwesomeIcon icon={faTrash} className="text-[10px]" />
-                      Delete
+                      <FontAwesomeIcon icon={faCheck} className="text-[10px]" />
+                      Pass
+                    </button>
+                    <button
+                      onClick={() => updateRunLabel(run, "fail")}
+                      disabled={savingRunId === run.runId}
+                      className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+                        bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400
+                        border border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/20 disabled:opacity-60 transition-colors"
+                    >
+                      <FontAwesomeIcon icon={faXmark} className="text-[10px]" />
+                      Fail
                     </button>
                   </div>
                 </div>
@@ -286,106 +358,17 @@ export default function Evals() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
 
-      {/* Delete confirmation */}
-      {deletingEvalId && (
-        <ConfirmModal
-          title="Delete Task"
-          message="Are you sure you want to delete this task and all its runs? This action cannot be undone."
-          onConfirm={() => { handleDelete(deletingEvalId); setDeletingEvalId(null); }}
-          onCancel={() => setDeletingEvalId(null)}
-        />
-      )}
-
-      {/* Add Task Modal */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAddModal(false)} />
-          <div className="relative w-full max-w-lg mx-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xl
-            border border-gray-200 dark:border-dark-border p-6">
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">Add Task</h3>
-
-            {/* Prompt */}
-            <textarea
-              className="border border-gray-200 dark:border-dark-border rounded-xl outline-none w-full resize-none
-                text-gray-900 dark:text-white bg-gray-50 dark:bg-dark-bg p-3 text-sm
-                placeholder:text-gray-400 scrollbar-thin
-                focus:border-gray-300 dark:focus:border-gray-600 transition-colors"
-              placeholder="Describe the task to evaluate..."
-              rows={3}
-              value={prompt}
-              onChange={handlePromptChange}
-              onKeyDown={handleModalKeyDown}
-              autoFocus
-              style={{ minHeight: "4rem", maxHeight: "10rem", overflowY: "auto" }}
-            />
-
-            {/* URL input */}
-            <div className="relative mt-3" onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center gap-2 px-3 h-10 rounded-xl bg-gray-50 dark:bg-dark-bg
-                border border-gray-200 dark:border-dark-border
-                focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-colors">
-                <FontAwesomeIcon icon={faGlobe} className="text-gray-400 text-sm" />
-                <input
-                  type="text"
-                  placeholder="Website URL (optional)..."
-                  className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
-                  value={initialUrl}
-                  onChange={handleUrlChange}
-                  onFocus={() => setShowUrlDropdown(true)}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowUrlDropdown(!showUrlDropdown)}
-                  className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
-                >
-                  <FontAwesomeIcon icon={faAngleDown} className="text-xs" />
-                </button>
-              </div>
-              {showUrlDropdown && (
-                <div className="absolute z-20 mt-1 w-full rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg
-                  border border-gray-200 dark:border-dark-border overflow-hidden">
-                  <div className="p-1 max-h-[200px] overflow-auto scrollbar-thin">
-                    {filteredWebsites.map((website) => (
-                      <div
-                        key={website.url}
-                        className="cursor-pointer p-2.5 rounded-lg flex items-center hover:bg-gradient-primary hover:text-white
-                          text-gray-700 dark:text-gray-200 transition-colors duration-200"
-                        onClick={() => { setInitialUrl(website.url); setShowUrlDropdown(false); }}
-                      >
-                        <img alt="" src={website.favicon} className="w-5 h-5 rounded me-2.5" />
-                        <span className="text-sm font-medium">{website.title}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="flex gap-3 mt-5">
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="flex-1 h-10 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300
-                  bg-gray-100 dark:bg-dark-border hover:bg-gray-200 dark:hover:bg-dark-border/80 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleAddTask}
-                disabled={!prompt.trim() || submitting}
-                className={`flex-1 h-10 rounded-xl text-sm font-medium transition-all duration-300
-                  ${prompt.trim() && !submitting
-                    ? "bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg"
-                    : "bg-gray-100 dark:bg-dark-border text-gray-400 cursor-not-allowed"
-                  }`}
-              >
-                {submitting ? "Adding..." : "Add Task"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+function EmptyState({ text }: { text: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-center">
+      <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-gradient-primary shadow-glow mb-4">
+        <FontAwesomeIcon icon={faClipboardCheck} className="text-white text-xl" />
+      </div>
+      <p className="text-gray-500 dark:text-gray-400 text-sm">{text}</p>
     </div>
   );
 }

@@ -39,8 +39,13 @@ export interface Skill {
 
 export interface EvalItem {
   evalId: string;
+  email?: string;
   prompt: string;
   initialUrl: string;
+  operatorId?: string;
+  operatorName?: string;
+  operatorTaskName?: string;
+  successCriteria?: string;
   createdAt?: string;
 }
 
@@ -48,6 +53,11 @@ export interface EvalRun {
   runId: string;
   evalId: string;
   sessionId: string;
+  prompt?: string;
+  initialUrl?: string;
+  operatorId?: string;
+  operatorName?: string;
+  operatorTaskName?: string;
   actions: any[];
   label: "pass" | "fail" | "pending";
   screenshots?: string[];

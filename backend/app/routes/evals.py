@@ -42,6 +42,29 @@ async def list_evals(email: str):
     return {"evals": evals}
 
 
+@router.get("/eval-runs")
+async def list_all_runs(email: str):
+    eval_cursor = evals_collection.find({"email": email}, {"_id": 0})
+    evals = await eval_cursor.to_list(length=500)
+    eval_by_id = {ev.get("evalId"): ev for ev in evals}
+    if not eval_by_id:
+        return {"runs": []}
+
+    run_cursor = eval_runs_collection.find(
+        {"evalId": {"$in": list(eval_by_id.keys())}},
+        {"_id": 0, "actions": 0},
+    ).sort("createdAt", -1)
+    runs = await run_cursor.to_list(length=1000)
+    for run in runs:
+        ev = eval_by_id.get(run.get("evalId"), {})
+        run["prompt"] = ev.get("prompt", "")
+        run["initialUrl"] = ev.get("initialUrl", "")
+        run["operatorId"] = ev.get("operatorId", "")
+        run["operatorName"] = ev.get("operatorName", "")
+        run["operatorTaskName"] = ev.get("operatorTaskName", "")
+    return {"runs": runs}
+
+
 @router.get("/evals/{eval_id}")
 async def get_eval(eval_id: str):
     doc = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
@@ -90,7 +113,7 @@ async def list_runs(eval_id: str):
 @router.post("/evals/{eval_id}/runs")
 async def create_run(eval_id: str, body: RunCreateRequest):
     # Verify eval exists
-    ev = await evals_collection.find_one({"evalId": eval_id}, {"_id": 1})
+    ev = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
     if not ev:
         raise HTTPException(status_code=404, detail="Eval not found")
 
@@ -98,6 +121,10 @@ async def create_run(eval_id: str, body: RunCreateRequest):
     doc = {
         "runId": run_id,
         "evalId": eval_id,
+        "email": ev.get("email", ""),
+        "operatorId": ev.get("operatorId", ""),
+        "operatorName": ev.get("operatorName", ""),
+        "operatorTaskName": ev.get("operatorTaskName", ""),
         "sessionId": body.sessionId,
         "actions": [],
         "label": "pending",
