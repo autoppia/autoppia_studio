@@ -22,7 +22,7 @@ export default function TopBar() {
     <header
       className="flex items-center justify-end h-12 px-4 flex-shrink-0 gap-2
         border-b border-gray-200 dark:border-dark-border
-        bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm"
+        bg-white dark:bg-dark-bg"
     >
       {/* Credit balance — clickable shortcut to billing */}
       <button
