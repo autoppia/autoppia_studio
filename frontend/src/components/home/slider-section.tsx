@@ -1,39 +1,21 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import Slider from "react-slick";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFilm, faListCheck, faMagnifyingGlass, faRightToBracket, faRobot } from "@fortawesome/free-solid-svg-icons";
-import { useSelector } from "react-redux";
 import { Operator } from "../../utils/types";
-
-const apiUrl = process.env.REACT_APP_API_URL;
 
 interface SliderSectionProps {
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
   setInitialUrl: React.Dispatch<React.SetStateAction<string>>;
+  operators: Operator[];
+  setSelectedOperator: React.Dispatch<React.SetStateAction<Operator | null>>;
 }
 
 export default function SliderSection(props: SliderSectionProps) {
-  const { setPrompt, setInitialUrl } = props;
-  const user = useSelector((state: any) => state.user);
+  const { setPrompt, setInitialUrl, operators, setSelectedOperator } = props;
 
   const [slideIndex, setSlideIndex] = useState<number>(0);
-  const [operators, setOperators] = useState<Operator[]>([]);
   let sliderRef = useRef<Slider | null>(null);
-
-  useEffect(() => {
-    if (!user.email) return;
-    const loadOperators = async () => {
-      try {
-        const res = await fetch(`${apiUrl}/operators?email=${encodeURIComponent(user.email)}`);
-        if (!res.ok) return;
-        const data = await res.json();
-        setOperators(data.operators || []);
-      } catch (err) {
-        console.error("Failed to load operator examples:", err);
-      }
-    };
-    loadOperators();
-  }, [user.email]);
 
   const operatorPrompts = useMemo(() => {
     const trainedTasks = operators.flatMap((operator) =>
@@ -42,6 +24,7 @@ export default function SliderSection(props: SliderSectionProps) {
         prompt: task.prompt,
         url: operator.websiteUrl,
         operatorName: operator.name,
+        operator,
         icon: index === 0 ? faRightToBracket : index === 1 ? faMagnifyingGlass : index === 2 ? faFilm : faRobot,
       }))
     ).filter((item) => item.prompt);
@@ -54,6 +37,7 @@ export default function SliderSection(props: SliderSectionProps) {
         prompt: "Log in to Autocinema with username user1 and password Passw0rd!",
         url: "http://84.247.180.192:8000",
         operatorName: "Autocinema",
+        operator: null,
         icon: faRightToBracket,
       },
       {
@@ -61,6 +45,7 @@ export default function SliderSection(props: SliderSectionProps) {
         prompt: "Search for The Matrix in Autocinema",
         url: "http://84.247.180.192:8000",
         operatorName: "Autocinema",
+        operator: null,
         icon: faMagnifyingGlass,
       },
       {
@@ -68,6 +53,7 @@ export default function SliderSection(props: SliderSectionProps) {
         prompt: "Open a film detail page in Autocinema",
         url: "http://84.247.180.192:8000",
         operatorName: "Autocinema",
+        operator: null,
         icon: faFilm,
       },
     ];
@@ -105,6 +91,7 @@ export default function SliderSection(props: SliderSectionProps) {
       onClick={() => {
         setPrompt(item.prompt);
         setInitialUrl(item.url);
+        if (item.operator) setSelectedOperator(item.operator);
       }}
     >
       <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-lg

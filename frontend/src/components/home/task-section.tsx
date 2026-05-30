@@ -28,6 +28,9 @@ interface TaskSectionProps {
   setInitialUrl: React.Dispatch<React.SetStateAction<string>>;
   openedDropdown: string | null;
   setOpenedDropdown: React.Dispatch<React.SetStateAction<string | null>>;
+  operators: Operator[];
+  selectedOperator: Operator | null;
+  setSelectedOperator: React.Dispatch<React.SetStateAction<Operator | null>>;
 }
 
 export default function TaskSection(props: TaskSectionProps) {
@@ -38,14 +41,15 @@ export default function TaskSection(props: TaskSectionProps) {
     setInitialUrl,
     openedDropdown,
     setOpenedDropdown,
+    operators,
+    selectedOperator,
+    setSelectedOperator,
   } = props;
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
   const [submitting, setSubmitting] = useState(false);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
-  const [operators, setOperators] = useState<Operator[]>([]);
-  const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
 
   const user = useSelector((state: any) => state.user);
   const startSession = useStartSession();
@@ -61,22 +65,9 @@ export default function TaskSection(props: TaskSectionProps) {
     }
   }, [user.email]);
 
-  const loadOperators = useCallback(async () => {
-    if (!user.email) return;
-    try {
-      const res = await fetch(`${apiUrl}/operators?email=${encodeURIComponent(user.email)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      setOperators(data.operators || []);
-    } catch (err) {
-      console.error("Failed to load operators:", err);
-    }
-  }, [user.email]);
-
   useEffect(() => {
     loadProfiles();
-    loadOperators();
-  }, [loadProfiles, loadOperators]);
+  }, [loadProfiles]);
 
   // Auto-select first profile if available
   useEffect(() => {
