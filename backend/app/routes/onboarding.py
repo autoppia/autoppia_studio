@@ -187,6 +187,12 @@ def _connector_key(connector: dict[str, Any]) -> str:
 
 
 def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
+    if connector.get("type") == "knowledge":
+        for existing in draft["connectors"]:
+            if existing.get("type") == "knowledge":
+                existing.update({k: v for k, v in connector.items() if v not in ("", None, {})})
+                existing["name"] = existing.get("name") or connector.get("name", "Documents")
+                return
     existing = {_connector_key(item): item for item in draft["connectors"]}
     key = _connector_key(connector)
     if key in existing:
@@ -209,18 +215,103 @@ def _extract_urls(text: str) -> list[str]:
 
 
 def _extract_tasks(text: str) -> list[str]:
-    lines = [line.strip(" -\t") for line in text.splitlines()]
+    normalized = re.sub(r"\s+(\d+[\).:-]\s*)", r"\n\1", text)
+    lines = [line.strip(" -\t") for line in normalized.splitlines()]
+    numbered_lines = [line for line in lines if re.match(r"^\d+[\).:-]\s*", line)]
+    if numbered_lines:
+        lines = numbered_lines
     tasks: list[str] = []
     for line in lines:
         cleaned = re.sub(r"^\d+[\).:-]\s*", "", line).strip()
         if len(cleaned) < 18:
             continue
-        if any(word in cleaned.lower() for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "leer", "enviar", "responder", "download", "summar")):
+        if any(word in cleaned.lower() for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "leer", "enviar", "responder", "download", "summar", "find", "prepare", "send", "notify", "read")):
             tasks.append(cleaned)
     if not tasks and any(word in text.lower() for word in ("tasks", "tareas", "automate", "automatizar")):
         chunks = re.split(r"[.;]\s+", text)
         tasks = [chunk.strip() for chunk in chunks if len(chunk.strip()) > 28][:10]
-    return tasks[:10]
+    deduped: list[str] = []
+    for task in tasks:
+        if task and not any(existing.lower() == task.lower() for existing in deduped):
+            deduped.append(task)
+    return deduped[:10]
+
+
+def _ensure_extracted_setup(draft: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    before_company = dict(draft["company"])
+    before_agent = dict(draft["agent"])
+    before_connectors = {_connector_key(item) for item in draft["connectors"]}
+    _apply_message(draft, user_message)
+
+    if draft["company"] != before_company:
+        events.extend(
+            [
+                _event("tool_call", f"Updating company profile: {draft['company'].get('name') or 'Untitled'}", tool_name="set_company"),
+                _event("tool_result", f"Updated company: {draft['company'].get('name') or 'Untitled'}", tool_name="set_company"),
+            ]
+        )
+    if draft["agent"] != before_agent:
+        events.extend(
+            [
+                _event("tool_call", f"Preparing agent: {draft['agent'].get('name') or 'Company Agent'}", tool_name="set_agent"),
+                _event("tool_result", f"Prepared agent: {draft['agent'].get('name') or 'Company Agent'}", tool_name="set_agent"),
+            ]
+        )
+    for connector in draft["connectors"]:
+        if _connector_key(connector) not in before_connectors:
+            events.extend(
+                [
+                    _event("tool_call", f"Creating connector: {connector.get('name')}", tool_name="add_connector"),
+                    _event("tool_result", f"Created connector/toolkit: {connector.get('name')}", tool_name="add_connector"),
+                ]
+            )
+    return events
+
+
+def _ensure_extracted_tasks(draft: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
+    events: list[dict[str, Any]] = []
+    extracted = _extract_tasks(user_message)
+    if len(extracted) > 1:
+        draft["tasks"] = [
+            existing for existing in draft["tasks"]
+            if sum(1 for task in extracted if task.lower() in existing["prompt"].lower()) < 2
+            and not re.search(r"\b2[\).:-]\s+", existing["prompt"])
+        ]
+    for task in extracted:
+        if any(existing["prompt"].strip().lower() == task.lower() for existing in draft["tasks"]):
+            continue
+        name = f"Task {len(draft['tasks']) + 1}"
+        draft["tasks"].append(
+            {
+                "name": name,
+                "prompt": task,
+                "successCriteria": "The user approves the result and all sensitive writes are confirmed before execution.",
+                "status": "draft",
+            }
+        )
+        events.extend(
+            [
+                _event("tool_call", f"Creating benchmark task: {task[:80]}", tool_name="add_task"),
+                _event("tool_result", f"Created benchmark task: {task[:80]}", tool_name="add_task"),
+            ]
+        )
+    return events
+
+
+def _prune_stale_task_events(events: list[dict[str, Any]], draft: dict[str, Any]) -> list[dict[str, Any]]:
+    task_prompts = [str(task.get("prompt") or "").strip().lower() for task in draft.get("tasks", [])]
+    if not task_prompts:
+        return events
+    pruned: list[dict[str, Any]] = []
+    for event in events:
+        if event.get("toolName") != "add_task":
+            pruned.append(event)
+            continue
+        content = str(event.get("content") or "").lower()
+        if any(prompt[:60] and prompt[:60] in content for prompt in task_prompts):
+            pruned.append(event)
+    return pruned
 
 
 def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
@@ -231,7 +322,7 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
         name_match = re.search(r"(?:company|empresa|compañ[ií]a|asesor[ií]a)\s+(?:is|es|called|llamada?)?\s*([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{2,40})", text)
         if name_match:
             draft["company"]["name"] = name_match.group(1).strip(" .")
-    if "celeris" in lower:
+    if "celeris" in lower and not draft["company"].get("name"):
         draft["company"]["name"] = "Celeris"
         draft["company"]["industry"] = "Labor advisory, Andorra"
         draft["company"]["description"] = "Asesoría laboral en Andorra que automatiza emails, facturas, comunicaciones y seguimiento del BOPA."
@@ -301,17 +392,6 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
                 "status": "connected",
             },
         )
-
-    for task in _extract_tasks(text):
-        if not any(existing["prompt"].lower() == task.lower() for existing in draft["tasks"]):
-            draft["tasks"].append(
-                {
-                    "name": f"Task {len(draft['tasks']) + 1}",
-                    "prompt": task,
-                    "successCriteria": "The user approves the result and all sensitive writes are confirmed before execution.",
-                    "status": "draft",
-                }
-            )
 
     if draft["company"]["name"] and not draft["agent"]["name"]:
         draft["agent"]["name"] = f"{draft['company']['name']} Agent"
@@ -547,38 +627,51 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
         "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
         "Keep visible thinking short and operational; do not reveal hidden chain-of-thought."
     )
-    chat_messages: list[dict[str, Any]] = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": f"Current draft JSON:\n{json.dumps(draft, ensure_ascii=False)}\n\nUser onboarding message:\n{user_message}"},
+    client = OpenAI(api_key=api_key)
+    response_tools = [
+        {
+            "type": "function",
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "parameters": {
+                **tool["function"]["parameters"],
+                "additionalProperties": False,
+            },
+        }
+        for tool in ONBOARDING_TOOLS
     ]
 
-    client = OpenAI(api_key=api_key)
-
-    def _create_completion(messages: list[dict[str, Any]], require_tool: bool):
-        return client.chat.completions.create(
-            model=ONBOARDING_MODEL,
-            messages=messages,
-            tools=ONBOARDING_TOOLS,
-            tool_choice="required" if require_tool else "auto",
-            parallel_tool_calls=False,
-            max_completion_tokens=1200,
-        )
-
     final_summary = ""
+    previous_response_id = ""
+    next_input: Any = f"Current draft JSON:\n{json.dumps(draft, ensure_ascii=False)}\n\nUser onboarding message:\n{user_message}"
     for _ in range(10):
         require_tool = not (draft["company"].get("name") and draft["connectors"] and draft["tasks"])
-        completion = await asyncio.to_thread(_create_completion, chat_messages, require_tool)
-        message = completion.choices[0].message
-        chat_messages.append(message.model_dump(exclude_none=True))
-        tool_calls = message.tool_calls or []
-        if not tool_calls:
-            if message.content:
-                final_summary = message.content
+        def _create_response():
+            kwargs: dict[str, Any] = {
+                "model": ONBOARDING_MODEL,
+                "instructions": system,
+                "input": next_input,
+                "tools": response_tools,
+                "tool_choice": "required" if require_tool else "auto",
+                "parallel_tool_calls": False,
+                "max_output_tokens": 1400,
+            }
+            if previous_response_id:
+                kwargs["previous_response_id"] = previous_response_id
+            return client.responses.create(**kwargs)
+
+        response = await asyncio.to_thread(_create_response)
+        previous_response_id = response.id
+        function_calls = [item for item in response.output if getattr(item, "type", "") == "function_call"]
+        if not function_calls:
+            final_summary = getattr(response, "output_text", "") or final_summary
             break
-        for call in tool_calls:
-            name = call.function.name
+
+        function_outputs: list[dict[str, str]] = []
+        for call in function_calls:
+            name = call.name
             try:
-                args = json.loads(call.function.arguments or "{}")
+                args = json.loads(call.arguments or "{}")
             except json.JSONDecodeError:
                 args = {}
             status_text = {
@@ -594,10 +687,14 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
             visible_events.append(_event("tool_result", result, tool_name=name))
             if name == "finish":
                 final_summary = result
-            chat_messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+            function_outputs.append({"type": "function_call_output", "call_id": call.call_id, "output": result})
+        next_input = function_outputs
         if final_summary:
             break
 
+    visible_events.extend(_ensure_extracted_setup(draft, user_message))
+    visible_events.extend(_ensure_extracted_tasks(draft, user_message))
+    visible_events = _prune_stale_task_events(visible_events, draft)
     draft["questions"] = _questions_for_missing([
         missing for missing, ok in (
             ("company name", bool(draft["company"].get("name"))),
@@ -613,10 +710,14 @@ async def _run_onboarding_agent(draft: dict[str, Any], user_message: str) -> tup
     try:
         return await _run_llm_onboarding_agent(draft, user_message)
     except Exception as exc:
-        fallback_draft = _apply_message(draft, user_message)
+        fallback_draft = draft
+        setup_events = _ensure_extracted_setup(fallback_draft, user_message)
+        task_events = _ensure_extracted_tasks(fallback_draft, user_message)
         return fallback_draft, [
             _event("thinking", "I could not reach the model, so I used the local onboarding parser.", status="completed"),
             _event("tool_result", f"Fallback parser updated the draft: {exc.__class__.__name__}", tool_name="local_parser"),
+            *setup_events,
+            *task_events,
             _event("assistant_summary", _assistant_message(fallback_draft)),
         ]
 
@@ -728,6 +829,8 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         raise HTTPException(status_code=400, detail="Company name is required")
     if not draft.get("tasks"):
         raise HTTPException(status_code=400, detail="At least one task is required")
+    if not draft.get("connectors"):
+        raise HTTPException(status_code=400, detail="At least one connector is required")
 
     now = _now()
     existing_company_id = str(doc.get("companyId") or "").strip()
