@@ -196,6 +196,20 @@ export interface Connector {
   updatedAt?: string;
 }
 
+export interface KnowledgeDocument {
+  documentId: string;
+  email: string;
+  companyId: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  status: string;
+  source: string;
+  connectorId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ParameterizeResult {
   name: string;
   goal: string;

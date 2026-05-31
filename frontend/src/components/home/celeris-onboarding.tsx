@@ -15,6 +15,7 @@ import {
   faBrain,
   faCheckCircle,
   faClock,
+  faPaperclip,
 } from "@fortawesome/free-solid-svg-icons";
 import InfoIcon from "../common/info-icon";
 
@@ -141,9 +142,11 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [finalizing, setFinalizing] = useState(false);
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const draft = session?.draft;
   const ready = !!draft?.company?.name && (draft?.connectors?.length || 0) > 0 && (draft?.tasks?.length || 0) > 0;
@@ -208,6 +211,79 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
       setSession(previousSession);
     } finally {
       setSending(false);
+    }
+  };
+
+  const uploadDocuments = async (files: FileList | null) => {
+    if (!files?.length || !user.email || !companyId || uploading) return;
+    setUploading(true);
+    setError("");
+    const now = new Date().toISOString();
+    setSession((prev) => prev ? {
+      ...prev,
+      messages: [
+        ...prev.messages,
+        { role: "user", content: `Uploaded ${files.length} document${files.length === 1 ? "" : "s"} for company knowledge.`, createdAt: now },
+        {
+          role: "event",
+          kind: "tool_call",
+          toolName: "knowledge_upload",
+          status: "running",
+          content: "Adding documents to the company Knowledge connector.",
+          createdAt: now,
+        },
+      ],
+    } : prev);
+    try {
+      const uploaded: string[] = [];
+      for (const file of Array.from(files)) {
+        const body = new FormData();
+        body.append("email", user.email);
+        body.append("companyId", companyId);
+        body.append("source", "onboarding_chat");
+        body.append("file", file);
+        const res = await fetch(`${apiUrl}/knowledge/documents`, { method: "POST", body });
+        if (!res.ok) throw new Error(await res.text());
+        const data = await res.json();
+        uploaded.push(data.document?.filename || file.name);
+      }
+      const completedAt = new Date().toISOString();
+      setSession((prev) => prev ? {
+        ...prev,
+        messages: [
+          ...prev.messages.filter((message) => !(message.toolName === "knowledge_upload" && message.status === "running")),
+          {
+            role: "event",
+            kind: "tool_result",
+            toolName: "knowledge_upload",
+            status: "completed",
+            content: `Uploaded to Knowledge: ${uploaded.join(", ")}.`,
+            createdAt: completedAt,
+          },
+        ],
+        draft: {
+          ...prev.draft,
+          connectors: prev.draft.connectors.some((connector) => connector.type === "knowledge")
+            ? prev.draft.connectors
+            : [
+              ...prev.draft.connectors,
+              {
+                name: "Documents",
+                type: "knowledge",
+                category: "knowledge",
+                description: "Company knowledge connector for uploaded documents and internal sources.",
+                status: "connected",
+                provider: "official",
+                generationStatus: "autoppia_supported",
+              },
+            ],
+        },
+      } : prev);
+    } catch (err: any) {
+      setError(err?.message || "Could not upload document.");
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   };
 
@@ -338,6 +414,15 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                 placeholder="Tell Automata what systems you use, paste API docs, or list more tasks..."
                 className="flex-1 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none disabled:opacity-60"
               />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading || !companyId}
+                className="w-10 h-10 rounded-xl border border-gray-200 dark:border-dark-border text-gray-500 dark:text-gray-300 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60"
+                title="Upload knowledge documents"
+              >
+                <FontAwesomeIcon icon={uploading ? faSpinner : faPaperclip} className={`text-sm ${uploading ? "animate-spin" : ""}`} />
+              </button>
+              <input ref={fileInputRef} type="file" multiple className="hidden" onChange={(event) => uploadDocuments(event.target.files)} />
               <button
                 onClick={() => sendMessage()}
                 disabled={!input.trim() || sending}

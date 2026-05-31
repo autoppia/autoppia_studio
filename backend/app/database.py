@@ -18,6 +18,7 @@ skills_collection = db["skills"]
 operators_collection = db["operators"]
 companies_collection = db["companies"]
 connectors_collection = db["connectors"]
+knowledge_documents_collection = db["knowledge_documents"]
 onboarding_sessions_collection = db["onboarding_sessions"]
 evals_collection = db["evals"]
 eval_runs_collection = db["eval_runs"]
@@ -43,6 +44,9 @@ async def ensure_indexes():
     await connectors_collection.create_index("email")
     await connectors_collection.create_index("companyId")
     await connectors_collection.create_index("connectorId", unique=True)
+    await knowledge_documents_collection.create_index("email")
+    await knowledge_documents_collection.create_index("companyId")
+    await knowledge_documents_collection.create_index("documentId", unique=True)
     await onboarding_sessions_collection.create_index("email")
     await onboarding_sessions_collection.create_index("sessionId", unique=True)
     await evals_collection.create_index("email")
