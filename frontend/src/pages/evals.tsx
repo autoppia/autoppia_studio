@@ -144,7 +144,7 @@ export default function Evals() {
   };
 
   const selectedOperator = operators.find((operator) => operator.operatorId === selectedOperatorId) || null;
-  const selectedOperatorName = selectedOperator?.name || (selectedOperatorId ? "Custom Operator" : "Autoppia Operator");
+  const selectedOperatorName = selectedOperator?.name || (selectedOperatorId ? "Custom Agent" : "Autoppia Agent");
 
   const runEval = async (evalItem: EvalItem, operatorId = selectedOperatorId) => {
     if (runningEvalId) return;
@@ -153,7 +153,7 @@ export default function Evals() {
       const res = await fetch(`${apiUrl}/evals/${evalItem.evalId}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Operator" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Agent" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -178,7 +178,7 @@ export default function Evals() {
       const res = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmark.operatorId)}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Operator" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Agent" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -248,7 +248,7 @@ export default function Evals() {
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Evals</h1>
+          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Benchmarks</h1>
         </div>
 
         <div className="flex-1 overflow-auto px-8 lg:px-16 xl:px-28 py-8">
@@ -309,7 +309,7 @@ export default function Evals() {
             </div>
           ) : activeTab === "benchmarks" ? (
             filteredBenchmarks.length === 0 ? (
-              <EmptyState text="No benchmarks yet. Create an operator to generate a benchmark." />
+              <EmptyState text="No benchmarks yet. Create an agent to generate a benchmark." />
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {filteredBenchmarks.map((benchmark) => (
@@ -439,7 +439,7 @@ export default function Evals() {
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPendingRun(null)} />
           <div className="relative w-full max-w-md mx-4 bg-white dark:bg-dark-surface rounded-2xl border border-gray-200 dark:border-dark-border shadow-xl p-5">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Select Operator</h3>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Select Agent</h3>
               <button
                 onClick={() => setPendingRun(null)}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border"
@@ -456,8 +456,8 @@ export default function Evals() {
                     : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"
                 }`}
               >
-                <span className="block text-sm font-semibold">Autoppia Operator</span>
-                <span className="block text-xs text-gray-400 dark:text-gray-500">Default generalist operator</span>
+                <span className="block text-sm font-semibold">Autoppia Agent</span>
+                <span className="block text-xs text-gray-400 dark:text-gray-500">Default generalist agent</span>
               </button>
               {operators.map((operator) => (
                 <button

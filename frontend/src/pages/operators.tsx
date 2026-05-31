@@ -16,6 +16,7 @@ import {
   faRoute,
 } from "@fortawesome/free-solid-svg-icons";
 import { Operator, OperatorTask } from "../utils/types";
+import InfoIcon from "../components/common/info-icon";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -200,7 +201,12 @@ export default function Operators() {
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Operators</h1>
+          <div className="flex items-center gap-2">
+            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Agents</h1>
+            <InfoIcon title="Agents">
+              <p>An Agent is a company-specific AI worker. Automata builds it from instructions, integrations, toolkits, knowledge, and approved skills.</p>
+            </InfoIcon>
+          </div>
         </div>
 
         {/* Content */}
@@ -213,7 +219,7 @@ export default function Operators() {
               <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
               <input
                 type="text"
-                placeholder="Search operators..."
+                placeholder="Search agents..."
                 className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -237,7 +243,7 @@ export default function Operators() {
                 bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 transition-all duration-200"
             >
               <FontAwesomeIcon icon={faPlus} className="text-xs" />
-              Create Operator
+              Create Agent
             </button>
           </div>
 
@@ -245,7 +251,7 @@ export default function Operators() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <FontAwesomeIcon icon={faSpinner} className="text-primary text-2xl animate-spin" />
-              <p className="text-sm text-gray-400 dark:text-gray-500">Loading operators…</p>
+              <p className="text-sm text-gray-400 dark:text-gray-500">Loading agents…</p>
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-20 text-center">
@@ -253,7 +259,7 @@ export default function Operators() {
                 <FontAwesomeIcon icon={faRobot} className="text-white text-xl" />
               </div>
               <p className="text-gray-500 dark:text-gray-400 text-sm">
-                {search ? "No operators found." : "No operators yet. Create one or bootstrap the Autocinema demo."}
+                {search ? "No agents found." : "No agents yet. Create one or bootstrap the Autocinema demo."}
               </p>
             </div>
           ) : (
@@ -261,7 +267,7 @@ export default function Operators() {
               {filtered.map((op) => (
                 <div
                   key={op.operatorId}
-                  onClick={() => navigate(`/operators/${op.operatorId}`)}
+                  onClick={() => navigate(`/agents/${op.operatorId}`)}
                   className="group relative flex flex-col bg-white dark:bg-dark-surface rounded-xl
                     border border-gray-200 dark:border-dark-border shadow-soft
                     hover:shadow-soft-lg hover:border-gray-300 dark:hover:border-gray-600
@@ -322,14 +328,14 @@ export default function Operators() {
         </div>
       </div>
 
-      {/* Create Operator Modal */}
+      {/* Create Agent Modal */}
       {showModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={closeModal} />
           <div className="relative w-full max-w-lg mx-4 max-h-[90vh] overflow-auto scrollbar-thin
             bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border p-6">
             <div className="flex items-center justify-between mb-5">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Create Custom Operator</h3>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Create Custom Agent</h3>
               <button
                 onClick={closeModal}
                 className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400
@@ -348,7 +354,7 @@ export default function Operators() {
                 <input
                   type="text"
                   className={inputClass}
-                  placeholder="My Operator"
+                  placeholder="My Agent"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   autoFocus
@@ -544,7 +550,7 @@ export default function Operators() {
                 ) : (
                   <FontAwesomeIcon icon={faCircleCheck} className="text-xs" />
                 )}
-                {submitting ? "Creating..." : "Create Operator"}
+                {submitting ? "Creating..." : "Create Agent"}
               </button>
             </div>
           </div>

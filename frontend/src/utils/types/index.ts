@@ -117,9 +117,18 @@ export interface OperatorCapability {
   updatedAt?: string;
 }
 
+export interface RuntimeCapabilities {
+  browser?: boolean;
+  apiCalls?: boolean;
+  knowledge?: boolean;
+  python?: boolean;
+  humanApprovalForWrites?: boolean;
+}
+
 export interface Operator {
   operatorId: string;
   email: string;
+  companyId?: string;
   name: string;
   websiteUrl: string;
   runtimeEndpoint: string;
@@ -127,6 +136,7 @@ export interface Operator {
   status: string;
   trainingStatus: string;
   harvester?: string;
+  runtimeCapabilities?: RuntimeCapabilities;
   apiSpecUrl?: string;
   apiAuthConfigured?: boolean;
   tasks: OperatorTask[];
@@ -134,6 +144,32 @@ export interface Operator {
   successCriteria: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface Company {
+  companyId: string;
+  email: string;
+  name: string;
+  description?: string;
+  industry?: string;
+  status?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AgentToolkit {
+  toolkitId: string;
+  name: string;
+  integrationName: string;
+  category: string;
+  runtimeRequirements: string[];
+  permissions: Record<string, any>;
+  tools: Array<{
+    name: string;
+    description: string;
+    sideEffects: string;
+    inputSchema?: any;
+  }>;
 }
 
 export interface ParameterizeResult {

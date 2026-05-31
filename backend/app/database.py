@@ -16,6 +16,7 @@ profiles_collection = db["profiles"]
 api_keys_collection = db["api_keys"]
 skills_collection = db["skills"]
 operators_collection = db["operators"]
+companies_collection = db["companies"]
 evals_collection = db["evals"]
 eval_runs_collection = db["eval_runs"]
 operator_webs_collection = db["operator_webs"]
@@ -35,6 +36,8 @@ async def ensure_indexes():
     await skills_collection.create_index("skillId", unique=True)
     await operators_collection.create_index("email")
     await operators_collection.create_index("operatorId", unique=True)
+    await companies_collection.create_index("email")
+    await companies_collection.create_index("companyId", unique=True)
     await evals_collection.create_index("email")
     await evals_collection.create_index("evalId", unique=True)
     await evals_collection.create_index("operatorId")

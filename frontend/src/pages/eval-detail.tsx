@@ -204,7 +204,7 @@ export default function EvalDetail() {
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Evals</h1>
+          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Benchmarks</h1>
         </div>
 
         {/* Task info bar */}

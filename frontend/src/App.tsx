@@ -115,6 +115,8 @@ function App() {
                 <Route path="/evals/:evalId/run/:id" element={<Session />} />
                 <Route path="/operators" element={<Operators />} />
                 <Route path="/operators/:operatorId" element={<OperatorDetail />} />
+                <Route path="/agents" element={<Operators />} />
+                <Route path="/agents/:operatorId" element={<OperatorDetail />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}

@@ -15,6 +15,7 @@ import {
   faPlus,
   faRobot,
   faRoute,
+  faSliders,
   faSpinner,
   faWrench,
   faXmark,
@@ -22,16 +23,19 @@ import {
 import {
   EvalItem,
   EvalRun,
+  AgentToolkit,
   Operator,
   OperatorCapability,
   OperatorTrajectory,
   OperatorWeb,
 } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
+import InfoIcon from "../components/common/info-icon";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-type TabKey = "overview" | "webs" | "skills" | "trajectories" | "benchmarks" | "runs" | "connect";
+type TabKey = "overview" | "webs" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
+type SkillAssetTab = "skills" | "traces";
 
 function StatusBadge({ label, tone = "gray" }: { label: string; tone?: "green" | "amber" | "blue" | "gray" | "red" }) {
   const tones = {
@@ -73,8 +77,10 @@ export default function OperatorDetail() {
   const [webs, setWebs] = useState<OperatorWeb[]>([]);
   const [trajectories, setTrajectories] = useState<OperatorTrajectory[]>([]);
   const [skills, setSkills] = useState<OperatorCapability[]>([]);
+  const [toolkits, setToolkits] = useState<AgentToolkit[]>([]);
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
+  const [skillAssetTab, setSkillAssetTab] = useState<SkillAssetTab>("skills");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState("");
@@ -88,11 +94,12 @@ export default function OperatorDetail() {
     if (!operatorId || !user.email) return;
     setLoading(true);
     try {
-      const [opRes, websRes, trRes, capRes, evalRes, runsRes] = await Promise.all([
+      const [opRes, websRes, trRes, capRes, toolkitsRes, evalRes, runsRes] = await Promise.all([
         fetch(`${apiUrl}/operators/${operatorId}`),
         fetch(`${apiUrl}/operators/${operatorId}/webs`),
         fetch(`${apiUrl}/operators/${operatorId}/trajectories`),
         fetch(`${apiUrl}/operators/${operatorId}/skills`),
+        fetch(`${apiUrl}/agents/${operatorId}/toolkits`),
         fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
         fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
       ]);
@@ -102,6 +109,7 @@ export default function OperatorDetail() {
       setWebs(websRes.ok ? (await websRes.json()).webs || [] : []);
       setTrajectories(trRes.ok ? (await trRes.json()).trajectories || [] : []);
       setSkills(capRes.ok ? (await capRes.json()).skills || [] : []);
+      setToolkits(toolkitsRes.ok ? (await toolkitsRes.json()).toolkits || [] : []);
       setEvals(evalRes.ok ? ((await evalRes.json()).evals || []).filter((item: EvalItem) => item.operatorId === operatorId) : []);
       setRuns(runsRes.ok ? ((await runsRes.json()).runs || []).filter((run: EvalRun) => run.operatorId === operatorId) : []);
     } catch (err) {
@@ -277,7 +285,7 @@ export default function OperatorDetail() {
   if (!operator) {
     return (
       <div className="w-full h-full flex items-center justify-center bg-gray-100 dark:bg-dark-bg text-sm text-gray-500">
-        Operator not found
+        Agent not found
       </div>
     );
   }
@@ -286,7 +294,7 @@ export default function OperatorDetail() {
     { key: "overview", label: "Overview", icon: faRobot },
     { key: "webs", label: "Webs", icon: faGlobe },
     { key: "skills", label: "Skills", icon: faCode },
-    { key: "trajectories", label: "Trajectories", icon: faRoute },
+    { key: "runtime", label: "Runtime", icon: faSliders },
     { key: "benchmarks", label: "Benchmarks", icon: faClipboardCheck },
     { key: "runs", label: "Runs", icon: faCircleNodes },
     { key: "connect", label: "Connect", icon: faPlug },
@@ -329,7 +337,7 @@ print(response.json()["result"])`;
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-3 min-w-0">
             <button
-              onClick={() => navigate("/operators")}
+              onClick={() => navigate("/agents")}
               className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
             >
               <FontAwesomeIcon icon={faArrowLeft} className="text-sm" />
@@ -373,7 +381,7 @@ print(response.json()["result"])`;
                 {[
                   { label: "Tasks", value: operator.tasks?.length || 0, icon: faListCheck },
                   { label: "Webs", value: webs.length, icon: faGlobe },
-                  { label: "Trajectories", value: trajectories.length, icon: faRoute },
+                  { label: "Training Traces", value: trajectories.length, icon: faRoute },
                   { label: "Skills", value: skills.length, icon: faWrench },
                   { label: "Runs", value: runs.length, icon: faCircleNodes },
                 ].map((item) => (
@@ -399,7 +407,7 @@ print(response.json()["result"])`;
                     <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{operator.runtimeEndpoint || "Not deployed yet"}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Harvester</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Automata</p>
                     <p className="text-gray-700 dark:text-gray-200">{operator.harvester || "Automata Operator"}</p>
                   </div>
                   <div>
@@ -440,26 +448,56 @@ print(response.json()["result"])`;
           )}
 
           {activeTab === "skills" && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {skills.map((skill) => (
-                <div key={skill.capabilityId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{skill.name}()</p>
-                    <div className="flex items-center gap-2">
-                      <StatusBadge label={skill.type || "web"} tone={skill.type === "api" ? "green" : "gray"} />
-                      <StatusBadge label={normalizeName(skill.runtime)} tone="blue" />
-                    </div>
-                  </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{skill.description || "No description"}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked trajectories</p>
-                </div>
-              ))}
-              {skills.length === 0 && <Empty text="No skills yet. Approve a trajectory to generate the first function." />}
-            </div>
-          )}
-
-          {activeTab === "trajectories" && (
             <div className="space-y-4">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Skills & Training Traces</h2>
+                  <InfoIcon title="Tools, Skills, and Training Traces">
+                    <div className="space-y-3">
+                      <p><strong>Tool</strong> means an atomic capability connected to a system, such as sending email, calling an API, reading a document, or clicking in a browser.</p>
+                      <p><strong>Toolkit</strong> means a bundle of tools from one integration or runtime, such as Gmail Toolkit, Browser Toolkit, or Knowledge Toolkit.</p>
+                      <p><strong>Skill</strong> means a learned reusable workflow that can call multiple tools, such as sending a client their latest invoice from Gmail and Holded.</p>
+                      <p><strong>Training Trace</strong> means an approved or recorded execution. A successful trace can be converted into a Skill.</p>
+                    </div>
+                  </InfoIcon>
+                </div>
+                <div className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-1">
+                  {[
+                    { key: "skills" as SkillAssetTab, label: "Skills" },
+                    { key: "traces" as SkillAssetTab, label: "Training Traces" },
+                  ].map((tab) => (
+                    <button
+                      key={tab.key}
+                      onClick={() => setSkillAssetTab(tab.key)}
+                      className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors ${skillAssetTab === tab.key ? "bg-gradient-primary text-white" : "text-gray-500 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border"}`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {skillAssetTab === "skills" && (
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {skills.map((skill) => (
+                    <div key={skill.capabilityId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{skill.name}()</p>
+                        <div className="flex items-center gap-2">
+                          <StatusBadge label={skill.type || "web"} tone={skill.type === "api" ? "green" : "gray"} />
+                          <StatusBadge label={normalizeName(skill.runtime)} tone="blue" />
+                        </div>
+                      </div>
+                      <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{skill.description || "No description"}</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked training traces</p>
+                    </div>
+                  ))}
+                  {skills.length === 0 && <Empty text="No skills yet. Approve a training trace to generate the first reusable workflow." />}
+                </div>
+              )}
+
+              {skillAssetTab === "traces" && (
+                <>
               <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 space-y-3">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
                   <input className={inputClass} placeholder="Task name" value={taskName} onChange={(e) => setTaskName(e.target.value)} />
@@ -474,7 +512,7 @@ print(response.json()["result"])`;
                 />
                 <button onClick={addTrajectory} disabled={saving || !taskName.trim() || !taskPrompt.trim()} className="h-10 px-4 rounded-xl bg-gradient-primary text-white text-sm font-medium disabled:opacity-60">
                   <FontAwesomeIcon icon={saving ? faSpinner : faPlus} className={`mr-2 text-xs ${saving ? "animate-spin" : ""}`} />
-                  Add Trajectory
+                  Add Training Trace
                 </button>
               </div>
               {trajectories.map((trajectory) => (
@@ -498,6 +536,71 @@ print(response.json()["result"])`;
                   </div>
                 </div>
               ))}
+                </>
+              )}
+            </div>
+          )}
+
+          {activeTab === "runtime" && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime Capabilities</p>
+                  <InfoIcon title="Runtime Capabilities">
+                    <p>The browser is no longer the center of the agent. It is one runtime capability among others. An agent may have browser access, API calls, knowledge search, Python execution, or human approval depending on the company workflow.</p>
+                  </InfoIcon>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+                  {[
+                    { label: "Browser", enabled: operator.runtimeCapabilities?.browser ?? true },
+                    { label: "API Calls", enabled: operator.runtimeCapabilities?.apiCalls ?? true },
+                    { label: "Knowledge", enabled: operator.runtimeCapabilities?.knowledge ?? false },
+                    { label: "Python", enabled: operator.runtimeCapabilities?.python ?? false },
+                    { label: "Human Approval", enabled: operator.runtimeCapabilities?.humanApprovalForWrites ?? true },
+                  ].map((capability) => (
+                    <div key={capability.label} className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                      <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">{capability.label}</p>
+                      <StatusBadge label={capability.enabled ? "enabled" : "disabled"} tone={capability.enabled ? "green" : "gray"} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Toolkits</p>
+                  <InfoIcon title="Toolkits">
+                    <p>A Toolkit is a group of tools from one integration or runtime. One integration usually creates one toolkit. Some toolkits require runtime resources such as browser sessions, vectorstores, network access, API credentials, or a Python sandbox.</p>
+                  </InfoIcon>
+                </div>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  {toolkits.map((toolkit) => (
+                    <div key={toolkit.toolkitId} className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                      <div className="flex items-center justify-between gap-3 mb-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-gray-900 dark:text-white">{toolkit.name}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{toolkit.integrationName}</p>
+                        </div>
+                        <StatusBadge label={toolkit.category} tone="blue" />
+                      </div>
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {toolkit.runtimeRequirements.map((requirement) => (
+                          <StatusBadge key={requirement} label={normalizeName(requirement)} tone="gray" />
+                        ))}
+                      </div>
+                      <div className="space-y-2">
+                        {toolkit.tools.map((tool) => (
+                          <div key={tool.name} className="flex items-center justify-between gap-3 text-xs">
+                            <span className="font-mono text-gray-700 dark:text-gray-200">{tool.name}</span>
+                            <span className="text-gray-400 dark:text-gray-500">{tool.sideEffects}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                  {toolkits.length === 0 && <Empty text="No toolkits are enabled for this agent yet." />}
+                </div>
+              </div>
             </div>
           )}
 
@@ -562,7 +665,7 @@ print(response.json()["result"])`;
                 <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Agent API</p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Use this custom operator from your backend, product, or evaluation harness.</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Use this custom agent from your backend, product, or evaluation harness.</p>
                     <div className="space-y-2 text-sm">
                       <div>
                         <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Act endpoint</p>

@@ -261,7 +261,7 @@ export default function TaskSection(props: TaskSectionProps) {
             </div>
           </div>
 
-          {/* Operator selector */}
+          {/* Agent selector */}
           <div className="relative text-sm font-medium flex-shrink-0">
             <button
               type="button"
@@ -271,7 +271,7 @@ export default function TaskSection(props: TaskSectionProps) {
             >
               <FontAwesomeIcon icon={faRobot} className="text-xs text-primary" />
               <span className="whitespace-nowrap max-w-[150px] truncate">
-                {selectedOperator ? selectedOperator.name : "Autoppia Operator"}
+                {selectedOperator ? selectedOperator.name : "Autoppia Agent"}
               </span>
               <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
             </button>
@@ -290,7 +290,7 @@ export default function TaskSection(props: TaskSectionProps) {
                     setOpenedDropdown(null);
                   }}
                 >
-                  Autoppia Operator
+                  Autoppia Agent
                 </button>
                 {operators.map((operator) => (
                   <button

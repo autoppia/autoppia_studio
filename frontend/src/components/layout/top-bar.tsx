@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -5,17 +6,36 @@ import {
   faKey,
   faArrowUp,
   faCoins,
+  faBuilding,
 } from "@fortawesome/free-solid-svg-icons";
+import { Company } from "../../utils/types";
 
 const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR" };
 
 export default function TopBar() {
   const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
-
-  if (!user.isAuthenticated) return null;
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
 
   const wallet = WALLET_PLACEHOLDER;
+
+  useEffect(() => {
+    if (!user.email) return;
+    fetch(`${process.env.REACT_APP_API_URL}/companies?email=${encodeURIComponent(user.email)}`)
+      .then((res) => (res.ok ? res.json() : Promise.reject(res)))
+      .then((data) => {
+        const next = data.companies || [];
+        setCompanies(next);
+        if (!companyId && next[0]?.companyId) {
+          setCompanyId(next[0].companyId);
+          localStorage.setItem("automata_company_id", next[0].companyId);
+        }
+      })
+      .catch((err) => console.error("Failed to load companies:", err));
+  }, [user.email, companyId]);
+
+  if (!user.isAuthenticated) return null;
 
   return (
     <header
@@ -23,6 +43,23 @@ export default function TopBar() {
         border-b border-gray-200 dark:border-dark-border
         bg-white dark:bg-dark-bg"
     >
+      <div className="mr-auto flex items-center gap-2 min-w-0">
+        <FontAwesomeIcon icon={faBuilding} className="text-xs text-gray-400" />
+        <select
+          value={companyId}
+          onChange={(event) => {
+            setCompanyId(event.target.value);
+            localStorage.setItem("automata_company_id", event.target.value);
+          }}
+          className="h-8 max-w-[220px] rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface px-2 text-xs font-medium text-gray-700 dark:text-gray-200 outline-none"
+          title="Company"
+        >
+          {companies.map((company) => (
+            <option key={company.companyId} value={company.companyId}>{company.name}</option>
+          ))}
+        </select>
+      </div>
+
       {/* Credit balance — clickable shortcut to billing */}
       <button
         onClick={() => navigate("/settings?tab=credit")}
