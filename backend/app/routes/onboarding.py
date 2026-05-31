@@ -83,6 +83,13 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
 GENERIC_BROWSER_HINTS = ("website", "web", "portal", "government", "gobierno", "bopa.ad", "url")
 ONBOARDING_MODEL = os.getenv("OPENAI_ONBOARDING_MODEL", "gpt-5-mini")
+AUTH_REQUIREMENTS: dict[str, list[str]] = {
+    "gmail": ["OAuth client ID", "OAuth client secret", "refresh token", "Gmail user email"],
+    "smtp": ["SMTP server", "SMTP port", "email", "password"],
+    "holded": ["Holded API key"],
+    "telegram": ["Telegram bot token", "target chat ID"],
+    "api": ["base URL or OpenAPI URL", "API key/token if required"],
+}
 
 
 class OnboardingStartRequest(BaseModel):
@@ -398,15 +405,18 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
     if any(item.get("name") == "BOPA" for item in draft["connectors"]) and not draft["agent"]["websiteUrl"]:
         draft["agent"]["websiteUrl"] = "https://www.bopa.ad/"
 
-    missing: list[str] = []
-    if not draft["company"]["name"]:
-        missing.append("company name")
-    if not draft["connectors"]:
-        missing.append("connectors or systems")
-    if not draft["tasks"]:
-        missing.append("tasks")
-    draft["questions"] = _questions_for_missing(missing)
+    _refresh_onboarding_questions(draft)
     return draft
+
+
+def _missing_setup_items(draft: dict[str, Any]) -> list[str]:
+    return [
+        missing for missing, ok in (
+            ("company name", bool(draft["company"].get("name"))),
+            ("connectors or systems", bool(draft["connectors"])),
+            ("tasks", bool(draft["tasks"])),
+        ) if not ok
+    ]
 
 
 def _questions_for_missing(missing: list[str]) -> list[str]:
@@ -424,12 +434,65 @@ def _questions_for_missing(missing: list[str]) -> list[str]:
     return questions
 
 
+def _auth_fields_for_connector(connector: dict[str, Any]) -> list[str]:
+    return AUTH_REQUIREMENTS.get(str(connector.get("type") or "").lower(), ["credentials or API token"])
+
+
+def _connectors_by_status(draft: dict[str, Any]) -> tuple[list[str], list[str], list[str]]:
+    connected: list[str] = []
+    needs_auth: list[str] = []
+    not_connected: list[str] = []
+    for connector in draft.get("connectors", []):
+        name = str(connector.get("name") or connector.get("type") or "Connector")
+        status = str(connector.get("status") or "not_connected")
+        if status == "connected":
+            connected.append(name)
+        elif status == "needs_auth":
+            fields = ", ".join(_auth_fields_for_connector(connector))
+            needs_auth.append(f"{name} ({fields})")
+        else:
+            not_connected.append(name)
+    return connected, needs_auth, not_connected
+
+
+def _status_summary(draft: dict[str, Any]) -> str:
+    connected, needs_auth, not_connected = _connectors_by_status(draft)
+    task_count = len(draft.get("tasks", []))
+    lines = [
+        f"Working: {', '.join(connected) if connected else 'no connected connectors yet'}.",
+        f"Needs auth: {', '.join(needs_auth) if needs_auth else 'none'}.",
+        f"Not connected: {', '.join(not_connected) if not_connected else 'none'}.",
+        f"Benchmark tasks: {task_count}.",
+    ]
+    if needs_auth:
+        lines.append("Left: add the missing credentials in the connector settings, or tell me to keep them pending for now.")
+    elif draft.get("questions") and "Review the draft" not in draft["questions"][0]:
+        lines.append(f"Left: {draft['questions'][0]}")
+    else:
+        lines.append("Left: review the draft and create the company agent when it looks right.")
+    return "\n".join(lines)
+
+
+def _auth_question(draft: dict[str, Any]) -> str:
+    _, needs_auth, _ = _connectors_by_status(draft)
+    if not needs_auth:
+        return ""
+    names = ", ".join(item.split(" (", 1)[0] for item in needs_auth)
+    return f"These connectors still need auth before they can run: {names}. Please open Connectors and add the credentials, or tell me to keep them pending."
+
+
+def _refresh_onboarding_questions(draft: dict[str, Any]) -> str:
+    draft["questions"] = _questions_for_missing(_missing_setup_items(draft))
+    auth_question = _auth_question(draft)
+    if auth_question and auth_question not in draft["questions"]:
+        draft["questions"] = [auth_question, *draft["questions"]]
+    return auth_question
+
+
 def _assistant_message(draft: dict[str, Any]) -> str:
-    connectors = ", ".join(item["name"] for item in draft["connectors"]) or "none yet"
-    task_count = len(draft["tasks"])
     if draft["questions"] and "Review the draft" not in draft["questions"][0]:
-        return f"I updated the onboarding draft. Current connectors: {connectors}. Tasks captured: {task_count}. {draft['questions'][0]}"
-    return f"Draft is ready: {draft['company']['name']} with connectors {connectors} and {task_count} benchmark tasks. You can create the company agent now or tell me edits."
+        return f"I updated the onboarding draft.\n{_status_summary(draft)}"
+    return f"Draft is ready for {draft['company']['name']}.\n{_status_summary(draft)}"
 
 
 ONBOARDING_TOOLS: list[dict[str, Any]] = [
@@ -625,6 +688,8 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
         "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, web, knowledge, api. "
         "Use api for unknown SaaS/API systems and web for browser-only websites. Use knowledge for documents or files. "
         "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
+        "In the final summary, explain what is working, what is not connected, what needs auth, and what is left. "
+        "Connectors that need auth are not working yet; ask the user to configure their credentials in connector settings instead of pretending they are connected. "
         "Keep visible thinking short and operational; do not reveal hidden chain-of-thought."
     )
     client = OpenAI(api_key=api_key)
@@ -695,14 +760,19 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
     visible_events.extend(_ensure_extracted_setup(draft, user_message))
     visible_events.extend(_ensure_extracted_tasks(draft, user_message))
     visible_events = _prune_stale_task_events(visible_events, draft)
-    draft["questions"] = _questions_for_missing([
-        missing for missing, ok in (
-            ("company name", bool(draft["company"].get("name"))),
-            ("connectors or systems", bool(draft["connectors"])),
-            ("tasks", bool(draft["tasks"])),
-        ) if not ok
-    ])
-    visible_events.append(_event("assistant_summary", final_summary or _assistant_message(draft)))
+    auth_question = _refresh_onboarding_questions(draft)
+    if auth_question:
+        visible_events.extend(
+            [
+                _event("tool_call", "Checking connector auth status.", tool_name="check_connector_auth"),
+                _event("tool_result", auth_question, tool_name="check_connector_auth"),
+            ]
+        )
+    summary = final_summary or _assistant_message(draft)
+    status_summary = _status_summary(draft)
+    if "Needs auth:" not in summary and "Working:" not in summary:
+        summary = f"{summary}\n\n{status_summary}"
+    visible_events.append(_event("assistant_summary", summary))
     return draft, visible_events
 
 
@@ -713,11 +783,17 @@ async def _run_onboarding_agent(draft: dict[str, Any], user_message: str) -> tup
         fallback_draft = draft
         setup_events = _ensure_extracted_setup(fallback_draft, user_message)
         task_events = _ensure_extracted_tasks(fallback_draft, user_message)
+        auth_question = _refresh_onboarding_questions(fallback_draft)
+        auth_events = [
+            _event("tool_call", "Checking connector auth status.", tool_name="check_connector_auth"),
+            _event("tool_result", auth_question, tool_name="check_connector_auth"),
+        ] if auth_question else []
         return fallback_draft, [
             _event("thinking", "I could not reach the model, so I used the local onboarding parser.", status="completed"),
             _event("tool_result", f"Fallback parser updated the draft: {exc.__class__.__name__}", tool_name="local_parser"),
             *setup_events,
             *task_events,
+            *auth_events,
             _event("assistant_summary", _assistant_message(fallback_draft)),
         ]
 

@@ -248,7 +248,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_390px] gap-4">
-        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-200 dark:border-dark-border shadow-soft overflow-hidden flex flex-col min-h-[620px]">
+        <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-200 dark:border-dark-border shadow-soft overflow-hidden flex flex-col h-[min(720px,calc(100vh-170px))] min-h-[560px]">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">
@@ -273,7 +273,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
             </button>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-auto p-5 space-y-3">
+          <div ref={scrollRef} className="flex-1 min-h-0 overflow-y-auto scrollbar-thin p-5 space-y-3">
             {loading ? (
               <div className="h-full flex items-center justify-center">
                 <FontAwesomeIcon icon={faSpinner} className="text-primary text-xl animate-spin" />
@@ -299,7 +299,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                             </span>
                           )}
                         </div>
-                        <p>{message.content}</p>
+                        <p className="whitespace-pre-wrap">{message.content}</p>
                       </div>
                     </div>
                   );
@@ -311,7 +311,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                         ? "bg-gradient-primary text-white"
                         : "bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-dark-border"
                     }`}>
-                      {message.content}
+                      <span className="whitespace-pre-wrap">{message.content}</span>
                     </div>
                   </div>
                 );
