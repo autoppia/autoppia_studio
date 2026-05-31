@@ -36,6 +36,7 @@ const apiUrl = process.env.REACT_APP_API_URL;
 
 type TabKey = "overview" | "webs" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
 type SkillAssetTab = "skills" | "traces";
+type SnippetTab = "curl" | "javascript" | "python";
 
 function StatusBadge({ label, tone = "gray" }: { label: string; tone?: "green" | "amber" | "blue" | "gray" | "red" }) {
   const tones = {
@@ -81,6 +82,7 @@ export default function OperatorDetail() {
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [skillAssetTab, setSkillAssetTab] = useState<SkillAssetTab>("skills");
+  const [snippetTab, setSnippetTab] = useState<SnippetTab>("curl");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState("");
@@ -326,6 +328,11 @@ response = requests.post(
     timeout=60,
 )
 print(response.json()["result"])`;
+  const snippets: Record<SnippetTab, { title: string; code: string }> = {
+    curl: { title: "cURL", code: curlSnippet },
+    javascript: { title: "JavaScript", code: jsSnippet },
+    python: { title: "Python", code: pythonSnippet },
+  };
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -717,20 +724,29 @@ print(response.json()["result"])`;
                 </div>
               </div>
 
-              {[
-                { title: "cURL", code: curlSnippet },
-                { title: "JavaScript", code: jsSnippet },
-                { title: "Python", code: pythonSnippet },
-              ].map((snippet) => (
-                <div key={snippet.title} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border overflow-hidden">
-                  <div className="px-5 py-3 border-b border-gray-100 dark:border-dark-border">
-                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{snippet.title}</p>
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border overflow-hidden">
+                <div className="flex items-center justify-between gap-3 px-5 py-3 border-b border-gray-100 dark:border-dark-border">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Code Snippet</p>
+                  <div className="flex items-center gap-1 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-1">
+                    {[
+                      { key: "curl" as SnippetTab, label: "cURL" },
+                      { key: "javascript" as SnippetTab, label: "JavaScript" },
+                      { key: "python" as SnippetTab, label: "Python" },
+                    ].map((tab) => (
+                      <button
+                        key={tab.key}
+                        onClick={() => setSnippetTab(tab.key)}
+                        className={`h-7 px-2.5 rounded-md text-xs font-medium transition-colors ${snippetTab === tab.key ? "bg-gradient-primary text-white shadow-glow" : "text-gray-500 dark:text-gray-300 hover:bg-white dark:hover:bg-dark-surface"}`}
+                      >
+                        {tab.label}
+                      </button>
+                    ))}
                   </div>
-                  <pre className="p-5 overflow-auto text-xs leading-5 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-dark-bg font-mono whitespace-pre-wrap">
-                    {snippet.code}
-                  </pre>
                 </div>
-              ))}
+                <pre className="p-5 overflow-auto text-xs leading-5 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-dark-bg font-mono whitespace-pre-wrap">
+                  {snippets[snippetTab].code}
+                </pre>
+              </div>
             </div>
           )}
         </div>
