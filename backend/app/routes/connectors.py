@@ -13,49 +13,61 @@ router = APIRouter()
 CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
     "gmail": {
         "name": "Gmail Toolkit",
+        "authFields": ["email", "accessToken"],
+        "configFields": ["defaultFrom", "signature"],
         "runtimeRequirements": ["oauth:gmail", "network"],
         "tools": [
-            {"name": "gmail.search_emails", "description": "Search client emails.", "sideEffects": "reads"},
-            {"name": "gmail.read_email", "description": "Read an email thread.", "sideEffects": "reads"},
-            {"name": "gmail.send_email", "description": "Send an email after approval.", "sideEffects": "writes"},
+            {"name": "gmail.search_emails", "description": "Search client emails.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
+            {"name": "gmail.read_email", "description": "Read an email thread.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"threadId": {"type": "string"}}}},
+            {"name": "gmail.send_email", "description": "Send an email after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
         ],
     },
     "holded": {
         "name": "Holded Toolkit",
+        "authFields": ["apiKey"],
+        "configFields": ["workspaceId"],
         "runtimeRequirements": ["api_credentials", "network"],
         "tools": [
-            {"name": "holded.search_clients", "description": "Search clients in Holded.", "sideEffects": "reads"},
-            {"name": "holded.get_invoice", "description": "Fetch an invoice.", "sideEffects": "reads"},
+            {"name": "holded.search_clients", "description": "Search clients in Holded.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
+            {"name": "holded.get_invoice", "description": "Fetch an invoice.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"invoiceId": {"type": "string"}}}},
         ],
     },
     "telegram": {
         "name": "Telegram Toolkit",
+        "authFields": ["botToken", "chatId"],
+        "configFields": ["defaultChatId"],
         "runtimeRequirements": ["bot_token", "network"],
         "tools": [
-            {"name": "telegram.send_message", "description": "Send a Telegram message after approval.", "sideEffects": "writes"},
+            {"name": "telegram.send_message", "description": "Send a Telegram message after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}, "message": {"type": "string"}}}},
         ],
     },
     "web": {
         "name": "Web Toolkit",
+        "authFields": [],
+        "configFields": ["baseUrl", "authUsername", "authPassword"],
         "runtimeRequirements": ["browser_or_http", "network"],
         "tools": [
-            {"name": "web.fetch", "description": "Fetch a public page.", "sideEffects": "reads"},
-            {"name": "browser.navigate", "description": "Open a website in browser runtime.", "sideEffects": "reads"},
+            {"name": "web.fetch", "description": "Fetch a public page.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
+            {"name": "browser.navigate", "description": "Open a website in browser runtime.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
         ],
     },
     "knowledge": {
         "name": "Knowledge Toolkit",
+        "authFields": [],
+        "configFields": ["collectionName", "sourceUrl"],
         "runtimeRequirements": ["vectorstore", "embedding_model"],
         "tools": [
-            {"name": "knowledge.search", "description": "Search company documents.", "sideEffects": "none"},
-            {"name": "knowledge.read_document", "description": "Read a document chunk.", "sideEffects": "none"},
+            {"name": "knowledge.search", "description": "Search company documents.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
+            {"name": "knowledge.read_document", "description": "Read a document chunk.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"documentId": {"type": "string"}}}},
         ],
     },
     "api": {
         "name": "API Toolkit",
+        "authFields": ["apiKey"],
+        "configFields": ["baseUrl", "openApiUrl"],
         "runtimeRequirements": ["openapi_optional", "network"],
         "tools": [
-            {"name": "api.call", "description": "Call an approved API endpoint.", "sideEffects": "writes"},
+            {"name": "api.call", "description": "Call an approved API endpoint.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"method": {"type": "string"}, "path": {"type": "string"}, "body": {"type": "object"}}}},
         ],
     },
 }
@@ -73,11 +85,11 @@ class ConnectorCreateRequest(BaseModel):
 
 
 class ConnectorUpdateRequest(BaseModel):
-    name: str
-    type: str = "api"
-    category: str = "software"
-    description: str = ""
-    status: str = "not_connected"
+    name: str | None = None
+    type: str | None = None
+    category: str | None = None
+    description: str | None = None
+    status: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -97,6 +109,8 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
         "category": connector.get("category", "software"),
         "status": connector.get("status", "not_connected"),
         "runtimeRequirements": defaults["runtimeRequirements"],
+        "authFields": defaults["authFields"],
+        "configFields": defaults["configFields"],
         "tools": defaults["tools"],
     }
 
@@ -112,6 +126,9 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "description": doc.get("description", ""),
         "status": doc.get("status", "not_connected"),
         "config": doc.get("config", {}),
+        "lastTestAt": doc.get("lastTestAt"),
+        "lastTestStatus": doc.get("lastTestStatus"),
+        "lastTestMessage": doc.get("lastTestMessage"),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -155,15 +172,19 @@ async def create_connector(body: ConnectorCreateRequest):
 @router.put("/connectors/{connector_id}")
 async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
     now = _now()
-    update = {
-        "name": body.name.strip() or "Untitled Connector",
-        "type": body.type.strip().lower() or "api",
-        "category": body.category.strip() or "software",
-        "description": body.description.strip(),
-        "status": body.status,
-        "config": body.config,
-        "updatedAt": now,
-    }
+    update: dict[str, Any] = {"updatedAt": now}
+    if body.name is not None:
+        update["name"] = body.name.strip() or "Untitled Connector"
+    if body.type is not None:
+        update["type"] = body.type.strip().lower() or "api"
+    if body.category is not None:
+        update["category"] = body.category.strip() or "software"
+    if body.description is not None:
+        update["description"] = body.description.strip()
+    if body.status is not None:
+        update["status"] = body.status
+    if body.config is not None:
+        update["config"] = body.config
     result = await connectors_collection.update_one({"connectorId": connector_id}, {"$set": update})
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Connector not found")
@@ -177,3 +198,33 @@ async def delete_connector(connector_id: str):
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Connector not found")
     return {"success": True}
+
+
+@router.post("/connectors/{connector_id}/test")
+async def test_connector(connector_id: str):
+    doc = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
+    connector_type = str(doc.get("type") or "api").lower()
+    defaults = CONNECTOR_TOOLKIT_DEFAULTS.get(connector_type, CONNECTOR_TOOLKIT_DEFAULTS["api"])
+    config = doc.get("config") or {}
+    required_auth = defaults.get("authFields") or []
+    missing = [field for field in required_auth if not str(config.get(field) or "").strip()]
+
+    now = _now()
+    if missing:
+        status = "needs_auth"
+        message = f"Missing auth fields: {', '.join(missing)}"
+        success = False
+    else:
+        status = "connected"
+        message = "Connector test passed. Toolkit is ready for agents."
+        success = True
+
+    await connectors_collection.update_one(
+        {"connectorId": connector_id},
+        {"$set": {"status": status, "lastTestAt": now, "lastTestStatus": "pass" if success else "fail", "lastTestMessage": message, "updatedAt": now}},
+    )
+    updated = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
+    return {"success": success, "message": message, "connector": _serialize(updated or doc)}

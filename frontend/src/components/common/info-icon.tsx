@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCircleInfo, faXmark } from "@fortawesome/free-solid-svg-icons";
 
@@ -23,9 +24,9 @@ export default function InfoIcon({ title, children }: InfoIconProps) {
       >
         <FontAwesomeIcon icon={faCircleInfo} className="text-xs" />
       </button>
-      {open && (
+      {open && createPortal(
         <div
-          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          className="fixed inset-0 z-[2147483647] flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
           onClick={() => setOpen(false)}
         >
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
@@ -47,7 +48,8 @@ export default function InfoIcon({ title, children }: InfoIconProps) {
               {children}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

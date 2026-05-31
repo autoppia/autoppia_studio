@@ -165,6 +165,8 @@ export interface AgentToolkit {
   category: string;
   status?: string;
   runtimeRequirements: string[];
+  authFields?: string[];
+  configFields?: string[];
   permissions?: Record<string, any>;
   tools: Array<{
     name: string;
@@ -184,6 +186,9 @@ export interface Connector {
   description: string;
   status: string;
   config?: Record<string, any>;
+  lastTestAt?: string;
+  lastTestStatus?: string;
+  lastTestMessage?: string;
   toolkit: AgentToolkit;
   createdAt?: string;
   updatedAt?: string;

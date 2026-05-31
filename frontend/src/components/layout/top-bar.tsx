@@ -5,6 +5,7 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faKey,
   faArrowUp,
+  faChevronDown,
   faCoins,
   faBuilding,
   faPen,
@@ -24,6 +25,7 @@ export default function TopBar() {
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
   const [companyName, setCompanyName] = useState("");
   const [companyDescription, setCompanyDescription] = useState("");
+  const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const wallet = WALLET_PLACEHOLDER;
@@ -52,9 +54,17 @@ export default function TopBar() {
 
   const selectedCompany = companies.find((company) => company.companyId === companyId) || companies[0] || null;
 
+  const selectCompany = (nextId: string) => {
+    setCompanyId(nextId);
+    localStorage.setItem("automata_company_id", nextId);
+    window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: nextId } }));
+    setCompanyMenuOpen(false);
+  };
+
   const openCreate = () => {
     setCompanyName("");
     setCompanyDescription("");
+    setCompanyMenuOpen(false);
     setModalMode("create");
   };
 
@@ -62,6 +72,7 @@ export default function TopBar() {
     if (!selectedCompany) return;
     setCompanyName(selectedCompany.name);
     setCompanyDescription(selectedCompany.description || "");
+    setCompanyMenuOpen(false);
     setModalMode("edit");
   };
 
@@ -105,6 +116,7 @@ export default function TopBar() {
       if (!res.ok) throw new Error(await res.text());
       localStorage.removeItem("automata_company_id");
       setCompanyId("");
+      setCompanyMenuOpen(false);
       window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: "" } }));
       loadCompanies();
     } catch (err) {
@@ -121,30 +133,52 @@ export default function TopBar() {
         bg-white dark:bg-dark-bg"
     >
       <div className="mr-auto flex items-center gap-2 min-w-0">
-        <FontAwesomeIcon icon={faBuilding} className="text-xs text-gray-400" />
-        <select
-          value={companyId}
-          onChange={(event) => {
-            setCompanyId(event.target.value);
-            localStorage.setItem("automata_company_id", event.target.value);
-            window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: event.target.value } }));
-          }}
-          className="h-8 max-w-[220px] rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface px-2 text-xs font-medium text-gray-700 dark:text-gray-200 outline-none"
-          title="Company"
-        >
-          {companies.map((company) => (
-            <option key={company.companyId} value={company.companyId}>{company.name}</option>
-          ))}
-        </select>
-        <button onClick={openCreate} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-surface" title="Create company">
-          <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
-        </button>
-        <button onClick={openEdit} disabled={!selectedCompany} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-dark-border text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-surface disabled:opacity-40" title="Edit company">
-          <FontAwesomeIcon icon={faPen} className="text-[10px]" />
-        </button>
-        <button onClick={deleteCompany} disabled={!selectedCompany || saving} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-dark-border text-gray-500 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-40" title="Delete company">
-          <FontAwesomeIcon icon={faTrash} className="text-[10px]" />
-        </button>
+        <div className="relative">
+          <button
+            onClick={() => setCompanyMenuOpen((open) => !open)}
+            className="h-9 min-w-[220px] max-w-[320px] rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface px-3 flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
+            title="Company"
+          >
+            <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+              <FontAwesomeIcon icon={faBuilding} className="text-[10px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[10px] uppercase tracking-wide text-gray-400 leading-3">Company</span>
+              <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{selectedCompany?.name || "Select company"}</span>
+            </span>
+            <FontAwesomeIcon icon={faChevronDown} className="text-[10px] text-gray-400" />
+          </button>
+          {companyMenuOpen && (
+            <div className="absolute left-0 top-11 z-[90] w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl p-2">
+              <div className="max-h-64 overflow-auto">
+                {companies.map((company) => (
+                  <button
+                    key={company.companyId}
+                    onClick={() => selectCompany(company.companyId)}
+                    className={`w-full rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-dark-border ${company.companyId === selectedCompany?.companyId ? "bg-primary/5" : ""}`}
+                  >
+                    <span className="block text-sm font-semibold text-gray-900 dark:text-white truncate">{company.name}</span>
+                    <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{company.description || "No description"}</span>
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 gap-2 border-t border-gray-100 dark:border-dark-border mt-2 pt-2">
+                <button onClick={openCreate} className="h-8 rounded-lg bg-gradient-primary text-white text-xs font-semibold">
+                  <FontAwesomeIcon icon={faPlus} className="mr-1.5 text-[10px]" />
+                  New
+                </button>
+                <button onClick={openEdit} disabled={!selectedCompany} className="h-8 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-40">
+                  <FontAwesomeIcon icon={faPen} className="mr-1.5 text-[10px]" />
+                  Edit
+                </button>
+                <button onClick={deleteCompany} disabled={!selectedCompany || saving} className="h-8 rounded-lg border border-red-200 dark:border-red-500/30 text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-40">
+                  <FontAwesomeIcon icon={faTrash} className="mr-1.5 text-[10px]" />
+                  Delete
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Credit balance — clickable shortcut to billing */}
