@@ -13,6 +13,7 @@ import {
   faSpinner,
   faWrench,
 } from "@fortawesome/free-solid-svg-icons";
+import InfoIcon from "../common/info-icon";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -196,7 +197,17 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
         <div className="bg-white dark:bg-dark-surface rounded-2xl border border-gray-200 dark:border-dark-border shadow-soft overflow-hidden flex flex-col min-h-[620px]">
           <div className="px-5 py-4 border-b border-gray-100 dark:border-dark-border flex items-center justify-between">
             <div>
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Conversation</p>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Conversation</p>
+                <InfoIcon title="Example company setup">
+                  <div className="space-y-3">
+                    <p>Describe what the company does, what software it uses, and the workflows you want automated.</p>
+                    <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs leading-5">
+                      Celeris is a labor advisory firm in Andorra. We use SMTP for email, Holded for invoices, Telegram for team messages, internal documents for knowledge, and https://www.bopa.ad/ to read official updates. Tasks: summarize the latest BOPA for a client, find a client invoice in Holded and draft an email, and notify the team on Telegram.
+                    </div>
+                  </div>
+                </InfoIcon>
+              </div>
               <p className="text-xs text-gray-400">Describe systems, auth, docs, APIs and daily tasks.</p>
             </div>
             <button

@@ -406,14 +406,12 @@ async def start_onboarding(body: OnboardingStartRequest):
     messages = [
         {
             "role": "assistant",
-            "content": "Tell me what company or workflow you want to automate, which systems it uses, and the tasks the agent should learn. I will turn that into connectors, toolkits, benchmark tasks and a company agent.",
+            "content": "Please explain what this company do for me to create the whole setup.",
             "createdAt": _now(),
         }
     ]
     if body.seedPrompt.strip():
         draft = _apply_message(draft, body.seedPrompt)
-        messages.append({"role": "user", "content": body.seedPrompt.strip(), "createdAt": _now()})
-        messages.append({"role": "assistant", "content": _assistant_message(draft), "createdAt": _now()})
     now = _now()
     status = "ready" if draft["company"]["name"] and draft["connectors"] and draft["tasks"] else "collecting"
     doc = {
