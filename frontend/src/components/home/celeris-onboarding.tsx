@@ -73,7 +73,10 @@ export default function CelerisOnboarding() {
       if (!companyRes.ok) throw new Error(await companyRes.text());
       const companyData = await companyRes.json();
       const companyId = companyData.company?.companyId || "";
-      if (companyId) localStorage.setItem("automata_company_id", companyId);
+      if (companyId) {
+        localStorage.setItem("automata_company_id", companyId);
+        window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId } }));
+      }
 
       const cleanTasks = tasks
         .map((prompt, index) => ({

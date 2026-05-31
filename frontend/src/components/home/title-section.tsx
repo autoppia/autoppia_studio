@@ -1,7 +1,7 @@
 export default function TitleSection() {
   return (
     <div className="animate-slide-up mb-6">
-      <h1 className="w-full text-center mb-3 text-3xl md:text-5xl leading-tight font-bold text-gray-800 dark:text-white tracking-tight text-balance">
+      <h1 className="w-full text-center mb-5 text-4xl md:text-6xl xl:text-7xl leading-tight font-bold text-gray-800 dark:text-white tracking-tight text-balance">
         Fully Permissionless and Incentivized{" "}
         <span className="font-extrabold bg-gradient-primary bg-clip-text text-transparent">
           Web&nbsp;Operator

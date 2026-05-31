@@ -203,9 +203,12 @@ async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str
 
 
 @router.get("/operators")
-async def get_operators(email: str):
+async def get_operators(email: str, companyId: str = ""):
     try:
-        cursor = operators_collection.find({"email": email}).sort("createdAt", -1)
+        query: dict[str, Any] = {"email": email}
+        if companyId:
+            query["companyId"] = companyId
+        cursor = operators_collection.find(query).sort("createdAt", -1)
         operators = []
         async for doc in cursor:
             operators.append(_serialize_operator(doc))
@@ -243,7 +246,6 @@ async def create_operator(body: OperatorCreateRequest):
             "status": "draft",
             "trainingStatus": "needs_trajectories",
             "harvester": "Automata Operator",
-            "companyId": "",
             "runtimeCapabilities": {
                 "browser": True,
                 "apiCalls": True,

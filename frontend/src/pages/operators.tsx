@@ -60,6 +60,7 @@ export default function Operators() {
   const navigate = useNavigate();
 
   const [operators, setOperators] = useState<Operator[]>([]);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [bootstrapping, setBootstrapping] = useState(false);
@@ -81,12 +82,23 @@ export default function Operators() {
     if (!user.email) return;
     fetchOperators();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.email]);
+  }, [user.email, companyId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
+      setCompanyId(next);
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
 
   const fetchOperators = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/operators?email=${encodeURIComponent(user.email)}`);
+      const params = new URLSearchParams({ email: user.email });
+      if (companyId) params.set("companyId", companyId);
+      const res = await fetch(`${apiUrl}/operators?${params.toString()}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setOperators(data.operators || []);
@@ -141,6 +153,7 @@ export default function Operators() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           email: user.email,
+          companyId,
           name: name.trim(),
           websiteUrl: websiteUrl.trim(),
           authUsername: authUsername.trim(),
