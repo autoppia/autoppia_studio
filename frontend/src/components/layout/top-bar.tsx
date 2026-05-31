@@ -30,7 +30,9 @@ export default function TopBar() {
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [onboardingCompanyId, setOnboardingCompanyId] = useState(localStorage.getItem("automata_onboarding_company_id") || "");
+  const [pendingOnboardingCompany, setPendingOnboardingCompany] = useState<Company | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [selectedCompanyIsEmpty, setSelectedCompanyIsEmpty] = useState(false);
 
   const wallet = WALLET_PLACEHOLDER;
 
@@ -54,9 +56,9 @@ export default function TopBar() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.email, companyId]);
 
-  if (!user.isAuthenticated) return null;
-
   const selectedCompany = companies.find((company) => company.companyId === companyId) || companies[0] || null;
+  const onboardingTargetCompany = pendingOnboardingCompany || selectedCompany;
+  const canOnboardSelectedCompany = !!selectedCompany && selectedCompany.name !== "Default Company" && (selectedCompany.companyId === onboardingCompanyId || selectedCompanyIsEmpty);
 
   const selectCompany = (nextId: string) => {
     setCompanyId(nextId);
@@ -99,7 +101,9 @@ export default function TopBar() {
       const data = await res.json();
       const nextId = data.company?.companyId;
       if (nextId) {
+        const nextCompany = data.company as Company;
         setCompanyId(nextId);
+        setPendingOnboardingCompany(!isEdit ? nextCompany : null);
         localStorage.setItem("automata_company_id", nextId);
         window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: nextId } }));
         if (!isEdit) {
@@ -116,6 +120,36 @@ export default function TopBar() {
       setSaving(false);
     }
   };
+
+  useEffect(() => {
+    if (!user.email || !selectedCompany?.companyId || selectedCompany.name === "Default Company") {
+      setSelectedCompanyIsEmpty(false);
+      return;
+    }
+    let cancelled = false;
+    const checkCompanyIsEmpty = async () => {
+      try {
+        const params = new URLSearchParams({ email: user.email, companyId: selectedCompany.companyId });
+        const [operatorsRes, connectorsRes] = await Promise.all([
+          fetch(`${process.env.REACT_APP_API_URL}/operators?${params.toString()}`),
+          fetch(`${process.env.REACT_APP_API_URL}/connectors?${params.toString()}`),
+        ]);
+        if (cancelled) return;
+        const operatorsData = operatorsRes.ok ? await operatorsRes.json() : { operators: [] };
+        const connectorsData = connectorsRes.ok ? await connectorsRes.json() : { connectors: [] };
+        if (cancelled) return;
+        setSelectedCompanyIsEmpty((operatorsData.operators || []).length === 0 && (connectorsData.connectors || []).length === 0);
+      } catch (err) {
+        if (!cancelled) setSelectedCompanyIsEmpty(false);
+      }
+    };
+    checkCompanyIsEmpty();
+    return () => {
+      cancelled = true;
+    };
+  }, [user.email, selectedCompany?.companyId, selectedCompany?.name]);
+
+  if (!user.isAuthenticated) return null;
 
   const deleteCompany = async () => {
     if (!selectedCompany || saving) return;
@@ -188,7 +222,7 @@ export default function TopBar() {
             </div>
           )}
         </div>
-        {selectedCompany?.companyId === onboardingCompanyId && (
+        {canOnboardSelectedCompany && (
           <button
             onClick={() => setShowOnboarding(true)}
             className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-xs font-semibold shadow-glow flex items-center gap-2"
@@ -269,7 +303,7 @@ export default function TopBar() {
         </div>
       )}
 
-      {showOnboarding && selectedCompany && (
+      {showOnboarding && onboardingTargetCompany && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
           <div className="relative max-h-full overflow-auto scrollbar-thin">
@@ -280,12 +314,13 @@ export default function TopBar() {
               Close
             </button>
             <CelerisOnboarding
-              companyId={selectedCompany.companyId}
-              companyName={selectedCompany.name}
-              companyDescription={selectedCompany.description || ""}
+              companyId={onboardingTargetCompany.companyId}
+              companyName={onboardingTargetCompany.name}
+              companyDescription={onboardingTargetCompany.description || ""}
               onComplete={() => {
                 setShowOnboarding(false);
                 setOnboardingCompanyId("");
+                setPendingOnboardingCompany(null);
                 localStorage.removeItem("automata_onboarding_company_id");
                 loadCompanies();
               }}
