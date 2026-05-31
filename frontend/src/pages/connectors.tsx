@@ -3,7 +3,6 @@ import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCheck,
-  faCircleNodes,
   faEnvelope,
   faFileLines,
   faFlask,
@@ -22,10 +21,10 @@ import InfoIcon from "../components/common/info-icon";
 const apiUrl = process.env.REACT_APP_API_URL;
 
 const CONNECTOR_TYPES = [
-  { value: "gmail", label: "Gmail", category: "email", icon: faEnvelope },
-  { value: "smtp", label: "SMTP", category: "email", icon: faEnvelope },
+  { value: "gmail", label: "Gmail", category: "email", icon: faEnvelope, logo: "/assets/images/connectors/mail.png" },
+  { value: "smtp", label: "SMTP", category: "email", icon: faEnvelope, logo: "/assets/images/connectors/mail.png" },
   { value: "holded", label: "Holded", category: "software", icon: faFileLines },
-  { value: "telegram", label: "Telegram", category: "communication", icon: faEnvelope },
+  { value: "telegram", label: "Telegram", category: "communication", icon: faEnvelope, logo: "/assets/images/connectors/telegram.png" },
   { value: "web", label: "Web / Browser", category: "web", icon: faGlobe },
   { value: "knowledge", label: "Knowledge", category: "knowledge", icon: faFileLines },
   { value: "api", label: "OpenAPI / API", category: "api", icon: faWrench },
@@ -45,6 +44,23 @@ function tone(status: string) {
 
 function typeMeta(type: string) {
   return CONNECTOR_TYPES.find((item) => item.value === type) || CONNECTOR_TYPES[CONNECTOR_TYPES.length - 1];
+}
+
+function ConnectorLogo({ type, className = "w-9 h-9" }: { type: string; className?: string }) {
+  const meta = typeMeta(type);
+  if (meta.logo) {
+    return (
+      <span className={`${className} rounded-lg bg-white dark:bg-dark-bg border border-gray-100 dark:border-dark-border flex items-center justify-center flex-shrink-0 overflow-hidden`}>
+        <img src={meta.logo} alt="" className="w-full h-full object-contain p-1.5" />
+      </span>
+    );
+  }
+
+  return (
+    <span className={`${className} rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0`}>
+      <FontAwesomeIcon icon={meta.icon} className="text-sm" />
+    </span>
+  );
 }
 
 function emptyConfig(connector?: Connector | null) {
@@ -254,7 +270,6 @@ export default function Connectors(): React.ReactElement {
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {connectors.map((connector) => {
-                const meta = typeMeta(connector.type);
                 const testing = testingId === connector.connectorId;
                 return (
                   <button
@@ -264,9 +279,7 @@ export default function Connectors(): React.ReactElement {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-                          <FontAwesomeIcon icon={meta.icon} className="text-sm" />
-                        </span>
+                        <ConnectorLogo type={connector.type} />
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{connector.name}</p>
                           <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{connector.toolkit.name}</p>
@@ -304,7 +317,7 @@ export default function Connectors(): React.ReactElement {
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 dark:border-dark-border">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <FontAwesomeIcon icon={faCircleNodes} className="text-primary text-sm" />
+                  <ConnectorLogo type={selected.type} className="w-8 h-8" />
                   <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">{selected.name}</h2>
                   <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${tone(selected.status)}`}>{STATUS_COPY[selected.status] || selected.status}</span>
                 </div>
