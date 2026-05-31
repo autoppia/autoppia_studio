@@ -13,8 +13,8 @@ router = APIRouter()
 CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
     "gmail": {
         "name": "Gmail Toolkit",
-        "authFields": ["email", "accessToken"],
-        "configFields": ["defaultFrom", "signature"],
+        "authFields": ["clientId", "clientSecret", "refreshToken", "userEmail"],
+        "configFields": ["accessToken", "scopes", "apiVersion", "defaultFrom", "signature"],
         "runtimeRequirements": ["oauth:gmail", "network"],
         "tools": [
             {"name": "gmail.search_emails", "description": "Search client emails.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
