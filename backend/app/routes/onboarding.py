@@ -140,6 +140,8 @@ def _env(*names: str) -> str:
 def _known_connector(keyword: str) -> dict[str, Any]:
     connector = dict(KNOWN_CONNECTORS[keyword])
     connector["config"] = dict(connector.get("config") or {})
+    connector["provider"] = "official"
+    connector["generationStatus"] = "autoppia_supported"
     if connector["type"] == "smtp":
         connector["config"].update(
             {
@@ -205,6 +207,10 @@ def _connector_key(connector: dict[str, Any]) -> str:
     return f"{connector.get('type')}:{str(connector.get('name') or '').lower()}"
 
 
+def _normalized_connector_name(value: str) -> str:
+    return re.sub(r"\b(api|connector|integration|toolkit)\b", "", value.lower()).strip(" -_:")
+
+
 def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
     if connector.get("type") == "knowledge":
         for existing in draft["connectors"]:
@@ -217,6 +223,12 @@ def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
     if key in existing:
         existing[key].update({k: v for k, v in connector.items() if v not in ("", None, {})})
         return
+    if connector.get("type") == "api":
+        normalized = _normalized_connector_name(str(connector.get("name") or ""))
+        for item in draft["connectors"]:
+            if item.get("type") == "api" and normalized and normalized == _normalized_connector_name(str(item.get("name") or "")):
+                item.update({k: v for k, v in connector.items() if v not in ("", None, {})})
+                return
     draft["connectors"].append(
         {
             "name": connector.get("name", "Custom Connector"),
@@ -225,17 +237,34 @@ def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
             "description": connector.get("description", ""),
             "config": connector.get("config", {}),
             "status": connector.get("status", "not_connected"),
+            "provider": connector.get("provider", "custom" if connector.get("type") == "api" else "official"),
+            "generationStatus": connector.get("generationStatus", "needs_docs" if connector.get("type") == "api" else "autoppia_supported"),
         }
     )
 
 
 def _extract_urls(text: str) -> list[str]:
-    return re.findall(r"https?://[^\s,)]+", text)
+    return [url.rstrip(".,;)") for url in re.findall(r"https?://[^\s,)]+", text)]
 
 
 def _looks_like_api_docs(text: str) -> bool:
     lower = text.lower()
     return any(phrase in lower for phrase in ("api docs", "docs de la api", "documentacion de la api", "documentación de la api", "swagger", "openapi"))
+
+
+def _extract_docs_url(text: str, system_name: str = "") -> str:
+    urls = _extract_urls(text)
+    if not urls:
+        return ""
+    if system_name:
+        lowered = system_name.lower()
+        for url in urls:
+            if lowered in url.lower():
+                return url
+    for url in urls:
+        if any(token in url.lower() for token in ("docs", "api", "openapi", "swagger", "developer")):
+            return url
+    return urls[0]
 
 
 def _extract_custom_systems(text: str) -> list[str]:
@@ -245,7 +274,7 @@ def _extract_custom_systems(text: str) -> list[str]:
         r"(?:connector|conector|integration|integraci[oó]n)\s+(?:for|de|con|para)?\s*([A-Z][A-Za-z0-9][A-Za-z0-9 ._-]{1,40})",
     ]
     for pattern in patterns:
-        for match in re.finditer(pattern, text):
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
             raw = match.group(1).strip(" .,:;")
             raw = re.split(r"[.,;:\n]|\s+(?:para|to|for|que|and|y|with|con)\b", raw, maxsplit=1)[0].strip(" .,:;")
             if not raw or raw in SYSTEM_STOPWORDS:
@@ -262,6 +291,63 @@ def _extract_custom_systems(text: str) -> list[str]:
         if not any(existing.lower() == system.lower() for existing in deduped):
             deduped.append(system)
     return deduped[:5]
+
+
+def _has_auth_hint(text: str) -> bool:
+    return any(term in text.lower() for term in ("api token", "token", "api key", "auth", "oauth", "credential", "credencial", "bot token"))
+
+
+def _normalize_custom_connectors(draft: dict[str, Any], user_message: str) -> None:
+    custom_systems = _extract_custom_systems(user_message)
+    lower = user_message.lower()
+    normalized_systems = {_normalized_connector_name(system): system for system in custom_systems}
+    normalized_connectors: list[dict[str, Any]] = []
+
+    for connector in draft.get("connectors", []):
+        connector_type = str(connector.get("type") or "").lower()
+        name = str(connector.get("name") or "")
+        normalized_name = _normalized_connector_name(name)
+        config = connector.get("config") or {}
+
+        if connector_type == "knowledge" and custom_systems and ("docs" in lower or _looks_like_api_docs(user_message)):
+            continue
+        if connector_type == "web" and custom_systems:
+            base_url = str(config.get("baseUrl") or "")
+            if any(token in base_url.lower() for token in ("docs", "api", "developer")) or ("openapi url" in lower and name.lower() == "browser"):
+                continue
+
+        if connector_type == "api":
+            if normalized_name == "openapi" and custom_systems:
+                name = custom_systems[0]
+                connector["name"] = name
+                normalized_name = _normalized_connector_name(name)
+            connector["provider"] = "custom"
+            config = dict(config)
+            docs_url = config.get("docsUrl") or config.get("openApiUrl") or _extract_docs_url(user_message, name)
+            if docs_url:
+                config.setdefault("docsUrl", docs_url)
+                if any(token in str(docs_url).lower() for token in ("openapi", "swagger")):
+                    config.setdefault("openApiUrl", docs_url)
+            elif _looks_like_api_docs(user_message):
+                config.setdefault("docsMentioned", True)
+            connector["config"] = config
+            connector["generationStatus"] = "docs_provided" if (config.get("docsUrl") or config.get("openApiUrl")) else "needs_docs"
+            if _has_auth_hint(user_message) or connector["generationStatus"] == "needs_docs":
+                connector["status"] = "needs_auth"
+
+        if normalized_name in normalized_systems and connector_type != "api" and connector_type not in {"web", "knowledge"}:
+            connector["provider"] = "custom"
+
+        duplicate = False
+        for existing in normalized_connectors:
+            if connector_type == "api" and existing.get("type") == "api" and normalized_name == _normalized_connector_name(str(existing.get("name") or "")):
+                existing.update({k: v for k, v in connector.items() if v not in ("", None, {})})
+                duplicate = True
+                break
+        if not duplicate:
+            normalized_connectors.append(connector)
+
+    draft["connectors"] = normalized_connectors
 
 
 def _extract_tasks(text: str) -> list[str]:
@@ -367,6 +453,7 @@ def _prune_stale_task_events(events: list[dict[str, Any]], draft: dict[str, Any]
 def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
     text = message.strip()
     lower = text.lower()
+    custom_systems = _extract_custom_systems(text)
 
     if not draft["company"]["name"]:
         name_match = re.search(r"(?:company|empresa|compañ[ií]a|asesor[ií]a)\s+(?:is|es|called|llamada?)?\s*([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{2,40})", text)
@@ -384,6 +471,8 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
         draft["company"]["industry"] = "Labor advisory, Andorra"
 
     for url in _extract_urls(text):
+        if custom_systems and any(token in url.lower() for token in ("docs", "api", "developer", "openapi", "swagger")):
+            continue
         if "bopa.ad" in url:
             _merge_connector(draft, _known_connector("bopa"))
         elif not draft["agent"]["websiteUrl"]:
@@ -406,8 +495,6 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
         if keyword in lower:
             _merge_connector(draft, _known_connector(keyword))
 
-    custom_systems = _extract_custom_systems(text)
-
     if _looks_like_api_docs(text) and (_extract_urls(text) or not custom_systems):
         url = next(iter(_extract_urls(text)), "")
         _merge_connector(
@@ -419,23 +506,36 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
                 "description": "Custom API connector generated from OpenAPI or Swagger documentation.",
                 "config": {"openApiUrl": url} if url else {},
                 "status": "not_connected",
+                "provider": "custom",
+                "generationStatus": "docs_provided" if url else "needs_docs",
             },
         )
 
     for system_name in custom_systems:
         if any(system_name.lower() == str(item.get("name", "")).lower() for item in draft["connectors"]):
             continue
-        has_auth_hint = any(term in lower for term in ("api token", "token", "api key", "auth", "oauth", "credential", "credencial"))
-        config = {"docsMentioned": True} if _looks_like_api_docs(text) else {}
+        has_auth_hint = _has_auth_hint(text)
+        docs_url = _extract_docs_url(text, system_name)
+        config = {
+            key: value
+            for key, value in {
+                "docsMentioned": _looks_like_api_docs(text),
+                "docsUrl": docs_url,
+                "openApiUrl": docs_url if any(token in docs_url.lower() for token in ("openapi", "swagger")) else "",
+            }.items()
+            if value
+        }
         _merge_connector(
             draft,
             {
                 "name": system_name,
                 "type": "api",
                 "category": "software",
-                "description": f"Custom API connector for {system_name}. Upload API docs or configure auth to generate and test its toolkit.",
+                "description": f"Custom API connector for {system_name}. Add API docs/OpenAPI URL and auth so Automata can generate and test its toolkit.",
                 "config": config,
                 "status": "needs_auth" if has_auth_hint else "not_connected",
+                "provider": "custom",
+                "generationStatus": "docs_provided" if docs_url else "needs_docs",
             },
         )
 
@@ -449,6 +549,8 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
                     "category": "software",
                     "description": f"Custom software connector for {hint}. Add API docs or auth to generate a richer toolkit.",
                     "status": "not_connected",
+                    "provider": "custom",
+                "generationStatus": "needs_docs",
                 },
             )
 
@@ -469,6 +571,7 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
     if any(item.get("name") == "BOPA" for item in draft["connectors"]) and not draft["agent"]["websiteUrl"]:
         draft["agent"]["websiteUrl"] = "https://www.bopa.ad/"
 
+    _normalize_custom_connectors(draft, text)
     _refresh_onboarding_questions(draft)
     return draft
 
@@ -499,6 +602,14 @@ def _questions_for_missing(missing: list[str]) -> list[str]:
 
 
 def _auth_fields_for_connector(connector: dict[str, Any]) -> list[str]:
+    if connector.get("provider") == "custom":
+        config = connector.get("config") or {}
+        fields = []
+        if not config.get("openApiUrl") and not config.get("docsUrl"):
+            fields.append("API docs URL or OpenAPI URL")
+        fields.append("base URL")
+        fields.append("API key/token if required")
+        return fields
     return AUTH_REQUIREMENTS.get(str(connector.get("type") or "").lower(), ["credentials or API token"])
 
 
@@ -529,7 +640,7 @@ def _status_summary(draft: dict[str, Any]) -> str:
         f"Benchmark tasks: {task_count}.",
     ]
     if needs_auth:
-        lines.append("Left: add the missing credentials in the connector settings, or tell me to keep them pending for now.")
+        lines.append("Left: add missing auth/docs in connector settings. For custom connectors, provide API docs/OpenAPI URL, or ask Automata to search public docs and generate a toolkit draft.")
     elif draft.get("questions") and "Review the draft" not in draft["questions"][0]:
         lines.append(f"Left: {draft['questions'][0]}")
     else:
@@ -542,7 +653,7 @@ def _auth_question(draft: dict[str, Any]) -> str:
     if not needs_auth:
         return ""
     names = ", ".join(item.split(" (", 1)[0] for item in needs_auth)
-    return f"These connectors still need auth before they can run: {names}. Please open Connectors and add the credentials, or tell me to keep them pending."
+    return f"These connectors still need auth or API docs before they can run: {names}. Open Connectors to add credentials/docs, or ask Automata to search public docs and generate a toolkit draft."
 
 
 def _refresh_onboarding_questions(draft: dict[str, Any]) -> str:
@@ -602,6 +713,7 @@ ONBOARDING_TOOLS: list[dict[str, Any]] = [
                     "description": {"type": "string"},
                     "baseUrl": {"type": "string"},
                     "openApiUrl": {"type": "string"},
+                    "docsUrl": {"type": "string"},
                 },
                 "required": ["name", "type"],
             },
@@ -685,13 +797,16 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
         connector_name = str(args.get("name") or connector_type.title()).strip()
         base_url = str(args.get("baseUrl") or "").strip()
         openapi_url = str(args.get("openApiUrl") or "").strip()
+        docs_url = str(args.get("docsUrl") or "").strip()
         known_key = connector_type if connector_type in KNOWN_CONNECTORS else connector_name.lower()
         connector = _known_connector(known_key) if known_key in KNOWN_CONNECTORS else {
             "name": connector_name,
             "type": connector_type,
             "category": args.get("category") or ("api" if connector_type == "api" else "software"),
-            "description": args.get("description") or f"Custom {connector_type} connector for {connector_name}.",
+            "description": args.get("description") or f"Custom {connector_type} connector for {connector_name}. Add docs/auth so Automata can generate and test its toolkit.",
             "status": "connected" if connector_type in {"web", "knowledge"} else "not_connected",
+            "provider": "custom" if connector_type == "api" else "official",
+            "generationStatus": "needs_docs" if connector_type == "api" else "autoppia_supported",
             "config": {},
         }
         connector["name"] = connector_name
@@ -701,6 +816,10 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
             connector.setdefault("config", {})["baseUrl"] = base_url
         if openapi_url:
             connector.setdefault("config", {})["openApiUrl"] = openapi_url
+            connector["generationStatus"] = "docs_provided"
+        if docs_url:
+            connector.setdefault("config", {})["docsUrl"] = docs_url
+            connector["generationStatus"] = "docs_provided"
         _merge_connector(draft, connector)
         if base_url and not draft["agent"].get("websiteUrl"):
             draft["agent"]["websiteUrl"] = base_url
@@ -752,6 +871,7 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
         "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, web, knowledge, api. "
         "Use api for unknown SaaS/API systems and web for browser-only websites. Use knowledge for documents or files. "
         "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
+        "If the system is not an official known connector, still create it as a custom api connector. Ask for API docs/OpenAPI URL and auth, or say Automata can search public docs to draft the toolkit. "
         "In the final summary, explain what is working, what is not connected, what needs auth, and what is left. "
         "Connectors that need auth are not working yet; ask the user to configure their credentials in connector settings instead of pretending they are connected. "
         "Keep visible thinking short and operational; do not reveal hidden chain-of-thought."
@@ -823,6 +943,7 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
 
     visible_events.extend(_ensure_extracted_setup(draft, user_message))
     visible_events.extend(_ensure_extracted_tasks(draft, user_message))
+    _normalize_custom_connectors(draft, user_message)
     visible_events = _prune_stale_task_events(visible_events, draft)
     auth_question = _refresh_onboarding_questions(draft)
     if auth_question:
@@ -847,6 +968,7 @@ async def _run_onboarding_agent(draft: dict[str, Any], user_message: str) -> tup
         fallback_draft = draft
         setup_events = _ensure_extracted_setup(fallback_draft, user_message)
         task_events = _ensure_extracted_tasks(fallback_draft, user_message)
+        _normalize_custom_connectors(fallback_draft, user_message)
         auth_question = _refresh_onboarding_questions(fallback_draft)
         auth_events = [
             _event("tool_call", "Checking connector auth status.", tool_name="check_connector_auth"),
@@ -1021,6 +1143,8 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
             "description": item.get("description", ""),
             "status": status,
             "config": item.get("config", {}),
+            "provider": item.get("provider", "custom" if item.get("type") == "api" else "official"),
+            "generationStatus": item.get("generationStatus", "needs_docs" if item.get("type") == "api" and item.get("provider") == "custom" else "autoppia_supported"),
             "createdAt": now,
             "updatedAt": now,
         }

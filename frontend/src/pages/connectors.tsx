@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { Connector } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import ConfirmModal from "../components/common/confirm-modal";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -36,14 +37,28 @@ const STATUS_COPY: Record<string, string> = {
   not_connected: "Not connected",
 };
 
+const PROVIDER_COPY: Record<string, string> = {
+  official: "Autoppia official",
+  custom: "Custom generated",
+};
+
 function tone(status: string) {
   if (status === "connected") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
   if (status === "needs_auth") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
   return "bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
+function providerTone(provider?: string) {
+  if (provider === "custom") return "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30";
+  return "bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
 function typeMeta(type: string) {
   return CONNECTOR_TYPES.find((item) => item.value === type) || CONNECTOR_TYPES[CONNECTOR_TYPES.length - 1];
+}
+
+function toolCount(n: number) {
+  return `${n} ${n === 1 ? "tool" : "tools"}`;
 }
 
 function ConnectorLogo({ type, className = "w-9 h-9" }: { type: string; className?: string }) {
@@ -81,6 +96,7 @@ export default function Connectors(): React.ReactElement {
   const [name, setName] = useState("");
   const [type, setType] = useState("gmail");
   const [selectedId, setSelectedId] = useState("");
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState({ name: "", type: "gmail", description: "", config: {} as Record<string, string> });
 
   const selected = useMemo(() => connectors.find((connector) => connector.connectorId === selectedId) || null, [connectors, selectedId]);
@@ -144,6 +160,8 @@ export default function Connectors(): React.ReactElement {
           category: selectedType.category,
           description: `${selectedType.label} connector for this company.`,
           status: type === "web" || type === "knowledge" ? "connected" : "not_connected",
+          provider: type === "api" ? "custom" : "official",
+          generationStatus: type === "api" ? "needs_docs" : "autoppia_supported",
         }),
       });
       if (!res.ok) throw new Error(await res.text());
@@ -275,7 +293,7 @@ export default function Connectors(): React.ReactElement {
                   <button
                     key={connector.connectorId}
                     onClick={() => setSelectedId(connector.connectorId)}
-                    className="text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 hover:border-primary/50 hover:shadow-sm transition-all"
+                    className="group flex flex-col text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 hover:border-primary/50 hover:shadow-soft hover:-translate-y-0.5 transition-all duration-200"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="flex items-center gap-3 min-w-0">
@@ -289,14 +307,25 @@ export default function Connectors(): React.ReactElement {
                         {STATUS_COPY[connector.status] || connector.status}
                       </span>
                     </div>
-                    <div className="flex items-center justify-between mt-4">
-                      <span className="text-xs text-gray-400">{connector.toolkit.tools.length} tools</span>
+                    <div className="flex items-center gap-1.5 mt-3">
+                      <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${providerTone(connector.provider)}`}>
+                        {PROVIDER_COPY[connector.provider || "official"] || connector.provider}
+                      </span>
+                      {connector.generationStatus && (
+                        <span className="px-2 py-0.5 rounded-md text-[11px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
+                          {connector.generationStatus.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
+                    <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-dark-border">
+                      <span className="text-xs font-medium text-gray-400 dark:text-gray-500">{toolCount(connector.toolkit.tools.length)}</span>
                       <span
                         onClick={(event) => {
                           event.stopPropagation();
                           testConnector(connector);
                         }}
-                        className="inline-flex items-center h-7 px-2 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border"
+                        className="inline-flex items-center h-7 px-2.5 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border hover:border-gray-300 dark:hover:border-dark-border transition-colors"
                       >
                         <FontAwesomeIcon icon={testing ? faSpinner : faFlask} className={`mr-1.5 text-[10px] ${testing ? "animate-spin" : ""}`} />
                         Test
@@ -320,8 +349,13 @@ export default function Connectors(): React.ReactElement {
                   <ConnectorLogo type={selected.type} className="w-8 h-8" />
                   <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">{selected.name}</h2>
                   <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${tone(selected.status)}`}>{STATUS_COPY[selected.status] || selected.status}</span>
+                  <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${providerTone(selected.provider)}`}>{PROVIDER_COPY[selected.provider || "official"] || selected.provider}</span>
                 </div>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">Company connector. Its toolkit can be reused by agents in this company.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
+                  {selected.provider === "custom"
+                    ? "Custom connector generated for this company. Add API docs/auth so Automata can draft a richer toolkit."
+                    : "Official Autoppia connector. Its toolkit can be reused by agents in this company."}
+                </p>
               </div>
               <button onClick={() => setSelectedId("")} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border">
                 <FontAwesomeIcon icon={faXmark} className="text-sm" />
@@ -371,6 +405,11 @@ export default function Connectors(): React.ReactElement {
                       {selected.lastTestMessage}
                     </p>
                   )}
+                  {selected.provider === "custom" && selected.type === "api" && (
+                    <p className="mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      For a custom API connector, provide `docsUrl` or `openApiUrl`. If you do not have docs, ask Automata in onboarding to search public docs and create a toolkit draft.
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -380,7 +419,7 @@ export default function Connectors(): React.ReactElement {
                     <FontAwesomeIcon icon={faWrench} className="text-primary text-xs" />
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">{selected.toolkit.name}</p>
                   </div>
-                  <span className="text-xs text-gray-400">{selected.toolkit.tools.length} tools</span>
+                  <span className="text-xs text-gray-400">{toolCount(selected.toolkit.tools.length)}</span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   {selected.toolkit.runtimeRequirements.map((requirement) => (
@@ -404,7 +443,7 @@ export default function Connectors(): React.ReactElement {
             </div>
 
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-t border-gray-100 dark:border-dark-border">
-              <button onClick={() => deleteConnector(selected.connectorId)} disabled={saving} className="h-9 px-3 rounded-lg border border-red-200 dark:border-red-500/30 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-60">
+              <button onClick={() => setConfirmDelete(true)} disabled={saving} className="h-9 px-3 rounded-lg border border-red-200 dark:border-red-500/30 text-sm font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 disabled:opacity-60">
                 <FontAwesomeIcon icon={faTrash} className="mr-2 text-xs" />
                 Delete
               </button>
@@ -420,6 +459,15 @@ export default function Connectors(): React.ReactElement {
             </div>
           </div>
         </div>
+      )}
+
+      {selected && confirmDelete && (
+        <ConfirmModal
+          title="Delete connector"
+          message={`Delete "${selected.name}"? Agents in this company will lose access to its toolkit. This cannot be undone.`}
+          onConfirm={() => { setConfirmDelete(false); deleteConnector(selected.connectorId); }}
+          onCancel={() => setConfirmDelete(false)}
+        />
       )}
     </div>
   );

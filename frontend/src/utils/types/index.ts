@@ -185,6 +185,8 @@ export interface Connector {
   category: string;
   description: string;
   status: string;
+  provider?: string;
+  generationStatus?: string;
   config?: Record<string, any>;
   lastTestAt?: string;
   lastTestStatus?: string;

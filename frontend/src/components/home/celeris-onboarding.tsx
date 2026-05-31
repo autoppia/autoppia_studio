@@ -56,6 +56,8 @@ interface OnboardingDraft {
     category: string;
     description?: string;
     status?: string;
+    provider?: string;
+    generationStatus?: string;
     config?: Record<string, any>;
   }>;
   tasks: Array<{
@@ -387,9 +389,11 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                     )}
                     <div className="min-w-0">
                       <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{connector.name}</p>
-                      <p className="text-[11px] text-gray-400 truncate">{connector.type} toolkit</p>
+                      <p className="text-[11px] text-gray-400 truncate">
+                        {(connector.provider === "custom" ? "custom generated" : "Autoppia official")} · {connector.type} toolkit
+                      </p>
                     </div>
-                    <span className="ml-auto text-[11px] text-gray-400">{connector.status || "not_connected"}</span>
+                    <span className="ml-auto text-[11px] text-gray-400 whitespace-nowrap">{connector.status || "not_connected"}</span>
                   </div>
                 );
               })}

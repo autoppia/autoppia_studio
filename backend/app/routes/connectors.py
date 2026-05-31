@@ -76,7 +76,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
     "api": {
         "name": "API Toolkit",
         "authFields": ["apiKey"],
-        "configFields": ["baseUrl", "openApiUrl"],
+        "configFields": ["baseUrl", "openApiUrl", "docsUrl"],
         "runtimeRequirements": ["openapi_optional", "network"],
         "tools": [
             {"name": "api.call", "description": "Call an approved API endpoint.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"method": {"type": "string"}, "path": {"type": "string"}, "body": {"type": "object"}}}},
@@ -94,6 +94,8 @@ class ConnectorCreateRequest(BaseModel):
     description: str = ""
     status: str = "not_connected"
     config: dict[str, Any] = Field(default_factory=dict)
+    provider: str = ""
+    generationStatus: str = ""
 
 
 class ConnectorUpdateRequest(BaseModel):
@@ -103,6 +105,8 @@ class ConnectorUpdateRequest(BaseModel):
     description: str | None = None
     status: str | None = None
     config: dict[str, Any] = Field(default_factory=dict)
+    provider: str | None = None
+    generationStatus: str | None = None
 
 
 def _now() -> str:
@@ -113,17 +117,31 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
     connector_type = str(connector.get("type") or "api").lower()
     defaults = CONNECTOR_TOOLKIT_DEFAULTS.get(connector_type, CONNECTOR_TOOLKIT_DEFAULTS["api"])
     toolkit_id = f"{connector.get('connectorId')}:toolkit"
+    provider = connector.get("provider", "official")
+    config = connector.get("config", {}) or {}
+    custom_api = connector_type == "api" and provider == "custom"
+    toolkit_name = f"{connector.get('name', 'Custom')} Generated API Toolkit" if custom_api else defaults["name"]
+    tools = defaults["tools"]
+    runtime_requirements = list(defaults["runtimeRequirements"])
+    if custom_api:
+        runtime_requirements = ["api_docs_or_openapi", "api_credentials_optional", "network"]
+        tools = [
+            {"name": "api.discover_schema", "description": "Load public API docs or an OpenAPI spec to draft available endpoints.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"docsUrl": {"type": "string"}, "openApiUrl": {"type": "string"}}}},
+            {"name": "api.call", "description": f"Call an approved {connector.get('name', 'custom')} API endpoint.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"method": {"type": "string"}, "path": {"type": "string"}, "body": {"type": "object"}}}},
+        ]
+        if config.get("openApiUrl") or config.get("docsUrl"):
+            tools.insert(1, {"name": "api.generate_toolkit", "description": "Generate typed tools from the provided API documentation.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"connectorId": {"type": "string"}}}})
     return {
         "toolkitId": toolkit_id,
         "connectorId": connector.get("connectorId", ""),
-        "name": defaults["name"],
+        "name": toolkit_name,
         "connectorName": connector.get("name", ""),
         "category": connector.get("category", "software"),
         "status": connector.get("status", "not_connected"),
-        "runtimeRequirements": defaults["runtimeRequirements"],
+        "runtimeRequirements": runtime_requirements,
         "authFields": defaults["authFields"],
         "configFields": defaults["configFields"],
-        "tools": defaults["tools"],
+        "tools": tools,
     }
 
 
@@ -149,6 +167,8 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "category": doc.get("category", "software"),
         "description": doc.get("description", ""),
         "status": doc.get("status", "not_connected"),
+        "provider": doc.get("provider", "custom" if doc.get("type") == "api" else "official"),
+        "generationStatus": doc.get("generationStatus", "needs_docs" if doc.get("type") == "api" and doc.get("provider") == "custom" else "autoppia_supported"),
         "config": _public_config(doc.get("config", {})),
         "lastTestAt": doc.get("lastTestAt"),
         "lastTestStatus": doc.get("lastTestStatus"),
@@ -186,6 +206,8 @@ async def create_connector(body: ConnectorCreateRequest):
         "description": body.description.strip(),
         "status": body.status,
         "config": body.config,
+        "provider": body.provider or ("custom" if body.type.strip().lower() == "api" else "official"),
+        "generationStatus": body.generationStatus or ("needs_docs" if (body.provider == "custom" or body.type.strip().lower() == "api") else "autoppia_supported"),
         "createdAt": now,
         "updatedAt": now,
     }
@@ -211,6 +233,10 @@ async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
         update["description"] = body.description.strip()
     if body.status is not None:
         update["status"] = body.status
+    if body.provider is not None:
+        update["provider"] = body.provider
+    if body.generationStatus is not None:
+        update["generationStatus"] = body.generationStatus
     if body.config is not None:
         existing_config = existing.get("config") or {}
         next_config: dict[str, Any] = {}
@@ -220,6 +246,10 @@ async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
             else:
                 next_config[key] = value
         update["config"] = next_config
+        provider = body.provider or existing.get("provider", "custom" if existing.get("type") == "api" else "official")
+        connector_type = body.type or existing.get("type", "api")
+        if connector_type == "api" and provider == "custom" and (next_config.get("openApiUrl") or next_config.get("docsUrl")) and body.generationStatus is None:
+            update["generationStatus"] = "docs_provided"
     result = await connectors_collection.update_one({"connectorId": connector_id}, {"$set": update})
     doc = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
     return {"success": True, "connector": _serialize(doc or {"connectorId": connector_id, **update})}
@@ -244,9 +274,15 @@ async def test_connector(connector_id: str):
     config = doc.get("config") or {}
     required_auth = defaults.get("authFields") or []
     missing = [field for field in required_auth if not str(config.get(field) or "").strip()]
+    provider = doc.get("provider", "custom" if connector_type == "api" else "official")
+    docs_configured = bool(str(config.get("openApiUrl") or config.get("docsUrl") or "").strip())
 
     now = _now()
-    if missing:
+    if connector_type == "api" and provider == "custom" and not docs_configured:
+        status = "needs_auth"
+        message = "Missing API docs: add docsUrl or openApiUrl, or ask Automata to search public docs and generate a toolkit draft."
+        success = False
+    elif missing:
         status = "needs_auth"
         message = f"Missing auth fields: {', '.join(missing)}"
         success = False
