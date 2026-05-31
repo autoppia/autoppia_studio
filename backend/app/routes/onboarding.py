@@ -82,6 +82,18 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
 
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
 GENERIC_BROWSER_HINTS = ("website", "web", "portal", "government", "gobierno", "bopa.ad", "url")
+SYSTEM_STOPWORDS = {
+    "API",
+    "CRM",
+    "ERP",
+    "SaaS",
+    "Agent",
+    "Automata",
+    "Company",
+    "Empresa",
+    "Tareas",
+    "Tasks",
+}
 ONBOARDING_MODEL = os.getenv("OPENAI_ONBOARDING_MODEL", "gpt-5-mini")
 AUTH_REQUIREMENTS: dict[str, list[str]] = {
     "gmail": ["OAuth client ID", "OAuth client secret", "refresh token", "Gmail user email"],
@@ -221,6 +233,37 @@ def _extract_urls(text: str) -> list[str]:
     return re.findall(r"https?://[^\s,)]+", text)
 
 
+def _looks_like_api_docs(text: str) -> bool:
+    lower = text.lower()
+    return any(phrase in lower for phrase in ("api docs", "docs de la api", "documentacion de la api", "documentación de la api", "swagger", "openapi"))
+
+
+def _extract_custom_systems(text: str) -> list[str]:
+    systems: list[str] = []
+    patterns = [
+        r"(?:use|uses|using|usa|usar|usamos|utiliza|utilizamos|conectar(?:me)?(?: a)?|integrar(?: con)?)\s+([A-Z][A-Za-z0-9][A-Za-z0-9 ._-]{1,40})",
+        r"(?:connector|conector|integration|integraci[oó]n)\s+(?:for|de|con|para)?\s*([A-Z][A-Za-z0-9][A-Za-z0-9 ._-]{1,40})",
+    ]
+    for pattern in patterns:
+        for match in re.finditer(pattern, text):
+            raw = match.group(1).strip(" .,:;")
+            raw = re.split(r"[.,;:\n]|\s+(?:para|to|for|que|and|y|with|con)\b", raw, maxsplit=1)[0].strip(" .,:;")
+            if not raw or raw in SYSTEM_STOPWORDS:
+                continue
+            if raw.lower() in KNOWN_CONNECTORS:
+                continue
+            if raw.lower() in {item.lower() for item in GENERIC_SOFTWARE_HINTS}:
+                continue
+            if len(raw) < 3 or len(raw.split()) > 4:
+                continue
+            systems.append(raw)
+    deduped: list[str] = []
+    for system in systems:
+        if not any(existing.lower() == system.lower() for existing in deduped):
+            deduped.append(system)
+    return deduped[:5]
+
+
 def _extract_tasks(text: str) -> list[str]:
     normalized = re.sub(r"\s+(\d+[\).:-]\s*)", r"\n\1", text)
     lines = [line.strip(" -\t") for line in normalized.splitlines()]
@@ -358,10 +401,14 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
             )
 
     for keyword in KNOWN_CONNECTORS:
+        if keyword in {"docs", "documents"} and _looks_like_api_docs(text):
+            continue
         if keyword in lower:
             _merge_connector(draft, _known_connector(keyword))
 
-    if "swagger" in lower or "openapi" in lower or "api docs" in lower:
+    custom_systems = _extract_custom_systems(text)
+
+    if _looks_like_api_docs(text) and (_extract_urls(text) or not custom_systems):
         url = next(iter(_extract_urls(text)), "")
         _merge_connector(
             draft,
@@ -372,6 +419,23 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
                 "description": "Custom API connector generated from OpenAPI or Swagger documentation.",
                 "config": {"openApiUrl": url} if url else {},
                 "status": "not_connected",
+            },
+        )
+
+    for system_name in custom_systems:
+        if any(system_name.lower() == str(item.get("name", "")).lower() for item in draft["connectors"]):
+            continue
+        has_auth_hint = any(term in lower for term in ("api token", "token", "api key", "auth", "oauth", "credential", "credencial"))
+        config = {"docsMentioned": True} if _looks_like_api_docs(text) else {}
+        _merge_connector(
+            draft,
+            {
+                "name": system_name,
+                "type": "api",
+                "category": "software",
+                "description": f"Custom API connector for {system_name}. Upload API docs or configure auth to generate and test its toolkit.",
+                "config": config,
+                "status": "needs_auth" if has_auth_hint else "not_connected",
             },
         )
 
