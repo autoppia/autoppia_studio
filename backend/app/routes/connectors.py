@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime, timezone
+import smtplib
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -8,6 +9,7 @@ from pydantic import BaseModel, Field
 from app.database import companies_collection, connectors_collection
 
 router = APIRouter()
+SECRET_PLACEHOLDER = "__configured__"
 
 
 CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
@@ -20,6 +22,16 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
             {"name": "gmail.search_emails", "description": "Search client emails.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
             {"name": "gmail.read_email", "description": "Read an email thread.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"threadId": {"type": "string"}}}},
             {"name": "gmail.send_email", "description": "Send an email after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
+        ],
+    },
+    "smtp": {
+        "name": "SMTP Toolkit",
+        "authFields": ["email", "password"],
+        "configFields": ["smtpServer", "smtpPort", "imapServer", "imapPort"],
+        "runtimeRequirements": ["smtp_credentials", "network"],
+        "tools": [
+            {"name": "smtp.send_email", "description": "Send an email through SMTP after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
+            {"name": "imap.read_email", "description": "Read email through IMAP when configured.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"folder": {"type": "string"}, "limit": {"type": "integer"}}}},
         ],
     },
     "holded": {
@@ -115,6 +127,18 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _is_secret_field(field: str) -> bool:
+    value = field.lower()
+    return any(token in value for token in ("password", "secret", "token", "apikey", "api_key", "key"))
+
+
+def _public_config(config: dict[str, Any]) -> dict[str, Any]:
+    public: dict[str, Any] = {}
+    for key, value in (config or {}).items():
+        public[key] = SECRET_PLACEHOLDER if value and _is_secret_field(key) else value
+    return public
+
+
 def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     connector = {
         "connectorId": doc.get("connectorId", ""),
@@ -125,7 +149,7 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "category": doc.get("category", "software"),
         "description": doc.get("description", ""),
         "status": doc.get("status", "not_connected"),
-        "config": doc.get("config", {}),
+        "config": _public_config(doc.get("config", {})),
         "lastTestAt": doc.get("lastTestAt"),
         "lastTestStatus": doc.get("lastTestStatus"),
         "lastTestMessage": doc.get("lastTestMessage"),
@@ -172,6 +196,10 @@ async def create_connector(body: ConnectorCreateRequest):
 @router.put("/connectors/{connector_id}")
 async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
     now = _now()
+    existing = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
+    if not existing:
+        raise HTTPException(status_code=404, detail="Connector not found")
+
     update: dict[str, Any] = {"updatedAt": now}
     if body.name is not None:
         update["name"] = body.name.strip() or "Untitled Connector"
@@ -184,10 +212,15 @@ async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
     if body.status is not None:
         update["status"] = body.status
     if body.config is not None:
-        update["config"] = body.config
+        existing_config = existing.get("config") or {}
+        next_config: dict[str, Any] = {}
+        for key, value in body.config.items():
+            if _is_secret_field(key) and value == SECRET_PLACEHOLDER:
+                next_config[key] = existing_config.get(key, "")
+            else:
+                next_config[key] = value
+        update["config"] = next_config
     result = await connectors_collection.update_one({"connectorId": connector_id}, {"$set": update})
-    if result.matched_count == 0:
-        raise HTTPException(status_code=404, detail="Connector not found")
     doc = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
     return {"success": True, "connector": _serialize(doc or {"connectorId": connector_id, **update})}
 
@@ -217,6 +250,26 @@ async def test_connector(connector_id: str):
         status = "needs_auth"
         message = f"Missing auth fields: {', '.join(missing)}"
         success = False
+    elif connector_type == "smtp":
+        smtp_server = str(config.get("smtpServer") or config.get("baseUrl") or "").strip()
+        smtp_port = int(str(config.get("smtpPort") or config.get("port") or "465").strip())
+        email = str(config.get("email") or "").strip()
+        password = str(config.get("password") or config.get("apiKey") or "").strip()
+        if not smtp_server:
+            status = "needs_auth"
+            message = "Missing config fields: smtpServer"
+            success = False
+        else:
+            try:
+                with smtplib.SMTP_SSL(smtp_server, smtp_port, timeout=10) as server:
+                    server.login(email, password)
+                status = "connected"
+                message = "SMTP login passed. Toolkit is ready for agents."
+                success = True
+            except Exception as exc:
+                status = "needs_auth"
+                message = f"SMTP login failed: {exc.__class__.__name__}"
+                success = False
     else:
         status = "connected"
         message = "Connector test passed. Toolkit is ready for agents."

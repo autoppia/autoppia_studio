@@ -33,12 +33,21 @@ def env(name: str, default: str = "") -> str:
     return (os.getenv(name) or default).strip()
 
 
+def first_env(*names: str, default: str = "") -> str:
+    for name in names:
+        value = env(name)
+        if value:
+            return value
+    return default.strip()
+
+
 def compact_config(config: dict[str, str]) -> dict[str, str]:
     return {key: value for key, value in config.items() if value}
 
 
 def connector_specs(email: str, company_id: str) -> list[dict[str, Any]]:
-    gmail_email = env("GMAIL_USER_EMAIL") or env("SMTP_EMAIL")
+    gmail_email = first_env("GMAIL_USER_EMAIL", "EMAIL_USER", "EMAIL_HOST_USERNAME", "EMAIL_HOST_USER", "SMTP_EMAIL")
+    smtp_email = first_env("SMTP_EMAIL", "EMAIL_HOST_USERNAME", "EMAIL_USER", "EMAIL_HOST_USER")
     return [
         {
             "name": "Gmail",
@@ -46,10 +55,10 @@ def connector_specs(email: str, company_id: str) -> list[dict[str, Any]]:
             "category": "email",
             "description": "Gmail connector seeded from Studio-style OAuth env vars.",
             "config": compact_config({
-                "clientId": env("GMAIL_CLIENT_ID"),
-                "clientSecret": env("GMAIL_CLIENT_SECRET"),
-                "refreshToken": env("GMAIL_REFRESH_TOKEN"),
-                "accessToken": env("GMAIL_ACCESS_TOKEN"),
+                "clientId": first_env("GMAIL_CLIENT_ID", "GOOGLE_OAUTH_CLIENT_ID"),
+                "clientSecret": first_env("GMAIL_CLIENT_SECRET", "GOOGLE_OAUTH_CLIENT_SECRET"),
+                "refreshToken": first_env("GMAIL_REFRESH_TOKEN", "GOOGLE_OAUTH_REFRESH_TOKEN"),
+                "accessToken": first_env("GMAIL_ACCESS_TOKEN", "GOOGLE_OAUTH_ACCESS_TOKEN"),
                 "scopes": env("GMAIL_SCOPES", "https://www.googleapis.com/auth/gmail.readonly,https://www.googleapis.com/auth/gmail.send"),
                 "userEmail": gmail_email,
                 "apiVersion": env("GMAIL_API_VERSION", "v1"),
@@ -59,15 +68,14 @@ def connector_specs(email: str, company_id: str) -> list[dict[str, Any]]:
         },
         {
             "name": "SMTP",
-            "type": "api",
+            "type": "smtp",
             "category": "email",
             "description": "SMTP connector seeded from Studio SMTP env vars.",
             "config": compact_config({
-                "apiKey": env("SMTP_PASSWORD"),
-                "baseUrl": env("SMTP_SERVER"),
-                "openApiUrl": "",
-                "port": env("SMTP_PORT"),
-                "email": env("SMTP_EMAIL"),
+                "password": first_env("SMTP_PASSWORD", "SMTP_PASS", "EMAIL_HOST_PASSWORD"),
+                "smtpServer": first_env("SMTP_SERVER", "EMAIL_HOST"),
+                "smtpPort": first_env("SMTP_PORT", "EMAIL_PORT"),
+                "email": smtp_email,
                 "imapServer": env("IMAP_SERVER"),
                 "imapPort": env("IMAP_PORT"),
             }),

@@ -23,6 +23,7 @@ const apiUrl = process.env.REACT_APP_API_URL;
 
 const CONNECTOR_TYPES = [
   { value: "gmail", label: "Gmail", category: "email", icon: faEnvelope },
+  { value: "smtp", label: "SMTP", category: "email", icon: faEnvelope },
   { value: "holded", label: "Holded", category: "software", icon: faFileLines },
   { value: "telegram", label: "Telegram", category: "communication", icon: faEnvelope },
   { value: "web", label: "Web / Browser", category: "web", icon: faGlobe },
