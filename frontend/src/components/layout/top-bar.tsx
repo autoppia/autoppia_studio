@@ -36,17 +36,6 @@ export default function TopBar() {
         <span>{parseFloat(wallet.balance).toFixed(2)} Credits</span>
       </button>
 
-      {/* Upgrade CTA */}
-      <button
-        onClick={() => navigate("/settings?tab=credit")}
-        className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg
-          bg-gradient-primary text-white text-xs font-semibold
-          shadow-glow hover:shadow-glow-lg transition-all"
-      >
-        <FontAwesomeIcon icon={faArrowUp} className="text-[10px]" />
-        <span>Upgrade</span>
-      </button>
-
       {/* API Key shortcut */}
       <button
         onClick={() => navigate("/settings?tab=api-keys")}
@@ -58,6 +47,17 @@ export default function TopBar() {
       >
         <FontAwesomeIcon icon={faKey} className="text-[10px]" />
         <span className="hidden md:inline">API Key</span>
+      </button>
+
+      {/* Upgrade CTA */}
+      <button
+        onClick={() => navigate("/settings?tab=credit")}
+        className="hidden sm:flex items-center gap-1.5 h-8 px-3 rounded-lg
+          bg-gradient-primary text-white text-xs font-semibold
+          shadow-glow hover:shadow-glow-lg transition-all"
+      >
+        <FontAwesomeIcon icon={faArrowUp} className="text-[10px]" />
+        <span>Upgrade</span>
       </button>
     </header>
   );
