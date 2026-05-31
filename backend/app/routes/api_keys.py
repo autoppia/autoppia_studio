@@ -4,6 +4,7 @@ import logging
 from datetime import datetime, timezone
 
 from bson import ObjectId
+from bson.errors import InvalidId
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
@@ -24,6 +25,13 @@ class APIKeyUpdateRequest(BaseModel):
 
 def _hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
+
+
+def _object_id(value: str) -> ObjectId:
+    try:
+        return ObjectId(value)
+    except InvalidId as exc:
+        raise HTTPException(status_code=400, detail="Invalid API key id") from exc
 
 
 @router.get("/api-keys")
@@ -83,7 +91,7 @@ async def update_api_key(key_id: str, body: APIKeyUpdateRequest):
     """Rename an API key."""
     try:
         result = await api_keys_collection.update_one(
-            {"_id": ObjectId(key_id)},
+            {"_id": _object_id(key_id)},
             {"$set": {"name": body.name}},
         )
         if result.matched_count == 0:
@@ -99,7 +107,7 @@ async def update_api_key(key_id: str, body: APIKeyUpdateRequest):
 async def delete_api_key(key_id: str):
     """Delete an API key."""
     try:
-        result = await api_keys_collection.delete_one({"_id": ObjectId(key_id)})
+        result = await api_keys_collection.delete_one({"_id": _object_id(key_id)})
         if result.deleted_count == 0:
             raise HTTPException(status_code=404, detail="API key not found")
         return {"success": True}

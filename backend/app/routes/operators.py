@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import (
     capabilities_collection,
@@ -51,7 +51,7 @@ class OperatorCreateRequest(BaseModel):
     apiAuthHeaderName: str = ""
     apiAuthHeaderValue: str = ""
     successCriteria: str = ""
-    tasks: List[OperatorTask] = []
+    tasks: List[OperatorTask] = Field(default_factory=list)
 
 
 class OperatorBootstrapRequest(BaseModel):

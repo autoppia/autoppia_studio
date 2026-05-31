@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from typing import List, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import skills_collection
 
@@ -25,8 +25,8 @@ class SkillCreateRequest(BaseModel):
     name: str
     goal: str = ""
     instructions: str = ""
-    parameters: List[SkillParameter] = []
-    actions: List[Any] = []
+    parameters: List[SkillParameter] = Field(default_factory=list)
+    actions: List[Any] = Field(default_factory=list)
 
 
 class SkillParameterizeRequest(BaseModel):

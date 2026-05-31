@@ -122,42 +122,42 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     initial_url = tasks[task_id].get("initial_url")
 
     operator = AutoppiaOperator()
-    await operator.initialize(task, initial_url)
+    try:
+        await operator.initialize(task, initial_url)
 
-    # Wire up per-action callback so screenshots and steps are collected
-    # after each individual action, not just per step.
-    async def on_action(action_type: str, screenshot: str | None, success: bool):
+        async def on_action(action_type: str, screenshot: str | None, success: bool):
+            if screenshot:
+                tasks[task_id]["screenshots"].append(screenshot)
+            tasks[task_id]["steps"].append(
+                {
+                    "action": action_type,
+                    "success": success,
+                }
+            )
+
+        operator.set_on_action(on_action)
+
+        screenshot = await operator.take_screenshot()
         if screenshot:
             tasks[task_id]["screenshots"].append(screenshot)
-        tasks[task_id]["steps"].append(
-            {
-                "action": action_type,
-                "success": success,
-            }
-        )
 
-    operator.set_on_action(on_action)
+        for _ in range(max_steps):
+            done, valid = await operator.take_step()
+            if done and valid:
+                break
 
-    # Capture the initial page screenshot after navigation
-    screenshot = await operator.take_screenshot()
-    if screenshot:
-        tasks[task_id]["screenshots"].append(screenshot)
+        screenshot = await operator.take_screenshot()
+        if screenshot:
+            tasks[task_id]["screenshots"].append(screenshot)
 
-    for _ in range(max_steps):
-        done, valid = await operator.take_step()
+        gif = operator.generate_gif(history_gif_dir / f"{task_id}.gif")
+        tasks[task_id]["gif"] = gif
 
-        if done and valid:
-            break
-
-    screenshot = await operator.take_screenshot()
-    if screenshot:
-        tasks[task_id]["screenshots"].append(screenshot)
-
-    gif = operator.generate_gif(history_gif_dir / f"{task_id}.gif")
-    tasks[task_id]["gif"] = gif
-
-    result = operator.get_result()
-    tasks[task_id]["output"] = result.get("content")
-    tasks[task_id]["status"] = "completed" if result.get("success") else "failed"
-
-    await operator.close()
+        result = operator.get_result()
+        tasks[task_id]["output"] = result.get("content")
+        tasks[task_id]["status"] = "completed" if result.get("success") else "failed"
+    except Exception as exc:
+        tasks[task_id]["output"] = f"{exc.__class__.__name__}: {exc}"
+        tasks[task_id]["status"] = "failed"
+    finally:
+        await operator.close()

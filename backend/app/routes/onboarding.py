@@ -66,6 +66,12 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
         "category": "knowledge",
         "description": "Company knowledge connector for uploaded documents and internal sources.",
     },
+    "documentos": {
+        "name": "Documents",
+        "type": "knowledge",
+        "category": "knowledge",
+        "description": "Company knowledge connector for uploaded documents and internal sources.",
+    },
     "docs": {
         "name": "Documents",
         "type": "knowledge",

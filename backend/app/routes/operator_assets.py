@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, List
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import (
     capabilities_collection,
@@ -30,8 +30,8 @@ class TrajectoryCreateRequest(BaseModel):
     successCriteria: str = ""
     source: str = "user"
     status: str = "draft"
-    actions: List[Any] = []
-    screenshots: List[str] = []
+    actions: List[Any] = Field(default_factory=list)
+    screenshots: List[str] = Field(default_factory=list)
 
 
 class CapabilityCreateRequest(BaseModel):
@@ -40,8 +40,8 @@ class CapabilityCreateRequest(BaseModel):
     name: str
     description: str = ""
     type: str = "web"
-    parameters: List[dict[str, Any]] = []
-    trajectoryIds: List[str] = []
+    parameters: List[dict[str, Any]] = Field(default_factory=list)
+    trajectoryIds: List[str] = Field(default_factory=list)
     runtime: str = "trajectory_replay_with_recovery"
 
 

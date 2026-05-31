@@ -2,7 +2,7 @@ from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import capabilities_collection, operators_collection
 
@@ -14,9 +14,9 @@ class AgentActRequest(BaseModel):
     prompt: str = ""
     url: str = ""
     snapshot_html: str = ""
-    history: list[Any] = []
+    history: list[Any] = Field(default_factory=list)
     state_in: dict[str, Any] | None = None
-    context: dict[str, Any] = {}
+    context: dict[str, Any] = Field(default_factory=dict)
 
 
 def _act_url(endpoint: str) -> str:

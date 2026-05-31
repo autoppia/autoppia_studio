@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from typing import List, Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import sessions_collection
 
@@ -14,9 +14,9 @@ class SessionSaveRequest(BaseModel):
     email: str
     prompt: str
     initialUrl: str = ""
-    chatHistory: List[Any] = []
+    chatHistory: List[Any] = Field(default_factory=list)
     lastUrl: str = ""
-    actionHistory: List[Any] = []
+    actionHistory: List[Any] = Field(default_factory=list)
     contextId: str = ""
     provider: str = "autoppia"
     operatorId: str = ""
@@ -26,7 +26,7 @@ class SessionSaveRequest(BaseModel):
 class ChatHistoryRequest(BaseModel):
     chatHistory: List[Any]
     lastUrl: str = ""
-    actionHistory: List[Any] = []
+    actionHistory: List[Any] = Field(default_factory=list)
 
 
 @router.get("/sessions")
