@@ -393,6 +393,16 @@ async def _create_eval(
 @router.post("/onboarding/sessions")
 async def start_onboarding(body: OnboardingStartRequest):
     draft = _default_draft()
+    if body.companyId:
+        company = await companies_collection.find_one({"companyId": body.companyId, "email": body.email}, {"_id": 0})
+        if company:
+            draft["company"] = {
+                "name": company.get("name", ""),
+                "industry": company.get("industry", ""),
+                "description": company.get("description", ""),
+            }
+            if company.get("name"):
+                draft["agent"]["name"] = f"{company['name']} Agent"
     messages = [
         {
             "role": "assistant",
@@ -449,18 +459,39 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         raise HTTPException(status_code=400, detail="At least one task is required")
 
     now = _now()
-    company_id = str(uuid.uuid4())
-    company = {
-        "companyId": company_id,
-        "email": body.email,
-        "name": draft["company"].get("name", "Untitled Company").strip(),
-        "description": draft["company"].get("description", "").strip(),
-        "industry": draft["company"].get("industry", "").strip(),
-        "status": "active",
-        "createdAt": now,
-        "updatedAt": now,
-    }
-    await companies_collection.insert_one(dict(company))
+    existing_company_id = str(doc.get("companyId") or "").strip()
+    if existing_company_id:
+        company_id = existing_company_id
+        update = {
+            "name": draft["company"].get("name", "Untitled Company").strip(),
+            "description": draft["company"].get("description", "").strip(),
+            "industry": draft["company"].get("industry", "").strip(),
+            "updatedAt": now,
+        }
+        await companies_collection.update_one(
+            {"companyId": company_id, "email": body.email},
+            {"$set": update},
+        )
+        company = await companies_collection.find_one({"companyId": company_id}, {"_id": 0}) or {
+            "companyId": company_id,
+            "email": body.email,
+            "status": "active",
+            "createdAt": now,
+            **update,
+        }
+    else:
+        company_id = str(uuid.uuid4())
+        company = {
+            "companyId": company_id,
+            "email": body.email,
+            "name": draft["company"].get("name", "Untitled Company").strip(),
+            "description": draft["company"].get("description", "").strip(),
+            "industry": draft["company"].get("industry", "").strip(),
+            "status": "active",
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await companies_collection.insert_one(dict(company))
 
     connectors = []
     for item in draft.get("connectors", []):

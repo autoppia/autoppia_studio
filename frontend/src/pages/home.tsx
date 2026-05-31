@@ -4,8 +4,7 @@ import { useSelector } from "react-redux";
 import TitleSection from "../components/home/title-section";
 import TaskSection from "../components/home/task-section";
 import SliderSection from "../components/home/slider-section";
-import { Company, Operator } from "../utils/types";
-import CelerisOnboarding from "../components/home/celeris-onboarding";
+import { Operator } from "../utils/types";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -15,10 +14,8 @@ export default function Home(): React.ReactElement {
   const [prompt, setPrompt] = useState("");
   const [initialUrl, setInitialUrl] = useState("");
   const [operators, setOperators] = useState<Operator[]>([]);
-  const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
-  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const loadOperators = useCallback(async () => {
     if (!user.email) return;
@@ -46,25 +43,6 @@ export default function Home(): React.ReactElement {
     window.addEventListener("automata-company-changed", handler);
     return () => window.removeEventListener("automata-company-changed", handler);
   }, []);
-
-  const loadCompanies = useCallback(async () => {
-    if (!user.email) return;
-    try {
-      const res = await fetch(`${apiUrl}/companies?email=${encodeURIComponent(user.email)}`);
-      if (!res.ok) return;
-      const data = await res.json();
-      const next = data.companies || [];
-      setCompanies(next);
-      const hasConfiguredCompany = next.some((company: Company) => company.name !== "Default Company");
-      if (!hasConfiguredCompany && operators.length === 0) setShowOnboarding(true);
-    } catch (err) {
-      console.error("Failed to load companies:", err);
-    }
-  }, [user.email, operators.length]);
-
-  useEffect(() => {
-    loadCompanies();
-  }, [loadCompanies]);
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-secondary">
@@ -97,22 +75,6 @@ export default function Home(): React.ReactElement {
             setSelectedOperator={setSelectedOperator}
           />
 
-          <div className="mt-5 flex items-center gap-3">
-            <button
-              onClick={() => setShowOnboarding(true)}
-              className="text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-primary transition-colors"
-            >
-              Create a company agent
-            </button>
-            {companies.length > 0 && <span className="text-xs text-gray-300 dark:text-gray-600">/</span>}
-            <button
-              onClick={loadCompanies}
-              className="text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-primary transition-colors"
-            >
-              Refresh companies
-            </button>
-          </div>
-
           <SliderSection
             setPrompt={setPrompt}
             setInitialUrl={setInitialUrl}
@@ -121,20 +83,6 @@ export default function Home(): React.ReactElement {
           />
         </div>
       </div>
-      {showOnboarding && (
-        <div className="fixed inset-0 z-[70] flex items-center justify-center px-4 py-6">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
-          <div className="relative max-h-full overflow-auto scrollbar-thin">
-            <button
-              onClick={() => setShowOnboarding(false)}
-              className="absolute right-3 top-3 z-10 h-8 px-3 rounded-lg bg-white/90 dark:bg-dark-surface/90 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white"
-            >
-              Close
-            </button>
-            <CelerisOnboarding />
-          </div>
-        </div>
-      )}
     </div>
   );
 }

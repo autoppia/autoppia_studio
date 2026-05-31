@@ -73,7 +73,14 @@ function connectorLogo(type: string) {
   return "";
 }
 
-export default function CelerisOnboarding() {
+interface CelerisOnboardingProps {
+  companyId?: string;
+  companyName?: string;
+  companyDescription?: string;
+  onComplete?: () => void;
+}
+
+export default function CelerisOnboarding({ companyId = "", companyName = "", companyDescription = "", onComplete }: CelerisOnboardingProps) {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
   const [session, setSession] = useState<OnboardingSession | null>(null);
@@ -106,10 +113,11 @@ export default function CelerisOnboarding() {
       setLoading(true);
       setError("");
       try {
+        const seedPrompt = companyName ? `Company name: ${companyName}. ${companyDescription}` : "";
         const res = await fetch(`${apiUrl}/onboarding/sessions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ email: user.email, seedPrompt: CELERIS_PROMPT }),
+          body: JSON.stringify({ email: user.email, companyId, seedPrompt }),
         });
         if (!res.ok) throw new Error(await res.text());
         const data = await res.json();
@@ -121,7 +129,7 @@ export default function CelerisOnboarding() {
       }
     };
     start();
-  }, [user.email]);
+  }, [user.email, companyId, companyName, companyDescription]);
 
   const sendMessage = async (message?: string) => {
     const content = (message || input).trim();
@@ -162,6 +170,7 @@ export default function CelerisOnboarding() {
         localStorage.setItem("automata_company_id", data.company.companyId);
         window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: data.company.companyId } }));
       }
+      onComplete?.();
       navigate(`/agents/${data.operatorId}`);
     } catch (err: any) {
       setError(err?.message || "Could not create company agent.");

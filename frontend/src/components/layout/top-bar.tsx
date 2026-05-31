@@ -8,12 +8,14 @@ import {
   faChevronDown,
   faCoins,
   faBuilding,
+  faRobot,
   faPen,
   faPlus,
   faTrash,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { Company } from "../../utils/types";
+import CelerisOnboarding from "../home/celeris-onboarding";
 
 const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR" };
 
@@ -27,6 +29,8 @@ export default function TopBar() {
   const [companyDescription, setCompanyDescription] = useState("");
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [onboardingCompanyId, setOnboardingCompanyId] = useState(localStorage.getItem("automata_onboarding_company_id") || "");
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   const wallet = WALLET_PLACEHOLDER;
 
@@ -98,6 +102,11 @@ export default function TopBar() {
         setCompanyId(nextId);
         localStorage.setItem("automata_company_id", nextId);
         window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: nextId } }));
+        if (!isEdit) {
+          setOnboardingCompanyId(nextId);
+          localStorage.setItem("automata_onboarding_company_id", nextId);
+          setShowOnboarding(true);
+        }
       }
       setModalMode(null);
       loadCompanies();
@@ -179,6 +188,16 @@ export default function TopBar() {
             </div>
           )}
         </div>
+        {selectedCompany?.companyId === onboardingCompanyId && (
+          <button
+            onClick={() => setShowOnboarding(true)}
+            className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-xs font-semibold shadow-glow flex items-center gap-2"
+            title="Start onboarding for this company"
+          >
+            <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
+            Onboard
+          </button>
+        )}
       </div>
 
       {/* Credit balance — clickable shortcut to billing */}
@@ -246,6 +265,31 @@ export default function TopBar() {
             <button onClick={saveCompany} disabled={saving || !companyName.trim()} className="mt-4 w-full h-10 rounded-xl bg-gradient-primary text-white text-sm font-semibold disabled:opacity-60">
               {saving ? "Saving..." : "Save Company"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {showOnboarding && selectedCompany && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
+          <div className="relative max-h-full overflow-auto scrollbar-thin">
+            <button
+              onClick={() => setShowOnboarding(false)}
+              className="absolute right-3 top-3 z-10 h-8 px-3 rounded-lg bg-white/90 dark:bg-dark-surface/90 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white"
+            >
+              Close
+            </button>
+            <CelerisOnboarding
+              companyId={selectedCompany.companyId}
+              companyName={selectedCompany.name}
+              companyDescription={selectedCompany.description || ""}
+              onComplete={() => {
+                setShowOnboarding(false);
+                setOnboardingCompanyId("");
+                localStorage.removeItem("automata_onboarding_company_id");
+                loadCompanies();
+              }}
+            />
           </div>
         </div>
       )}
