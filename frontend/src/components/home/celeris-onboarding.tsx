@@ -103,6 +103,28 @@ function formatTime(value?: string) {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
+function pendingMessages(content: string): OnboardingMessage[] {
+  const now = new Date().toISOString();
+  return [
+    { role: "user", content, createdAt: now },
+    {
+      role: "event",
+      kind: "thinking",
+      status: "running",
+      content: "Reading your company description and planning the setup.",
+      createdAt: now,
+    },
+    {
+      role: "event",
+      kind: "tool_call",
+      toolName: "onboarding_agent",
+      status: "running",
+      content: "Preparing connectors, toolkits, benchmark tasks and agent draft.",
+      createdAt: now,
+    },
+  ];
+}
+
 interface CelerisOnboardingProps {
   companyId?: string;
   companyName?: string;
@@ -135,7 +157,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
-  }, [session?.messages.length]);
+  }, [session?.messages.length, sending]);
 
   useEffect(() => {
     const start = async () => {
@@ -167,6 +189,8 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
     setSending(true);
     setError("");
     setInput("");
+    const previousSession = session;
+    setSession((prev) => prev ? { ...prev, messages: [...prev.messages, ...pendingMessages(content)] } : prev);
     try {
       const res = await fetch(`${apiUrl}/onboarding/sessions/${session.sessionId}/messages`, {
         method: "POST",
@@ -179,6 +203,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
     } catch (err: any) {
       setError(err?.message || "Could not update onboarding.");
       setInput(content);
+      setSession(previousSession);
     } finally {
       setSending(false);
     }
@@ -244,7 +269,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
               disabled={sending}
               className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60"
             >
-              Load Celeris demo
+              {sending ? "Running agent..." : "Load Celeris demo"}
             </button>
           </div>
 
@@ -307,8 +332,9 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                   }
                 }}
                 rows={2}
+                disabled={sending}
                 placeholder="Tell Automata what systems you use, paste API docs, or list more tasks..."
-                className="flex-1 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none"
+                className="flex-1 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none disabled:opacity-60"
               />
               <button
                 onClick={() => sendMessage()}
