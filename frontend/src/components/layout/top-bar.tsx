@@ -306,10 +306,10 @@ export default function TopBar() {
       {showOnboarding && onboardingTargetCompany && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
-          <div className="relative max-h-full overflow-auto scrollbar-thin">
+          <div className="relative w-full max-w-6xl max-h-full overflow-auto scrollbar-thin rounded-2xl border border-gray-200 dark:border-dark-border bg-gray-100 dark:bg-dark-bg shadow-2xl p-5">
             <button
               onClick={() => setShowOnboarding(false)}
-              className="absolute right-3 top-3 z-10 h-8 px-3 rounded-lg bg-white/90 dark:bg-dark-surface/90 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white"
+              className="absolute right-4 top-4 z-10 h-8 px-3 rounded-lg bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white"
             >
               Close
             </button>
