@@ -22,12 +22,12 @@ const DEFAULT_TASKS = [
   "Enviar por Telegram un resumen breve de una novedad laboral importante para el equipo.",
 ];
 
-const DEFAULT_INTEGRATIONS = [
-  { key: "gmail", label: "Gmail", icon: faEnvelope, detail: "Emails, clientes y respuestas" },
-  { key: "holded", label: "Holded", icon: faFileLines, detail: "Facturas y gestión" },
-  { key: "telegram", label: "Telegram", icon: faEnvelope, detail: "Avisos y asistencia" },
-  { key: "bopa", label: "BOPA", icon: faGlobe, detail: "Web pública de Andorra" },
-  { key: "knowledge", label: "Documentos", icon: faFileLines, detail: "Normativa y conocimiento" },
+const DEFAULT_CONNECTORS = [
+  { key: "gmail", label: "Gmail", type: "gmail", category: "email", icon: faEnvelope, detail: "Emails, clientes y respuestas" },
+  { key: "holded", label: "Holded", type: "holded", category: "software", icon: faFileLines, detail: "Facturas y gestión" },
+  { key: "telegram", label: "Telegram", type: "telegram", category: "communication", icon: faEnvelope, detail: "Avisos y asistencia" },
+  { key: "bopa", label: "BOPA", type: "web", category: "web", icon: faGlobe, detail: "Web pública de Andorra" },
+  { key: "knowledge", label: "Documentos", type: "knowledge", category: "knowledge", icon: faFileLines, detail: "Normativa y conocimiento" },
 ];
 
 export default function CelerisOnboarding() {
@@ -37,11 +37,11 @@ export default function CelerisOnboarding() {
   const [description, setDescription] = useState("Asesoría laboral en Andorra que ayuda a empresas y clientes con consultas laborales, facturas, comunicaciones y seguimiento del BOPA.");
   const [websiteUrl, setWebsiteUrl] = useState("https://www.bopa.ad/");
   const [tasks, setTasks] = useState(DEFAULT_TASKS);
-  const [selected, setSelected] = useState(DEFAULT_INTEGRATIONS.map((item) => item.key));
+  const [selected, setSelected] = useState(DEFAULT_CONNECTORS.map((item) => item.key));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const toggleIntegration = (key: string) => {
+  const toggleConnector = (key: string) => {
     setSelected((prev) => prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key]);
   };
 
@@ -77,6 +77,22 @@ export default function CelerisOnboarding() {
         localStorage.setItem("automata_company_id", companyId);
         window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId } }));
       }
+
+      await Promise.all(DEFAULT_CONNECTORS.filter((connector) => selected.includes(connector.key)).map((connector) =>
+        fetch(`${apiUrl}/connectors`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: user.email,
+            companyId,
+            name: connector.label,
+            type: connector.type,
+            category: connector.category,
+            description: connector.detail,
+            status: connector.type === "gmail" || connector.type === "holded" || connector.type === "telegram" ? "needs_auth" : "connected",
+          }),
+        })
+      ));
 
       const cleanTasks = tasks
         .map((prompt, index) => ({
@@ -118,7 +134,7 @@ export default function CelerisOnboarding() {
         </div>
         <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 dark:text-white mb-3">Create a company agent in minutes</h1>
         <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 max-w-2xl mx-auto">
-          Automata fills the hard parts: suggested integrations, benchmark tasks, runtime defaults and an initial Celeris Agent.
+          Automata fills the hard parts: suggested connectors, reusable toolkits, benchmark tasks, runtime defaults and an initial Celeris Agent.
         </p>
       </div>
 
@@ -137,12 +153,12 @@ export default function CelerisOnboarding() {
             <input value={websiteUrl} onChange={(e) => setWebsiteUrl(e.target.value)} className="w-full h-10 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none font-mono" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Systems Celeris uses</label>
+            <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">Connectors Celeris uses</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {DEFAULT_INTEGRATIONS.map((item) => {
+              {DEFAULT_CONNECTORS.map((item) => {
                 const active = selected.includes(item.key);
                 return (
-                  <button key={item.key} type="button" onClick={() => toggleIntegration(item.key)} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${active ? "border-primary bg-primary/5" : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg"}`}>
+                  <button key={item.key} type="button" onClick={() => toggleConnector(item.key)} className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${active ? "border-primary bg-primary/5" : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg"}`}>
                     <span className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? "bg-gradient-primary text-white" : "bg-white dark:bg-dark-surface text-gray-400"}`}>
                       <FontAwesomeIcon icon={item.icon} className="text-xs" />
                     </span>

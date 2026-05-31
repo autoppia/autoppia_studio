@@ -160,16 +160,33 @@ export interface Company {
 export interface AgentToolkit {
   toolkitId: string;
   name: string;
-  integrationName: string;
+  connectorName?: string;
+  connectorId?: string;
   category: string;
+  status?: string;
   runtimeRequirements: string[];
-  permissions: Record<string, any>;
+  permissions?: Record<string, any>;
   tools: Array<{
     name: string;
     description: string;
     sideEffects: string;
     inputSchema?: any;
   }>;
+}
+
+export interface Connector {
+  connectorId: string;
+  companyId: string;
+  email: string;
+  name: string;
+  type: string;
+  category: string;
+  description: string;
+  status: string;
+  config?: Record<string, any>;
+  toolkit: AgentToolkit;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ParameterizeResult {

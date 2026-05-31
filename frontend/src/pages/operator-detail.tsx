@@ -462,7 +462,7 @@ print(response.json()["result"])`;
                   <InfoIcon title="Tools, Skills, and Training Traces">
                     <div className="space-y-3">
                       <p><strong>Tool</strong> means an atomic capability connected to a system, such as sending email, calling an API, reading a document, or clicking in a browser.</p>
-                      <p><strong>Toolkit</strong> means a bundle of tools from one integration or runtime, such as Gmail Toolkit, Browser Toolkit, or Knowledge Toolkit.</p>
+                      <p><strong>Toolkit</strong> means a bundle of tools from one connector or runtime, such as Gmail Toolkit, Browser Toolkit, or Knowledge Toolkit.</p>
                       <p><strong>Skill</strong> means a learned reusable workflow that can call multiple tools, such as sending a client their latest invoice from Gmail and Holded.</p>
                       <p><strong>Training Trace</strong> means an approved or recorded execution. A successful trace can be converted into a Skill.</p>
                     </div>
@@ -577,7 +577,7 @@ print(response.json()["result"])`;
                 <div className="flex items-center gap-2 mb-4">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Toolkits</p>
                   <InfoIcon title="Toolkits">
-                    <p>A Toolkit is a group of tools from one integration or runtime. One integration usually creates one toolkit. Some toolkits require runtime resources such as browser sessions, vectorstores, network access, API credentials, or a Python sandbox.</p>
+                    <p>A Toolkit is a group of tools from one connector or runtime. Connectors belong to the Company and can be reused by multiple agents. Some toolkits require runtime resources such as browser sessions, vectorstores, network access, API credentials, or a Python sandbox.</p>
                   </InfoIcon>
                 </div>
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -586,7 +586,7 @@ print(response.json()["result"])`;
                       <div className="flex items-center justify-between gap-3 mb-3">
                         <div className="min-w-0">
                           <p className="text-sm font-semibold text-gray-900 dark:text-white">{toolkit.name}</p>
-                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{toolkit.integrationName}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{toolkit.connectorName}</p>
                         </div>
                         <StatusBadge label={toolkit.category} tone="blue" />
                       </div>

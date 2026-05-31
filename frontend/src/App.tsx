@@ -16,6 +16,7 @@ import Evals from "./pages/evals";
 import EvalDetail from "./pages/eval-detail";
 import Operators from "./pages/operators";
 import OperatorDetail from "./pages/operator-detail";
+import Connectors from "./pages/connectors";
 import Analytics from "./pages/analytics";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
@@ -117,6 +118,7 @@ function App() {
                 <Route path="/operators/:operatorId" element={<OperatorDetail />} />
                 <Route path="/agents" element={<Operators />} />
                 <Route path="/agents/:operatorId" element={<OperatorDetail />} />
+                <Route path="/connectors" element={<Connectors />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}

@@ -2,7 +2,8 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from app.database import capabilities_collection, operators_collection
+from app.database import capabilities_collection, connectors_collection, operators_collection
+from app.routes.connectors import connector_toolkit
 
 router = APIRouter()
 
@@ -38,7 +39,7 @@ async def list_agent_toolkits(operator_id: str):
         toolkits.append({
             "toolkitId": f"{operator_id}:browser",
             "name": "Browser Toolkit",
-            "integrationName": "Browser Runtime",
+            "connectorName": "Browser Runtime",
             "category": "runtime",
             "runtimeRequirements": ["browser_session", "network"],
             "permissions": {"browser": True, "network": True, "sideEffects": "writes_possible"},
@@ -53,7 +54,7 @@ async def list_agent_toolkits(operator_id: str):
         toolkits.append({
             "toolkitId": f"{operator_id}:api",
             "name": "API Toolkit",
-            "integrationName": "OpenAPI / HTTP",
+            "connectorName": "OpenAPI / HTTP",
             "category": "api",
             "runtimeRequirements": ["network", "api_credentials_optional"],
             "permissions": {"network": True, "sideEffects": "writes_possible"},
@@ -63,7 +64,7 @@ async def list_agent_toolkits(operator_id: str):
         toolkits.append({
             "toolkitId": f"{operator_id}:knowledge",
             "name": "Knowledge Toolkit",
-            "integrationName": "Company Knowledge",
+            "connectorName": "Company Knowledge",
             "category": "knowledge",
             "runtimeRequirements": ["vectorstore", "embedding_model"],
             "permissions": {"knowledge": True, "sideEffects": "none"},
@@ -76,7 +77,7 @@ async def list_agent_toolkits(operator_id: str):
         toolkits.append({
             "toolkitId": f"{operator_id}:python",
             "name": "Python Toolkit",
-            "integrationName": "Python Runtime",
+            "connectorName": "Python Runtime",
             "category": "runtime",
             "runtimeRequirements": ["sandboxed_python"],
             "permissions": {"codeExecution": True, "sideEffects": "none"},
@@ -86,11 +87,19 @@ async def list_agent_toolkits(operator_id: str):
         toolkits.append({
             "toolkitId": f"{operator_id}:skills",
             "name": "Skills Toolkit",
-            "integrationName": "Approved Training Traces",
+            "connectorName": "Approved Training Traces",
             "category": "skills",
             "runtimeRequirements": ["skill_registry"],
             "permissions": {"sideEffects": "inherits_skill"},
             "tools": [_tool("skill.run", "Run an approved reusable skill.", "writes")],
         })
+
+    company_id = operator.get("companyId")
+    if company_id:
+        cursor = connectors_collection.find({"companyId": company_id}, {"_id": 0}).sort("createdAt", 1)
+        async for connector in cursor:
+            toolkit = connector_toolkit(connector)
+            toolkit["permissions"] = {"sideEffects": "inherits_connector", "connectorId": connector.get("connectorId")}
+            toolkits.append(toolkit)
 
     return {"toolkits": toolkits}

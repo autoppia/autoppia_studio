@@ -173,7 +173,7 @@ export const generalPrompts = [
   },
   {
     title: "Autoppia Platform Demo",
-    prompt: "Edit the PostgreSQL database integration and change the port to the existing port plus one.",
+    prompt: "Edit the PostgreSQL database connector and change the port to the existing port plus one.",
     url: "https://app.autoppia.com",
     icon: faDatabase,
   },

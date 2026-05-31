@@ -10,6 +10,7 @@ from app.database import (
     capabilities_collection,
     eval_runs_collection,
     evals_collection,
+    connectors_collection,
     operator_webs_collection,
     operators_collection,
     trajectories_collection,
@@ -61,7 +62,7 @@ async def _ensure_default_company(email: str) -> dict[str, Any]:
         "companyId": str(uuid.uuid4()),
         "email": email,
         "name": "Default Company",
-        "description": "Default workspace for agents, integrations, skills, benchmarks, and runs.",
+        "description": "Default workspace for agents, connectors, skills, benchmarks, and runs.",
         "industry": "",
         "status": "active",
         "createdAt": now,
@@ -140,6 +141,7 @@ async def delete_company(company_id: str):
             await evals_collection.delete_many({"operatorId": {"$in": operator_ids}})
             await eval_runs_collection.delete_many({"operatorId": {"$in": operator_ids}})
             await operators_collection.delete_many({"operatorId": {"$in": operator_ids}})
+        await connectors_collection.delete_many({"companyId": company_id})
         await companies_collection.delete_one({"companyId": company_id})
         await _ensure_default_company(str(company.get("email") or ""))
         return {"success": True, "deletedOperators": len(operator_ids)}
@@ -167,6 +169,7 @@ async def reset_celeris_demo(body: DemoResetRequest):
         await companies_collection.delete_many(
             {"email": body.email, "name": {"$regex": "celer[ií]s|celeris", "$options": "i"}}
         )
+        await connectors_collection.delete_many({"email": body.email, "name": {"$regex": "gmail|holded|telegram|bopa|document", "$options": "i"}})
         return {"success": True, "deletedOperators": len(operator_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

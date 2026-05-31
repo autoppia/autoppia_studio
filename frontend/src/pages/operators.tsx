@@ -217,7 +217,7 @@ export default function Operators() {
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Agents</h1>
             <InfoIcon title="Agents">
-              <p>An Agent is a company-specific AI worker. Automata builds it from instructions, integrations, toolkits, knowledge, and approved skills.</p>
+              <p>An Agent is a company-specific AI worker. Automata builds it from instructions, reusable connectors, toolkits, knowledge, and approved skills.</p>
             </InfoIcon>
           </div>
         </div>

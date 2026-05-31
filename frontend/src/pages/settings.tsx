@@ -1002,7 +1002,7 @@ function APIKeysTab() {
       {confirmDeleteId && (
         <ConfirmModal
           title="Delete API Key"
-          message="Are you sure you want to delete this API key? Any integrations using it will stop working."
+          message="Are you sure you want to delete this API key? Any connectors using it will stop working."
           onConfirm={() => { handleDelete(confirmDeleteId); setConfirmDeleteId(null); }}
           onCancel={() => setConfirmDeleteId(null)}
         />
@@ -1379,7 +1379,7 @@ export default function Settings(): React.ReactElement {
               Settings
             </h1>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-              Manage your account and integrations
+              Manage your account and connectors
             </p>
           </div>
 
