@@ -176,11 +176,22 @@ async def approve_trajectory(trajectory_id: str):
     return {"success": True, "capabilityId": capability_id}
 
 
+@router.post("/trajectories/{trajectory_id}/convert-to-skill")
+async def convert_trajectory_to_skill(trajectory_id: str):
+    return await approve_trajectory(trajectory_id)
+
+
 @router.get("/operators/{operator_id}/capabilities")
 async def list_operator_capabilities(operator_id: str):
     await _ensure_operator(operator_id)
     cursor = capabilities_collection.find({"operatorId": operator_id}, {"_id": 0}).sort("createdAt", 1)
     return {"capabilities": await cursor.to_list(length=500)}
+
+
+@router.get("/operators/{operator_id}/skills")
+async def list_operator_skills(operator_id: str):
+    payload = await list_operator_capabilities(operator_id)
+    return {"skills": payload["capabilities"]}
 
 
 @router.post("/operators/{operator_id}/capabilities")
@@ -205,3 +216,9 @@ async def create_operator_capability(operator_id: str, body: CapabilityCreateReq
     await operators_collection.update_one({"operatorId": operator_id}, {"$set": {"updatedAt": now}})
     doc.pop("_id", None)
     return {"success": True, "capability": doc}
+
+
+@router.post("/operators/{operator_id}/skills")
+async def create_operator_skill(operator_id: str, body: CapabilityCreateRequest):
+    payload = await create_operator_capability(operator_id, body)
+    return {"success": True, "skill": payload["capability"]}

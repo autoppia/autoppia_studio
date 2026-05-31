@@ -83,6 +83,7 @@ async def _ensure_operator_evals(
 ) -> list[str]:
     eval_ids: list[str] = []
     now = datetime.now(timezone.utc).isoformat()
+    benchmark_id = f"operator-{operator_id}"
     for task in tasks:
         prompt = str(task.get("prompt") or "").strip()
         if not prompt:
@@ -95,11 +96,15 @@ async def _ensure_operator_evals(
                 "prompt": prompt,
             },
             {
+                "$set": {
+                    "benchmarkId": benchmark_id,
+                    "benchmarkName": f"{operator_name} Benchmark",
+                    "initialUrl": website_url,
+                },
                 "$setOnInsert": {
                     "evalId": eval_id,
                     "email": email,
                     "prompt": prompt,
-                    "initialUrl": website_url,
                     "operatorId": operator_id,
                     "operatorName": operator_name,
                     "operatorTaskName": str(task.get("name") or ""),

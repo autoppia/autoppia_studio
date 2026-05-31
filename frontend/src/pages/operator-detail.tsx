@@ -30,7 +30,7 @@ import useStartSession from "../hooks/useStartSession";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-type TabKey = "overview" | "webs" | "capabilities" | "trajectories" | "benchmarks" | "runs";
+type TabKey = "overview" | "webs" | "skills" | "trajectories" | "benchmarks" | "runs";
 
 function StatusBadge({ label, tone = "gray" }: { label: string; tone?: "green" | "amber" | "blue" | "gray" | "red" }) {
   const tones = {
@@ -71,7 +71,7 @@ export default function OperatorDetail() {
   const [operator, setOperator] = useState<Operator | null>(null);
   const [webs, setWebs] = useState<OperatorWeb[]>([]);
   const [trajectories, setTrajectories] = useState<OperatorTrajectory[]>([]);
-  const [capabilities, setCapabilities] = useState<OperatorCapability[]>([]);
+  const [skills, setSkills] = useState<OperatorCapability[]>([]);
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +91,7 @@ export default function OperatorDetail() {
         fetch(`${apiUrl}/operators/${operatorId}`),
         fetch(`${apiUrl}/operators/${operatorId}/webs`),
         fetch(`${apiUrl}/operators/${operatorId}/trajectories`),
-        fetch(`${apiUrl}/operators/${operatorId}/capabilities`),
+        fetch(`${apiUrl}/operators/${operatorId}/skills`),
         fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
         fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
       ]);
@@ -100,7 +100,7 @@ export default function OperatorDetail() {
       setOperator(opData.operator);
       setWebs(websRes.ok ? (await websRes.json()).webs || [] : []);
       setTrajectories(trRes.ok ? (await trRes.json()).trajectories || [] : []);
-      setCapabilities(capRes.ok ? (await capRes.json()).capabilities || [] : []);
+      setSkills(capRes.ok ? (await capRes.json()).skills || [] : []);
       setEvals(evalRes.ok ? ((await evalRes.json()).evals || []).filter((item: EvalItem) => item.operatorId === operatorId) : []);
       setRuns(runsRes.ok ? ((await runsRes.json()).runs || []).filter((run: EvalRun) => run.operatorId === operatorId) : []);
     } catch (err) {
@@ -174,7 +174,7 @@ export default function OperatorDetail() {
     if (!trajectoryId || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(`${apiUrl}/trajectories/${trajectoryId}/approve`, { method: "POST" });
+      const res = await fetch(`${apiUrl}/trajectories/${trajectoryId}/convert-to-skill`, { method: "POST" });
       if (!res.ok) throw new Error(await res.text());
       await loadData();
     } catch (err) {
@@ -284,7 +284,7 @@ export default function OperatorDetail() {
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "overview", label: "Overview", icon: faRobot },
     { key: "webs", label: "Webs", icon: faGlobe },
-    { key: "capabilities", label: "Capabilities", icon: faCode },
+    { key: "skills", label: "Skills", icon: faCode },
     { key: "trajectories", label: "Trajectories", icon: faRoute },
     { key: "benchmarks", label: "Benchmarks", icon: faClipboardCheck },
     { key: "runs", label: "Runs", icon: faCircleNodes },
@@ -345,7 +345,7 @@ export default function OperatorDetail() {
                   { label: "Tasks", value: operator.tasks?.length || 0, icon: faListCheck },
                   { label: "Webs", value: webs.length, icon: faGlobe },
                   { label: "Trajectories", value: trajectories.length, icon: faRoute },
-                  { label: "Capabilities", value: capabilities.length, icon: faWrench },
+                  { label: "Skills", value: skills.length, icon: faWrench },
                   { label: "Runs", value: runs.length, icon: faCircleNodes },
                 ].map((item) => (
                   <div key={item.label} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
@@ -402,19 +402,19 @@ export default function OperatorDetail() {
             </div>
           )}
 
-          {activeTab === "capabilities" && (
+          {activeTab === "skills" && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {capabilities.map((capability) => (
-                <div key={capability.capabilityId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+              {skills.map((skill) => (
+                <div key={skill.capabilityId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
                   <div className="flex items-center justify-between gap-3 mb-3">
-                    <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{capability.name}()</p>
-                    <StatusBadge label={normalizeName(capability.runtime)} tone="blue" />
+                    <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{skill.name}()</p>
+                    <StatusBadge label={normalizeName(skill.runtime)} tone="blue" />
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{capability.description || "No description"}</p>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{capability.trajectoryIds?.length || 0} linked trajectories</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{skill.description || "No description"}</p>
+                  <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked trajectories</p>
                 </div>
               ))}
-              {capabilities.length === 0 && <Empty text="No capabilities yet. Approve a trajectory to generate the first function." />}
+              {skills.length === 0 && <Empty text="No skills yet. Approve a trajectory to generate the first function." />}
             </div>
           )}
 
@@ -452,7 +452,7 @@ export default function OperatorDetail() {
                     {trajectory.status !== "approved" && (
                       <button onClick={() => approveTrajectory(trajectory.trajectoryId)} className="h-9 px-3 rounded-xl text-sm font-medium bg-green-600 text-white">
                         <FontAwesomeIcon icon={faCheck} className="mr-2 text-xs" />
-                        Approve
+                        Convert to Skill
                       </button>
                     )}
                   </div>

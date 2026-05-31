@@ -13,7 +13,7 @@ import {
   faListCheck,
   faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
-import { EvalItem, EvalRun } from "../utils/types";
+import { EvalItem, EvalRun, Operator } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
 
 const apiUrl = process.env.REACT_APP_API_URL;
@@ -26,6 +26,12 @@ interface Benchmark {
   websiteUrl: string;
   operatorId: string;
   tasks: EvalItem[];
+}
+
+interface PendingRun {
+  type: "task" | "benchmark";
+  evalItem?: EvalItem;
+  benchmark?: Benchmark;
 }
 
 function formatDate(iso?: string) {
@@ -52,11 +58,14 @@ export default function Evals() {
   const [activeTab, setActiveTab] = useState<TabKey>("benchmarks");
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
+  const [operators, setOperators] = useState<Operator[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [runningEvalId, setRunningEvalId] = useState<string | null>(null);
   const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
   const [savingRunId, setSavingRunId] = useState<string | null>(null);
+  const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
+  const [selectedOperatorId, setSelectedOperatorId] = useState("");
 
   useEffect(() => {
     if (!user.email) return;
@@ -67,9 +76,10 @@ export default function Evals() {
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [evalsRes, runsRes] = await Promise.all([
+      const [evalsRes, runsRes, operatorsRes] = await Promise.all([
         fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
         fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
+        fetch(`${apiUrl}/operators?email=${encodeURIComponent(user.email)}`),
       ]);
       if (!evalsRes.ok) throw new Error(await evalsRes.text());
       const evalsData = await evalsRes.json();
@@ -77,6 +87,10 @@ export default function Evals() {
       if (runsRes.ok) {
         const runsData = await runsRes.json();
         setRuns(runsData.runs || []);
+      }
+      if (operatorsRes.ok) {
+        const operatorsData = await operatorsRes.json();
+        setOperators(operatorsData.operators || []);
       }
     } catch (err) {
       console.error("Failed to fetch benchmark data:", err);
@@ -88,7 +102,7 @@ export default function Evals() {
   const benchmarks = useMemo<Benchmark[]>(() => {
     const grouped = new Map<string, Benchmark>();
     for (const item of evals) {
-      const key = item.operatorId || `manual:${item.initialUrl || "default"}`;
+      const key = item.benchmarkId || item.operatorId || `manual:${item.initialUrl || "default"}`;
       const existing = grouped.get(key);
       if (existing) {
         existing.tasks.push(item);
@@ -96,7 +110,7 @@ export default function Evals() {
       }
       grouped.set(key, {
         benchmarkId: key,
-        name: item.operatorName || "Manual Benchmark",
+        name: item.benchmarkName || item.operatorName || "Manual Benchmark",
         websiteUrl: item.initialUrl || "",
         operatorId: item.operatorId || "",
         tasks: [item],
@@ -123,14 +137,23 @@ export default function Evals() {
     );
   });
 
-  const runEval = async (evalItem: EvalItem) => {
+  const openRunSelector = (next: PendingRun) => {
+    setPendingRun(next);
+    const currentOperator = next.evalItem?.operatorId || next.benchmark?.operatorId || "";
+    setSelectedOperatorId(currentOperator);
+  };
+
+  const selectedOperator = operators.find((operator) => operator.operatorId === selectedOperatorId) || null;
+  const selectedOperatorName = selectedOperator?.name || (selectedOperatorId ? "Custom Operator" : "Autoppia Operator");
+
+  const runEval = async (evalItem: EvalItem, operatorId = selectedOperatorId) => {
     if (runningEvalId) return;
     setRunningEvalId(evalItem.evalId);
     try {
       const res = await fetch(`${apiUrl}/evals/${evalItem.evalId}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Operator" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -140,7 +163,7 @@ export default function Evals() {
         "",
         { evalMode: true, evalId: evalItem.evalId, runId: data.runId },
         `/evals/${evalItem.evalId}/run`,
-        evalItem.operatorId ? { operatorId: evalItem.operatorId, operatorName: evalItem.operatorName || "" } : undefined,
+        operatorId ? { operatorId, operatorName: selectedOperatorName } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark task:", err);
@@ -148,14 +171,14 @@ export default function Evals() {
     }
   };
 
-  const runBenchmark = async (benchmark: Benchmark) => {
+  const runBenchmark = async (benchmark: Benchmark, operatorId = selectedOperatorId) => {
     if (runningBenchmarkId || runningEvalId || benchmark.tasks.length === 0) return;
     setRunningBenchmarkId(benchmark.benchmarkId);
     try {
       const res = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmark.operatorId)}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Operator" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -175,11 +198,22 @@ export default function Evals() {
           benchmarkRunId: data.benchmarkRunId,
         },
         `/evals/${firstTask.evalId}/run`,
-        benchmark.operatorId ? { operatorId: benchmark.operatorId, operatorName: benchmark.name } : undefined,
+        operatorId ? { operatorId, operatorName: selectedOperatorName } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark:", err);
       setRunningBenchmarkId(null);
+    }
+  };
+
+  const confirmRun = async () => {
+    const next = pendingRun;
+    setPendingRun(null);
+    if (!next) return;
+    if (next.type === "task" && next.evalItem) {
+      await runEval(next.evalItem, selectedOperatorId);
+    } else if (next.type === "benchmark" && next.benchmark) {
+      await runBenchmark(next.benchmark, selectedOperatorId);
     }
   };
 
@@ -300,7 +334,7 @@ export default function Evals() {
                           {benchmark.tasks.length} tasks
                         </div>
                         <button
-                          onClick={() => runBenchmark(benchmark)}
+                          onClick={() => openRunSelector({ type: "benchmark", benchmark })}
                           disabled={runningBenchmarkId === benchmark.benchmarkId || !!runningEvalId}
                           className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
                             bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg disabled:opacity-60 transition-all"
@@ -324,7 +358,7 @@ export default function Evals() {
                             <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
                           </div>
                           <button
-                            onClick={() => runEval(task)}
+                            onClick={() => openRunSelector({ type: "task", evalItem: task })}
                             disabled={runningEvalId === task.evalId}
                             className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
                               bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg disabled:opacity-60 transition-all"
@@ -400,6 +434,55 @@ export default function Evals() {
           )}
         </div>
       </div>
+      {pendingRun && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setPendingRun(null)} />
+          <div className="relative w-full max-w-md mx-4 bg-white dark:bg-dark-surface rounded-2xl border border-gray-200 dark:border-dark-border shadow-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white">Select Operator</h3>
+              <button
+                onClick={() => setPendingRun(null)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border"
+              >
+                <FontAwesomeIcon icon={faXmark} className="text-xs" />
+              </button>
+            </div>
+            <div className="space-y-2">
+              <button
+                onClick={() => setSelectedOperatorId("")}
+                className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
+                  selectedOperatorId === ""
+                    ? "border-primary bg-primary/5 text-gray-900 dark:text-white"
+                    : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"
+                }`}
+              >
+                <span className="block text-sm font-semibold">Autoppia Operator</span>
+                <span className="block text-xs text-gray-400 dark:text-gray-500">Default generalist operator</span>
+              </button>
+              {operators.map((operator) => (
+                <button
+                  key={operator.operatorId}
+                  onClick={() => setSelectedOperatorId(operator.operatorId)}
+                  className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
+                    selectedOperatorId === operator.operatorId
+                      ? "border-primary bg-primary/5 text-gray-900 dark:text-white"
+                      : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"
+                  }`}
+                >
+                  <span className="block text-sm font-semibold">{operator.name}</span>
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{operator.websiteUrl || operator.runtimeType}</span>
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={confirmRun}
+              className="mt-5 w-full h-10 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow"
+            >
+              Run with {selectedOperatorName}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

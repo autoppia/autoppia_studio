@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.database import evals_collection, eval_runs_collection
+from app.database import evals_collection, eval_runs_collection, operators_collection
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,10 +20,14 @@ class EvalCreateRequest(BaseModel):
 
 class RunCreateRequest(BaseModel):
     sessionId: str = ""
+    operatorId: str = ""
+    operatorName: str = ""
 
 
 class BenchmarkRunCreateRequest(BaseModel):
     sessionId: str = ""
+    operatorId: str = ""
+    operatorName: str = ""
 
 
 class RunUpdateRequest(BaseModel):
@@ -31,6 +35,13 @@ class RunUpdateRequest(BaseModel):
     actions: List[Any] | None = None
     sessionId: str | None = None
     screenshots: List[str] | None = None
+
+
+async def _operator_name(operator_id: str, fallback: str = "") -> str:
+    if not operator_id:
+        return fallback or "Autoppia Operator"
+    doc = await operators_collection.find_one({"operatorId": operator_id}, {"_id": 0, "name": 1})
+    return str((doc or {}).get("name") or fallback or "Custom Operator")
 
 
 # ── Eval (task) endpoints ──
@@ -63,16 +74,23 @@ async def list_all_runs(email: str):
         ev = eval_by_id.get(run.get("evalId"), {})
         run["prompt"] = ev.get("prompt", "")
         run["initialUrl"] = ev.get("initialUrl", "")
-        run["operatorId"] = ev.get("operatorId", "")
-        run["operatorName"] = ev.get("operatorName", "")
+        run["benchmarkId"] = ev.get("benchmarkId", ev.get("operatorId", ""))
+        run["benchmarkName"] = ev.get("benchmarkName", ev.get("operatorName", ""))
+        run["operatorId"] = run.get("operatorId", "")
+        run["operatorName"] = run.get("operatorName", "")
         run["operatorTaskName"] = ev.get("operatorTaskName", "")
     return {"runs": runs}
 
 
-@router.post("/benchmarks/{operator_id}/runs")
-async def create_benchmark_run(operator_id: str, body: BenchmarkRunCreateRequest):
+@router.post("/benchmarks/{benchmark_id}/runs")
+async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateRequest):
     eval_cursor = evals_collection.find(
-        {"operatorId": operator_id},
+        {
+            "$or": [
+                {"benchmarkId": benchmark_id},
+                {"operatorId": benchmark_id},
+            ]
+        },
         {"_id": 0},
     ).sort("createdAt", 1)
     evals = await eval_cursor.to_list(length=200)
@@ -82,6 +100,8 @@ async def create_benchmark_run(operator_id: str, body: BenchmarkRunCreateRequest
     benchmark_run_id = str(uuid4())
     created = []
     now = datetime.now(timezone.utc).isoformat()
+    selected_operator_id = str(body.operatorId or "")
+    selected_operator_name = await _operator_name(selected_operator_id, body.operatorName)
     for ev in evals:
         run_id = str(uuid4())
         doc = {
@@ -89,8 +109,10 @@ async def create_benchmark_run(operator_id: str, body: BenchmarkRunCreateRequest
             "benchmarkRunId": benchmark_run_id,
             "evalId": ev.get("evalId", ""),
             "email": ev.get("email", ""),
-            "operatorId": ev.get("operatorId", ""),
-            "operatorName": ev.get("operatorName", ""),
+            "benchmarkId": ev.get("benchmarkId", ev.get("operatorId", "")),
+            "benchmarkName": ev.get("benchmarkName", ev.get("operatorName", "")),
+            "operatorId": selected_operator_id,
+            "operatorName": selected_operator_name,
             "operatorTaskName": ev.get("operatorTaskName", ""),
             "sessionId": body.sessionId,
             "actions": [],
@@ -164,13 +186,17 @@ async def create_run(eval_id: str, body: RunCreateRequest):
         raise HTTPException(status_code=404, detail="Eval not found")
 
     run_id = str(uuid4())
+    selected_operator_id = str(body.operatorId or "")
+    selected_operator_name = await _operator_name(selected_operator_id, body.operatorName)
     doc = {
         "runId": run_id,
         "evalId": eval_id,
         "benchmarkRunId": "",
         "email": ev.get("email", ""),
-        "operatorId": ev.get("operatorId", ""),
-        "operatorName": ev.get("operatorName", ""),
+        "benchmarkId": ev.get("benchmarkId", ev.get("operatorId", "")),
+        "benchmarkName": ev.get("benchmarkName", ev.get("operatorName", "")),
+        "operatorId": selected_operator_id,
+        "operatorName": selected_operator_name,
         "operatorTaskName": ev.get("operatorTaskName", ""),
         "sessionId": body.sessionId,
         "actions": [],

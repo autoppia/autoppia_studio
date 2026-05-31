@@ -42,6 +42,8 @@ export interface EvalItem {
   email?: string;
   prompt: string;
   initialUrl: string;
+  benchmarkId?: string;
+  benchmarkName?: string;
   operatorId?: string;
   operatorName?: string;
   operatorTaskName?: string;
@@ -56,6 +58,8 @@ export interface EvalRun {
   sessionId: string;
   prompt?: string;
   initialUrl?: string;
+  benchmarkId?: string;
+  benchmarkName?: string;
   operatorId?: string;
   operatorName?: string;
   operatorTaskName?: string;
