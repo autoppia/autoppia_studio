@@ -12,6 +12,9 @@ import {
   faRobot,
   faSpinner,
   faWrench,
+  faBrain,
+  faCheckCircle,
+  faClock,
 } from "@fortawesome/free-solid-svg-icons";
 import InfoIcon from "../common/info-icon";
 
@@ -27,9 +30,12 @@ Tareas:
 5. Enviar por Telegram un resumen breve de una novedad laboral importante para el equipo.`;
 
 interface OnboardingMessage {
-  role: "assistant" | "user";
+  role: "assistant" | "user" | "event";
   content: string;
   createdAt?: string;
+  kind?: "thinking" | "tool_call" | "tool_result" | "assistant_summary" | string;
+  toolName?: string;
+  status?: string;
 }
 
 interface OnboardingDraft {
@@ -72,6 +78,29 @@ function connectorLogo(type: string) {
   if (type === "gmail" || type === "smtp") return "/assets/images/connectors/mail.png";
   if (type === "telegram") return "/assets/images/connectors/telegram.png";
   return "";
+}
+
+function eventIcon(kind?: string, status?: string) {
+  if (status === "running") return faSpinner;
+  if (kind === "thinking") return faBrain;
+  if (kind === "tool_call") return faWrench;
+  if (kind === "tool_result") return faCheckCircle;
+  return faRobot;
+}
+
+function eventLabel(message: OnboardingMessage) {
+  if (message.kind === "thinking") return "Thinking";
+  if (message.kind === "tool_call") return message.toolName ? `Tool call · ${message.toolName}` : "Tool call";
+  if (message.kind === "tool_result") return message.toolName ? `Done · ${message.toolName}` : "Done";
+  if (message.kind === "assistant_summary") return "Summary";
+  return "Agent";
+}
+
+function formatTime(value?: string) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
 }
 
 interface CelerisOnboardingProps {
@@ -225,17 +254,43 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
                 <FontAwesomeIcon icon={faSpinner} className="text-primary text-xl animate-spin" />
               </div>
             ) : (
-              session?.messages.map((message, index) => (
-                <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                  <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${
-                    message.role === "user"
-                      ? "bg-gradient-primary text-white"
-                      : "bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-dark-border"
-                  }`}>
-                    {message.content}
+              session?.messages.map((message, index) => {
+                if (message.role === "event") {
+                  const icon = eventIcon(message.kind, message.status);
+                  return (
+                    <div key={`${message.role}-${message.kind}-${index}`} className="flex justify-start">
+                      <div className={`max-w-[88%] rounded-2xl px-4 py-3 text-sm leading-6 border ${
+                        message.kind === "assistant_summary"
+                          ? "bg-primary/5 border-primary/20 text-gray-800 dark:text-gray-100"
+                          : "bg-gray-50 dark:bg-dark-bg border-gray-100 dark:border-dark-border text-gray-700 dark:text-gray-200"
+                      }`}>
+                        <div className="flex items-center gap-2 mb-1">
+                          <FontAwesomeIcon icon={icon} className={`text-xs text-primary ${message.status === "running" ? "animate-spin" : ""}`} />
+                          <span className="text-[11px] font-semibold uppercase text-gray-400">{eventLabel(message)}</span>
+                          {formatTime(message.createdAt) && (
+                            <span className="ml-auto inline-flex items-center gap-1 text-[11px] text-gray-400">
+                              <FontAwesomeIcon icon={faClock} className="text-[10px]" />
+                              {formatTime(message.createdAt)}
+                            </span>
+                          )}
+                        </div>
+                        <p>{message.content}</p>
+                      </div>
+                    </div>
+                  );
+                }
+                return (
+                  <div key={`${message.role}-${index}`} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                    <div className={`max-w-[82%] rounded-2xl px-4 py-3 text-sm leading-6 ${
+                      message.role === "user"
+                        ? "bg-gradient-primary text-white"
+                        : "bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 border border-gray-100 dark:border-dark-border"
+                    }`}>
+                      {message.content}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
 

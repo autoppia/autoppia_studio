@@ -1,6 +1,8 @@
 import os
 import re
 import uuid
+import json
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 
@@ -80,6 +82,7 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
 
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
 GENERIC_BROWSER_HINTS = ("website", "web", "portal", "government", "gobierno", "bopa.ad", "url")
+ONBOARDING_MODEL = os.getenv("OPENAI_ONBOARDING_MODEL", "gpt-5-mini")
 
 
 class OnboardingStartRequest(BaseModel):
@@ -349,6 +352,275 @@ def _assistant_message(draft: dict[str, Any]) -> str:
     return f"Draft is ready: {draft['company']['name']} with connectors {connectors} and {task_count} benchmark tasks. You can create the company agent now or tell me edits."
 
 
+ONBOARDING_TOOLS: list[dict[str, Any]] = [
+    {
+        "type": "function",
+        "function": {
+            "name": "think",
+            "description": "Emit a short visible status note about what the onboarding agent is deciding. Do not reveal hidden chain-of-thought.",
+            "parameters": {
+                "type": "object",
+                "properties": {"note": {"type": "string"}},
+                "required": ["note"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_company",
+            "description": "Set or update the company profile.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "industry": {"type": "string"},
+                    "description": {"type": "string"},
+                },
+                "required": ["name"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_connector",
+            "description": "Create or update a connector/toolkit the agent should use.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "type": {"type": "string", "enum": ["gmail", "smtp", "holded", "telegram", "web", "knowledge", "api"]},
+                    "category": {"type": "string"},
+                    "description": {"type": "string"},
+                    "baseUrl": {"type": "string"},
+                    "openApiUrl": {"type": "string"},
+                },
+                "required": ["name", "type"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_agent",
+            "description": "Set the specialized company agent metadata and runtime defaults.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "websiteUrl": {"type": "string"},
+                    "successCriteria": {"type": "string"},
+                    "customInstructions": {"type": "string"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_task",
+            "description": "Add a benchmark task the agent should learn/evaluate.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "prompt": {"type": "string"},
+                    "successCriteria": {"type": "string"},
+                },
+                "required": ["prompt"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "finish",
+            "description": "Finish this onboarding turn with a concise user-facing summary.",
+            "parameters": {
+                "type": "object",
+                "properties": {"summary": {"type": "string"}},
+                "required": ["summary"],
+            },
+        },
+    },
+]
+
+
+def _event(kind: str, content: str, *, tool_name: str = "", status: str = "completed") -> dict[str, Any]:
+    return {
+        "role": "event",
+        "kind": kind,
+        "content": content,
+        "toolName": tool_name,
+        "status": status,
+        "createdAt": _now(),
+    }
+
+
+def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> str:
+    if name == "think":
+        return str(args.get("note") or "Thinking through the setup.")
+
+    if name == "set_company":
+        if args.get("name"):
+            draft["company"]["name"] = str(args["name"]).strip()
+        if args.get("industry"):
+            draft["company"]["industry"] = str(args["industry"]).strip()
+        if args.get("description"):
+            draft["company"]["description"] = str(args["description"]).strip()
+        if draft["company"].get("name") and not draft["agent"].get("name"):
+            draft["agent"]["name"] = f"{draft['company']['name']} Agent"
+        return f"Updated company: {draft['company'].get('name') or 'Untitled Company'}"
+
+    if name == "add_connector":
+        connector_type = str(args.get("type") or "api").lower()
+        connector_name = str(args.get("name") or connector_type.title()).strip()
+        base_url = str(args.get("baseUrl") or "").strip()
+        openapi_url = str(args.get("openApiUrl") or "").strip()
+        known_key = connector_type if connector_type in KNOWN_CONNECTORS else connector_name.lower()
+        connector = _known_connector(known_key) if known_key in KNOWN_CONNECTORS else {
+            "name": connector_name,
+            "type": connector_type,
+            "category": args.get("category") or ("api" if connector_type == "api" else "software"),
+            "description": args.get("description") or f"Custom {connector_type} connector for {connector_name}.",
+            "status": "connected" if connector_type in {"web", "knowledge"} else "not_connected",
+            "config": {},
+        }
+        connector["name"] = connector_name
+        connector["category"] = args.get("category") or connector.get("category", "software")
+        connector["description"] = args.get("description") or connector.get("description", "")
+        if base_url:
+            connector.setdefault("config", {})["baseUrl"] = base_url
+        if openapi_url:
+            connector.setdefault("config", {})["openApiUrl"] = openapi_url
+        _merge_connector(draft, connector)
+        if base_url and not draft["agent"].get("websiteUrl"):
+            draft["agent"]["websiteUrl"] = base_url
+        return f"Created connector/toolkit: {connector_name}"
+
+    if name == "set_agent":
+        if args.get("name"):
+            draft["agent"]["name"] = str(args["name"]).strip()
+        elif draft["company"].get("name") and not draft["agent"].get("name"):
+            draft["agent"]["name"] = f"{draft['company']['name']} Agent"
+        if args.get("websiteUrl"):
+            draft["agent"]["websiteUrl"] = str(args["websiteUrl"]).strip()
+        if args.get("successCriteria"):
+            draft["agent"]["successCriteria"] = str(args["successCriteria"]).strip()
+        if args.get("customInstructions"):
+            draft["agent"]["customInstructions"] = str(args["customInstructions"]).strip()
+        return f"Prepared agent: {draft['agent'].get('name') or 'Company Agent'}"
+
+    if name == "add_task":
+        prompt = str(args.get("prompt") or "").strip()
+        if prompt and not any(existing["prompt"].lower() == prompt.lower() for existing in draft["tasks"]):
+            draft["tasks"].append(
+                {
+                    "name": str(args.get("name") or f"Task {len(draft['tasks']) + 1}").strip(),
+                    "prompt": prompt,
+                    "successCriteria": str(args.get("successCriteria") or "The user approves the result and all sensitive writes are confirmed before execution.").strip(),
+                    "status": "draft",
+                }
+            )
+        return f"Created benchmark task: {prompt[:80]}"
+
+    if name == "finish":
+        return str(args.get("summary") or _assistant_message(draft))
+
+    return f"Unknown tool ignored: {name}"
+
+
+async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENAI_API_KEY is not configured")
+
+    from openai import OpenAI
+
+    visible_events: list[dict[str, Any]] = [_event("thinking", "Reading your company description and planning the setup.")]
+    system = (
+        "You are Automata's onboarding agent. Convert the user's natural language into a structured company agent setup. "
+        "You must use tools to update the draft: set_company, add_connector, set_agent, add_task, then finish. "
+        "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, web, knowledge, api. "
+        "Use api for unknown SaaS/API systems and web for browser-only websites. Use knowledge for documents or files. "
+        "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
+        "Keep visible thinking short and operational; do not reveal hidden chain-of-thought."
+    )
+    chat_messages: list[dict[str, Any]] = [
+        {"role": "system", "content": system},
+        {"role": "user", "content": f"Current draft JSON:\n{json.dumps(draft, ensure_ascii=False)}\n\nUser onboarding message:\n{user_message}"},
+    ]
+
+    client = OpenAI(api_key=api_key)
+
+    def _create_completion(messages: list[dict[str, Any]], require_tool: bool):
+        return client.chat.completions.create(
+            model=ONBOARDING_MODEL,
+            messages=messages,
+            tools=ONBOARDING_TOOLS,
+            tool_choice="required" if require_tool else "auto",
+            parallel_tool_calls=False,
+            max_completion_tokens=1200,
+        )
+
+    final_summary = ""
+    for _ in range(10):
+        require_tool = not (draft["company"].get("name") and draft["connectors"] and draft["tasks"])
+        completion = await asyncio.to_thread(_create_completion, chat_messages, require_tool)
+        message = completion.choices[0].message
+        chat_messages.append(message.model_dump(exclude_none=True))
+        tool_calls = message.tool_calls or []
+        if not tool_calls:
+            if message.content:
+                final_summary = message.content
+            break
+        for call in tool_calls:
+            name = call.function.name
+            try:
+                args = json.loads(call.function.arguments or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            status_text = {
+                "think": args.get("note") or "Thinking through the setup.",
+                "set_company": f"Updating company profile: {args.get('name') or draft['company'].get('name') or 'Untitled'}",
+                "add_connector": f"Creating connector: {args.get('name') or args.get('type') or 'Connector'}",
+                "set_agent": f"Preparing agent: {args.get('name') or draft['agent'].get('name') or 'Company Agent'}",
+                "add_task": f"Creating benchmark task: {str(args.get('prompt') or '')[:80]}",
+                "finish": "Reviewing the draft and preparing the summary.",
+            }.get(name, f"Calling tool: {name}")
+            visible_events.append(_event("thinking" if name == "think" else "tool_call", status_text, tool_name=name))
+            result = _apply_tool_call(draft, name, args)
+            visible_events.append(_event("tool_result", result, tool_name=name))
+            if name == "finish":
+                final_summary = result
+            chat_messages.append({"role": "tool", "tool_call_id": call.id, "content": result})
+        if final_summary:
+            break
+
+    draft["questions"] = _questions_for_missing([
+        missing for missing, ok in (
+            ("company name", bool(draft["company"].get("name"))),
+            ("connectors or systems", bool(draft["connectors"])),
+            ("tasks", bool(draft["tasks"])),
+        ) if not ok
+    ])
+    visible_events.append(_event("assistant_summary", final_summary or _assistant_message(draft)))
+    return draft, visible_events
+
+
+async def _run_onboarding_agent(draft: dict[str, Any], user_message: str) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    try:
+        return await _run_llm_onboarding_agent(draft, user_message)
+    except Exception as exc:
+        fallback_draft = _apply_message(draft, user_message)
+        return fallback_draft, [
+            _event("thinking", "I could not reach the model, so I used the local onboarding parser.", status="completed"),
+            _event("tool_result", f"Fallback parser updated the draft: {exc.__class__.__name__}", tool_name="local_parser"),
+            _event("assistant_summary", _assistant_message(fallback_draft)),
+        ]
+
+
 def _session_payload(doc: dict[str, Any]) -> dict[str, Any]:
     return {
         "sessionId": doc.get("sessionId", ""),
@@ -433,10 +705,11 @@ async def send_onboarding_message(session_id: str, body: OnboardingMessageReques
     doc = await onboarding_sessions_collection.find_one({"sessionId": session_id, "email": body.email}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Onboarding session not found")
-    draft = _apply_message(doc.get("draft") or _default_draft(), body.message)
+    draft = doc.get("draft") or _default_draft()
     messages = doc.get("messages", [])
     messages.append({"role": "user", "content": body.message.strip(), "createdAt": _now()})
-    messages.append({"role": "assistant", "content": _assistant_message(draft), "createdAt": _now()})
+    draft, agent_events = await _run_onboarding_agent(draft, body.message)
+    messages.extend(agent_events)
     status = "ready" if draft["company"]["name"] and draft["connectors"] and draft["tasks"] else "collecting"
     await onboarding_sessions_collection.update_one(
         {"sessionId": session_id},
