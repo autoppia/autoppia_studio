@@ -24,9 +24,15 @@ export default function InfoIcon({ title, children }: InfoIconProps) {
         <FontAwesomeIcon icon={faCircleInfo} className="text-xs" />
       </button>
       {open && (
-        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setOpen(false)} />
-          <div className="relative w-full max-w-lg rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 overflow-y-auto"
+          onClick={() => setOpen(false)}
+        >
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" />
+          <div
+            className="relative my-auto w-full max-w-lg max-h-[calc(100vh-2rem)] sm:max-h-[calc(100vh-3rem)] rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl flex flex-col"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 dark:border-dark-border">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white">{title}</h3>
               <button
@@ -37,7 +43,7 @@ export default function InfoIcon({ title, children }: InfoIconProps) {
                 <FontAwesomeIcon icon={faXmark} className="text-sm" />
               </button>
             </div>
-            <div className="px-5 py-4 text-sm leading-6 text-gray-600 dark:text-gray-300">
+            <div className="px-5 py-4 text-sm leading-6 text-gray-600 dark:text-gray-300 overflow-y-auto scrollbar-thin">
               {children}
             </div>
           </div>
