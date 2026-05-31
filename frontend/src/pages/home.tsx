@@ -5,6 +5,7 @@ import TitleSection from "../components/home/title-section";
 import TaskSection from "../components/home/task-section";
 import SliderSection from "../components/home/slider-section";
 import { Operator } from "../utils/types";
+import CelerisOnboarding from "../components/home/celeris-onboarding";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
@@ -15,6 +16,7 @@ export default function Home(): React.ReactElement {
   const [initialUrl, setInitialUrl] = useState("");
   const [operators, setOperators] = useState<Operator[]>([]);
   const [selectedOperator, setSelectedOperator] = useState<Operator | null>(null);
+  const [showClassic, setShowClassic] = useState(false);
 
   const loadOperators = useCallback(async () => {
     if (!user.email) return;
@@ -49,26 +51,40 @@ export default function Home(): React.ReactElement {
       </div>
       <div className="flex flex-col px-6 md:px-12 xl:px-16 flex-grow h-full relative w-full">
         <div className="flex flex-col justify-center items-center flex-grow pt-16 md:pt-20">
-          <TitleSection />
+          {!showClassic ? (
+            <>
+              <CelerisOnboarding />
+              <button
+                onClick={() => setShowClassic(true)}
+                className="mt-5 text-xs font-medium text-gray-400 dark:text-gray-500 hover:text-primary transition-colors"
+              >
+                Open existing agent session instead
+              </button>
+            </>
+          ) : (
+            <>
+              <TitleSection />
 
-          <TaskSection
-            prompt={prompt}
-            setPrompt={setPrompt}
-            initialUrl={initialUrl}
-            setInitialUrl={setInitialUrl}
-            openedDropdown={openedDropdown}
-            setOpenedDropdown={setOpenedDropdown}
-            operators={operators}
-            selectedOperator={selectedOperator}
-            setSelectedOperator={setSelectedOperator}
-          />
+              <TaskSection
+                prompt={prompt}
+                setPrompt={setPrompt}
+                initialUrl={initialUrl}
+                setInitialUrl={setInitialUrl}
+                openedDropdown={openedDropdown}
+                setOpenedDropdown={setOpenedDropdown}
+                operators={operators}
+                selectedOperator={selectedOperator}
+                setSelectedOperator={setSelectedOperator}
+              />
 
-          <SliderSection
-            setPrompt={setPrompt}
-            setInitialUrl={setInitialUrl}
-            operators={operators}
-            setSelectedOperator={setSelectedOperator}
-          />
+              <SliderSection
+                setPrompt={setPrompt}
+                setInitialUrl={setInitialUrl}
+                operators={operators}
+                setSelectedOperator={setSelectedOperator}
+              />
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -6,6 +6,14 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.database import companies_collection
+from app.database import (
+    capabilities_collection,
+    eval_runs_collection,
+    evals_collection,
+    operator_webs_collection,
+    operators_collection,
+    trajectories_collection,
+)
 
 router = APIRouter()
 
@@ -15,6 +23,10 @@ class CompanyCreateRequest(BaseModel):
     name: str
     description: str = ""
     industry: str = ""
+
+
+class DemoResetRequest(BaseModel):
+    email: str
 
 
 def _now() -> str:
@@ -79,5 +91,28 @@ async def create_company(body: CompanyCreateRequest):
         }
         await companies_collection.insert_one(doc)
         return {"success": True, "company": _serialize(doc)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/demo/celeris/reset")
+async def reset_celeris_demo(body: DemoResetRequest):
+    try:
+        operator_docs = await operators_collection.find(
+            {"email": body.email, "name": {"$regex": "celer[ií]s|celeris", "$options": "i"}},
+            {"_id": 0, "operatorId": 1},
+        ).to_list(length=100)
+        operator_ids = [doc.get("operatorId") for doc in operator_docs if doc.get("operatorId")]
+        if operator_ids:
+            await operator_webs_collection.delete_many({"operatorId": {"$in": operator_ids}})
+            await trajectories_collection.delete_many({"operatorId": {"$in": operator_ids}})
+            await capabilities_collection.delete_many({"operatorId": {"$in": operator_ids}})
+            await evals_collection.delete_many({"operatorId": {"$in": operator_ids}})
+            await eval_runs_collection.delete_many({"operatorId": {"$in": operator_ids}})
+            await operators_collection.delete_many({"operatorId": {"$in": operator_ids}})
+        await companies_collection.delete_many(
+            {"email": body.email, "name": {"$regex": "celer[ií]s|celeris", "$options": "i"}}
+        )
+        return {"success": True, "deletedOperators": len(operator_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

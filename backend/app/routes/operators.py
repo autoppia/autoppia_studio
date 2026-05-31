@@ -42,6 +42,7 @@ class OperatorTask(BaseModel):
 
 class OperatorCreateRequest(BaseModel):
     email: str
+    companyId: str = ""
     name: str
     websiteUrl: str
     authUsername: str = ""
@@ -234,6 +235,7 @@ async def create_operator(body: OperatorCreateRequest):
         doc = {
             "operatorId": operator_id,
             "email": body.email,
+            "companyId": body.companyId,
             "name": body.name,
             "websiteUrl": body.websiteUrl,
             "runtimeEndpoint": "",
