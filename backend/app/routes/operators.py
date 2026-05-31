@@ -46,6 +46,9 @@ class OperatorCreateRequest(BaseModel):
     websiteUrl: str
     authUsername: str = ""
     authPassword: str = ""
+    apiSpecUrl: str = ""
+    apiAuthHeaderName: str = ""
+    apiAuthHeaderValue: str = ""
     successCriteria: str = ""
     tasks: List[OperatorTask] = []
 
@@ -65,6 +68,8 @@ def _serialize_operator(doc: dict[str, Any]) -> dict[str, Any]:
         "status": doc.get("status", "draft"),
         "trainingStatus": doc.get("trainingStatus", "not_started"),
         "harvester": doc.get("harvester", "Automata Operator"),
+        "apiSpecUrl": doc.get("apiSpecUrl", ""),
+        "apiAuthConfigured": bool(doc.get("apiAuth", {}).get("headerValueConfigured")),
         "tasks": doc.get("tasks", []),
         "trajectories": doc.get("trajectories", []),
         "successCriteria": doc.get("successCriteria", ""),
@@ -180,6 +185,7 @@ async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str
                     "webId": web_id,
                     "name": capability["name"],
                     "description": capability["description"],
+                    "type": "web",
                     "parameters": [],
                     "trajectoryIds": [trajectory_ids_by_task[capability["taskName"]]],
                     "runtime": "trajectory_replay_with_recovery",
@@ -236,6 +242,11 @@ async def create_operator(body: OperatorCreateRequest):
             "tasks": [task.model_dump() for task in body.tasks],
             "trajectories": [],
             "successCriteria": body.successCriteria,
+            "apiSpecUrl": body.apiSpecUrl.strip(),
+            "apiAuth": {
+                "headerName": body.apiAuthHeaderName.strip(),
+                "headerValueConfigured": bool(body.apiAuthHeaderValue),
+            },
             "auth": {
                 "hasCredentials": bool(body.authUsername or body.authPassword),
                 "username": body.authUsername,
@@ -305,6 +316,8 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
                 "status": "ready",
                 "trainingStatus": "verified",
                 "harvester": "Automata Operator",
+                "apiSpecUrl": "",
+                "apiAuth": {"headerName": "", "headerValueConfigured": False},
                 "tasks": AUTOCINEMA_TASKS,
                 "trajectories": [
                     {"name": task["name"], "status": "verified", "source": "bundled_autocinema_package"}
@@ -349,6 +362,8 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             "status": "ready",
             "trainingStatus": "verified",
             "harvester": "Automata Operator",
+            "apiSpecUrl": "",
+            "apiAuth": {"headerName": "", "headerValueConfigured": False},
             "tasks": AUTOCINEMA_TASKS,
             "trajectories": [
                 {"name": task["name"], "status": "verified", "source": "bundled_autocinema_package"}

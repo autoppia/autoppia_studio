@@ -18,7 +18,7 @@ import socketio
 from app.middleware import verify_api_key
 from app.database import ensure_indexes
 from app.sio_app import sio
-from app.routes.api import operator
+from app.routes.api import agents, operator
 from app.routes import auth as auth_routes
 from app.routes import user as user_routes
 from app.routes import session as session_routes
@@ -45,6 +45,7 @@ fastapi_app.add_middleware(
 )
 
 fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+fastapi_app.include_router(agents.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
 
 # Web routes (no API key required — used by the frontend)
 fastapi_app.include_router(auth_routes.router)

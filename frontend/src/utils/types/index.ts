@@ -109,6 +109,7 @@ export interface OperatorCapability {
   webId?: string;
   name: string;
   description: string;
+  type?: "web" | "api" | "hybrid" | string;
   parameters: any[];
   trajectoryIds: string[];
   runtime: string;
@@ -126,6 +127,8 @@ export interface Operator {
   status: string;
   trainingStatus: string;
   harvester?: string;
+  apiSpecUrl?: string;
+  apiAuthConfigured?: boolean;
   tasks: OperatorTask[];
   trajectories: OperatorTrajectory[];
   successCriteria: string;

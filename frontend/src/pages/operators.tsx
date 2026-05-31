@@ -69,6 +69,9 @@ export default function Operators() {
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [authUsername, setAuthUsername] = useState("");
   const [authPassword, setAuthPassword] = useState("");
+  const [apiSpecUrl, setApiSpecUrl] = useState("");
+  const [apiAuthHeaderName, setApiAuthHeaderName] = useState("");
+  const [apiAuthHeaderValue, setApiAuthHeaderValue] = useState("");
   const [successCriteria, setSuccessCriteria] = useState("");
   const [tasks, setTasks] = useState<TaskDraft[]>([emptyTask()]);
   const [submitting, setSubmitting] = useState(false);
@@ -98,6 +101,9 @@ export default function Operators() {
     setWebsiteUrl("");
     setAuthUsername("");
     setAuthPassword("");
+    setApiSpecUrl("");
+    setApiAuthHeaderName("");
+    setApiAuthHeaderValue("");
     setSuccessCriteria("");
     setTasks([emptyTask()]);
   };
@@ -138,6 +144,9 @@ export default function Operators() {
           websiteUrl: websiteUrl.trim(),
           authUsername: authUsername.trim(),
           authPassword: authPassword,
+          apiSpecUrl: apiSpecUrl.trim(),
+          apiAuthHeaderName: apiAuthHeaderName.trim(),
+          apiAuthHeaderValue,
           successCriteria: successCriteria.trim(),
           tasks: cleanTasks,
         }),
@@ -385,6 +394,49 @@ export default function Operators() {
                     placeholder="••••••••"
                     value={authPassword}
                     onChange={(e) => setAuthPassword(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+              </div>
+
+              {/* API context (optional) */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                  OpenAPI / Swagger URL <span className="text-gray-400 font-normal">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  className={inputClass}
+                  placeholder="https://example.com/openapi.json"
+                  value={apiSpecUrl}
+                  onChange={(e) => setApiSpecUrl(e.target.value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    API Auth Header <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    className={inputClass}
+                    placeholder="Authorization"
+                    value={apiAuthHeaderName}
+                    onChange={(e) => setApiAuthHeaderName(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+                    API Auth Value <span className="text-gray-400 font-normal">(optional)</span>
+                  </label>
+                  <input
+                    type="password"
+                    className={inputClass}
+                    placeholder="Bearer sk_..."
+                    value={apiAuthHeaderValue}
+                    onChange={(e) => setApiAuthHeaderValue(e.target.value)}
                     autoComplete="new-password"
                   />
                 </div>

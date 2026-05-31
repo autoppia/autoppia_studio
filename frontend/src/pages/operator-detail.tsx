@@ -10,6 +10,7 @@ import {
   faCode,
   faGlobe,
   faListCheck,
+  faPlug,
   faPlay,
   faPlus,
   faRobot,
@@ -30,7 +31,7 @@ import useStartSession from "../hooks/useStartSession";
 
 const apiUrl = process.env.REACT_APP_API_URL;
 
-type TabKey = "overview" | "webs" | "skills" | "trajectories" | "benchmarks" | "runs";
+type TabKey = "overview" | "webs" | "skills" | "trajectories" | "benchmarks" | "runs" | "connect";
 
 function StatusBadge({ label, tone = "gray" }: { label: string; tone?: "green" | "amber" | "blue" | "gray" | "red" }) {
   const tones = {
@@ -117,7 +118,7 @@ export default function OperatorDetail() {
 
   const benchmark = useMemo(() => ({
     name: operator?.name || "Operator",
-    operatorId,
+    id: evals[0]?.benchmarkId || `operator-${operatorId}`,
     tasks: evals,
   }), [evals, operator?.name, operatorId]);
 
@@ -191,7 +192,7 @@ export default function OperatorDetail() {
       const res = await fetch(`${apiUrl}/evals/${evalItem.evalId}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operator?.name || "" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -213,10 +214,10 @@ export default function OperatorDetail() {
     if (runningId || !benchmark.tasks.length) return;
     setRunningId(operatorId);
     try {
-      const res = await fetch(`${apiUrl}/benchmarks/${operatorId}/runs`, {
+      const res = await fetch(`${apiUrl}/benchmarks/${benchmark.id}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "" }),
+        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operator?.name || "" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -231,7 +232,7 @@ export default function OperatorDetail() {
           evalId: firstTask.evalId,
           runId: firstRun.runId,
           benchmarkMode: true,
-          benchmarkId: operatorId,
+          benchmarkId: benchmark.id,
           benchmarkRunId: data.benchmarkRunId,
         },
         `/evals/${firstTask.evalId}/run`,
@@ -288,7 +289,35 @@ export default function OperatorDetail() {
     { key: "trajectories", label: "Trajectories", icon: faRoute },
     { key: "benchmarks", label: "Benchmarks", icon: faClipboardCheck },
     { key: "runs", label: "Runs", icon: faCircleNodes },
+    { key: "connect", label: "Connect", icon: faPlug },
   ];
+
+  const apiBase = (apiUrl || "").replace(/\/$/, "");
+  const agentActUrl = `${apiBase}/api/v1/agents/${operatorId}/act`;
+  const agentSkillsUrl = `${apiBase}/api/v1/agents/${operatorId}/skills`;
+  const docsUrl = `${apiBase}/docs`;
+  const curlSnippet = `curl -X POST "${agentActUrl}" \\
+  -H "x-api-key: $AUTOMATA_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"task":"Log in to Autocinema","url":"${operator.websiteUrl || "https://example.com"}"}'`;
+  const jsSnippet = `const response = await fetch("${agentActUrl}", {
+  method: "POST",
+  headers: {
+    "x-api-key": process.env.AUTOMATA_API_KEY,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({ task: "Your task prompt", url: "${operator.websiteUrl || "https://example.com"}" })
+});
+const { result } = await response.json();`;
+  const pythonSnippet = `import os, requests
+
+response = requests.post(
+    "${agentActUrl}",
+    headers={"x-api-key": os.environ["AUTOMATA_API_KEY"]},
+    json={"task": "Your task prompt", "url": "${operator.websiteUrl || "https://example.com"}"},
+    timeout=60,
+)
+print(response.json()["result"])`;
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -373,6 +402,14 @@ export default function OperatorDetail() {
                     <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Harvester</p>
                     <p className="text-gray-700 dark:text-gray-200">{operator.harvester || "Automata Operator"}</p>
                   </div>
+                  <div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">OpenAPI / Swagger</p>
+                    <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{operator.apiSpecUrl || "Not configured"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">API auth</p>
+                    <p className="text-gray-700 dark:text-gray-200">{operator.apiAuthConfigured ? "Configured" : "Not configured"}</p>
+                  </div>
                 </div>
               </div>
             </div>
@@ -408,7 +445,10 @@ export default function OperatorDetail() {
                 <div key={skill.capabilityId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <p className="font-mono text-sm font-semibold text-gray-900 dark:text-white">{skill.name}()</p>
-                    <StatusBadge label={normalizeName(skill.runtime)} tone="blue" />
+                    <div className="flex items-center gap-2">
+                      <StatusBadge label={skill.type || "web"} tone={skill.type === "api" ? "green" : "gray"} />
+                      <StatusBadge label={normalizeName(skill.runtime)} tone="blue" />
+                    </div>
                   </div>
                   <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{skill.description || "No description"}</p>
                   <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked trajectories</p>
@@ -513,6 +553,81 @@ export default function OperatorDetail() {
                 </div>
               ))}
               {runs.length === 0 && <Empty text="No runs yet. Run the benchmark or a single task." />}
+            </div>
+          )}
+
+          {activeTab === "connect" && (
+            <div className="space-y-4">
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Agent API</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Use this custom operator from your backend, product, or evaluation harness.</p>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Act endpoint</p>
+                        <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{agentActUrl}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Skills endpoint</p>
+                        <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{agentSkillsUrl}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => navigate("/settings?tab=api-keys")}
+                    className="h-9 px-3 rounded-xl text-sm font-medium bg-gradient-primary text-white shadow-glow"
+                  >
+                    API Keys
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Docs</p>
+                  <div className="space-y-3 text-sm">
+                    <a href={docsUrl} target="_blank" rel="noreferrer" className="block text-primary hover:opacity-80">OpenAPI Swagger UI</a>
+                    <a href={`${apiBase}/openapi.json`} target="_blank" rel="noreferrer" className="block text-primary hover:opacity-80">OpenAPI JSON schema</a>
+                    {operator.apiSpecUrl && (
+                      <a href={operator.apiSpecUrl} target="_blank" rel="noreferrer" className="block text-primary hover:opacity-80">Customer API spec</a>
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Agent Context</p>
+                  <div className="space-y-2 text-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500 dark:text-gray-400">Agent ID</span>
+                      <span className="font-mono text-xs text-gray-700 dark:text-gray-200 truncate">{operatorId}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500 dark:text-gray-400">Skills</span>
+                      <span className="text-gray-700 dark:text-gray-200">{skills.length}</span>
+                    </div>
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-gray-500 dark:text-gray-400">API spec</span>
+                      <span className="text-gray-700 dark:text-gray-200">{operator.apiSpecUrl ? "Configured" : "Missing"}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {[
+                { title: "cURL", code: curlSnippet },
+                { title: "JavaScript", code: jsSnippet },
+                { title: "Python", code: pythonSnippet },
+              ].map((snippet) => (
+                <div key={snippet.title} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border overflow-hidden">
+                  <div className="px-5 py-3 border-b border-gray-100 dark:border-dark-border">
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{snippet.title}</p>
+                  </div>
+                  <pre className="p-5 overflow-auto text-xs leading-5 text-gray-700 dark:text-gray-200 bg-gray-50 dark:bg-dark-bg font-mono whitespace-pre-wrap">
+                    {snippet.code}
+                  </pre>
+                </div>
+              ))}
             </div>
           )}
         </div>

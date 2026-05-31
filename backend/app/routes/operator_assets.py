@@ -39,6 +39,7 @@ class CapabilityCreateRequest(BaseModel):
     webId: str = ""
     name: str
     description: str = ""
+    type: str = "web"
     parameters: List[dict[str, Any]] = []
     trajectoryIds: List[str] = []
     runtime: str = "trajectory_replay_with_recovery"
@@ -161,6 +162,7 @@ async def approve_trajectory(trajectory_id: str):
                 "webId": trajectory.get("webId", ""),
                 "name": capability_name,
                 "description": trajectory.get("prompt", ""),
+                "type": "web",
                 "parameters": [],
                 "trajectoryIds": [trajectory_id],
                 "runtime": "trajectory_replay_with_recovery",
@@ -206,6 +208,7 @@ async def create_operator_capability(operator_id: str, body: CapabilityCreateReq
         "webId": body.webId,
         "name": body.name,
         "description": body.description,
+        "type": body.type if body.type in {"web", "api", "hybrid"} else "web",
         "parameters": body.parameters,
         "trajectoryIds": body.trajectoryIds,
         "runtime": body.runtime,
