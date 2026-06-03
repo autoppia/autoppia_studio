@@ -29,13 +29,20 @@ class BrowserExecutor:
         """
         self._on_tab_change = callback
 
-    async def initialize(self, initial_url: str = None, storage_state_path: Path = None, context_id: str = ""):
+    async def initialize(self, initial_url: str = None, storage_state_path: Path = None, context_id: str = "", browser_mode: str = ""):
         bb_api_key = os.getenv("BROWSERBASE_API_KEY", "")
         bb_project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
+        browser_mode = (browser_mode or os.getenv("AUTOMATA_BROWSER_MODE", os.getenv("BROWSER_MODE", "auto"))).strip().lower()
+        local_context_storage_state = None
+        if str(context_id or "").startswith("local:"):
+            local_context_storage_state = Path(str(context_id)[len("local:") :]).expanduser()
+            context_id = ""
+        use_browserbase = browser_mode in {"auto", "browserbase"} and bool(bb_api_key and bb_project_id) and local_context_storage_state is None
+        local_headless = browser_mode not in {"local_headful", "headful", "headed"}
 
         self.playwright = await async_playwright().start()
 
-        if bb_api_key and bb_project_id:
+        if use_browserbase:
             self._bb_client = Browserbase(api_key=bb_api_key)
 
             session_kwargs = {
@@ -73,15 +80,19 @@ class BrowserExecutor:
             for c in cookies[:5]:
                 logger.info(f"  Cookie: {c['name']} @ {c['domain']}")
         else:
-            logger.warning("Browserbase credentials not set, falling back to local Chromium")
+            if browser_mode == "browserbase":
+                logger.warning("Browserbase mode requested but credentials are missing; falling back to local Chromium")
+            else:
+                logger.info(f"Using local Chromium browser mode: {'headless' if local_headless else 'headful'}")
             self.browser = await self.playwright.chromium.launch(
-                headless=True,
+                headless=local_headless,
                 args=[
                     "--disable-extensions",
                     "--disable-file-system",
                 ],
             )
-            self.context = await self.browser.new_context(viewport={"width": 1440, "height": 900}, storage_state=str(storage_state_path) if storage_state_path else None)
+            effective_storage_state_path = local_context_storage_state if local_context_storage_state and local_context_storage_state.exists() else storage_state_path
+            self.context = await self.browser.new_context(viewport={"width": 1440, "height": 900}, storage_state=str(effective_storage_state_path) if effective_storage_state_path else None)
             self.page = await self.context.new_page()
 
         self.context.on("page", self._handle_new_page)

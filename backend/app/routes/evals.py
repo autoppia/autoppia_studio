@@ -6,7 +6,14 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from app.database import evals_collection, eval_runs_collection, operators_collection
+from app.database import (
+    agents_collection,
+    benchmark_tasks_collection,
+    benchmarks_collection,
+    eval_runs_collection,
+    evals_collection,
+)
+from app.services.eval_judge import judge_eval_run
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -20,14 +27,14 @@ class EvalCreateRequest(BaseModel):
 
 class RunCreateRequest(BaseModel):
     sessionId: str = ""
-    operatorId: str = ""
-    operatorName: str = ""
+    agentId: str = ""
+    agentName: str = ""
 
 
 class BenchmarkRunCreateRequest(BaseModel):
     sessionId: str = ""
-    operatorId: str = ""
-    operatorName: str = ""
+    agentId: str = ""
+    agentName: str = ""
 
 
 class RunUpdateRequest(BaseModel):
@@ -37,30 +44,91 @@ class RunUpdateRequest(BaseModel):
     screenshots: List[str] | None = None
 
 
-async def _operator_name(operator_id: str, fallback: str = "") -> str:
-    if not operator_id:
-        return fallback or "Autoppia Operator"
-    doc = await operators_collection.find_one({"operatorId": operator_id}, {"_id": 0, "name": 1})
-    return str((doc or {}).get("name") or fallback or "Custom Operator")
+class JudgeRunRequest(BaseModel):
+    userContext: dict[str, Any] = {}
+    apply: bool = True
+
+
+async def _agent_name(agent_id: str, fallback: str = "") -> str:
+    if not agent_id:
+        return fallback or "Autoppia Agent"
+    doc = await agents_collection.find_one({"agentId": agent_id}, {"_id": 0, "name": 1})
+    return str((doc or {}).get("name") or fallback or "Custom Agent")
+
+
+def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None) -> dict[str, Any]:
+    metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    benchmark_doc = benchmark or {}
+    return {
+        "evalId": task.get("taskId", ""),
+        "taskId": task.get("taskId", ""),
+        "email": task.get("email", ""),
+        "companyId": task.get("companyId", ""),
+        "prompt": task.get("prompt", ""),
+        "initialUrl": metadata.get("startUrl") or metadata.get("iwaStartUrl") or benchmark_doc.get("websiteUrl") or "",
+        "benchmarkId": task.get("benchmarkId", ""),
+        "benchmarkName": benchmark_doc.get("name") or task.get("benchmarkName") or "Benchmark",
+        "agentId": task.get("agentId", ""),
+        "agentName": benchmark_doc.get("agentName", ""),
+        "agentTaskName": task.get("taskName") or task.get("name") or "",
+        "successCriteria": task.get("successCriteria", ""),
+        "status": task.get("status", ""),
+        "source": task.get("source", "benchmark_task"),
+        "createdAt": task.get("createdAt"),
+    }
+
+
+async def _benchmark_task_eval(eval_id: str) -> dict[str, Any] | None:
+    task = await benchmark_tasks_collection.find_one({"taskId": eval_id}, {"_id": 0})
+    if not task:
+        return None
+    benchmark = await benchmarks_collection.find_one({"benchmarkId": task.get("benchmarkId", "")}, {"_id": 0}) or {}
+    return _task_to_eval(task, benchmark)
 
 
 # ── Eval (task) endpoints ──
 
 
 @router.get("/evals")
-async def list_evals(email: str):
-    cursor = evals_collection.find(
-        {"email": email},
-        {"_id": 0},
-    ).sort("createdAt", -1)
+async def list_evals(email: str, companyId: str = ""):
+    legacy_query: dict[str, Any] = {"email": email}
+    if companyId:
+        legacy_query["companyId"] = companyId
+    cursor = evals_collection.find(legacy_query, {"_id": 0}).sort("createdAt", -1)
     evals = await cursor.to_list(length=500)
-    return {"evals": evals}
+
+    task_query: dict[str, Any] = {"email": email}
+    if companyId:
+        task_query["companyId"] = companyId
+    task_cursor = benchmark_tasks_collection.find(task_query, {"_id": 0}).sort("createdAt", -1)
+    tasks = await task_cursor.to_list(length=500)
+    benchmark_ids = sorted({str(task.get("benchmarkId") or "") for task in tasks if task.get("benchmarkId")})
+    benchmark_docs = {}
+    if benchmark_ids:
+        docs = await benchmarks_collection.find({"benchmarkId": {"$in": benchmark_ids}}, {"_id": 0}).to_list(length=500)
+        benchmark_docs = {doc.get("benchmarkId"): doc for doc in docs}
+    task_evals = [_task_to_eval(task, benchmark_docs.get(task.get("benchmarkId"))) for task in tasks]
+    return {"evals": [*task_evals, *evals]}
 
 
 @router.get("/eval-runs")
-async def list_all_runs(email: str):
-    eval_cursor = evals_collection.find({"email": email}, {"_id": 0})
+async def list_all_runs(email: str, companyId: str = ""):
+    eval_query: dict[str, Any] = {"email": email}
+    if companyId:
+        eval_query["companyId"] = companyId
+    eval_cursor = evals_collection.find(eval_query, {"_id": 0})
     evals = await eval_cursor.to_list(length=500)
+    task_query: dict[str, Any] = {"email": email}
+    if companyId:
+        task_query["companyId"] = companyId
+    tasks = await benchmark_tasks_collection.find(task_query, {"_id": 0}).to_list(length=500)
+    benchmark_ids = sorted({str(task.get("benchmarkId") or "") for task in tasks if task.get("benchmarkId")})
+    benchmark_docs = {}
+    if benchmark_ids:
+        docs = await benchmarks_collection.find({"benchmarkId": {"$in": benchmark_ids}}, {"_id": 0}).to_list(length=500)
+        benchmark_docs = {doc.get("benchmarkId"): doc for doc in docs}
+    task_evals = [_task_to_eval(task, benchmark_docs.get(task.get("benchmarkId"))) for task in tasks]
+    evals = [*task_evals, *evals]
     eval_by_id = {ev.get("evalId"): ev for ev in evals}
     if not eval_by_id:
         return {"runs": []}
@@ -74,11 +142,11 @@ async def list_all_runs(email: str):
         ev = eval_by_id.get(run.get("evalId"), {})
         run["prompt"] = ev.get("prompt", "")
         run["initialUrl"] = ev.get("initialUrl", "")
-        run["benchmarkId"] = ev.get("benchmarkId", ev.get("operatorId", ""))
-        run["benchmarkName"] = ev.get("benchmarkName", ev.get("operatorName", ""))
-        run["operatorId"] = run.get("operatorId", "")
-        run["operatorName"] = run.get("operatorName", "")
-        run["operatorTaskName"] = ev.get("operatorTaskName", "")
+        run["benchmarkId"] = ev.get("benchmarkId", ev.get("agentId", ""))
+        run["benchmarkName"] = ev.get("benchmarkName", ev.get("agentName", ""))
+        run["agentId"] = run.get("agentId", "")
+        run["agentName"] = run.get("agentName", "")
+        run["agentTaskName"] = ev.get("agentTaskName", "")
     return {"runs": runs}
 
 
@@ -88,20 +156,25 @@ async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateReques
         {
             "$or": [
                 {"benchmarkId": benchmark_id},
-                {"operatorId": benchmark_id},
+                {"agentId": benchmark_id},
             ]
         },
         {"_id": 0},
     ).sort("createdAt", 1)
     evals = await eval_cursor.to_list(length=200)
     if not evals:
+        task_cursor = benchmark_tasks_collection.find({"benchmarkId": benchmark_id}, {"_id": 0}).sort("createdAt", 1)
+        tasks = await task_cursor.to_list(length=200)
+        benchmark = await benchmarks_collection.find_one({"benchmarkId": benchmark_id}, {"_id": 0}) or {}
+        evals = [_task_to_eval(task, benchmark) for task in tasks]
+    if not evals:
         raise HTTPException(status_code=404, detail="Benchmark not found")
 
     benchmark_run_id = str(uuid4())
     created = []
     now = datetime.now(timezone.utc).isoformat()
-    selected_operator_id = str(body.operatorId or "")
-    selected_operator_name = await _operator_name(selected_operator_id, body.operatorName)
+    selected_agent_id = str(body.agentId or "")
+    selected_agent_name = await _agent_name(selected_agent_id, body.agentName)
     for ev in evals:
         run_id = str(uuid4())
         doc = {
@@ -109,11 +182,11 @@ async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateReques
             "benchmarkRunId": benchmark_run_id,
             "evalId": ev.get("evalId", ""),
             "email": ev.get("email", ""),
-            "benchmarkId": ev.get("benchmarkId", ev.get("operatorId", "")),
-            "benchmarkName": ev.get("benchmarkName", ev.get("operatorName", "")),
-            "operatorId": selected_operator_id,
-            "operatorName": selected_operator_name,
-            "operatorTaskName": ev.get("operatorTaskName", ""),
+            "benchmarkId": ev.get("benchmarkId", ev.get("agentId", "")),
+            "benchmarkName": ev.get("benchmarkName", ev.get("agentName", "")),
+            "agentId": selected_agent_id,
+            "agentName": selected_agent_name,
+            "agentTaskName": ev.get("agentTaskName", ""),
             "sessionId": body.sessionId,
             "actions": [],
             "label": "pending",
@@ -127,7 +200,7 @@ async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateReques
                 "evalId": ev.get("evalId", ""),
                 "prompt": ev.get("prompt", ""),
                 "initialUrl": ev.get("initialUrl", ""),
-                "operatorTaskName": ev.get("operatorTaskName", ""),
+                "agentTaskName": ev.get("agentTaskName", ""),
             }
         )
     return {"success": True, "benchmarkRunId": benchmark_run_id, "runs": created}
@@ -136,6 +209,8 @@ async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateReques
 @router.get("/evals/{eval_id}")
 async def get_eval(eval_id: str):
     doc = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
+    if not doc:
+        doc = await _benchmark_task_eval(eval_id)
     if not doc:
         raise HTTPException(status_code=404, detail="Eval not found")
     return {"eval": doc}
@@ -183,21 +258,23 @@ async def create_run(eval_id: str, body: RunCreateRequest):
     # Verify eval exists
     ev = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
     if not ev:
+        ev = await _benchmark_task_eval(eval_id)
+    if not ev:
         raise HTTPException(status_code=404, detail="Eval not found")
 
     run_id = str(uuid4())
-    selected_operator_id = str(body.operatorId or "")
-    selected_operator_name = await _operator_name(selected_operator_id, body.operatorName)
+    selected_agent_id = str(body.agentId or "")
+    selected_agent_name = await _agent_name(selected_agent_id, body.agentName)
     doc = {
         "runId": run_id,
         "evalId": eval_id,
         "benchmarkRunId": "",
         "email": ev.get("email", ""),
-        "benchmarkId": ev.get("benchmarkId", ev.get("operatorId", "")),
-        "benchmarkName": ev.get("benchmarkName", ev.get("operatorName", "")),
-        "operatorId": selected_operator_id,
-        "operatorName": selected_operator_name,
-        "operatorTaskName": ev.get("operatorTaskName", ""),
+        "benchmarkId": ev.get("benchmarkId", ev.get("agentId", "")),
+        "benchmarkName": ev.get("benchmarkName", ev.get("agentName", "")),
+        "agentId": selected_agent_id,
+        "agentName": selected_agent_name,
+        "agentTaskName": ev.get("agentTaskName", ""),
         "sessionId": body.sessionId,
         "actions": [],
         "label": "pending",
@@ -237,6 +314,23 @@ async def update_run(eval_id: str, run_id: str, body: RunUpdateRequest):
     if result.matched_count == 0:
         raise HTTPException(status_code=404, detail="Run not found")
     return {"success": True}
+
+
+@router.post("/evals/{eval_id}/runs/{run_id}/judge")
+async def judge_run(eval_id: str, run_id: str, body: JudgeRunRequest):
+    ev = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
+    if not ev:
+        ev = await _benchmark_task_eval(eval_id)
+    run = await eval_runs_collection.find_one({"runId": run_id, "evalId": eval_id}, {"_id": 0})
+    if not ev or not run:
+        raise HTTPException(status_code=404, detail="Eval run not found")
+    judgement = await judge_eval_run(run=run, eval_doc=ev, user_context=body.userContext)
+    if body.apply:
+        await eval_runs_collection.update_one(
+            {"runId": run_id, "evalId": eval_id},
+            {"$set": {"label": judgement["label"], "judge": judgement}},
+        )
+    return {"success": True, "judgement": judgement}
 
 
 @router.delete("/evals/{eval_id}/runs/{run_id}")

@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.database import sessions_collection
+from app.database import sessions_collection, tool_runs_collection
 
 router = APIRouter()
 
@@ -23,14 +23,19 @@ def _bucket_key(dt: datetime, range_key: RangeKey) -> str:
     return dt.strftime("%Y-%m-%d")
 
 
-def _empty_buckets(range_key: RangeKey, now: datetime) -> list[str]:
-    delta = _RANGE_TO_DELTA[range_key]
+def _range_start(range_key: RangeKey, now: datetime) -> datetime:
     if range_key == "24h":
-        start = (now - delta).replace(minute=0, second=0, microsecond=0)
+        return now.replace(minute=0, second=0, microsecond=0) - timedelta(hours=23)
+    days = _RANGE_TO_DELTA[range_key].days
+    return now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=days - 1)
+
+
+def _empty_buckets(range_key: RangeKey, now: datetime) -> list[str]:
+    start = _range_start(range_key, now)
+    if range_key == "24h":
         return [(start + timedelta(hours=i)).strftime("%Y-%m-%dT%H:00") for i in range(24)]
-    days = delta.days
-    start = (now - delta).replace(hour=0, minute=0, second=0, microsecond=0)
-    return [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days + 1)]
+    days = _RANGE_TO_DELTA[range_key].days
+    return [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
 
 
 @router.get("/analytics")
@@ -44,7 +49,7 @@ async def get_analytics(
     """
     try:
         now = datetime.now(timezone.utc)
-        cutoff = now - _RANGE_TO_DELTA[range]
+        cutoff = _range_start(range, now)
 
         cursor = sessions_collection.find(
             {"email": email, "createdAt": {"$gte": cutoff}},
@@ -110,3 +115,9 @@ async def get_analytics(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/{agent_id}/runtime-events")
+async def list_agent_runtime_events(agent_id: str, limit: int = Query(100, ge=1, le=500)):
+    cursor = tool_runs_collection.find({"agentId": agent_id}, {"_id": 0}).sort("createdAt", -1).limit(limit)
+    return {"events": await cursor.to_list(length=limit)}

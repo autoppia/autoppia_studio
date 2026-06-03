@@ -36,7 +36,7 @@ class ApifiedCUA:
         history: Optional[List[Dict[str, Any]]] = None,
         state_in: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Call the autoppia_operator /act endpoint.
+        """Call the agent runtime /step endpoint.
 
         Returns the full response dict with tool_calls, done, content,
         reasoning, state_out, etc.
@@ -56,14 +56,12 @@ class ApifiedCUA:
 
         last_error = None
         async with httpx.AsyncClient(timeout=self.timeout) as client:
-            for path in ("/act", "/step"):
-                try:
-                    response = await client.post(f"{self.base_url}{path}", json=payload)
-                    response.raise_for_status()
-                    return response.json()
-                except Exception as e:
-                    logger.warning(f"Request to {path} failed ({type(e).__name__}): {e}")
-                    last_error = e
-                    continue
+            try:
+                response = await client.post(f"{self.base_url}/step", json=payload)
+                response.raise_for_status()
+                return response.json()
+            except Exception as e:
+                logger.warning(f"Request to /step failed ({type(e).__name__}): {e}")
+                last_error = e
 
         raise ConnectionError(f"CUA agent unreachable: {last_error}")

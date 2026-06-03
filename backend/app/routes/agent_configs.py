@@ -1,4 +1,5 @@
 import uuid
+import os
 from datetime import datetime, timezone
 from typing import Any, List
 
@@ -8,10 +9,11 @@ from pydantic import BaseModel, Field
 from app.database import (
     capabilities_collection,
     evals_collection,
-    operator_webs_collection,
-    operators_collection,
+    agent_webs_collection,
+    agents_collection,
     trajectories_collection,
 )
+from app.routes.agent_creation import ensure_agent_creation_job
 
 router = APIRouter()
 
@@ -23,7 +25,10 @@ AUTOCINEMA_TASKS = [
 ]
 
 AUTOCINEMA_URL = "http://84.247.180.192:8000"
-AUTOCINEMA_RUNTIME = "http://127.0.0.1:5060/act"
+AUTOCINEMA_RUNTIME = "http://127.0.0.1:5060/step"
+DEFAULT_AGENT_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", AUTOCINEMA_RUNTIME).strip()
+DEFAULT_AGENT_RUNTIME_TYPE = os.getenv("AUTOMATA_DEFAULT_RUNTIME_TYPE", "generalist_with_company_capabilities").strip()
+DEFAULT_RUNTIME_PROXY_BASE = os.getenv("AUTOMATA_RUNTIME_PROXY_BASE", "http://127.0.0.1:8080").rstrip("/")
 
 AUTOCINEMA_CAPABILITIES = [
     {"name": "login", "taskName": "Login", "description": "Log in to Autocinema with the bundled demo credentials."},
@@ -32,7 +37,7 @@ AUTOCINEMA_CAPABILITIES = [
 ]
 
 
-class OperatorTask(BaseModel):
+class AgentTask(BaseModel):
     name: str
     prompt: str
     successCriteria: str = ""
@@ -40,7 +45,7 @@ class OperatorTask(BaseModel):
     trajectoryId: str = ""
 
 
-class OperatorCreateRequest(BaseModel):
+class AgentConfigCreateRequest(BaseModel):
     email: str
     companyId: str = ""
     name: str
@@ -51,16 +56,18 @@ class OperatorCreateRequest(BaseModel):
     apiAuthHeaderName: str = ""
     apiAuthHeaderValue: str = ""
     successCriteria: str = ""
-    tasks: List[OperatorTask] = Field(default_factory=list)
+    tasks: List[AgentTask] = Field(default_factory=list)
 
 
-class OperatorBootstrapRequest(BaseModel):
+class AgentBootstrapRequest(BaseModel):
     email: str
 
 
-def _serialize_operator(doc: dict[str, Any]) -> dict[str, Any]:
+def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
+    agent_id = doc.get("agentId", "")
     return {
-        "operatorId": doc.get("operatorId", ""),
+        "agentId": agent_id,
+        "agentConfigId": agent_id,
         "email": doc.get("email", ""),
         "name": doc.get("name", ""),
         "websiteUrl": doc.get("websiteUrl", ""),
@@ -68,7 +75,7 @@ def _serialize_operator(doc: dict[str, Any]) -> dict[str, Any]:
         "runtimeType": doc.get("runtimeType", "replay"),
         "status": doc.get("status", "draft"),
         "trainingStatus": doc.get("trainingStatus", "not_started"),
-        "harvester": doc.get("harvester", "Automata Operator"),
+        "harvester": doc.get("harvester", "Automata Agent"),
         "companyId": doc.get("companyId", ""),
         "runtimeCapabilities": doc.get("runtimeCapabilities", {"browser": True, "apiCalls": True, "knowledge": False, "python": False}),
         "apiSpecUrl": doc.get("apiSpecUrl", ""),
@@ -81,17 +88,17 @@ def _serialize_operator(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-async def _ensure_operator_evals(
+async def _ensure_agent_evals(
     *,
     email: str,
-    operator_id: str,
-    operator_name: str,
+    agent_id: str,
+    agent_name: str,
     website_url: str,
     tasks: list[dict[str, Any]],
 ) -> list[str]:
     eval_ids: list[str] = []
     now = datetime.now(timezone.utc).isoformat()
-    benchmark_id = f"operator-{operator_id}"
+    benchmark_id = f"agent-{agent_id}"
     for task in tasks:
         prompt = str(task.get("prompt") or "").strip()
         if not prompt:
@@ -100,22 +107,22 @@ async def _ensure_operator_evals(
         result = await evals_collection.update_one(
             {
                 "email": email,
-                "operatorId": operator_id,
+                "agentId": agent_id,
                 "prompt": prompt,
             },
             {
                 "$set": {
                     "benchmarkId": benchmark_id,
-                    "benchmarkName": f"{operator_name} Benchmark",
+                    "benchmarkName": f"{agent_name} Benchmark",
                     "initialUrl": website_url,
                 },
                 "$setOnInsert": {
                     "evalId": eval_id,
                     "email": email,
                     "prompt": prompt,
-                    "operatorId": operator_id,
-                    "operatorName": operator_name,
-                    "operatorTaskName": str(task.get("name") or ""),
+                    "agentId": agent_id,
+                    "agentName": agent_name,
+                    "agentTaskName": str(task.get("name") or ""),
                     "createdAt": now,
                 }
             },
@@ -125,7 +132,7 @@ async def _ensure_operator_evals(
             eval_ids.append(eval_id)
         else:
             existing = await evals_collection.find_one(
-                {"email": email, "operatorId": operator_id, "prompt": prompt},
+                {"email": email, "agentId": agent_id, "prompt": prompt},
                 {"_id": 0, "evalId": 1},
             )
             if existing and existing.get("evalId"):
@@ -133,14 +140,14 @@ async def _ensure_operator_evals(
     return eval_ids
 
 
-async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str, Any]:
+async def _ensure_autocinema_assets(*, email: str, agent_id: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
-    web_id = f"autocinema-{operator_id}"
-    await operator_webs_collection.update_one(
+    web_id = f"autocinema-{agent_id}"
+    await agent_webs_collection.update_one(
         {"webId": web_id},
         {
             "$set": {
-                "operatorId": operator_id,
+                "agentId": agent_id,
                 "email": email,
                 "name": "Autocinema",
                 "baseUrl": AUTOCINEMA_URL,
@@ -154,13 +161,13 @@ async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str
 
     trajectory_ids_by_task: dict[str, str] = {}
     for task in AUTOCINEMA_TASKS:
-        trajectory_id = f"autocinema-{operator_id}-{task['name'].lower().replace(' ', '-')}"
+        trajectory_id = f"autocinema-{agent_id}-{task['name'].lower().replace(' ', '-')}"
         trajectory_ids_by_task[task["name"]] = trajectory_id
         await trajectories_collection.update_one(
             {"trajectoryId": trajectory_id},
             {
                 "$set": {
-                    "operatorId": operator_id,
+                    "agentId": agent_id,
                     "email": email,
                     "webId": web_id,
                     "taskName": task["name"],
@@ -178,12 +185,12 @@ async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str
         )
 
     for capability in AUTOCINEMA_CAPABILITIES:
-        capability_id = f"autocinema-{operator_id}-{capability['name']}"
+        capability_id = f"autocinema-{agent_id}-{capability['name']}"
         await capabilities_collection.update_one(
             {"capabilityId": capability_id},
             {
                 "$set": {
-                    "operatorId": operator_id,
+                    "agentId": agent_id,
                     "email": email,
                     "webId": web_id,
                     "name": capability["name"],
@@ -202,50 +209,53 @@ async def _ensure_autocinema_assets(*, email: str, operator_id: str) -> dict[str
     return {"webId": web_id, "trajectoryIds": list(trajectory_ids_by_task.values())}
 
 
-@router.get("/operators")
-async def get_operators(email: str, companyId: str = ""):
+@router.get("/agents")
+async def get_agents(email: str, companyId: str = ""):
     try:
         query: dict[str, Any] = {"email": email}
         if companyId:
             query["companyId"] = companyId
-        cursor = operators_collection.find(query).sort("createdAt", -1)
-        operators = []
+        cursor = agents_collection.find(query).sort("createdAt", -1)
+        agents = []
         async for doc in cursor:
-            operators.append(_serialize_operator(doc))
-        return {"operators": operators}
+            agents.append(_serialize_agent_config(doc))
+        return {"agents": agents}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.get("/operators/{operator_id}")
-async def get_operator(operator_id: str):
+@router.get("/agents/{agent_id}")
+async def get_agent(agent_id: str):
     try:
-        doc = await operators_collection.find_one({"operatorId": operator_id})
+        doc = await agents_collection.find_one({"agentId": agent_id})
         if not doc:
-            raise HTTPException(status_code=404, detail="Operator not found")
-        return {"operator": _serialize_operator(doc)}
+            raise HTTPException(status_code=404, detail="Agent not found")
+        agent = _serialize_agent_config(doc)
+        return {"agent": agent}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/operators")
-async def create_operator(body: OperatorCreateRequest):
+@router.post("/agents")
+async def create_agent(body: AgentConfigCreateRequest):
     try:
         now = datetime.now(timezone.utc)
-        operator_id = str(uuid.uuid4())
+        agent_id = str(uuid.uuid4())
+        runtime_endpoint = f"{DEFAULT_RUNTIME_PROXY_BASE}/runtime/agents/{agent_id}/step" if DEFAULT_AGENT_RUNTIME_ENDPOINT else ""
         doc = {
-            "operatorId": operator_id,
+            "agentId": agent_id,
             "email": body.email,
             "companyId": body.companyId,
             "name": body.name,
             "websiteUrl": body.websiteUrl,
-            "runtimeEndpoint": "",
-            "runtimeType": "pending",
-            "status": "draft",
+            "runtimeEndpoint": runtime_endpoint,
+            "baseRuntimeEndpoint": DEFAULT_AGENT_RUNTIME_ENDPOINT,
+            "runtimeType": DEFAULT_AGENT_RUNTIME_TYPE if DEFAULT_AGENT_RUNTIME_ENDPOINT else "pending",
+            "status": "ready" if DEFAULT_AGENT_RUNTIME_ENDPOINT else "draft",
             "trainingStatus": "needs_trajectories",
-            "harvester": "Automata Operator",
+            "harvester": "Automata Agent",
             "runtimeCapabilities": {
                 "browser": True,
                 "apiCalls": True,
@@ -269,12 +279,13 @@ async def create_operator(body: OperatorCreateRequest):
             "createdAt": now,
             "updatedAt": now,
         }
-        await operators_collection.insert_one(doc)
-        web_id = f"default-{operator_id}"
-        await operator_webs_collection.insert_one(
+        await agents_collection.insert_one(doc)
+        await ensure_agent_creation_job(doc)
+        web_id = f"default-{agent_id}"
+        await agent_webs_collection.insert_one(
             {
                 "webId": web_id,
-                "operatorId": operator_id,
+                "agentId": agent_id,
                 "email": body.email,
                 "name": body.name,
                 "baseUrl": body.websiteUrl,
@@ -290,7 +301,7 @@ async def create_operator(body: OperatorCreateRequest):
             await trajectories_collection.insert_one(
                 {
                     "trajectoryId": trajectory_id,
-                    "operatorId": operator_id,
+                    "agentId": agent_id,
                     "email": body.email,
                     "webId": web_id,
                     "taskName": task.name,
@@ -304,22 +315,22 @@ async def create_operator(body: OperatorCreateRequest):
                     "updatedAt": now.isoformat(),
                 }
             )
-        eval_ids = await _ensure_operator_evals(
+        eval_ids = await _ensure_agent_evals(
             email=body.email,
-            operator_id=operator_id,
-            operator_name=body.name,
+            agent_id=agent_id,
+            agent_name=body.name,
             website_url=body.websiteUrl,
             tasks=[task.model_dump() for task in body.tasks],
         )
-        return {"success": True, "operatorId": operator_id, "evalIds": eval_ids}
+        return {"success": True, "agentId": agent_id, "agentConfigId": agent_id, "evalIds": eval_ids}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/operators/bootstrap/autocinema")
-async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
+@router.post("/agents/bootstrap/autocinema")
+async def bootstrap_autocinema_agent(body: AgentBootstrapRequest):
     try:
-        existing = await operators_collection.find_one(
+        existing = await agents_collection.find_one(
             {"email": body.email, "name": "Autocinema"}
         )
         if existing:
@@ -329,7 +340,7 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
                 "runtimeType": "standard_replay_recovery",
                 "status": "ready",
                 "trainingStatus": "verified",
-                "harvester": "Automata Operator",
+                "harvester": "Automata Agent",
                 "runtimeCapabilities": {
                     "browser": True,
                     "apiCalls": True,
@@ -347,34 +358,35 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
                 "successCriteria": "IWA benchmark success for the matched Autocinema task.",
                 "updatedAt": datetime.now(timezone.utc),
             }
-            await operators_collection.update_one(
-                {"operatorId": existing.get("operatorId")},
+            await agents_collection.update_one(
+                {"agentId": existing.get("agentId")},
                 {"$set": updates},
             )
-            refreshed = await operators_collection.find_one({"operatorId": existing.get("operatorId")})
-            eval_ids = await _ensure_operator_evals(
+            refreshed = await agents_collection.find_one({"agentId": existing.get("agentId")})
+            eval_ids = await _ensure_agent_evals(
                 email=body.email,
-                operator_id=str(existing.get("operatorId") or ""),
-                operator_name="Autocinema",
+                agent_id=str(existing.get("agentId") or ""),
+                agent_name="Autocinema",
                 website_url=AUTOCINEMA_URL,
                 tasks=AUTOCINEMA_TASKS,
             )
             assets = await _ensure_autocinema_assets(
                 email=body.email,
-                operator_id=str(existing.get("operatorId") or ""),
+                agent_id=str(existing.get("agentId") or ""),
             )
             return {
                 "success": True,
-                "operatorId": existing.get("operatorId"),
-                "operator": _serialize_operator(refreshed or existing),
+                "agentId": existing.get("agentId"),
+                "agentConfigId": existing.get("agentId"),
+                "agent": _serialize_agent_config(refreshed or existing),
                 "evalIds": eval_ids,
                 "assets": assets,
             }
 
         now = datetime.now(timezone.utc)
-        operator_id = str(uuid.uuid4())
+        agent_id = str(uuid.uuid4())
         doc = {
-            "operatorId": operator_id,
+            "agentId": agent_id,
             "email": body.email,
             "name": "Autocinema",
             "websiteUrl": AUTOCINEMA_URL,
@@ -382,7 +394,7 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             "runtimeType": "standard_replay_recovery",
             "status": "ready",
             "trainingStatus": "verified",
-            "harvester": "Automata Operator",
+            "harvester": "Automata Agent",
             "companyId": "",
             "runtimeCapabilities": {
                 "browser": True,
@@ -402,19 +414,20 @@ async def bootstrap_autocinema_operator(body: OperatorBootstrapRequest):
             "createdAt": now,
             "updatedAt": now,
         }
-        await operators_collection.insert_one(doc)
-        eval_ids = await _ensure_operator_evals(
+        await agents_collection.insert_one(doc)
+        eval_ids = await _ensure_agent_evals(
             email=body.email,
-            operator_id=operator_id,
-            operator_name="Autocinema",
+            agent_id=agent_id,
+            agent_name="Autocinema",
             website_url=AUTOCINEMA_URL,
             tasks=AUTOCINEMA_TASKS,
         )
-        assets = await _ensure_autocinema_assets(email=body.email, operator_id=operator_id)
+        assets = await _ensure_autocinema_assets(email=body.email, agent_id=agent_id)
         return {
             "success": True,
-            "operatorId": operator_id,
-            "operator": _serialize_operator(doc),
+            "agentId": agent_id,
+            "agentConfigId": agent_id,
+            "agent": _serialize_agent_config(doc),
             "evalIds": eval_ids,
             "assets": assets,
         }

@@ -11,8 +11,8 @@ from app.database import (
     eval_runs_collection,
     evals_collection,
     connectors_collection,
-    operator_webs_collection,
-    operators_collection,
+    agent_webs_collection,
+    agents_collection,
     trajectories_collection,
 )
 
@@ -129,22 +129,22 @@ async def delete_company(company_id: str):
         company = await companies_collection.find_one({"companyId": company_id}, {"_id": 0})
         if not company:
             raise HTTPException(status_code=404, detail="Company not found")
-        operator_docs = await operators_collection.find(
+        agent_docs = await agents_collection.find(
             {"companyId": company_id},
-            {"_id": 0, "operatorId": 1},
+            {"_id": 0, "agentId": 1},
         ).to_list(length=500)
-        operator_ids = [doc.get("operatorId") for doc in operator_docs if doc.get("operatorId")]
-        if operator_ids:
-            await operator_webs_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await trajectories_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await capabilities_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await evals_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await eval_runs_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await operators_collection.delete_many({"operatorId": {"$in": operator_ids}})
+        agent_ids = [doc.get("agentId") for doc in agent_docs if doc.get("agentId")]
+        if agent_ids:
+            await agent_webs_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await trajectories_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await capabilities_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await evals_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await eval_runs_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await agents_collection.delete_many({"agentId": {"$in": agent_ids}})
         await connectors_collection.delete_many({"companyId": company_id})
         await companies_collection.delete_one({"companyId": company_id})
         await _ensure_default_company(str(company.get("email") or ""))
-        return {"success": True, "deletedOperators": len(operator_ids)}
+        return {"success": True, "deletedAgents": len(agent_ids)}
     except HTTPException:
         raise
     except Exception as e:
@@ -154,22 +154,22 @@ async def delete_company(company_id: str):
 @router.post("/demo/celeris/reset")
 async def reset_celeris_demo(body: DemoResetRequest):
     try:
-        operator_docs = await operators_collection.find(
+        agent_docs = await agents_collection.find(
             {"email": body.email, "name": {"$regex": "celer[ií]s|celeris", "$options": "i"}},
-            {"_id": 0, "operatorId": 1},
+            {"_id": 0, "agentId": 1},
         ).to_list(length=100)
-        operator_ids = [doc.get("operatorId") for doc in operator_docs if doc.get("operatorId")]
-        if operator_ids:
-            await operator_webs_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await trajectories_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await capabilities_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await evals_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await eval_runs_collection.delete_many({"operatorId": {"$in": operator_ids}})
-            await operators_collection.delete_many({"operatorId": {"$in": operator_ids}})
+        agent_ids = [doc.get("agentId") for doc in agent_docs if doc.get("agentId")]
+        if agent_ids:
+            await agent_webs_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await trajectories_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await capabilities_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await evals_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await eval_runs_collection.delete_many({"agentId": {"$in": agent_ids}})
+            await agents_collection.delete_many({"agentId": {"$in": agent_ids}})
         await companies_collection.delete_many(
             {"email": body.email, "name": {"$regex": "celer[ií]s|celeris", "$options": "i"}}
         )
         await connectors_collection.delete_many({"email": body.email, "name": {"$regex": "gmail|holded|telegram|bopa|document", "$options": "i"}})
-        return {"success": True, "deletedOperators": len(operator_ids)}
+        return {"success": True, "deletedAgents": len(agent_ids)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

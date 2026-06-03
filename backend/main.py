@@ -1,4 +1,5 @@
 import sys
+import os
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -10,15 +11,18 @@ _backend_dir = str(Path(__file__).resolve().parent)
 sys.path.insert(0, _backend_dir)
 import agent.browser_executor  # noqa: F401 — warm import; keeps `agent` from sys.path races
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 import socketio
 
 from app.middleware import verify_api_key
+from app.api_errors import error_payload
 from app.database import ensure_indexes
 from app.sio_app import sio
-from app.routes.api import agents, operator
+from app.routes.api import agents, legacy_tasks
 from app.routes import auth as auth_routes
 from app.routes import user as user_routes
 from app.routes import session as session_routes
@@ -26,19 +30,41 @@ from app.routes import profile as profile_routes
 from app.routes import api_keys as api_keys_routes
 from app.routes import companies as companies_routes
 from app.routes import connectors as connectors_routes
+from app.routes import credentials as credentials_routes
+from app.routes import capabilities as capabilities_routes
 from app.routes import knowledge as knowledge_routes
 from app.routes import onboarding as onboarding_routes
 from app.routes import skills as skills_routes
-from app.routes import operators as operators_routes
-from app.routes import operator_assets as operator_assets_routes
+from app.routes import agent_configs as agent_configs_routes
+from app.routes import agent_assets as agent_assets_routes
 from app.routes import toolkits as toolkits_routes
 from app.routes import evals as evals_routes
 from app.routes import analytics as analytics_routes
+from app.routes import agent_creation as agent_creation_routes
+from app.routes import runtime as runtime_routes
+from app.routes import validator_rounds as validator_rounds_routes
+
+def _production_mode() -> bool:
+    return os.getenv("AUTOMATA_ENV", os.getenv("ENVIRONMENT", os.getenv("APP_ENV", ""))).strip().lower() in {
+        "prod",
+        "production",
+    }
+
+
+_hide_internal_openapi = _production_mode() or os.getenv("AUTOMATA_HIDE_INTERNAL_OPENAPI", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}
+
 
 fastapi_app = FastAPI(
     title="Automata API",
-    description="This is API for Automata Web Operator",
+    description="This is API for Automata Agents",
     version="1.0.0",
+    openapi_url=None if _hide_internal_openapi else "/openapi.json",
+    docs_url=None if _hide_internal_openapi else "/docs",
+    redoc_url=None if _hide_internal_openapi else "/redoc",
 )
 
 fastapi_app.add_middleware(
@@ -49,8 +75,14 @@ fastapi_app.add_middleware(
     allow_headers=["*"],
 )
 
-fastapi_app.include_router(operator.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
-fastapi_app.include_router(agents.router, prefix="/api/v1", dependencies=[Depends(verify_api_key)])
+fastapi_app.include_router(
+    legacy_tasks.router,
+    prefix="/api/v1",
+    dependencies=[Depends(verify_api_key)],
+    include_in_schema=False,
+    deprecated=True,
+)
+fastapi_app.include_router(agents.router, prefix="/api/v1")
 
 # Web routes (no API key required — used by the frontend)
 fastapi_app.include_router(auth_routes.router)
@@ -60,19 +92,64 @@ fastapi_app.include_router(profile_routes.router)
 fastapi_app.include_router(api_keys_routes.router)
 fastapi_app.include_router(companies_routes.router)
 fastapi_app.include_router(connectors_routes.router)
+fastapi_app.include_router(credentials_routes.router)
+fastapi_app.include_router(capabilities_routes.router)
 fastapi_app.include_router(knowledge_routes.router)
 fastapi_app.include_router(onboarding_routes.router)
 fastapi_app.include_router(skills_routes.router)
-fastapi_app.include_router(operators_routes.router)
-fastapi_app.include_router(operator_assets_routes.router)
+fastapi_app.include_router(agent_configs_routes.router)
+fastapi_app.include_router(agent_assets_routes.router)
 fastapi_app.include_router(toolkits_routes.router)
 fastapi_app.include_router(evals_routes.router)
 fastapi_app.include_router(analytics_routes.router)
+fastapi_app.include_router(agent_creation_routes.router)
+fastapi_app.include_router(runtime_routes.router)
+fastapi_app.include_router(validator_rounds_routes.router)
 
 
 @fastapi_app.get("/health")
 async def health_check():
     return {"status": "ok"}
+
+
+@fastapi_app.get("/openapi-public.json", include_in_schema=False)
+async def public_openapi():
+    schema = get_openapi(
+        title="Automata Public Agent API",
+        version="1.0.0",
+        description="Public API for listing owned agents, inspecting runtime contracts, and executing /step.",
+        routes=fastapi_app.routes,
+    )
+    public_paths = {
+        path: methods
+        for path, methods in schema.get("paths", {}).items()
+        if path.startswith("/api/v1/agents")
+    }
+    schema["paths"] = public_paths
+    schema["components"] = schema.get("components") or {}
+    schema["components"]["securitySchemes"] = {
+        "ApiKeyAuth": {"type": "apiKey", "in": "header", "name": "x-api-key"}
+    }
+    for methods in schema["paths"].values():
+        for operation in methods.values():
+            if isinstance(operation, dict):
+                operation["security"] = [{"ApiKeyAuth": []}]
+    return schema
+
+
+@fastapi_app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    detail = exc.detail
+    if isinstance(detail, dict) and "error" in detail:
+        payload = detail
+    elif request.url.path.startswith("/api/v1"):
+        payload = error_payload(
+            code=str(exc.status_code),
+            message=str(detail or exc.status_code),
+        )
+    else:
+        payload = {"detail": detail}
+    return JSONResponse(status_code=exc.status_code, content=payload, headers=getattr(exc, "headers", None))
 
 
 @fastapi_app.on_event("startup")

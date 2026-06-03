@@ -5,9 +5,9 @@ import time
 import socketio
 from pathlib import Path
 
-from agent.autoppia_operator import AutoppiaOperator, _execute_tool_call
+from agent.autoppia_agent import AutoppiaAgent, _execute_tool_call
 from agent.browser_executor import BrowserExecutor
-from app.database import operators_collection
+from app.database import agents_collection
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -24,15 +24,15 @@ storage_state_dir = home_dir / ".automata" / "storage_states"
 storage_state_dir.mkdir(parents=True, exist_ok=True)
 
 
-async def _agent_base_url_for_operator(operator_id: str) -> str:
-    if not operator_id:
+async def _agent_base_url_for_agent(agent_id: str) -> str:
+    if not agent_id:
         return ""
-    operator = await operators_collection.find_one({"operatorId": operator_id}, {"_id": 0, "runtimeEndpoint": 1, "status": 1})
-    if not operator:
-        raise ValueError("Selected operator was not found.")
-    endpoint = str(operator.get("runtimeEndpoint") or "").strip()
+    agent_config = await agents_collection.find_one({"agentId": agent_id}, {"_id": 0, "runtimeEndpoint": 1, "status": 1})
+    if not agent_config:
+        raise ValueError("Selected agent was not found.")
+    endpoint = str(agent_config.get("runtimeEndpoint") or "").strip()
     if not endpoint:
-        raise ValueError("Selected operator is not deployed yet.")
+        raise ValueError("Selected agent is not deployed yet.")
     return endpoint
 
 
@@ -46,12 +46,13 @@ async def start_task(sid, data):
     task = data.get("task")
     initial_url = data.get("initial_url")
     context_id = data.get("context_id", "")
-    operator_id = data.get("operator_id", "")
+    agent_id = data.get("agent_id", "")
+    browser_mode = data.get("browser_mode", "")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
         return
 
-    logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}, Operator ID: {operator_id}")
+    logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}, Agent ID: {agent_id}")
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -69,25 +70,26 @@ async def start_task(sid, data):
             to=sid,
         )
 
-        operator = AutoppiaOperator()
-        agent_base_url = await _agent_base_url_for_operator(operator_id)
-        await operator.initialize(
+        agent_config = AutoppiaAgent()
+        agent_base_url = await _agent_base_url_for_agent(agent_id)
+        await agent_config.initialize(
             task,
             initial_url,
             storage_state_path,
             context_id=context_id,
             agent_base_url=agent_base_url,
+            browser_mode=browser_mode,
         )
 
-        sessions[sid] = operator
+        sessions[sid] = agent_config
 
         # Send the Browserbase live URL to the frontend for iframe embedding
-        live_url = operator.get_live_url()
+        live_url = agent_config.get_live_url()
         if live_url:
             await sio.emit("live_url", {"url": live_url}, to=sid)
 
         # Send initial tabs list
-        await _emit_tabs(sid, operator)
+        await _emit_tabs(sid, agent_config)
 
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
@@ -104,12 +106,12 @@ async def continue_task(sid, data):
 
     logger.info(f"Continuing task: {task}")
 
-    operator = sessions.get(sid)
-    if not operator:
+    agent_config = sessions.get(sid)
+    if not agent_config:
         await sio.emit("error", {"message": "No existing session for this sid"}, to=sid)
         return
 
-    await operator.add_new_task(task, preserve_history=True)
+    await agent_config.add_new_task(task, preserve_history=True)
     running_tasks[sid] = asyncio.create_task(_perform_task(sid))
 
 
@@ -145,23 +147,23 @@ async def resume_task(sid, data):
             to=sid,
         )
 
-        operator = AutoppiaOperator()
+        agent_config = AutoppiaAgent()
 
         # Initialize with the saved lastUrl as the starting URL
-        await operator.initialize(task, last_url, storage_state_path, context_id=context_id)
+        await agent_config.initialize(task, last_url, storage_state_path, context_id=context_id, browser_mode=data.get("browser_mode", ""))
 
         # Pre-load action history so CUA has context of previous actions
         if action_history:
-            operator.history = action_history
-            operator.step_index = len(action_history)
+            agent_config.history = action_history
+            agent_config.step_index = len(action_history)
 
-        sessions[sid] = operator
+        sessions[sid] = agent_config
 
-        live_url = operator.get_live_url()
+        live_url = agent_config.get_live_url()
         if live_url:
             await sio.emit("live_url", {"url": live_url}, to=sid)
 
-        await _emit_tabs(sid, operator)
+        await _emit_tabs(sid, agent_config)
 
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
@@ -179,18 +181,18 @@ async def stop_task(sid, data=None):
     if task:
         task.cancel()
 
-    operator = sessions.get(sid)
+    agent_config = sessions.get(sid)
     result = {
         "content": "Task stopped by user",
         "success": False,
     }
-    if operator:
+    if agent_config:
         try:
-            result["lastUrl"] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = agent_config.browser_executor.get_current_url()
         except Exception:
             pass
-        result["actionHistory"] = getattr(operator, "history", [])
-        result["screenshots"] = getattr(operator, "screenshots", [])
+        result["actionHistory"] = getattr(agent_config, "history", [])
+        result["screenshots"] = getattr(agent_config, "screenshots", [])
 
         # Start keep-alive to keep browser session open
         old_ka = keepalive_tasks.pop(sid, None)
@@ -231,23 +233,23 @@ async def play_actions(sid, data):
             to=sid,
         )
 
-        operator = AutoppiaOperator()
-        await operator.initialize("Skill playback", initial_url, storage_state_path, context_id=context_id)
-        sessions[sid] = operator
+        agent_config = AutoppiaAgent()
+        await agent_config.initialize("Skill playback", initial_url, storage_state_path, context_id=context_id, browser_mode=data.get("browser_mode", ""))
+        sessions[sid] = agent_config
 
-        live_url = operator.get_live_url()
+        live_url = agent_config.get_live_url()
         if live_url:
             await sio.emit("live_url", {"url": live_url}, to=sid)
 
-        await _emit_tabs(sid, operator)
+        await _emit_tabs(sid, agent_config)
 
         # Wire up tab-change callback so frontend updates tab bar on navigation
         async def on_tab_change_play():
-            await _emit_tabs(sid, operator)
+            await _emit_tabs(sid, agent_config)
 
-        operator.browser_executor.set_on_tab_change(on_tab_change_play)
+        agent_config.browser_executor.set_on_tab_change(on_tab_change_play)
 
-        page = operator.browser_executor.page
+        page = agent_config.browser_executor.page
         history = []
         previous_success = True
 
@@ -292,11 +294,11 @@ async def play_actions(sid, data):
             "success": previous_success,
         }
         try:
-            result["lastUrl"] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = agent_config.browser_executor.get_current_url()
         except Exception:
             pass
         result["actionHistory"] = history
-        result["screenshots"] = getattr(operator, "screenshots", [])
+        result["screenshots"] = getattr(agent_config, "screenshots", [])
 
         await sio.emit("result", result, to=sid)
 
@@ -456,7 +458,7 @@ async def start_record(sid, data):
         )
 
         be = BrowserExecutor()
-        await be.initialize(initial_url=initial_url, storage_state_path=storage_state_path, context_id=context_id)
+        await be.initialize(initial_url=initial_url, storage_state_path=storage_state_path, context_id=context_id, browser_mode=data.get("browser_mode", ""))
 
         sessions[sid] = {"browser_executor": be, "recording": True}
         recording_actions[sid] = []
@@ -764,10 +766,10 @@ async def disconnect(sid):
         del sessions[sid]
 
 
-async def _emit_tabs(sid, operator):
+async def _emit_tabs(sid, agent_config):
     """Emit the current tabs list to the frontend."""
     try:
-        be = getattr(operator, "browser_executor", None)
+        be = getattr(agent_config, "browser_executor", None)
         if be:
             tabs = be.get_tabs()
             active_index = be.get_active_page_index()
@@ -782,10 +784,10 @@ async def _keepalive_loop(sid, interval=30):
     try:
         while True:
             await asyncio.sleep(interval)
-            operator = sessions.get(sid)
-            if not operator:
+            agent_config = sessions.get(sid)
+            if not agent_config:
                 break
-            alive = await operator.browser_executor.keep_alive_ping()
+            alive = await agent_config.browser_executor.keep_alive_ping()
             if not alive:
                 logger.warning(f"Keep-alive ping failed for {sid}, stopping loop")
                 break
@@ -794,44 +796,51 @@ async def _keepalive_loop(sid, interval=30):
 
 
 async def _perform_task(sid, max_steps=25):
-    operator = sessions[sid]
+    agent_config = sessions[sid]
 
     # Emit each action before it executes (with reasoning and previous_success)
-    async def on_action(reasoning: str | None, action: str, previous_success: bool):
+    async def on_action(reasoning: str | None, action: str, previous_success: bool, metadata: dict | None = None):
         payload = {"action": action, "previous_success": previous_success}
         if reasoning:
             payload["reasoning"] = reasoning
+        if metadata:
+            payload.update(metadata)
         await sio.emit("action", payload, to=sid)
 
-    operator.set_on_action(on_action)
+    agent_config.set_on_action(on_action)
+
+    async def on_screenshot(screenshot: str):
+        await sio.emit("screenshot", {"screenshot": screenshot}, to=sid)
+
+    agent_config.set_on_screenshot(on_screenshot)
 
     # Wire up tab-change callback so frontend updates tab bar on new tab / close
     async def on_tab_change():
-        await _emit_tabs(sid, operator)
+        await _emit_tabs(sid, agent_config)
 
-    operator.browser_executor.set_on_tab_change(on_tab_change)
+    agent_config.browser_executor.set_on_tab_change(on_tab_change)
 
     try:
         # Check CUA availability before running steps
-        if not await operator.cua.health_check():
+        if not await agent_config.cua.health_check():
             await sio.emit("error", {"message": "Agent is not working. Please try again later."}, to=sid)
             return
 
         for _ in range(max_steps):
-            done, _valid = await operator.take_step()
+            done, _valid = await agent_config.take_step()
 
             if done:
                 break
 
-        result = operator.get_result()
+        result = agent_config.get_result()
 
         # Attach lastUrl and actionHistory for session persistence and resume
         try:
-            result["lastUrl"] = operator.browser_executor.get_current_url()
+            result["lastUrl"] = agent_config.browser_executor.get_current_url()
         except Exception as e:
             logger.warning(f"Failed to get current URL: {e}")
-        result["actionHistory"] = operator.history
-        result["screenshots"] = operator.screenshots or []
+        result["actionHistory"] = agent_config.history
+        result["screenshots"] = agent_config.screenshots or []
 
         await sio.emit("result", result, to=sid)
 

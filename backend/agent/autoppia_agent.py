@@ -145,11 +145,15 @@ async def _execute_tool_call(page, tool_call: dict) -> None:
         wait_time = float(args.get("seconds", args.get("time_seconds", 1.0)))
         await asyncio.sleep(wait_time)
 
-    elif name == "browser.select_dropdown":
-        selector = _resolve_selector(args)
-        text = args.get("text", "")
-        if selector and text:
-            await page.select_option(selector, label=text, timeout=5000)
+    elif name in ("browser.select_dropdown", "browser.select_option"):
+        text = args.get("text", args.get("value", ""))
+        selector_arg = args.get("selector") if isinstance(args.get("selector"), dict) else {}
+        if selector_arg.get("type") == "role" and selector_arg.get("value") and text:
+            await page.get_by_role(selector_arg["value"]).select_option(label=text, timeout=5000)
+        else:
+            selector = _resolve_selector(args)
+            if selector and text:
+                await page.select_option(selector, label=text, timeout=5000)
 
     elif name == "browser.send_keys":
         keys = args.get("keys", "")
@@ -168,14 +172,14 @@ async def _execute_tool_call(page, tool_call: dict) -> None:
         if script:
             await page.evaluate(script)
 
-    elif name in ("browser.screenshot", "browser.done", "browser.finish", "browser.extract", "browser.dropdown_options"):
+    elif name in ("browser.screenshot", "browser.snapshot", "browser.done", "browser.finish", "browser.extract", "browser.dropdown_options"):
         pass  # handled at the step level or no-op
 
     else:
         logger.warning(f"Unknown tool_call name: {name}")
 
 
-class AutoppiaOperator:
+class AutoppiaAgent:
     def __init__(self):
         self.task_id = str(uuid.uuid4())
         self.step_index = 0
@@ -190,13 +194,21 @@ class AutoppiaOperator:
         self.browser_executor = None
         self._last_thought = None
         self._on_action = None
-        self._state = {}  # state roundtrip for autoppia_operator
+        self._on_screenshot = None
+        self._state = {}  # state roundtrip for the external agent runtime
+        self._active_skill_id = None
 
     def set_on_action(self, callback):
         """Called before each action is executed.
-        Signature: async callback(reasoning: str | None, action: str, previous_success: bool)
+        Signature: async callback(reasoning: str | None, action: str, previous_success: bool, metadata: dict | None = None)
         """
         self._on_action = callback
+
+    def set_on_screenshot(self, callback):
+        """Called after a screenshot is captured.
+        Signature: async callback(screenshot_base64: str)
+        """
+        self._on_screenshot = callback
 
     async def initialize(
         self,
@@ -205,6 +217,7 @@ class AutoppiaOperator:
         storage_state_path: Path = None,
         context_id: str = "",
         agent_base_url: str = "",
+        browser_mode: str = "",
     ) -> None:
         self.task = task
         self.initial_url = initial_url
@@ -214,9 +227,7 @@ class AutoppiaOperator:
         if not base_url:
             raise ValueError("AUTOPPIA_AGENT_BASE_URL environment variable is not set.")
 
-        if base_url.endswith("/act"):
-            base_url = base_url[:-4]
-        elif base_url.endswith("/step"):
+        if base_url.endswith("/step"):
             base_url = base_url[:-5]
 
         self.cua = ApifiedCUA(base_url=base_url)
@@ -225,6 +236,7 @@ class AutoppiaOperator:
             initial_url=initial_url,
             storage_state_path=storage_state_path,
             context_id=context_id,
+            browser_mode=browser_mode,
         )
 
     async def take_step(self) -> tuple[bool, bool]:
@@ -236,7 +248,16 @@ class AutoppiaOperator:
 
         try:
             url = self.browser_executor.get_current_url()
-            snapshot_html = await self.browser_executor.get_snapshot_html()
+            snapshot_html = ""
+            for attempt in range(3):
+                try:
+                    snapshot_html = await self.browser_executor.get_snapshot_html()
+                    break
+                except Exception as e:
+                    if attempt == 2:
+                        raise
+                    logger.warning(f"Snapshot read failed while page was changing; retrying: {e}")
+                    await asyncio.sleep(0.5)
 
             response = await self.cua.act(
                 task_id=self.task_id,
@@ -248,15 +269,30 @@ class AutoppiaOperator:
                 state_in=self._state,
             )
 
-            # Log the full /act response for debugging
+            # Log the full /step response for debugging
             log_resp = {k: v for k, v in response.items() if k not in ("state_out", "snapshot_html")}
-            logger.info(f"/act response: {log_resp}")
+            logger.info(f"/step response: {log_resp}")
 
             tool_calls = [_normalize_tool_call(tc) for tc in response.get("tool_calls", [])]
             reasoning = response.get("reasoning")
             content = response.get("content")
             done = response.get("done", False)
             state_out = response.get("state_out", {})
+            capability_match = response.get("capability_match") if isinstance(response.get("capability_match"), dict) else None
+
+            if capability_match and self._on_action:
+                skill_id = str(capability_match.get("skillId") or "")
+                if skill_id and skill_id != self._active_skill_id:
+                    self._active_skill_id = skill_id
+                    try:
+                        await self._on_action(
+                            f"Using approved skill: {capability_match.get('name') or skill_id}",
+                            "skill.use",
+                            True,
+                            {"skill": capability_match},
+                        )
+                    except Exception as e:
+                        logger.error(f"Error in on_action callback: {e}")
 
             # Update state for next roundtrip
             self._state = state_out
@@ -264,9 +300,10 @@ class AutoppiaOperator:
             # Extract action names for the step callback
             action_names = [tc.get("name", "unknown") for tc in tool_calls]
 
-            # Task done — no actions to execute
-            if done or not tool_calls:
-                logger.info("Task done — operator signalled completion")
+            # Task done with no actions to execute. If the runtime returns
+            # done=true alongside tool calls, execute those calls first.
+            if done and not tool_calls:
+                logger.info("Task done — agent signalled completion")
                 self.result = {
                     "content": content or "Task completed",
                     "success": True,
@@ -278,6 +315,20 @@ class AutoppiaOperator:
                         logger.error(f"Error in on_action callback: {e}")
                 self.step_index += 1
                 return True, True
+
+            if not tool_calls:
+                logger.info("Task stopped — agent returned no tool calls")
+                self.result = {
+                    "content": content or "Task completed",
+                    "success": bool(done),
+                }
+                if self._on_action and reasoning:
+                    try:
+                        await self._on_action(reasoning, "browser.done" if done else "browser.wait", True)
+                    except Exception as e:
+                        logger.error(f"Error in on_action callback: {e}")
+                self.step_index += 1
+                return True, bool(done)
 
             # Store thought
             self._last_thought = {
@@ -334,10 +385,23 @@ class AutoppiaOperator:
                         screenshot = await self.browser_executor.screenshot()
                         if screenshot:
                             self.screenshots.append(screenshot)
+                            if self._on_screenshot:
+                                await self._on_screenshot(screenshot)
                     except Exception as e:
                         logger.error(f"Error taking screenshot: {e}")
 
             self.step_index += 1
+            if done:
+                self.result = {
+                    "content": content or "Task completed",
+                    "success": True,
+                }
+                if self._on_action and reasoning:
+                    try:
+                        await self._on_action(reasoning, "browser.done", previous_success)
+                    except Exception as e:
+                        logger.error(f"Error in on_action callback: {e}")
+                return True, executed_any
             return False, executed_any
 
         except ConnectionError as e:

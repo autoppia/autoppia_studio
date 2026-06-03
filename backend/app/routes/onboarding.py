@@ -14,10 +14,11 @@ from app.database import (
     connectors_collection,
     evals_collection,
     onboarding_sessions_collection,
-    operator_webs_collection,
-    operators_collection,
+    agent_webs_collection,
+    agents_collection,
     trajectories_collection,
 )
+from app.routes.agent_creation import ensure_agent_creation_job
 
 router = APIRouter()
 
@@ -84,6 +85,49 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
         "category": "knowledge",
         "description": "Company knowledge connector for uploaded PDFs and internal sources.",
     },
+    "slack": {"name": "Slack", "type": "slack", "category": "communication", "description": "Slack connector for channels, messages and team workflows."},
+    "discord": {"name": "Discord", "type": "discord", "category": "communication", "description": "Discord connector for channels and messages."},
+    "matrix": {"name": "Matrix", "type": "matrix", "category": "communication", "description": "Matrix connector for rooms and messages."},
+    "signal": {"name": "Signal", "type": "signal", "category": "communication", "description": "Signal connector via signal-cli REST bridge."},
+    "teams": {"name": "Microsoft Teams", "type": "teams", "category": "communication", "description": "Microsoft Teams connector for channels and messages."},
+    "whatsapp": {"name": "WhatsApp Cloud", "type": "whatsapp", "category": "communication", "description": "WhatsApp Cloud connector for approved customer messages."},
+    "github": {"name": "GitHub", "type": "github", "category": "development", "description": "GitHub connector for repositories, issues and pull requests."},
+    "gitlab": {"name": "GitLab", "type": "gitlab", "category": "development", "description": "GitLab connector for projects, issues and merge requests."},
+    "jira": {"name": "Jira", "type": "jira", "category": "development", "description": "Jira connector for projects, issues and workflows."},
+    "linear": {"name": "Linear", "type": "linear", "category": "software", "description": "Linear connector for teams, issues and product workflows."},
+    "notion": {"name": "Notion", "type": "notion", "category": "software", "description": "Notion connector for pages, databases and knowledge workflows."},
+    "trello": {"name": "Trello", "type": "trello", "category": "software", "description": "Trello connector for boards, lists and cards."},
+    "asana": {"name": "Asana", "type": "asana", "category": "software", "description": "Asana connector for projects, tasks and workspaces."},
+    "confluence": {"name": "Confluence", "type": "confluence", "category": "software", "description": "Confluence connector for spaces, pages and documentation."},
+    "google calendar": {"name": "Google Calendar", "type": "google_calendar", "category": "software", "description": "Google Calendar connector for events and scheduling."},
+    "google_calendar": {"name": "Google Calendar", "type": "google_calendar", "category": "software", "description": "Google Calendar connector for events and scheduling."},
+    "calendar": {"name": "Google Calendar", "type": "google_calendar", "category": "software", "description": "Google Calendar connector for events and scheduling."},
+    "google drive": {"name": "Google Drive", "type": "google_drive", "category": "software", "description": "Google Drive connector for files and folders."},
+    "google_drive": {"name": "Google Drive", "type": "google_drive", "category": "software", "description": "Google Drive connector for files and folders."},
+    "drive": {"name": "Google Drive", "type": "google_drive", "category": "software", "description": "Google Drive connector for files and folders."},
+    "aws": {"name": "AWS", "type": "aws", "category": "cloud", "description": "AWS connector for cloud resources and operations."},
+    "runpod": {"name": "RunPod", "type": "runpod", "category": "cloud", "description": "RunPod connector for GPU pods and templates."},
+    "contabo": {"name": "Contabo", "type": "contabo", "category": "cloud", "description": "Contabo connector for cloud instances."},
+    "cloudflare": {"name": "Cloudflare", "type": "cloudflare", "category": "cloud", "description": "Cloudflare connector for zones, DNS and edge configuration."},
+    "kubernetes": {"name": "Kubernetes", "type": "kubernetes", "category": "cloud", "description": "Kubernetes connector for cluster resources."},
+    "k8s": {"name": "Kubernetes", "type": "kubernetes", "category": "cloud", "description": "Kubernetes connector for cluster resources."},
+    "postgres": {"name": "Postgres", "type": "postgres", "category": "data", "description": "Postgres connector for SQL queries and database workflows."},
+    "postgresql": {"name": "Postgres", "type": "postgres", "category": "data", "description": "Postgres connector for SQL queries and database workflows."},
+    "mongodb": {"name": "MongoDB", "type": "mongodb", "category": "data", "description": "MongoDB connector for collections and documents."},
+    "mongo": {"name": "MongoDB", "type": "mongodb", "category": "data", "description": "MongoDB connector for collections and documents."},
+    "openai": {"name": "OpenAI", "type": "openai", "category": "api", "description": "OpenAI connector for model and API workflows."},
+    "weather": {"name": "Weather", "type": "weather", "category": "api", "description": "Weather connector for current conditions and forecasts."},
+    "google search": {"name": "Google Custom Search", "type": "google", "category": "api", "description": "Google Custom Search connector for web search."},
+    "taostats": {"name": "TaoStats", "type": "taostats", "category": "bittensor", "description": "TaoStats connector for Bittensor metrics."},
+    "twitter": {"name": "Twitter/X", "type": "twitter", "category": "social", "description": "Twitter/X connector for social monitoring and posting workflows."},
+    "x": {"name": "Twitter/X", "type": "twitter", "category": "social", "description": "Twitter/X connector for social monitoring and posting workflows."},
+    "twitterapi": {"name": "twitterapi.io", "type": "twitterapi", "category": "social", "description": "twitterapi.io connector for Twitter/X API workflows."},
+    "bittensor": {"name": "Bittensor Directory", "type": "bittensor_directory", "category": "bittensor", "description": "Bittensor Directory connector for subnet metadata."},
+    "bittensor directory": {"name": "Bittensor Directory", "type": "bittensor_directory", "category": "bittensor", "description": "Bittensor Directory connector for subnet metadata."},
+    "chutes": {"name": "Bittensor Chutes", "type": "bittensor_chutes", "category": "bittensor", "description": "Bittensor Chutes connector."},
+    "computehorde": {"name": "Bittensor ComputeHorde", "type": "bittensor_computehorde", "category": "bittensor", "description": "Bittensor ComputeHorde connector."},
+    "desearch": {"name": "Bittensor Desearch", "type": "bittensor_desearch", "category": "bittensor", "description": "Bittensor Desearch connector."},
+    "datauniverse": {"name": "Bittensor DataUniverse", "type": "bittensor_datauniverse", "category": "bittensor", "description": "Bittensor DataUniverse connector."},
 }
 
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
@@ -101,13 +145,107 @@ SYSTEM_STOPWORDS = {
     "Tasks",
 }
 ONBOARDING_MODEL = os.getenv("OPENAI_ONBOARDING_MODEL", "gpt-5-mini")
+DEFAULT_OPERATOR_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", "http://127.0.0.1:5060/step").strip()
+DEFAULT_OPERATOR_RUNTIME_TYPE = os.getenv("AUTOMATA_DEFAULT_RUNTIME_TYPE", "generalist_with_company_capabilities").strip()
+DEFAULT_RUNTIME_PROXY_BASE = os.getenv("AUTOMATA_RUNTIME_PROXY_BASE", "http://127.0.0.1:8080").rstrip("/")
+KNOWLEDGE_SYSTEM_TERMS = {
+    "doc",
+    "docs",
+    "document",
+    "documents",
+    "documento",
+    "documentos",
+    "knowledge",
+    "conocimiento",
+    "vectorstore",
+    "pdf",
+    "pdfs",
+}
 AUTH_REQUIREMENTS: dict[str, list[str]] = {
     "gmail": ["OAuth client ID", "OAuth client secret", "refresh token", "Gmail user email"],
     "smtp": ["SMTP server", "SMTP port", "email", "password"],
     "holded": ["Holded API key"],
     "telegram": ["Telegram bot token", "target chat ID"],
+    "slack": ["Slack bot token", "default channel ID"],
+    "discord": ["Discord bot token", "default channel ID"],
+    "matrix": ["Matrix homeserver URL", "access token", "room ID"],
+    "signal": ["Signal bridge URL", "API token", "account"],
+    "teams": ["Microsoft Graph access token", "team ID", "channel ID"],
+    "whatsapp": ["WhatsApp Cloud access token", "phone number ID"],
+    "github": ["GitHub personal access token", "owner/repository if scoped"],
+    "gitlab": ["GitLab private token", "base URL", "project ID"],
+    "jira": ["Jira server URL", "email", "API token", "project key"],
+    "linear": ["Linear API key", "team ID"],
+    "notion": ["Notion API key", "database ID if scoped"],
+    "trello": ["Trello API key", "Trello token"],
+    "asana": ["Asana access token", "workspace/project ID if scoped"],
+    "confluence": ["Confluence base URL", "API token", "space ID if scoped"],
+    "google_calendar": ["Google OAuth access token", "calendar ID"],
+    "google_drive": ["Google OAuth access token", "folder ID if scoped"],
+    "aws": ["AWS access key ID", "AWS secret access key", "region"],
+    "runpod": ["RunPod API key"],
+    "contabo": ["Contabo client ID", "client secret", "API user", "API password"],
+    "cloudflare": ["Cloudflare API token", "zone ID if scoped"],
+    "kubernetes": ["Kubernetes API URL", "bearer token", "namespace"],
+    "postgres": ["host", "port", "database name", "user", "password"],
+    "mongodb": ["MongoDB URI or host", "user/password if required"],
+    "openai": ["OpenAI API key", "project/organization if scoped"],
+    "google": ["Google API key", "Custom Search engine ID"],
+    "taostats": ["TaoStats API key"],
+    "twitter": ["Twitter/X bearer token"],
+    "twitterapi": ["twitterapi.io API key"],
+    "bittensor_subnet_vendor": ["vendor API key", "base URL"],
+    "bittensor_desearch": ["Desearch API key"],
+    "bittensor_datauniverse": ["DataUniverse API key"],
+    "bittensor_chutes": ["Chutes API key"],
+    "bittensor_computehorde": ["ComputeHorde API key"],
     "api": ["base URL or OpenAPI URL", "API key/token if required"],
 }
+
+ONBOARDING_CONNECTOR_TYPES = [
+    "gmail",
+    "smtp",
+    "holded",
+    "telegram",
+    "web",
+    "knowledge",
+    "api",
+    "openai",
+    "weather",
+    "google",
+    "taostats",
+    "aws",
+    "runpod",
+    "contabo",
+    "cloudflare",
+    "kubernetes",
+    "slack",
+    "discord",
+    "matrix",
+    "signal",
+    "teams",
+    "whatsapp",
+    "github",
+    "gitlab",
+    "jira",
+    "google_calendar",
+    "google_drive",
+    "confluence",
+    "asana",
+    "notion",
+    "trello",
+    "linear",
+    "postgres",
+    "mongodb",
+    "twitter",
+    "twitterapi",
+    "bittensor_directory",
+    "bittensor_subnet_vendor",
+    "bittensor_desearch",
+    "bittensor_datauniverse",
+    "bittensor_chutes",
+    "bittensor_computehorde",
+]
 
 
 class OnboardingStartRequest(BaseModel):
@@ -285,6 +423,9 @@ def _extract_custom_systems(text: str) -> list[str]:
             raw = re.split(r"[.,;:\n]|\s+(?:para|to|for|que|and|y|with|con)\b", raw, maxsplit=1)[0].strip(" .,:;")
             if not raw or raw in SYSTEM_STOPWORDS:
                 continue
+            raw_lower = raw.lower()
+            if any(term in raw_lower for term in KNOWLEDGE_SYSTEM_TERMS):
+                continue
             if raw.lower() in KNOWN_CONNECTORS:
                 continue
             if raw.lower() in {item.lower() for item in GENERIC_SOFTWARE_HINTS}:
@@ -367,7 +508,7 @@ def _extract_tasks(text: str) -> list[str]:
         cleaned = re.sub(r"^\d+[\).:-]\s*", "", line).strip()
         if len(cleaned) < 18:
             continue
-        if any(word in cleaned.lower() for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "leer", "enviar", "responder", "download", "summar", "find", "prepare", "send", "notify", "read")):
+        if any(word in cleaned.lower() for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "encontrar", "consultar", "leer", "resumir", "preparar", "enviar", "responder", "download", "summar", "find", "prepare", "send", "notify", "read")):
             tasks.append(cleaned)
     if not tasks and any(word in text.lower() for word in ("tasks", "tareas", "automate", "automatizar")):
         chunks = re.split(r"[.;]\s+", text)
@@ -377,6 +518,39 @@ def _extract_tasks(text: str) -> list[str]:
         if task and not any(existing.lower() == task.lower() for existing in deduped):
             deduped.append(task)
     return deduped[:10]
+
+
+def task_name_from_prompt(prompt: str, fallback_index: int = 1) -> str:
+    text = re.sub(r"^\s*\d+[\).:-]\s*", "", str(prompt or "")).strip()
+    lower = text.lower()
+    if not text:
+        return f"Workflow {fallback_index}"
+    if "bopa" in lower:
+        if any(term in lower for term in ("email", "cliente", "client")):
+            return "Summarize BOPA update for client email"
+        return "Summarize latest BOPA labor update"
+    if any(term in lower for term in ("factura", "invoice")):
+        if "holded" in lower and any(term in lower for term in ("email", "respuesta", "response")):
+            return "Find Holded invoice and draft reply"
+        if "holded" in lower:
+            return "Retrieve latest Holded invoice"
+        return "Handle client invoice request"
+    if any(term in lower for term in ("telegram", "slack", "discord", "teams")):
+        if any(term in lower for term in ("urgente", "urgent")):
+            return "Send urgent team notification"
+        return "Send team notification"
+    if any(term in lower for term in ("clasificar", "classify", "nomina", "contrato", "consulta")):
+        return "Classify client request"
+    if any(term in lower for term in ("document", "documento", "fuente", "source", "knowledge", "conocimiento")):
+        return "Answer from internal documents"
+    if any(term in lower for term in ("email", "correo")):
+        return "Process client email"
+
+    words = re.findall(r"[A-Za-z0-9]+", text)
+    title = " ".join(words[:7]).strip()
+    if not title:
+        return f"Workflow {fallback_index}"
+    return title[:1].upper() + title[1:60]
 
 
 def _ensure_extracted_setup(draft: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
@@ -423,7 +597,7 @@ def _ensure_extracted_tasks(draft: dict[str, Any], user_message: str) -> list[di
     for task in extracted:
         if any(existing["prompt"].strip().lower() == task.lower() for existing in draft["tasks"]):
             continue
-        name = f"Task {len(draft['tasks']) + 1}"
+        name = task_name_from_prompt(task, len(draft["tasks"]) + 1)
         draft["tasks"].append(
             {
                 "name": name,
@@ -501,7 +675,8 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
         if keyword in lower:
             _merge_connector(draft, _known_connector(keyword))
 
-    if _looks_like_api_docs(text) and (_extract_urls(text) or not custom_systems):
+    has_known_connector = any(keyword in lower for keyword in KNOWN_CONNECTORS)
+    if _looks_like_api_docs(text) and not has_known_connector and (_extract_urls(text) or not custom_systems):
         url = next(iter(_extract_urls(text)), "")
         _merge_connector(
             draft,
@@ -714,7 +889,7 @@ ONBOARDING_TOOLS: list[dict[str, Any]] = [
                 "type": "object",
                 "properties": {
                     "name": {"type": "string"},
-                    "type": {"type": "string", "enum": ["gmail", "smtp", "holded", "telegram", "web", "knowledge", "api"]},
+                    "type": {"type": "string", "enum": ONBOARDING_CONNECTOR_TYPES},
                     "category": {"type": "string"},
                     "description": {"type": "string"},
                     "baseUrl": {"type": "string"},
@@ -745,7 +920,7 @@ ONBOARDING_TOOLS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "add_task",
-            "description": "Add a benchmark task the agent should learn/evaluate.",
+            "description": "Add a benchmark task the agent should learn/evaluate. Use a short descriptive name, not Task 1 or Task 2.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -847,9 +1022,10 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
     if name == "add_task":
         prompt = str(args.get("prompt") or "").strip()
         if prompt and not any(existing["prompt"].lower() == prompt.lower() for existing in draft["tasks"]):
+            task_name = str(args.get("name") or "").strip()
             draft["tasks"].append(
                 {
-                    "name": str(args.get("name") or f"Task {len(draft['tasks']) + 1}").strip(),
+                    "name": task_name if task_name and not re.fullmatch(r"Task\s+\d+", task_name, flags=re.IGNORECASE) else task_name_from_prompt(prompt, len(draft["tasks"]) + 1),
                     "prompt": prompt,
                     "successCriteria": str(args.get("successCriteria") or "The user approves the result and all sensitive writes are confirmed before execution.").strip(),
                     "status": "draft",
@@ -877,6 +1053,7 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
         "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, web, knowledge, api. "
         "Use api for unknown SaaS/API systems and web for browser-only websites. Use knowledge for documents or files. "
         "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
+        "Give every task a concrete 3-7 word name based on the workflow, never generic names like Task 1 or Task 2. "
         "If the system is not an official known connector, still create it as a custom api connector. Ask for API docs/OpenAPI URL and auth, or say Automata can search public docs to draft the toolkit. "
         "In the final summary, explain what is working, what is not connected, what needs auth, and what is left. "
         "Connectors that need auth are not working yet; ask the user to configure their credentials in connector settings instead of pretending they are connected. "
@@ -1006,8 +1183,8 @@ def _session_payload(doc: dict[str, Any]) -> dict[str, Any]:
 async def _create_eval(
     *,
     email: str,
-    operator_id: str,
-    operator_name: str,
+    agent_id: str,
+    agent_name: str,
     website_url: str,
     task: dict[str, Any],
 ) -> str:
@@ -1019,11 +1196,11 @@ async def _create_eval(
             "email": email,
             "prompt": task["prompt"],
             "initialUrl": website_url,
-            "benchmarkId": f"operator-{operator_id}",
-            "benchmarkName": f"{operator_name} Benchmark",
-            "operatorId": operator_id,
-            "operatorName": operator_name,
-            "operatorTaskName": task["name"],
+            "benchmarkId": f"agent-{agent_id}",
+            "benchmarkName": f"{agent_name} Benchmark",
+            "agentId": agent_id,
+            "agentName": agent_name,
+            "agentTaskName": task["name"],
             "successCriteria": task.get("successCriteria", ""),
             "createdAt": now,
         }
@@ -1157,9 +1334,10 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         await connectors_collection.insert_one(dict(connector))
         connectors.append(connector)
 
-    operator_id = str(uuid.uuid4())
+    agent_id = str(uuid.uuid4())
+    runtime_endpoint = f"{DEFAULT_RUNTIME_PROXY_BASE}/runtime/agents/{agent_id}/step" if DEFAULT_OPERATOR_RUNTIME_ENDPOINT else ""
     agent = draft.get("agent", {})
-    operator_name = agent.get("name") or f"{company['name']} Agent"
+    agent_name = agent.get("name") or f"{company['name']} Agent"
     website_url = agent.get("websiteUrl") or next(
         (str(connector.get("config", {}).get("baseUrl")) for connector in connectors if connector.get("config", {}).get("baseUrl")),
         "",
@@ -1171,7 +1349,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
             continue
         tasks.append(
             {
-                "name": task.get("name") or f"Task {index}",
+                "name": task_name_from_prompt(prompt, index) if not task.get("name") or re.fullmatch(r"Task\s+\d+", str(task.get("name") or ""), flags=re.IGNORECASE) else task.get("name"),
                 "prompt": prompt,
                 "successCriteria": task.get("successCriteria", "The user confirms the result."),
                 "status": "draft",
@@ -1179,15 +1357,16 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
             }
         )
 
-    operator = {
-        "operatorId": operator_id,
+    agent_config = {
+        "agentId": agent_id,
         "email": body.email,
         "companyId": company_id,
-        "name": operator_name,
+        "name": agent_name,
         "websiteUrl": website_url,
-        "runtimeEndpoint": "",
-        "runtimeType": "pending",
-        "status": "draft",
+        "runtimeEndpoint": runtime_endpoint,
+        "baseRuntimeEndpoint": DEFAULT_OPERATOR_RUNTIME_ENDPOINT,
+        "runtimeType": DEFAULT_OPERATOR_RUNTIME_TYPE if DEFAULT_OPERATOR_RUNTIME_ENDPOINT else "pending",
+        "status": "ready" if DEFAULT_OPERATOR_RUNTIME_ENDPOINT else "draft",
         "trainingStatus": "needs_trajectories",
         "harvester": "Automata Onboarding Agent",
         "runtimeCapabilities": {
@@ -1204,13 +1383,14 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         "createdAt": now,
         "updatedAt": now,
     }
-    await operators_collection.insert_one(dict(operator))
+    await agents_collection.insert_one(dict(agent_config))
+    await ensure_agent_creation_job(agent_config)
 
-    web_id = f"default-{operator_id}"
-    await operator_webs_collection.insert_one(
+    web_id = f"default-{agent_id}"
+    await agent_webs_collection.insert_one(
         {
             "webId": web_id,
-            "operatorId": operator_id,
+            "agentId": agent_id,
             "email": body.email,
             "name": company["name"],
             "baseUrl": website_url,
@@ -1228,7 +1408,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         await trajectories_collection.insert_one(
             {
                 "trajectoryId": trajectory_id,
-                "operatorId": operator_id,
+                "agentId": agent_id,
                 "email": body.email,
                 "webId": web_id,
                 "taskName": task["name"],
@@ -1245,8 +1425,8 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         eval_ids.append(
             await _create_eval(
                 email=body.email,
-                operator_id=operator_id,
-                operator_name=operator_name,
+                agent_id=agent_id,
+                agent_name=agent_name,
                 website_url=website_url,
                 task=task,
             )
@@ -1258,7 +1438,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
             "$set": {
                 "status": "finalized",
                 "companyId": company_id,
-                "operatorId": operator_id,
+                "agentId": agent_id,
                 "updatedAt": _now(),
             }
         },
@@ -1266,7 +1446,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
     return {
         "success": True,
         "company": company,
-        "operatorId": operator_id,
+        "agentId": agent_id,
         "connectorIds": [connector["connectorId"] for connector in connectors],
         "trajectoryIds": trajectory_ids,
         "evalIds": eval_ids,

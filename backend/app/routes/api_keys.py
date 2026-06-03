@@ -1,14 +1,16 @@
 import secrets
 import hashlib
 import logging
+import os
 from datetime import datetime, timezone
 
 from bson import ObjectId
 from bson.errors import InvalidId
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Header, HTTPException
 from pydantic import BaseModel
 
 from app.database import api_keys_collection
+from app.api_errors import api_error
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -34,9 +36,29 @@ def _object_id(value: str) -> ObjectId:
         raise HTTPException(status_code=400, detail="Invalid API key id") from exc
 
 
+def _production_mode() -> bool:
+    return os.getenv("AUTOMATA_ENV", os.getenv("ENVIRONMENT", os.getenv("APP_ENV", ""))).strip().lower() in {
+        "prod",
+        "production",
+    }
+
+
+def _verify_admin_key(x_admin_key: str = Header(default="")) -> None:
+    required = os.getenv("AUTOMATA_API_KEY_ADMIN_TOKEN", "").strip()
+    if not required and _production_mode():
+        raise api_error(
+            503,
+            "api_key_management_disabled",
+            "API key management is disabled in production until AUTOMATA_API_KEY_ADMIN_TOKEN is configured.",
+        )
+    if required and not secrets.compare_digest(required, x_admin_key or ""):
+        raise api_error(401, "invalid_admin_key", "A valid x-admin-key header is required to manage API keys.")
+
+
 @router.get("/api-keys")
-async def get_api_keys(email: str):
+async def get_api_keys(email: str, x_admin_key: str = Header(default="")):
     """Get all API keys for a user (returns masked keys)."""
+    _verify_admin_key(x_admin_key)
     try:
         cursor = api_keys_collection.find({"email": email}).sort("createdAt", -1)
         keys = []
@@ -55,8 +77,9 @@ async def get_api_keys(email: str):
 
 
 @router.post("/api-keys")
-async def create_api_key(body: APIKeyCreateRequest):
+async def create_api_key(body: APIKeyCreateRequest, x_admin_key: str = Header(default="")):
     """Create a new API key. Returns the full key only once."""
+    _verify_admin_key(x_admin_key)
     try:
         raw_key = f"ak_{secrets.token_hex(24)}"
         prefix = raw_key[:10] + "..."
@@ -87,8 +110,9 @@ async def create_api_key(body: APIKeyCreateRequest):
 
 
 @router.put("/api-keys/{key_id}")
-async def update_api_key(key_id: str, body: APIKeyUpdateRequest):
+async def update_api_key(key_id: str, body: APIKeyUpdateRequest, x_admin_key: str = Header(default="")):
     """Rename an API key."""
+    _verify_admin_key(x_admin_key)
     try:
         result = await api_keys_collection.update_one(
             {"_id": _object_id(key_id)},
@@ -104,8 +128,9 @@ async def update_api_key(key_id: str, body: APIKeyUpdateRequest):
 
 
 @router.delete("/api-keys/{key_id}")
-async def delete_api_key(key_id: str):
+async def delete_api_key(key_id: str, x_admin_key: str = Header(default="")):
     """Delete an API key."""
+    _verify_admin_key(x_admin_key)
     try:
         result = await api_keys_collection.delete_one({"_id": _object_id(key_id)})
         if result.deleted_count == 0:

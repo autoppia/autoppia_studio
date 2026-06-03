@@ -5,7 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from agent.autoppia_operator import AutoppiaOperator
+from agent.autoppia_agent import AutoppiaAgent
 
 router = APIRouter()
 
@@ -46,7 +46,7 @@ class TaskGif(BaseModel):
     gif: str
 
 
-@router.post("/run-task", tags=["Operator"], response_model=TaskResponse)
+@router.post("/run-task", tags=["Legacy Tasks"], response_model=TaskResponse)
 async def run_task(request: TaskRequest):
     task = request.task
     initial_url = request.initial_url
@@ -72,7 +72,7 @@ async def run_task(request: TaskRequest):
     return {"task_id": task_id}
 
 
-@router.get("/task/{task_id}", tags=["Operator"], response_model=TaskDetails)
+@router.get("/task/{task_id}", tags=["Legacy Tasks"], response_model=TaskDetails)
 async def get_task(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -88,7 +88,7 @@ async def get_task(task_id: str):
     }
 
 
-@router.get("/task/{task_id}/status", tags=["Operator"], response_model=TaskStatus)
+@router.get("/task/{task_id}/status", tags=["Legacy Tasks"], response_model=TaskStatus)
 async def get_task_status(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -97,7 +97,7 @@ async def get_task_status(task_id: str):
     return {"status": task["status"]}
 
 
-@router.get("/task/{task_id}/screenshots", tags=["Operator"], response_model=TaskScreenshots)
+@router.get("/task/{task_id}/screenshots", tags=["Legacy Tasks"], response_model=TaskScreenshots)
 async def get_task_screenshots(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -106,7 +106,7 @@ async def get_task_screenshots(task_id: str):
     return {"screenshots": task["screenshots"]}
 
 
-@router.get("/task/{task_id}/gif", tags=["Operator"], response_model=TaskGif)
+@router.get("/task/{task_id}/gif", tags=["Legacy Tasks"], response_model=TaskGif)
 async def get_task_gif(task_id: str):
     task = tasks.get(task_id)
     if not task:
@@ -121,9 +121,9 @@ async def _perform_task(task_id: str, max_steps: int = 25):
     task = tasks[task_id].get("task")
     initial_url = tasks[task_id].get("initial_url")
 
-    operator = AutoppiaOperator()
+    agent_runner = AutoppiaAgent()
     try:
-        await operator.initialize(task, initial_url)
+        await agent_runner.initialize(task, initial_url)
 
         async def on_action(action_type: str, screenshot: str | None, success: bool):
             if screenshot:
@@ -135,29 +135,29 @@ async def _perform_task(task_id: str, max_steps: int = 25):
                 }
             )
 
-        operator.set_on_action(on_action)
+        agent_runner.set_on_action(on_action)
 
-        screenshot = await operator.take_screenshot()
+        screenshot = await agent_runner.take_screenshot()
         if screenshot:
             tasks[task_id]["screenshots"].append(screenshot)
 
         for _ in range(max_steps):
-            done, valid = await operator.take_step()
+            done, valid = await agent_runner.take_step()
             if done and valid:
                 break
 
-        screenshot = await operator.take_screenshot()
+        screenshot = await agent_runner.take_screenshot()
         if screenshot:
             tasks[task_id]["screenshots"].append(screenshot)
 
-        gif = operator.generate_gif(history_gif_dir / f"{task_id}.gif")
+        gif = agent_runner.generate_gif(history_gif_dir / f"{task_id}.gif")
         tasks[task_id]["gif"] = gif
 
-        result = operator.get_result()
+        result = agent_runner.get_result()
         tasks[task_id]["output"] = result.get("content")
         tasks[task_id]["status"] = "completed" if result.get("success") else "failed"
     except Exception as exc:
         tasks[task_id]["output"] = f"{exc.__class__.__name__}: {exc}"
         tasks[task_id]["status"] = "failed"
     finally:
-        await operator.close()
+        await agent_runner.close()

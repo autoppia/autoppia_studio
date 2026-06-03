@@ -2,7 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from app.database import capabilities_collection, connectors_collection, operators_collection
+from app.database import capabilities_collection, connectors_collection, agents_collection
 from app.routes.connectors import connector_toolkit
 
 router = APIRouter()
@@ -17,27 +17,27 @@ def _tool(name: str, description: str, side_effects: str = "reads") -> dict[str,
     }
 
 
-async def _operator(operator_id: str) -> dict[str, Any]:
-    operator = await operators_collection.find_one({"operatorId": operator_id}, {"_id": 0})
-    if not operator:
+async def _agent_config(agent_id: str) -> dict[str, Any]:
+    agent_config = await agents_collection.find_one({"agentId": agent_id}, {"_id": 0})
+    if not agent_config:
         raise HTTPException(status_code=404, detail="Agent not found")
-    return operator
+    return agent_config
 
 
-@router.get("/agents/{operator_id}/toolkits")
-async def list_agent_toolkits(operator_id: str):
-    operator = await _operator(operator_id)
-    skills = await capabilities_collection.count_documents({"operatorId": operator_id})
-    runtime = operator.get("runtimeCapabilities") or {}
+@router.get("/agents/{agent_id}/toolkits")
+async def list_agent_toolkits(agent_id: str):
+    agent_config = await _agent_config(agent_id)
+    skills = await capabilities_collection.count_documents({"agentId": agent_id})
+    runtime = agent_config.get("runtimeCapabilities") or {}
     browser_enabled = bool(runtime.get("browser", True))
-    api_enabled = bool(runtime.get("apiCalls", True) or operator.get("apiSpecUrl"))
+    api_enabled = bool(runtime.get("apiCalls", True) or agent_config.get("apiSpecUrl"))
     knowledge_enabled = bool(runtime.get("knowledge", False))
     python_enabled = bool(runtime.get("python", False))
 
     toolkits: list[dict[str, Any]] = []
     if browser_enabled:
         toolkits.append({
-            "toolkitId": f"{operator_id}:browser",
+            "toolkitId": f"{agent_id}:browser",
             "name": "Browser Toolkit",
             "connectorName": "Browser Runtime",
             "category": "runtime",
@@ -52,7 +52,7 @@ async def list_agent_toolkits(operator_id: str):
         })
     if api_enabled:
         toolkits.append({
-            "toolkitId": f"{operator_id}:api",
+            "toolkitId": f"{agent_id}:api",
             "name": "API Toolkit",
             "connectorName": "OpenAPI / HTTP",
             "category": "api",
@@ -62,7 +62,7 @@ async def list_agent_toolkits(operator_id: str):
         })
     if knowledge_enabled:
         toolkits.append({
-            "toolkitId": f"{operator_id}:knowledge",
+            "toolkitId": f"{agent_id}:knowledge",
             "name": "Knowledge Toolkit",
             "connectorName": "Company Knowledge",
             "category": "knowledge",
@@ -75,7 +75,7 @@ async def list_agent_toolkits(operator_id: str):
         })
     if python_enabled:
         toolkits.append({
-            "toolkitId": f"{operator_id}:python",
+            "toolkitId": f"{agent_id}:python",
             "name": "Python Toolkit",
             "connectorName": "Python Runtime",
             "category": "runtime",
@@ -85,7 +85,7 @@ async def list_agent_toolkits(operator_id: str):
         })
     if skills:
         toolkits.append({
-            "toolkitId": f"{operator_id}:skills",
+            "toolkitId": f"{agent_id}:skills",
             "name": "Skills Toolkit",
             "connectorName": "Approved Training Traces",
             "category": "skills",
@@ -94,7 +94,7 @@ async def list_agent_toolkits(operator_id: str):
             "tools": [_tool("skill.run", "Run an approved reusable skill.", "writes")],
         })
 
-    company_id = operator.get("companyId")
+    company_id = agent_config.get("companyId")
     if company_id:
         cursor = connectors_collection.find({"companyId": company_id}, {"_id": 0}).sort("createdAt", 1)
         async for connector in cursor:
