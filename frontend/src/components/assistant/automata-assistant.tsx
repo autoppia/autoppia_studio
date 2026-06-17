@@ -5,7 +5,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faWandMagicSparkles,
   faXmark,
   faPaperPlane,
   faPenToSquare,
@@ -249,12 +248,15 @@ export default function AutomataAssistant() {
       <button
         onClick={handleOpen}
         aria-label="Open Automata assistant"
-        className="fixed bottom-4 right-4 z-[120] flex items-center gap-2 h-12 pl-3.5 pr-4 rounded-full
+        className="fixed bottom-4 right-4 z-[120] flex items-center h-12 px-4 rounded-full
           bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg
           transition-all duration-300 active:scale-95"
       >
-        <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
-        <span className="text-sm font-semibold">Automata</span>
+        <img
+          src="/assets/images/logos/automata_dark.webp"
+          alt="Automata"
+          className="h-4 w-auto"
+        />
       </button>
     );
   }
@@ -272,12 +274,18 @@ export default function AutomataAssistant() {
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 h-12 flex-shrink-0 border-b border-gray-200 dark:border-dark-border">
-        <span className="w-7 h-7 rounded-lg bg-gradient-primary text-white flex items-center justify-center flex-shrink-0">
-          <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />
-        </span>
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white leading-4">Automata</span>
+          <div className="flex items-center gap-2">
+            <img
+              src="/assets/images/logos/automata.webp"
+              alt="Automata"
+              className="h-4 w-auto dark:hidden"
+            />
+            <img
+              src="/assets/images/logos/automata_dark.webp"
+              alt="Automata"
+              className="h-4 w-auto hidden dark:block"
+            />
             <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px rounded-full bg-primary/10 text-primary">
               Beta
             </span>
@@ -310,9 +318,16 @@ export default function AutomataAssistant() {
       <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3 space-y-3">
         {!hasConversation && (
           <div className="h-full flex flex-col items-center justify-center text-center px-2">
-            <span className="w-12 h-12 rounded-2xl bg-gradient-primary text-white flex items-center justify-center mb-3 shadow-glow">
-              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-lg" />
-            </span>
+            <img
+              src="/assets/images/logos/automata.webp"
+              alt="Automata"
+              className="h-7 w-auto mb-3 dark:hidden"
+            />
+            <img
+              src="/assets/images/logos/automata_dark.webp"
+              alt="Automata"
+              className="h-7 w-auto mb-3 hidden dark:block"
+            />
             <h3 className="text-base font-semibold text-gray-900 dark:text-white">Hey, I'm Automata</h3>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[260px]">
               Your Studio helper. Ask me anything about onboarding or getting things done here.
