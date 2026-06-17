@@ -14,6 +14,7 @@ import {
   faCube,
   faDiagramProject,
   faFileLines,
+  faRoute,
   faXmark,
   faWallet,
   faGem,
@@ -168,6 +169,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
 
   const isOnHome = location.pathname === "/";
   const isOnSettings = location.pathname === "/settings";
+  const isOnCanvas = location.pathname.startsWith("/canvas");
   const isOnEvals = location.pathname.startsWith("/evals");
   const isOnAgents = location.pathname.startsWith("/agents");
   const isOnWork = location.pathname.startsWith("/work");
@@ -251,6 +253,23 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             >
               <FontAwesomeIcon icon={faPenToSquare} className="text-sm" />
               {expanded && <span className="text-sm font-medium">New Session</span>}
+            </button>
+          </div>
+
+          {/* Canvas button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/canvas")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnCanvas
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Canvas"
+            >
+              <FontAwesomeIcon icon={faRoute} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Canvas</span>}
             </button>
           </div>
 

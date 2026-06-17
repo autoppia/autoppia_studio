@@ -54,6 +54,7 @@ interface RuntimeCanvasProps {
   timeline?: RuntimeTimelineStep[];
   title?: string;
   subtitle?: string;
+  hubLabel?: string;
   minHeight?: string;
   interactive?: boolean;
   addMenu?: ReactNode;
@@ -140,7 +141,7 @@ function useCanvasLayout(agents: RuntimeAgentNode[]): PositionedAgent[] {
   }, [agents]);
 }
 
-function CoreHub({ busy, ready }: { busy: boolean; ready: boolean }) {
+function CoreHub({ busy, ready, label = "CORE" }: { busy: boolean; ready: boolean; label?: string }) {
   const accent = busy || ready ? "#22c55e" : "#ef4444";
 
   return (
@@ -188,7 +189,7 @@ function CoreHub({ busy, ready }: { busy: boolean; ready: boolean }) {
         </div>
       </div>
       <div className="mt-3 text-center text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">
-        CORE
+        {label}
       </div>
     </div>
   );
@@ -264,7 +265,7 @@ function AgentNode({
 
   return (
     <div
-      className={`pointer-events-auto absolute w-[208px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`pointer-events-auto absolute w-[240px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onPointerDown={(event) => onPointerDown?.(event, node)}
       onClick={() => onClick?.(node)}
@@ -483,7 +484,7 @@ function buildWorkSummary(agents: RuntimeAgentNode[], timeline: RuntimeTimelineS
     { label: "Ready", value: done, tone: "text-emerald-300" },
     { label: "Failed", value: failed, tone: failed ? "text-red-300" : "text-zinc-300" },
     { label: "Browser", value: browser, tone: "text-sky-300" },
-    { label: "Signals", value: running, tone: "text-violet-300" },
+    { label: "Signals", value: agents.length, tone: "text-violet-300" },
   ];
 }
 
@@ -608,6 +609,7 @@ export default function RuntimeCanvas({
   timeline = [],
   title = "Runtime",
   subtitle,
+  hubLabel = "CORE",
   minHeight = "600px",
   interactive = false,
   addMenu,
@@ -746,7 +748,7 @@ export default function RuntimeCanvas({
         }}
       >
         <SignalPaths agents={positionedAgents} />
-        <CoreHub busy={busy} ready={ready} />
+        <CoreHub busy={busy} ready={ready} label={hubLabel} />
 
         {positionedAgents.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">

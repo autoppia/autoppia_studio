@@ -8,6 +8,7 @@ import "./App.css";
 import Home from "./pages/home";
 import Session from "./pages/session";
 import Settings from "./pages/settings";
+import Canvas from "./pages/canvas";
 import Evals from "./pages/evals";
 import EvalDetail from "./pages/eval-detail";
 import Agents from "./pages/agents";
@@ -134,6 +135,7 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />
+                <Route path="/canvas" element={<Canvas />} />
                 {/* Skills are no longer a separate section — they live under Capabilities. */}
                 <Route path="/skills" element={<Navigate to="/capabilities" replace />} />
                 <Route path="/trajectories" element={<Navigate to="/capabilities" replace />} />
