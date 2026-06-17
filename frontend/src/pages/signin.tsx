@@ -12,8 +12,9 @@ import GoogleSignInButton from "../components/common/google-sign-in-button";
 const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 const demoEmail = process.env.REACT_APP_DEMO_EMAIL || "demo@autoppia.com";
 const demoPassword = process.env.REACT_APP_DEMO_PASSWORD || "Passw0rd!";
+const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(window.location.hostname);
 const showDemoCredentialsButton =
-  process.env.NODE_ENV === "development" || process.env.REACT_APP_SHOW_DEMO_CREDENTIALS === "true";
+  isLocalHost || process.env.NODE_ENV === "development" || process.env.REACT_APP_SHOW_DEMO_CREDENTIALS === "true";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
