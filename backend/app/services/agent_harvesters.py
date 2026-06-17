@@ -10,6 +10,12 @@ import uuid
 from dataclasses import dataclass
 from typing import Any, Protocol
 
+from app.agent_harvesters import (
+    AgentHarvesterInfo,
+    OFFICIAL_AGENT_HARVESTER,
+    PUBLIC_HARVESTER_NAMES,
+    normalize_harvester_name,
+)
 from app.database import agents_collection, benchmark_tasks_collection, capabilities_collection, connectors_collection, tools_collection, trajectories_collection
 from app.harvester.claude_cli import HarvestResult, harvest_pending_trajectories, run_claude_harvest
 from app.services.iwa_modeling import canonical_tool_trajectory, internal_actions_from_trajectory, iwa_task_payload
@@ -302,7 +308,7 @@ class ClaudeCliAgentHarvester:
         return await self.harvest_task(agent_config, HarvestTask(trajectory))
 
 
-def _post_json_sync(url: str, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
+def _post_json_sync(url: str, payload: dict[str, Any], timeout: float, *, adapter_name: str) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload, ensure_ascii=True).encode("utf-8"),
@@ -317,10 +323,10 @@ def _post_json_sync(url: str, payload: dict[str, Any], timeout: float) -> dict[s
             return data
     except urllib.error.HTTPError as exc:
         body = exc.read().decode("utf-8", errors="replace")[:1000]
-        raise RuntimeError(f"Top miner harvester returned HTTP {exc.code}: {body}") from exc
+        raise RuntimeError(f"{adapter_name} returned HTTP {exc.code}: {body}") from exc
 
 
-async def _run_top_miner_harvest(agent_config: dict[str, Any], task_doc: dict[str, Any]) -> HarvestResult:
+def _external_harvester_base_url(agent_config: dict[str, Any]) -> str:
     base_url = str(
         agent_config.get("topMinerHarvesterEndpoint")
         or agent_config.get("autoppiaHarvesterEndpoint")
@@ -329,8 +335,13 @@ async def _run_top_miner_harvest(agent_config: dict[str, Any], task_doc: dict[st
         or os.getenv("AUTOMATA_TOP_MINER_HARVESTER_ENDPOINT")
         or ""
     ).strip()
+    return base_url
+
+
+async def _run_external_iwa_harvest(agent_config: dict[str, Any], task_doc: dict[str, Any], *, adapter_name: str) -> HarvestResult:
+    base_url = _external_harvester_base_url(agent_config)
     if not base_url:
-        raise RuntimeError("External IWA harvester endpoint is not configured.")
+        raise RuntimeError("External Autoppia harvester endpoint is not configured.")
     endpoint = base_url.rstrip("/") + "/find_trayectory"
     timeout = float(
         os.getenv(
@@ -339,7 +350,7 @@ async def _run_top_miner_harvest(agent_config: dict[str, Any], task_doc: dict[st
         )
     )
     payload = iwa_task_payload(task_doc, agent_config)
-    response = await asyncio.to_thread(_post_json_sync, endpoint, payload, timeout)
+    response = await asyncio.to_thread(_post_json_sync, endpoint, payload, timeout, adapter_name=adapter_name)
     raw_trajectory = response.get("trajectory") or response.get("tool_calls") or response.get("actions") or []
     if not isinstance(raw_trajectory, list):
         raw_trajectory = []
@@ -350,7 +361,7 @@ async def _run_top_miner_harvest(agent_config: dict[str, Any], task_doc: dict[st
     return HarvestResult(
         success=success,
         confidence=float(response.get("confidence") or (1.0 if trajectory else 0.0)),
-        summary=str(response.get("summary") or f"Top miner returned {len(trajectory)} trajectory tool calls."),
+        summary=str(response.get("summary") or f"{adapter_name} returned {len(trajectory)} trajectory tool calls."),
         failure_reason=str(response.get("failureReason") or response.get("failure_reason") or ""),
         actions=actions,
         trajectory=trajectory,
@@ -383,7 +394,7 @@ class TopMinerAgentHarvester(ClaudeCliAgentHarvester):
         return {"count": len(results), "results": results}
 
     async def run_harvest(self, agent_config: dict[str, Any], task_doc: dict[str, Any]) -> HarvestResult:
-        return await _run_top_miner_harvest(agent_config, task_doc)
+        return await _run_external_iwa_harvest(agent_config, task_doc, adapter_name=self.name)
 
 
 @dataclass(frozen=True)
@@ -414,13 +425,21 @@ HARVESTERS: dict[str, AgentHarvester] = {
 
 
 def default_harvester_name() -> str:
-    return (os.getenv("AUTOMATA_AGENT_HARVESTER") or "autoppia_harvester").strip() or "autoppia_harvester"
+    configured = (os.getenv("AUTOMATA_AGENT_HARVESTER") or OFFICIAL_AGENT_HARVESTER).strip() or OFFICIAL_AGENT_HARVESTER
+    return normalize_harvester_name(configured)
 
 
 def get_agent_harvester(name: str | None = None) -> AgentHarvester:
-    key = (name or default_harvester_name()).strip()
+    key = normalize_harvester_name(name or default_harvester_name())
     return HARVESTERS.get(key) or HARVESTERS.get(default_harvester_name()) or HARVESTERS["autoppia_harvester"]
 
 
+def get_official_agent_harvester() -> AgentHarvester:
+    return get_agent_harvester(default_harvester_name())
+
+
 def list_agent_harvesters() -> list[dict[str, str]]:
-    return [{"name": key, "status": "available"} for key in sorted(HARVESTERS)]
+    official = default_harvester_name()
+    if official not in PUBLIC_HARVESTER_NAMES:
+        official = OFFICIAL_AGENT_HARVESTER
+    return [AgentHarvesterInfo(name=official).as_dict()]

@@ -13,7 +13,7 @@ from app.database import (
     agents_collection,
     trajectories_collection,
 )
-from app.services.agent_harvesters import get_agent_harvester, list_agent_harvesters
+from app.services.agent_harvesters import get_agent_harvester, get_official_agent_harvester, list_agent_harvesters
 from app.services.capability_discovery import list_capability_discoverers
 from app.services.skills import approve_trajectory_as_skill
 from app.services.trajectory_judges import build_trajectory_judge_context, get_trajectory_judge, list_trajectory_judges
@@ -153,7 +153,7 @@ async def start_harvester(agent_id: str) -> dict[str, Any]:
         return job
 
     steps = list(job.get("steps") or _new_steps())
-    harvester = get_agent_harvester(agent_config.get("harvesterImplementation"))
+    harvester = get_official_agent_harvester()
     steps = _set_step(steps, "run_harvester", "in_progress", f"{harvester.name} requested for pending tasks.")
     run_id = str(uuid.uuid4())
     await harvester_runs_collection.insert_one(

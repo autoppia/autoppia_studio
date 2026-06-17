@@ -3,12 +3,27 @@ import json
 import pytest
 
 from app.services import agent_harvesters
-from app.services.agent_harvesters import HarvestTask, TopMinerAgentHarvester, get_agent_harvester
+from app.services.agent_harvesters import HarvestTask, TopMinerAgentHarvester, get_agent_harvester, get_official_agent_harvester, list_agent_harvesters
 
 
 def test_default_agent_harvester_is_decoupled_autoppia_service(monkeypatch):
     monkeypatch.delenv("AUTOMATA_AGENT_HARVESTER", raising=False)
     assert get_agent_harvester().name == "autoppia_harvester"
+
+
+def test_top_miner_is_legacy_alias_for_autoppia_harvester():
+    assert get_agent_harvester("top_miner").name == "autoppia_harvester"
+
+
+def test_public_harvester_list_exposes_only_backend_selected_official(monkeypatch):
+    monkeypatch.delenv("AUTOMATA_AGENT_HARVESTER", raising=False)
+    names = {item["name"] for item in list_agent_harvesters()}
+    assert names == {"autoppia_harvester"}
+
+
+def test_official_harvester_uses_backend_env_only(monkeypatch):
+    monkeypatch.setenv("AUTOMATA_AGENT_HARVESTER", "claude_cli")
+    assert get_official_agent_harvester().name == "claude_cli"
 
 
 class _Cursor:
