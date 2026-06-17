@@ -25,8 +25,9 @@ import MainLayout from "./components/layout/main-layout";
 import { ToastProvider } from "./components/common/toast";
 import { setUser, logout } from "./redux/userSlice";
 import { installAuthFetch } from "./utils/auth-fetch";
+import { getApiUrl } from "./utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 installAuthFetch(apiUrl);
 
 function App() {

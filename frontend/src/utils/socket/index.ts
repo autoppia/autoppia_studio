@@ -3,8 +3,9 @@ import { io } from "socket.io-client";
 import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setRuntimeState, setTabs, setActiveTabIndex } from "../../redux/socketSlice";
 import { addAction, addResult, addScreenshot } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
+import { getApiUrl } from "../api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = false, initialUrl?: string) => {
   const socket = io(`${apiUrl}`, {

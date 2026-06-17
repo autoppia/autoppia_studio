@@ -8,8 +8,9 @@ import { faPaperPlane } from "@fortawesome/free-solid-svg-icons";
 import { setUser } from "../redux/userSlice";
 import { useToast } from "../components/common/toast";
 import GoogleSignInButton from "../components/common/google-sign-in-button";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 const demoEmail = process.env.REACT_APP_DEMO_EMAIL || "demo@autoppia.com";
 const demoPassword = process.env.REACT_APP_DEMO_PASSWORD || "Passw0rd!";
 const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(window.location.hostname);
