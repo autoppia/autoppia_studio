@@ -2,6 +2,7 @@ import { useRef, useState, useCallback } from "react";
 import { Outlet } from "react-router-dom";
 import AppSidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH } from "./app-sidebar";
 import TopBar from "./top-bar";
+import AutomataAssistant from "../assistant/automata-assistant";
 import type { AppSidebarHandle } from "./app-sidebar";
 import type { HistoryItem } from "../../utils/types";
 
@@ -25,6 +26,7 @@ export default function MainLayout() {
           <Outlet context={{ sidebarExpanded, addHistoryItem }} />
         </div>
       </div>
+      <AutomataAssistant />
     </div>
   );
 }
