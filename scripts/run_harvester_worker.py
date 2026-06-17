@@ -12,26 +12,21 @@ sys.path.insert(0, str(BACKEND))
 load_dotenv(ROOT / ".env")
 load_dotenv(BACKEND / ".env")
 
-from app.database import harvester_runs_collection  # noqa: E402
-from app.routes.agent_creation import _run_harvester_background  # noqa: E402
+from app.services.queue import claim_next_job, complete_job, fail_job  # noqa: E402
+from app.services.workers import execute_job  # noqa: E402
 
 
 async def main() -> int:
     while True:
-        run = await harvester_runs_collection.find_one_and_update(
-            {"runKind": "agent_creation", "status": "queued"},
-            {"$set": {"status": "claimed"}},
-            sort=[("createdAt", 1)],
-        )
-        if not run:
+        job = await claim_next_job(job_types=["agent_harvest"])
+        if not job:
             await asyncio.sleep(2)
             continue
-        await _run_harvester_background(
-            agent_id=str(run.get("agentId") or ""),
-            job_id=str(run.get("jobId") or ""),
-            harvester_run_id=str(run.get("harvesterRunId") or ""),
-            harvester_name=str(run.get("harvesterType") or "autoppia_harvester"),
-        )
+        try:
+            result = await execute_job(job)
+            await complete_job(str(job.get("jobId") or ""), result)
+        except Exception as exc:
+            await fail_job(job, str(exc))
 
 
 if __name__ == "__main__":

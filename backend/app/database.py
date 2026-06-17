@@ -21,6 +21,7 @@ companies_collection = db["companies"]
 connectors_collection = db["connectors"]
 credentials_collection = db["credentials"]
 knowledge_documents_collection = db["knowledge_documents"]
+vector_databases_collection = db["vector_databases"]
 onboarding_sessions_collection = db["onboarding_sessions"]
 assistant_conversations_collection = db["assistant_conversations"]
 evals_collection = db["evals"]
@@ -32,11 +33,15 @@ agent_webs_collection = db["agent_webs"]
 trajectories_collection = db["trajectories"]
 capabilities_collection = db["capabilities"]
 tools_collection = db["tools"]
+entities_collection = db["entities"]
+approvals_collection = db["approvals"]
+artifacts_collection = db["artifacts"]
 harvester_runs_collection = db["harvester_runs"]
 work_boards_collection = db["work_boards"]
 work_items_collection = db["work_items"]
 notifications_collection = db["notifications"]
 tool_runs_collection = db["tool_runs"]
+usage_events_collection = db["usage_events"]
 trajectory_runs_collection = db["trajectory_runs"]
 capability_grants_collection = db["capability_grants"]
 validator_rounds_collection = db["validator_rounds"]
@@ -45,6 +50,7 @@ validator_agent_runs_collection = db["validator_agent_runs"]
 validator_evaluations_collection = db["validator_evaluations"]
 validator_task_logs_collection = db["validator_task_logs"]
 worker_locks_collection = db["worker_locks"]
+jobs_collection = db["jobs"]
 
 
 async def ensure_indexes():
@@ -74,7 +80,12 @@ async def ensure_indexes():
     await credentials_collection.create_index("secretRef", unique=True)
     await knowledge_documents_collection.create_index("email")
     await knowledge_documents_collection.create_index("companyId")
+    await knowledge_documents_collection.create_index("vectorDatabaseId")
     await knowledge_documents_collection.create_index("documentId", unique=True)
+    await vector_databases_collection.create_index("email")
+    await vector_databases_collection.create_index("companyId")
+    await vector_databases_collection.create_index("vectorDatabaseId", unique=True)
+    await vector_databases_collection.create_index([("companyId", 1), ("collectionName", 1)], unique=True)
     await onboarding_sessions_collection.create_index("email")
     await onboarding_sessions_collection.create_index("sessionId", unique=True)
     await assistant_conversations_collection.create_index("email")
@@ -111,6 +122,24 @@ async def ensure_indexes():
     await tools_collection.create_index("companyId")
     await tools_collection.create_index("connectorId")
     await tools_collection.create_index("toolId", unique=True)
+    await entities_collection.create_index("email")
+    await entities_collection.create_index("companyId")
+    await entities_collection.create_index("entityId", unique=True)
+    await entities_collection.create_index([("companyId", 1), ("name", 1)], unique=True)
+    await entities_collection.create_index("sourceConnectorId")
+    await approvals_collection.create_index("email")
+    await approvals_collection.create_index("companyId")
+    await approvals_collection.create_index("agentId")
+    await approvals_collection.create_index("approvalId", unique=True)
+    await approvals_collection.create_index([("companyId", 1), ("agentId", 1), ("approvalKey", 1)])
+    await approvals_collection.create_index("status")
+    await approvals_collection.create_index("createdAt")
+    await artifacts_collection.create_index("email")
+    await artifacts_collection.create_index("companyId")
+    await artifacts_collection.create_index("sessionId")
+    await artifacts_collection.create_index("artifactId", unique=True)
+    await artifacts_collection.create_index([("companyId", 1), ("updatedAt", -1)])
+    await artifacts_collection.create_index("artifactType")
     await harvester_runs_collection.create_index("email")
     await harvester_runs_collection.create_index("companyId")
     await harvester_runs_collection.create_index("agentId")
@@ -135,6 +164,13 @@ async def ensure_indexes():
     await tool_runs_collection.create_index("agentId")
     await tool_runs_collection.create_index("companyId")
     await tool_runs_collection.create_index("runId", unique=True)
+    await usage_events_collection.create_index("usageEventId", unique=True)
+    await usage_events_collection.create_index("email")
+    await usage_events_collection.create_index("companyId")
+    await usage_events_collection.create_index("agentId")
+    await usage_events_collection.create_index("runId")
+    await usage_events_collection.create_index("kind")
+    await usage_events_collection.create_index("createdAt")
     await trajectory_runs_collection.create_index("trajectoryId")
     await trajectory_runs_collection.create_index("companyId")
     await trajectory_runs_collection.create_index("runId", unique=True)
@@ -155,4 +191,10 @@ async def ensure_indexes():
     await validator_task_logs_collection.create_index("task_id")
     await worker_locks_collection.create_index("lockId", unique=True)
     await worker_locks_collection.create_index("expiresAt")
+    await jobs_collection.create_index("jobId", unique=True)
+    await jobs_collection.create_index("type")
+    await jobs_collection.create_index("status")
+    await jobs_collection.create_index("runAt")
+    await jobs_collection.create_index("leaseUntil")
+    await jobs_collection.create_index("dedupeKey", sparse=True)
     logger.info("MongoDB indexes ensured")

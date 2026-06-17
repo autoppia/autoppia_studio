@@ -51,6 +51,9 @@ class AgentCallable(BaseModel):
     runtime: str = ""
     runtimeRequirements: list[str] = Field(default_factory=list)
     permissions: dict[str, Any] = Field(default_factory=dict)
+    inputEntities: list[str] = Field(default_factory=list)
+    outputEntity: str = ""
+    outputCard: dict[str, Any] = Field(default_factory=dict)
 
 
 class AgentConfig(BaseModel):
@@ -71,6 +74,7 @@ class AgentConfig(BaseModel):
     tasks: list[AgentTask] = Field(default_factory=list)
     tools: list[AgentCallable] = Field(default_factory=list)
     skills: list[AgentCallable] = Field(default_factory=list)
+    entities: dict[str, Any] = Field(default_factory=dict)
     knowledge: list[dict[str, Any]] = Field(default_factory=list)
     memory: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: dict[str, Any] = Field(default_factory=lambda: {"writesRequireApproval": True})

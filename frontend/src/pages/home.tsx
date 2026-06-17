@@ -5,8 +5,9 @@ import TitleSection from "../components/home/title-section";
 import TaskSection from "../components/home/task-section";
 import SliderSection from "../components/home/slider-section";
 import { AgentConfig, Company } from "../utils/types";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 export default function Home(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
@@ -19,14 +20,24 @@ export default function Home(): React.ReactElement {
   const [selectedAgent, setSelectedAgent] = useState<AgentConfig | null>(null);
 
   const loadAgents = useCallback(async () => {
-    if (!user.email) return;
+    if (!user.email || !companyId) {
+      setAgents([]);
+      setSelectedAgent(null);
+      return;
+    }
     try {
       const params = new URLSearchParams({ email: user.email });
-      if (companyId) params.set("companyId", companyId);
+      params.set("companyId", companyId);
       const res = await fetch(`${apiUrl}/agents?${params.toString()}`);
       if (!res.ok) return;
       const data = await res.json();
-      setAgents(data.agents || []);
+      const scopedAgents = (data.agents || []).filter((agent: AgentConfig) => agent.companyId === companyId);
+      setAgents(scopedAgents);
+      setSelectedAgent((current) =>
+        current && scopedAgents.some((agent: AgentConfig) => agent.agentId === current.agentId)
+          ? current
+          : null
+      );
     } catch (err) {
       console.error("Failed to load agents:", err);
     }
@@ -55,6 +66,8 @@ export default function Home(): React.ReactElement {
     const handler = (event: Event) => {
       const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
       setCompanyId(next);
+      setSelectedAgent(null);
+      setInitialUrl("");
     };
     window.addEventListener("automata-company-changed", handler);
     return () => window.removeEventListener("automata-company-changed", handler);

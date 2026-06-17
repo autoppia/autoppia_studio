@@ -71,6 +71,9 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
                 "connectorIds": trajectory.get("connectorIds", []),
                 "toolIds": trajectory.get("toolIds", []),
                 "runtimeRequirements": trajectory.get("runtimeRequirements", []),
+                "inputEntities": trajectory.get("inputEntities", []),
+                "outputEntity": trajectory.get("outputEntity", ""),
+                "outputCard": trajectory.get("outputCard", {}),
                 "sideEffects": "writes"
                 if any(
                     "send" in str((tool.get("name") or tool.get("action") or tool) if isinstance(tool, dict) else tool).lower()

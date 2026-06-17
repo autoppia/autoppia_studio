@@ -38,8 +38,9 @@ import useStartSession from "../hooks/useStartSession";
 import InfoIcon from "../components/common/info-icon";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 type TabKey = "overview" | "webs" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
 type SkillAssetTab = "skills" | "traces";

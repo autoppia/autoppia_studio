@@ -1,5 +1,4 @@
 import uuid
-import asyncio
 import os
 from datetime import datetime, timezone
 from typing import Any
@@ -15,6 +14,7 @@ from app.database import (
 )
 from app.services.agent_harvesters import get_agent_harvester, get_official_agent_harvester, list_agent_harvesters
 from app.services.capability_discovery import list_capability_discoverers
+from app.services.queue import enqueue_job
 from app.services.skills import approve_trajectory_as_skill
 from app.services.trajectory_judges import build_trajectory_judge_context, get_trajectory_judge, list_trajectory_judges
 
@@ -203,8 +203,17 @@ async def start_harvester(agent_id: str) -> dict[str, Any]:
         {"status": "harvesting", "currentStep": "run_harvester", "steps": steps},
         f"Automata Harvester started with {harvester.name}.",
     )
-    if (os.getenv("AUTOMATA_HARVESTER_INLINE") or "true").lower() in {"1", "true", "yes"}:
-        asyncio.create_task(_run_harvester_background(agent_id=agent_id, job_id=job["jobId"], harvester_run_id=run_id, harvester_name=harvester.name))
+    await enqueue_job(
+        "agent_harvest",
+        {
+            "agentId": agent_id,
+            "jobId": job["jobId"],
+            "harvesterRunId": run_id,
+            "harvesterName": harvester.name,
+        },
+        dedupe_key=f"agent_harvest:{agent_id}:{run_id}",
+        max_attempts=1,
+    )
     return updated_job
 
 

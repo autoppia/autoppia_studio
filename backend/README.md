@@ -20,6 +20,8 @@ Main modules:
 - `app/routes/onboarding.py`: chat onboarding flow that creates companies, connectors, benchmark tasks, agents and draft trajectories.
 - `app/routes/connectors.py`: company connectors and generated toolkits. Official connectors are marked `provider=official`; ad hoc API connectors are marked `provider=custom`.
 - `app/routes/knowledge.py`: uploaded company documents and the Knowledge connector backing store.
+- `app/routes/entities.py`: company-scoped semantic entity models used to type tools and ground AgentRuntime context.
+- `app/routes/approvals.py`: durable approval queue for risky connector/tool writes.
 - `app/routes/agent_configs.py`: AgentConfig CRUD and bundled Autocinema bootstrap.
 - `app/routes/agent_assets.py`: webs, trajectories and skills/capabilities for an agent.
 - `app/routes/agent_creation.py`: agent creation pipeline state machine: connector validation, harvesting, review, skill conversion and benchmark readiness.
@@ -27,6 +29,8 @@ Main modules:
 - `app/services/agent_runtime.py`: injects `AgentConfig` into `/step`, exposes skills as callable tools, executes connector tools, and records runtime events.
 - `app/services/agent_harvesters.py`: pluggable agent harvester registry; defaults to the decoupled `../autoppia_harvester` service via `AUTOMATA_AGENT_HARVESTER=autoppia_harvester`; set `AUTOMATA_AUTOPPIA_HARVESTER_ENDPOINT` for its `/find_trayectory` endpoint base URL.
 - `scripts/run_harvester_worker.py`: durable worker loop for queued agent harvester runs when `AUTOMATA_HARVESTER_INLINE=false`.
+- `app/services/queue.py` and `app/services/workers.py`: Mongo-backed durable queue for work runs, harvests and Knowledge indexing.
+- `app/services/vectorstore/`: vector store abstraction with local/Chroma implementations and a Pinecone-ready boundary.
 - `app/harvester/claude_cli.py`: legacy in-repo Claude Code harvester adapter. It remains available with `AUTOMATA_AGENT_HARVESTER=claude_cli` for local compatibility.
 - `app/routes/evals.py`: benchmark tasks and benchmark/eval runs.
 - `app/routes/api/agents.py`: API-key protected agent runtime proxy.
@@ -95,11 +99,13 @@ python scripts/smoke_api.py --agent-id <agent_id>
 
 Use `AUTOMATA_API_KEY=<existing key>` to test with an existing key, or allow the script to create and delete a temporary key. If `AUTOMATA_API_KEY_ADMIN_TOKEN` is set, the script sends it as `x-admin-key`.
 
+Runtime endpoint configuration:
+
+- Prefer `AgentConfig.runtimeEndpoint`, usually `http://127.0.0.1:8080/runtime/agents/<agentId>/step` for local seeded agents.
+- `AUTOPPIA_AGENT_BASE_URL` is only a legacy fallback used by the interactive Socket.IO browser session if no agent runtime endpoint is available.
+
 Current intentional placeholders:
 
-- Credit analytics are not wired to billing telemetry yet; `/analytics` returns credit availability as false.
 - Custom API connectors validate docs/auth shape and expose generated-toolkit metadata, but do not yet fetch public docs or synthesize typed tools automatically.
-- Knowledge uploads are stored and attached to the company Knowledge connector, but vector indexing/search is not wired yet.
 - Newly onboarded agents are created with `runtimeType=pending` until a runtime is deployed or attached.
-- Harvester execution currently runs as an in-process background task for local/dev. Production should move this to a durable worker queue before multi-user use.
 - `/api/v1/run-task` is a legacy in-memory task runner. Prefer `/api/v1/agents/{agent_id}/step` for deployed agents.

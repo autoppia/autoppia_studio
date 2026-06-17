@@ -1,17 +1,20 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faKey,
   faChevronDown,
   faBuilding,
+  faCircleHalfStroke,
+  faRightFromBracket,
   faRobot,
   faPen,
   faPlus,
   faTrash,
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
+import { logout } from "../../redux/userSlice";
 import { Company } from "../../utils/types";
 import CelerisOnboarding from "../home/celeris-onboarding";
 import ConfirmModal from "../common/confirm-modal";
@@ -24,6 +27,7 @@ const apiUrl = getApiUrl();
 
 export default function TopBar() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const user = useSelector((state: any) => state.user);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
@@ -167,6 +171,15 @@ export default function TopBar() {
 
   if (!user.isAuthenticated) return null;
 
+  const darkThemeHandler = () => {
+    const isDark = document.documentElement.classList.toggle("dark");
+    try {
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    } catch {
+      /* ignore storage errors */
+    }
+  };
+
   const deleteCompany = async () => {
     if (!selectedCompany || saving) return;
     setSaving(true);
@@ -266,6 +279,28 @@ export default function TopBar() {
       >
         <FontAwesomeIcon icon={faKey} className="text-[10px]" />
         <span className="hidden md:inline">API Key</span>
+      </button>
+
+      <button
+        onClick={darkThemeHandler}
+        className="flex h-8 w-8 items-center justify-center rounded-lg
+          border border-gray-200 dark:border-zinc-800/80
+          text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+        title="Toggle theme"
+        aria-label="Toggle theme"
+      >
+        <FontAwesomeIcon icon={faCircleHalfStroke} className="text-xs" />
+      </button>
+
+      <button
+        onClick={() => dispatch(logout())}
+        className="flex h-8 w-8 items-center justify-center rounded-lg
+          border border-gray-200 dark:border-zinc-800/80
+          text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+        title="Sign out"
+        aria-label="Sign out"
+      >
+        <FontAwesomeIcon icon={faRightFromBracket} className="text-xs" />
       </button>
 
       {confirmDeleteCompany && selectedCompany && (

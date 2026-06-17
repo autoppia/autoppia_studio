@@ -26,7 +26,11 @@ export interface ChatItem {
 export interface SessionArtifact {
   artifactId: string;
   name: string;
-  url: string;
+  url?: string;
+  title?: string;
+  artifactType?: string;
+  content?: string;
+  fileName?: string;
   kind?: string;
   contentType?: string;
   size?: number | string;
@@ -78,6 +82,7 @@ export interface EvalItem {
   agentName?: string;
   agentTaskName?: string;
   successCriteria?: string;
+  judgeType?: "manual" | "llm" | string;
   status?: string;
   source?: string;
   createdAt?: string;
@@ -97,6 +102,10 @@ export interface EvalRun {
   agentTaskName?: string;
   actions: any[];
   label: "pass" | "fail" | "pending";
+  judgeType?: "manual" | "llm" | string;
+  labelSource?: string;
+  manualOverride?: boolean;
+  judge?: Record<string, any>;
   screenshots?: string[];
   createdAt?: string;
 }
@@ -214,6 +223,14 @@ export interface AgentCreationJob {
   updatedAt?: string;
 }
 
+export interface EmbedSettings {
+  enabled?: boolean;
+  publicToken?: string;
+  allowedOrigins?: string[];
+  hostJwtConfigured?: boolean;
+  updatedAt?: string;
+}
+
 export interface Company {
   companyId: string;
   email: string;
@@ -221,6 +238,7 @@ export interface Company {
   description?: string;
   industry?: string;
   status?: string;
+  embedSettings?: EmbedSettings;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -394,6 +412,7 @@ export interface Connector {
   discoveryMode?: string;
   runtimeRequirements?: string[];
   config?: Record<string, any>;
+  vectorIndex?: VectorIndex;
   credentialFields?: Record<string, { configured: boolean }>;
   lastTestAt?: string;
   lastTestStatus?: string;
@@ -418,6 +437,29 @@ export interface Credential {
   updatedAt?: string;
 }
 
+export interface VectorIndex {
+  vectorDatabaseId?: string;
+  name?: string;
+  provider: string;
+  collectionName: string;
+  embeddingProvider?: string;
+  embeddingModel?: string;
+  indexedDocuments?: number;
+  documentCount?: number;
+  totalSize?: number;
+  connectorId?: string;
+  status?: string;
+}
+
+export interface VectorDatabase extends VectorIndex {
+  vectorDatabaseId: string;
+  email: string;
+  companyId: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface KnowledgeDocument {
   documentId: string;
   email: string;
@@ -428,8 +470,118 @@ export interface KnowledgeDocument {
   status: string;
   source: string;
   connectorId?: string;
+  vectorDatabaseId?: string;
+  vectorDatabaseName?: string;
+  vectorCollectionName?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export type EntityFieldRole =
+  | "identifier"
+  | "display"
+  | "reference"
+  | "status"
+  | "date"
+  | "amount"
+  | "metadata"
+  | string;
+
+export type EntityRelationshipKind =
+  | "belongsTo"
+  | "hasOne"
+  | "hasMany"
+  | "manyToMany"
+  | "references"
+  | string;
+
+export type EntitySource = "manual" | "openapi" | "llm_mapper" | "imported" | string;
+
+export interface EntityField {
+  name: string;
+  type?: string;
+  description?: string;
+  role?: EntityFieldRole;
+  required?: boolean;
+  ref?: string;
+  target?: string;
+  sourcePath?: string;
+  examples?: any[];
+}
+
+export interface EntityRelationship {
+  name: string;
+  kind?: EntityRelationshipKind;
+  target: string;
+  via?: string;
+  description?: string;
+}
+
+export interface EntityModel {
+  entityId: string;
+  companyId: string;
+  email: string;
+  name: string;
+  description?: string;
+  fields: EntityField[];
+  relationships: EntityRelationship[];
+  sourceConnectorId?: string;
+  source?: EntitySource;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EntityGraphNode {
+  id: string;
+  entityId: string;
+  name: string;
+  description?: string;
+  fieldCount: number;
+  sourceConnectorId?: string;
+  source?: EntitySource;
+}
+
+export interface EntityGraphEdge {
+  from: string;
+  to: string;
+  name?: string;
+  kind?: EntityRelationshipKind;
+  via?: string;
+  description?: string;
+}
+
+export interface EntityGraph {
+  nodes: EntityGraphNode[];
+  edges: EntityGraphEdge[];
+  entities: EntityModel[];
+}
+
+export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | string;
+
+export interface ApprovalRequest {
+  approvalId: string;
+  companyId: string;
+  email: string;
+  agentId?: string;
+  runId?: string;
+  approvalKey: string;
+  title: string;
+  message?: string;
+  proposedAction: {
+    name?: string;
+    arguments?: Record<string, any>;
+    [key: string]: any;
+  };
+  entityRef?: Record<string, any>;
+  status: ApprovalStatus;
+  decidedBy?: string;
+  decisionReason?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  expiresAt?: string;
+  decidedAt?: string;
+  metadata?: Record<string, any>;
 }
 
 export interface CompanyTool {
@@ -444,6 +596,9 @@ export interface CompanyTool {
   description: string;
   inputSchema?: any;
   outputSchema?: any;
+  inputEntities?: string[];
+  outputEntity?: string;
+  outputCard?: Record<string, any>;
   executionType: string;
   surface: string;
   runtimeRequirements?: string[];
@@ -507,6 +662,9 @@ export interface CompanySkill {
   name: string;
   description: string;
   whenToUse: string;
+  inputEntities?: string[];
+  outputEntity?: string;
+  outputCard?: Record<string, any>;
   permissions?: Record<string, any>;
   riskPolicy: string;
   runtime: string;
@@ -552,4 +710,18 @@ export interface ParameterizeResult {
   instructions: string;
   parameters: SkillParameter[];
   actions: any[];
+}
+
+export interface Artifact {
+  artifactId: string;
+  companyId: string;
+  email: string;
+  title: string;
+  artifactType: string;
+  description: string;
+  content: string;
+  fileName: string;
+  metadata?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
 }

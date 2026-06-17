@@ -35,7 +35,15 @@ class ToolCreateRequest(BaseModel):
     sideEffects: str = "reads"
     permissions: dict[str, Any] = Field(default_factory=dict)
     riskLevel: str = "low"
+    inputEntities: list[str] = Field(default_factory=list)
+    outputEntity: str = ""
+    outputCard: dict[str, Any] = Field(default_factory=dict)
     status: str = "draft"
+
+
+class CapabilityApprovalUpdateRequest(BaseModel):
+    email: str = ""
+    approval: str
 
 
 class CompanyTrajectoryCreateRequest(BaseModel):
@@ -58,6 +66,9 @@ class PromoteTrajectoryRequest(BaseModel):
     whenToUse: str = ""
     permissions: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: str = "human_approval_for_writes"
+    inputEntities: list[str] = Field(default_factory=list)
+    outputEntity: str = ""
+    outputCard: dict[str, Any] = Field(default_factory=dict)
 
 
 class ToolTestRequest(BaseModel):
@@ -121,6 +132,9 @@ def _serialize_tool(doc: dict[str, Any]) -> dict[str, Any]:
         "sideEffects": doc.get("sideEffects", "reads"),
         "permissions": doc.get("permissions", {}),
         "riskLevel": doc.get("riskLevel", "low"),
+        "inputEntities": doc.get("inputEntities", []),
+        "outputEntity": doc.get("outputEntity", ""),
+        "outputCard": doc.get("outputCard", {}),
         "status": doc.get("status", "draft"),
         "source": doc.get("source", ""),
         "discovererName": doc.get("discovererName", ""),
@@ -187,6 +201,9 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "evalId": doc.get("evalId", ""),
         "permissions": doc.get("permissions", {}),
         "riskPolicy": doc.get("riskPolicy", ""),
+        "inputEntities": doc.get("inputEntities", []),
+        "outputEntity": doc.get("outputEntity", ""),
+        "outputCard": doc.get("outputCard", {}),
         "runtime": doc.get("runtime", ""),
         "status": doc.get("status", "draft"),
         "source": doc.get("source", ""),
@@ -198,6 +215,13 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
+
+
+def _clean_approval_mode(value: str) -> str:
+    mode = str(value or "").strip().lower()
+    if mode not in {"always", "auto", "never"}:
+        raise HTTPException(status_code=400, detail="approval must be one of always, auto or never")
+    return mode
 
 
 def _requires_harvester(connector: dict[str, Any]) -> bool:
@@ -548,6 +572,9 @@ async def create_company_tool(company_id: str, body: ToolCreateRequest):
         "sideEffects": body.sideEffects,
         "permissions": body.permissions,
         "riskLevel": body.riskLevel,
+        "inputEntities": body.inputEntities,
+        "outputEntity": body.outputEntity,
+        "outputCard": body.outputCard,
         "status": body.status,
         "source": "manual",
         "createdAt": now,
@@ -555,6 +582,32 @@ async def create_company_tool(company_id: str, body: ToolCreateRequest):
     }
     await tools_collection.insert_one(doc)
     return {"success": True, "tool": _serialize_tool(doc)}
+
+
+@router.patch("/tools/{tool_id}/approval")
+async def update_tool_approval(tool_id: str, body: CapabilityApprovalUpdateRequest):
+    tool = await tools_collection.find_one({"toolId": tool_id}, {"_id": 0})
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    if body.email and tool.get("email") != body.email:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    permissions = tool.get("permissions") if isinstance(tool.get("permissions"), dict) else {}
+    updated = {**permissions, "approval": _clean_approval_mode(body.approval)}
+    await tools_collection.update_one({"toolId": tool_id}, {"$set": {"permissions": updated, "updatedAt": _now()}})
+    return {"success": True, "tool": _serialize_tool({**tool, "permissions": updated, "updatedAt": _now()})}
+
+
+@router.patch("/skills/{skill_id}/approval")
+async def update_skill_approval(skill_id: str, body: CapabilityApprovalUpdateRequest):
+    skill = await capabilities_collection.find_one({"capabilityId": skill_id, "capabilityKind": "skill"}, {"_id": 0})
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if body.email and skill.get("email") != body.email:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    permissions = skill.get("permissions") if isinstance(skill.get("permissions"), dict) else {}
+    updated = {**permissions, "approval": _clean_approval_mode(body.approval)}
+    await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": {"permissions": updated, "updatedAt": _now()}})
+    return {"success": True, "skill": _serialize_skill({**skill, "permissions": updated, "updatedAt": _now()})}
 
 
 @router.post("/tools/{tool_id}/test")
@@ -705,6 +758,9 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         "runtimeRequirements": trajectory.get("runtimeRequirements", []),
         "permissions": body.permissions,
         "riskPolicy": body.riskPolicy,
+        "inputEntities": body.inputEntities or trajectory.get("inputEntities", []),
+        "outputEntity": body.outputEntity or trajectory.get("outputEntity", ""),
+        "outputCard": body.outputCard or trajectory.get("outputCard", {}),
         "runtime": "trajectory_executor_with_recovery",
         "status": "ready",
         "source": "manual_promotion",

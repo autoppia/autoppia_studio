@@ -19,8 +19,9 @@ import {
 import { AgentConfig, EvalItem, WorkBoard, WorkItem, WorkRunTarget, WorkStatus } from "../utils/types";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 const columns: Array<{ status: WorkStatus; label: string; tone: string }> = [
   { status: "TODO", label: "Backlog", tone: "text-gray-500" },

@@ -26,8 +26,9 @@ import {
   faBolt,
 } from "@fortawesome/free-solid-svg-icons";
 import InfoIcon from "../common/info-icon";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 const CELERIS_PROMPT = `Celeris es una asesoria laboral en Andorra.
 Usamos SMTP para enviar emails, Holded para facturas, Telegram para mensajes, documentos internos y la web https://www.bopa.ad/ para leer el BOPA.

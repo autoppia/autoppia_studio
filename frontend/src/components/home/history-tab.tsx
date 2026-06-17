@@ -9,8 +9,9 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 
 import { HistoryItem } from "../../utils/types";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 export default function HistoryTab() {
   const [histories, setHistories] = useState<HistoryItem[]>([]);

@@ -5,15 +5,16 @@ import {
   faPaperPlane,
   faAngleDown,
   faGlobe,
-  faWindowMaximize,
+  faUserCircle,
   faRobot,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { websites } from "../../utils/mock/mockDB";
 import useStartSession from "../../hooks/useStartSession";
 import { AgentConfig } from "../../utils/types";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 interface Profile {
   id: string;
@@ -224,7 +225,7 @@ export default function TaskSection(props: TaskSectionProps) {
                 border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
               onClick={() => setOpenedDropdown("profile")}
             >
-              <FontAwesomeIcon icon={faWindowMaximize} className={`text-xs ${selectedProfile ? "text-primary" : "opacity-60"}`} />
+              <FontAwesomeIcon icon={faUserCircle} className={`text-xs ${selectedProfile ? "text-primary" : "opacity-60"}`} />
               <span className="whitespace-nowrap">{selectedProfile ? selectedProfile.name : "No Profile"}</span>
               <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
             </button>
@@ -271,7 +272,7 @@ export default function TaskSection(props: TaskSectionProps) {
             >
               <FontAwesomeIcon icon={faRobot} className="text-xs text-primary" />
               <span className="whitespace-nowrap max-w-[150px] truncate">
-                {selectedAgent ? selectedAgent.name : "Autoppia Agent"}
+                {selectedAgent ? selectedAgent.name : "Generalist Agent"}
               </span>
               <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
             </button>
@@ -290,7 +291,8 @@ export default function TaskSection(props: TaskSectionProps) {
                     setOpenedDropdown(null);
                   }}
                 >
-                  Autoppia Agent
+                  <span className="block text-sm font-medium truncate">Generalist Agent</span>
+                  <span className="block text-[11px] opacity-70 truncate">No company agent selected</span>
                 </button>
                 {agents.map((agent) => (
                   <button
@@ -298,7 +300,6 @@ export default function TaskSection(props: TaskSectionProps) {
                     className="block w-full p-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                     onClick={() => {
                       setSelectedAgent(agent);
-                      if (agent.websiteUrl) setInitialUrl(agent.websiteUrl);
                       setOpenedDropdown(null);
                     }}
                   >

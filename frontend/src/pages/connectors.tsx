@@ -29,8 +29,9 @@ import SelectDropdown from "../components/common/select-dropdown";
 import ConfirmModal from "../components/common/confirm-modal";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 const CONNECTOR_TYPES = [
   { value: "gmail", label: "Gmail", category: "email", icon: faEnvelope, logo: "/assets/images/connectors/gmail.svg" },
@@ -514,6 +515,14 @@ export default function Connectors(): React.ReactElement {
           )}
         </div>
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
+        {connector.type === "knowledge" && connector.vectorIndex && (
+          <div className="mt-2 rounded-lg bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border px-2 py-1.5">
+            <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector DB</p>
+            <p className="text-[11px] font-medium text-gray-700 dark:text-gray-200 truncate">
+              {connector.vectorIndex.provider} / {connector.vectorIndex.collectionName}
+            </p>
+          </div>
+        )}
         {(connector.runtimeRequirements || []).length > 0 && (
           <div className="flex flex-wrap gap-1.5 mt-2">
             {(connector.runtimeRequirements || []).slice(0, 3).map((requirement) => (
@@ -774,6 +783,32 @@ export default function Connectors(): React.ReactElement {
                     <FontAwesomeIcon icon={faKey} className="text-primary text-xs" />
                     <p className="text-sm font-semibold text-gray-900 dark:text-white">Auth and config</p>
                   </div>
+                  {selected.type === "knowledge" && selected.vectorIndex && (
+                    <div className="mb-4 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                      <div className="flex items-center gap-2 mb-2">
+                        <FontAwesomeIcon icon={faDatabase} className="text-primary text-xs" />
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Vector database target</p>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="block text-gray-400">Provider</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-100">{selected.vectorIndex.provider}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400">Collection</span>
+                          <span className="font-mono text-[11px] text-gray-800 dark:text-gray-100 break-all">{selected.vectorIndex.collectionName}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400">Embeddings</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-100">{selected.vectorIndex.embeddingProvider || "hash"}</span>
+                        </div>
+                        <div>
+                          <span className="block text-gray-400">Model</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-100">{selected.vectorIndex.embeddingModel || "hash-256"}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {configFields.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">This connector does not require auth fields.</p>
                   ) : (

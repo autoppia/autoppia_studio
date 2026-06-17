@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import logging
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -9,12 +10,15 @@ import httpx
 from fastapi import HTTPException
 
 from app.connectors import ConnectorExecutionError, execute_connector_tool
-from app.database import agents_collection, capabilities_collection, tools_collection, trajectories_collection
+from app.database import agents_collection, capabilities_collection, entities_collection, tools_collection, trajectories_collection
 from app.models.agent_config import AgentCallable, AgentConfig
+from app.services.approvals import create_pending_approval, stable_approval_key
+from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
 
 
 DEFAULT_BASE_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", "http://127.0.0.1:5060/step").strip()
+logger = logging.getLogger(__name__)
 
 
 def step_url(endpoint: str) -> str:
@@ -24,6 +28,13 @@ def step_url(endpoint: str) -> str:
     if clean.endswith("/step"):
         return clean
     return f"{clean}/step"
+
+
+async def _record_usage_event(**kwargs: Any) -> None:
+    try:
+        await record_usage(**kwargs)
+    except Exception:
+        logger.exception("Failed to record usage event")
 
 
 async def load_agent_config(agent_id: str) -> dict[str, Any]:
@@ -73,6 +84,9 @@ def _tool_callable(doc: dict[str, Any]) -> dict[str, Any]:
         executionType=str(doc.get("executionType") or ""),
         runtimeRequirements=[str(item) for item in doc.get("runtimeRequirements") or [] if item],
         permissions=doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {},
+        inputEntities=[str(item) for item in doc.get("inputEntities") or [] if item],
+        outputEntity=str(doc.get("outputEntity") or ""),
+        outputCard=doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {},
     ).model_dump()
 
 
@@ -94,6 +108,9 @@ def _skill_callable(doc: dict[str, Any]) -> dict[str, Any]:
         runtime=str(doc.get("runtime") or ""),
         runtimeRequirements=[str(item) for item in doc.get("runtimeRequirements") or [] if item],
         permissions=doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {},
+        inputEntities=[str(item) for item in doc.get("inputEntities") or [] if item],
+        outputEntity=str(doc.get("outputEntity") or ""),
+        outputCard=doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {},
     ).model_dump()
 
 
@@ -130,6 +147,7 @@ def _agent_config_payload(agent_config: dict[str, Any], context: dict[str, Any],
         tasks=agent_config.get("tasks") or [],
         tools=[_tool_callable(tool) for tool in context.get("tools") or []],
         skills=[_skill_callable(skill) for skill in context.get("skills") or []],
+        entities=context.get("entities") if isinstance(context.get("entities"), dict) else {},
         memory=memory,
         riskPolicy={"writesRequireApproval": bool((agent_config.get("runtimeCapabilities") or {}).get("humanApprovalForWrites", True))},
         createdAt=agent_config.get("createdAt"),
@@ -183,7 +201,75 @@ async def _capability_context(agent_config: dict[str, Any]) -> dict[str, Any]:
     if company_id:
         tools = await tools_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
     skill_tools = [_skill_callable(skill) for skill in skills]
-    return {"skills": skills, "tools": tools, "callables": [_tool_callable(tool) for tool in tools] + skill_tools}
+    tool_callables = [_tool_callable(tool) for tool in tools]
+    callables = tool_callables + skill_tools
+    entity_graph = await _entity_context(company_id, callables) if company_id else {}
+    return {"skills": skills, "tools": tools, "entities": entity_graph, "callables": callables}
+
+
+def _callable_entity_names(callables: list[dict[str, Any]]) -> set[str]:
+    names: set[str] = set()
+    for item in callables:
+        output_entity = str(item.get("outputEntity") or "").strip()
+        if output_entity:
+            names.add(output_entity)
+        for entity in item.get("inputEntities") or []:
+            clean = str(entity or "").strip()
+            if clean:
+                names.add(clean)
+    return names
+
+
+def _entity_graph_payload(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    nodes = [
+        {
+            "id": doc.get("name", ""),
+            "entityId": doc.get("entityId", ""),
+            "name": doc.get("name", ""),
+            "description": doc.get("description", ""),
+            "fields": doc.get("fields") if isinstance(doc.get("fields"), list) else [],
+            "sourceConnectorId": doc.get("sourceConnectorId", ""),
+            "source": doc.get("source", "manual"),
+        }
+        for doc in docs
+    ]
+    edges = []
+    for doc in docs:
+        source = str(doc.get("name") or "")
+        for rel in doc.get("relationships") or []:
+            if not isinstance(rel, dict):
+                continue
+            target = str(rel.get("target") or "").strip()
+            if source and target:
+                edges.append(
+                    {
+                        "from": source,
+                        "to": target,
+                        "name": rel.get("name", ""),
+                        "kind": rel.get("kind", "references"),
+                        "via": rel.get("via", ""),
+                        "description": rel.get("description", ""),
+                    }
+                )
+    return {"nodes": nodes, "edges": edges}
+
+
+async def _entity_context(company_id: str, callables: list[dict[str, Any]]) -> dict[str, Any]:
+    names = _callable_entity_names(callables)
+    if not names:
+        return {"nodes": [], "edges": []}
+
+    docs = await entities_collection.find({"companyId": company_id, "name": {"$in": sorted(names)}}, {"_id": 0}).to_list(length=200)
+    related_names = set(names)
+    for doc in docs:
+        for rel in doc.get("relationships") or []:
+            if isinstance(rel, dict) and str(rel.get("target") or "").strip():
+                related_names.add(str(rel.get("target")).strip())
+
+    if related_names != names:
+        docs = await entities_collection.find({"companyId": company_id, "name": {"$in": sorted(related_names)}}, {"_id": 0}).to_list(length=300)
+    docs.sort(key=lambda item: str(item.get("name") or ""))
+    return _entity_graph_payload(docs)
 
 
 async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, Any]:
@@ -214,6 +300,7 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
     return {
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
+        "entities": context.get("entities") if isinstance(context.get("entities"), dict) else {},
         "tools": tool_callables,
         "skills": skill_callables,
         "toolCalls": [item["name"] for item in all_tools if item.get("runtimeAvailability", {}).get("available", True)],
@@ -313,9 +400,55 @@ def _normalize_action(action: dict[str, Any]) -> dict[str, Any]:
     return {"name": name, "arguments": args, "reasoning": str(action.get("reasoning") or "")}
 
 
+def _last_failed_tool_result(state: dict[str, Any], expected_name: str = "") -> dict[str, Any] | None:
+    results = state.get("automata_last_tool_results")
+    if not isinstance(results, list):
+        return None
+    for result in reversed(results):
+        if not isinstance(result, dict) or result.get("success") is not False:
+            continue
+        name = str(result.get("tool") or result.get("name") or "")
+        if expected_name and name and name != expected_name:
+            continue
+        return result
+    return None
+
+
 def _requires_human_approval(action_name: str) -> bool:
     lowered = action_name.lower()
     return any(token in lowered for token in ("send_email", "send_message", "smtp_send", "delete", "create_invoice", "payment", "transfer", ".create", ".update"))
+
+
+def _approval_mode(callable_meta: dict[str, Any] | None) -> str:
+    permissions = callable_meta.get("permissions") if isinstance(callable_meta, dict) and isinstance(callable_meta.get("permissions"), dict) else {}
+    explicit = str(permissions.get("approval") or permissions.get("requiresHumanApproval") or "").strip().lower()
+    if explicit in {"always", "auto", "never"}:
+        return explicit
+    if permissions.get("requiresApproval") is True:
+        return "always"
+    if permissions.get("requiresApproval") is False:
+        return "never"
+    return "auto"
+
+
+def _callable_requires_approval(callable_meta: dict[str, Any] | None, agent_config: dict[str, Any], action_name: str) -> bool:
+    meta = callable_meta if isinstance(callable_meta, dict) else {}
+    if str(meta.get("riskLevel") or "").lower() == "high":
+        return True
+    mode = _approval_mode(meta)
+    if mode == "always":
+        return True
+    if mode == "never":
+        return False
+
+    risk_policy = agent_config.get("riskPolicy") if isinstance(agent_config.get("riskPolicy"), dict) else {}
+    runtime_capabilities = agent_config.get("runtimeCapabilities") if isinstance(agent_config.get("runtimeCapabilities"), dict) else {}
+    writes_require_approval = bool(
+        risk_policy.get("writesRequireApproval", runtime_capabilities.get("humanApprovalForWrites", True))
+    )
+    side_effects = str(meta.get("sideEffects") or "").lower()
+    writes = any(token in side_effects for token in ("write", "send", "delete", "payment", "transfer"))
+    return writes_require_approval and (writes or _requires_human_approval(action_name))
 
 
 def _content_from_tool_results(tool_results: list[dict[str, Any]]) -> str:
@@ -555,8 +688,28 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
             executed_any = True
             continue
 
-        approval_key = f"{name}:{idx}:{hash(str(arguments))}"
-        if _requires_human_approval(name) and approval_key not in approved:
+        approval_key = stable_approval_key(name, idx, arguments)
+        if _callable_requires_approval(tool_doc, agent_config, name) and approval_key not in approved:
+            payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+            run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
+            work_item_id = str(payload_context.get("workItemId") or "")
+            approval = await create_pending_approval(
+                email=str(agent_config.get("email") or ""),
+                company_id=company_id,
+                agent_id=str(agent_config.get("agentId") or ""),
+                run_id=run_id,
+                approval_key=approval_key,
+                title=f"Approve {name}",
+                message="This connector tool can write or send data. Confirm before Automata executes it.",
+                proposed_action={"name": name, "arguments": arguments},
+                entity_ref={"entity": str((tool_doc or {}).get("outputEntity") or "")},
+                metadata={
+                    "toolId": str((tool_doc or {}).get("toolId") or ""),
+                    "connectorId": str((tool_doc or {}).get("connectorId") or ""),
+                    "workItemId": work_item_id,
+                    "runId": run_id,
+                },
+            )
             return {
                 **data,
                 "tool_calls": [
@@ -567,6 +720,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                             "message": "This connector tool can write or send data. Confirm before Automata executes it.",
                             "proposedAction": {"name": name, "arguments": arguments},
                             "approvalKey": approval_key,
+                            "approvalId": approval.get("approvalId", ""),
                         },
                     }
                 ],
@@ -582,6 +736,15 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
 
         try:
             result = await execute_connector_tool(company_id=company_id, tool_name=name, arguments=arguments)
+            if tool_doc and (tool_doc.get("outputEntity") or tool_doc.get("outputCard")):
+                result = {
+                    **result,
+                    "entity": {
+                        "outputEntity": tool_doc.get("outputEntity", ""),
+                        "inputEntities": tool_doc.get("inputEntities", []),
+                        "outputCard": tool_doc.get("outputCard", {}),
+                    },
+                }
             tool_results.append(result)
             await record_runtime_event(
                 agent_id=str(agent_config.get("agentId") or ""),
@@ -591,6 +754,16 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                 status="ok" if result.get("success") else "failed",
                 payload={"arguments": arguments},
                 result=result,
+            )
+            payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+            await _record_usage_event(
+                email=str(agent_config.get("email") or ""),
+                company_id=company_id,
+                agent_id=str(agent_config.get("agentId") or ""),
+                run_id=str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or ""),
+                kind="tool_call",
+                source=name,
+                metadata={"toolName": name, "success": bool(result.get("success"))},
             )
             executed_any = True
         except ConnectorExecutionError as exc:
@@ -639,6 +812,11 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
         raw_actions = trajectory.get("trajectory") or trajectory.get("actions") or trajectory.get("steps") or []
     actions = [_normalize_action(action) for action in raw_actions if isinstance(action, dict)]
     actions = [action for action in actions if action["name"]]
+    recovery_steps = [
+        action
+        for action in (_normalize_action(item) for item in (trajectory or {}).get("recoverySteps", []) if isinstance(item, dict))
+        if action["name"]
+    ]
 
     if actions and str(trajectory.get("status") if trajectory else "") in {"approved", "harvested"}:
         progress = state.get("automata_trajectory_progress") if isinstance(state.get("automata_trajectory_progress"), dict) else {}
@@ -647,6 +825,70 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
         index = int(current.get("index") or 0)
         approval_pending = bool(current.get("approvalPending"))
         approved_actions = set(current.get("approvedActions") or [])
+        recovered_failures = set(current.get("recoveredFailures") or [])
+
+        recovery_index = current.get("recoveryIndex")
+        if recovery_steps and isinstance(recovery_index, int) and 0 <= recovery_index < len(recovery_steps):
+            recovery_action = recovery_steps[recovery_index]
+            next_recovery_index = recovery_index + 1
+            next_current = {
+                **current,
+                "index": index,
+                "approvalPending": False,
+                "approvedActions": list(approved_actions),
+            }
+            if next_recovery_index < len(recovery_steps):
+                next_current["recoveryIndex"] = next_recovery_index
+            else:
+                next_current.pop("recoveryIndex", None)
+                failed_key = str(current.get("recoveringFailure") or "")
+                if failed_key:
+                    next_current["recoveredFailures"] = sorted(recovered_failures | {failed_key})
+                    next_current.pop("recoveringFailure", None)
+            next_progress = {**progress, trajectory_id: next_current}
+            return {
+                "protocol_version": "1.0",
+                "tool_calls": [{"name": recovery_action["name"], "arguments": recovery_action["arguments"]}],
+                "content": None,
+                "reasoning": recovery_action["reasoning"] or f"Repairing harvested skill '{skill.get('name', 'skill')}' after a failed trajectory action.",
+                "done": False,
+                "state_out": {**state, "matchedSkillId": skill_id, "automata_trajectory_progress": next_progress},
+                "capability_match": {"skillId": skill_id, "name": skill.get("name", ""), "status": skill.get("status", ""), "trajectoryId": trajectory_id},
+            }
+
+        failed_action_index = max(index - 1, 0)
+        failed_action_name = actions[failed_action_index]["name"] if index > 0 and failed_action_index < len(actions) else ""
+        failed_result = _last_failed_tool_result(state, failed_action_name)
+        if recovery_steps and failed_result and failed_action_name:
+            failure_key = f"{failed_action_index}:{failed_action_name}"
+            if failure_key not in recovered_failures:
+                recovery_action = recovery_steps[0]
+                next_current = {
+                    **current,
+                    "index": index,
+                    "approvalPending": False,
+                    "approvedActions": list(approved_actions),
+                    "recoveringFailure": failure_key,
+                    "recoveredFailures": list(recovered_failures),
+                }
+                if len(recovery_steps) > 1:
+                    next_current["recoveryIndex"] = 1
+                else:
+                    next_current["recoveredFailures"] = sorted(recovered_failures | {failure_key})
+                    next_current.pop("recoveringFailure", None)
+                next_progress = {
+                    **progress,
+                    trajectory_id: next_current,
+                }
+                return {
+                    "protocol_version": "1.0",
+                    "tool_calls": [{"name": recovery_action["name"], "arguments": recovery_action["arguments"]}],
+                    "content": None,
+                    "reasoning": recovery_action["reasoning"] or str(failed_result.get("error") or "Previous trajectory action failed; running recovery."),
+                    "done": False,
+                    "state_out": {**state, "matchedSkillId": skill_id, "automata_trajectory_progress": next_progress},
+                    "capability_match": {"skillId": skill_id, "name": skill.get("name", ""), "status": skill.get("status", ""), "trajectoryId": trajectory_id},
+                }
 
         if index >= len(actions):
             return {
@@ -664,24 +906,101 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
         if action["name"] == "api.human_approval":
             approval_args = action.get("arguments") if isinstance(action.get("arguments"), dict) else {}
             body = str(approval_args.get("body") or approval_args.get("message") or approval_args.get("summary") or "")
+            next_action_key = f"{trajectory_id}:{index + 1}" if index + 1 < len(actions) else action_key
+            state_patch = {
+                "matchedSkillId": skill_id,
+                "automata_trajectory_progress": {
+                    trajectory_id: {
+                        "index": index + 1,
+                        "approvalPending": False,
+                        "approvedActions": sorted(approved_actions | {next_action_key}),
+                    }
+                },
+            }
             next_progress = {
                 **progress,
                 trajectory_id: {"index": index + 1, "approvalPending": True, "approvedActions": list(approved_actions)},
             }
+            payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+            run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
+            work_item_id = str(payload_context.get("workItemId") or "")
+            approval = await create_pending_approval(
+                email=str(agent_config.get("email") or ""),
+                company_id=str(agent_config.get("companyId") or ""),
+                agent_id=str(agent_config.get("agentId") or ""),
+                run_id=run_id,
+                approval_key=next_action_key,
+                title=str(approval_args.get("title") or f"Approve {skill.get('name', 'skill')}"),
+                message=body or "This harvested skill prepared an action that needs human approval.",
+                proposed_action=actions[index + 1] if index + 1 < len(actions) else action,
+                metadata={
+                    "approvalKind": "skill_action",
+                    "skillId": skill_id,
+                    "trajectoryId": trajectory_id,
+                    "actionIndex": index + 1,
+                    "workItemId": work_item_id,
+                    "runId": run_id,
+                    "statePatch": state_patch,
+                },
+            )
             return {
                 "protocol_version": "1.0",
-                "tool_calls": [],
-                "content": body or f"Skill '{skill.get('name', 'skill')}' prepared an action that needs human approval.",
+                "tool_calls": [
+                    {
+                        "name": "api.human_approval",
+                        "arguments": {
+                            "title": approval.get("title") or f"Approve {skill.get('name', 'skill')}",
+                            "message": approval.get("message") or body,
+                            "proposedAction": approval.get("proposedAction") or {},
+                            "approvalKey": approval.get("approvalKey", ""),
+                            "approvalId": approval.get("approvalId", ""),
+                            "statePatch": state_patch,
+                        },
+                    }
+                ],
+                "content": None,
                 "reasoning": action["reasoning"] or "Human approval is required before executing the proposed write/send action.",
-                "done": True,
+                "done": False,
                 "state_out": {**state, "matchedSkillId": skill_id, "automata_trajectory_progress": next_progress},
                 "capability_match": {"skillId": skill_id, "name": skill.get("name", ""), "status": skill.get("status", ""), "trajectoryId": trajectory_id},
             }
-        if _requires_human_approval(action["name"]) and action_key not in approved_actions and not approval_pending:
+        if _callable_requires_approval(skill, agent_config, action["name"]) and action_key not in approved_actions and not approval_pending:
             next_progress = {
                 **progress,
                 trajectory_id: {"index": index, "approvalPending": True, "approvedActions": list(approved_actions)},
             }
+            state_patch = {
+                "matchedSkillId": skill_id,
+                "automata_trajectory_progress": {
+                    trajectory_id: {
+                        "index": index,
+                        "approvalPending": False,
+                        "approvedActions": sorted(approved_actions | {action_key}),
+                    }
+                },
+            }
+            payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+            run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
+            work_item_id = str(payload_context.get("workItemId") or "")
+            approval = await create_pending_approval(
+                email=str(agent_config.get("email") or ""),
+                company_id=str(agent_config.get("companyId") or ""),
+                agent_id=str(agent_config.get("agentId") or ""),
+                run_id=run_id,
+                approval_key=action_key,
+                title=f"Approve {action['name']}",
+                message="This harvested trajectory is about to perform a write/send action. Confirm before continuing.",
+                proposed_action=action,
+                metadata={
+                    "approvalKind": "skill_action",
+                    "skillId": skill_id,
+                    "trajectoryId": trajectory_id,
+                    "actionIndex": index,
+                    "workItemId": work_item_id,
+                    "runId": run_id,
+                    "statePatch": state_patch,
+                },
+            )
             return {
                 "protocol_version": "1.0",
                 "tool_calls": [
@@ -691,6 +1010,9 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
                             "title": f"Approve {action['name']}",
                             "message": "This harvested trajectory is about to perform a write/send action. Confirm before continuing.",
                             "proposedAction": action,
+                            "approvalKey": action_key,
+                            "approvalId": approval.get("approvalId", ""),
+                            "statePatch": state_patch,
                         },
                     }
                 ],
@@ -719,7 +1041,7 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
         next_index = index + 1
         next_progress = {
             **progress,
-            trajectory_id: {"index": next_index, "approvalPending": approval_pending, "approvedActions": list(approved_actions)},
+            trajectory_id: {"index": next_index, "approvalPending": False, "approvedActions": list(approved_actions)},
         }
         return {
             "protocol_version": "1.0",
@@ -848,6 +1170,19 @@ async def agent_step_result(agent_id: str, payload: dict[str, Any]) -> dict[str,
         step_index=int(payload.get("step_index") or 0),
         status="ok",
         result=data if isinstance(data, dict) else {"raw": data},
+    )
+    payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    await _record_usage_event(
+        email=str(agent_config.get("email") or ""),
+        company_id=str(agent_config.get("companyId") or ""),
+        agent_id=agent_id,
+        run_id=str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or ""),
+        kind="agent_step",
+        source=str((data or {}).get("executionMode") or "agent_step") if isinstance(data, dict) else "agent_step",
+        metadata={
+            "stepIndex": int(payload.get("step_index") or 0),
+            "toolCallCount": len(data.get("tool_calls") or []) if isinstance(data, dict) and isinstance(data.get("tool_calls"), list) else 0,
+        },
     )
 
     return data

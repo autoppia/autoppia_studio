@@ -14,8 +14,11 @@ import Agents from "./pages/agents";
 import AgentDetail from "./pages/agent-detail";
 import Connectors from "./pages/connectors";
 import Capabilities from "./pages/capabilities";
+import Entities from "./pages/entities";
+import Approvals from "./pages/approvals";
 import Credentials from "./pages/credentials";
 import Knowledge from "./pages/knowledge";
+import Artifacts from "./pages/artifacts";
 import Analytics from "./pages/analytics";
 import Work from "./pages/work";
 import SignIn from "./pages/signin";
@@ -145,8 +148,11 @@ function App() {
                 <Route path="/work" element={<Work />} />
                 <Route path="/connectors" element={<Connectors />} />
                 <Route path="/capabilities" element={<Capabilities />} />
+                <Route path="/entities" element={<Entities />} />
+                <Route path="/approvals" element={<Approvals />} />
                 <Route path="/credentials" element={<Credentials />} />
                 <Route path="/knowledge" element={<Knowledge />} />
+                <Route path="/artifacts" element={<Artifacts />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}

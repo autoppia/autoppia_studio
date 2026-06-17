@@ -69,7 +69,9 @@ async def list_agent_toolkits(agent_id: str):
             "runtimeRequirements": ["vectorstore", "embedding_model"],
             "permissions": {"knowledge": True, "sideEffects": "none"},
             "tools": [
-                _tool("knowledge.search", "Search company documents.", "none"),
+                _tool("knowledge.search", "Search company documents with topK and optional filters.", "none"),
+                _tool("knowledge.list_documents", "List available company knowledge documents.", "none"),
+                _tool("knowledge.stats", "Return document and indexing stats.", "none"),
                 _tool("knowledge.read_document", "Read a referenced document chunk.", "none"),
             ],
         })

@@ -5,6 +5,7 @@ import Cookies from "js-cookie";
 
 import { setUser } from "../../redux/userSlice";
 import { useToast } from "./toast";
+import { getApiUrl } from "../../utils/api-url";
 
 const GoogleIcon = () => (
   <svg width="18" height="18" viewBox="0 0 48 48">
@@ -16,7 +17,7 @@ const GoogleIcon = () => (
 );
 
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID || "";
 
 function GoogleSignInButtonInner() {

@@ -3,7 +3,7 @@ from typing import Literal
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.database import sessions_collection, tool_runs_collection
+from app.database import sessions_collection, tool_runs_collection, usage_events_collection
 
 router = APIRouter()
 
@@ -38,15 +38,24 @@ def _empty_buckets(range_key: RangeKey, now: datetime) -> list[str]:
     return [(start + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(days)]
 
 
+def _coerce_datetime(value: object) -> datetime | None:
+    if isinstance(value, datetime):
+        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    if isinstance(value, str):
+        try:
+            parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+    return None
+
+
 @router.get("/analytics")
 async def get_analytics(
     email: str,
     range: RangeKey = Query("30d"),
 ):
-    """Aggregate analytics from existing session data.
-
-    Credit/cost fields return None — billing telemetry is not tracked yet.
-    """
+    """Aggregate session analytics and recorded usage telemetry."""
     try:
         now = datetime.now(timezone.utc)
         cutoff = _range_start(range, now)
@@ -83,6 +92,26 @@ async def get_analytics(
 
         avg_tasks = (total_tasks / total) if total > 0 else 0.0
 
+        usage_cursor = usage_events_collection.find(
+            {"email": email, "createdAt": {"$gte": cutoff}},
+            {"createdAt": 1, "credits": 1, "source": 1, "kind": 1, "_id": 0},
+        )
+        total_usage = 0.0
+        usage_by_source: dict[str, float] = {}
+        usage_by_bucket: dict[str, float] = {}
+        async for doc in usage_cursor:
+            try:
+                credits = float(doc.get("credits") or 0.0)
+            except (TypeError, ValueError):
+                credits = 0.0
+            total_usage += credits
+            source = str(doc.get("source") or doc.get("kind") or "unknown")
+            usage_by_source[source] = usage_by_source.get(source, 0.0) + credits
+            created = _coerce_datetime(doc.get("createdAt"))
+            if created:
+                key = _bucket_key(created, range)
+                usage_by_bucket[key] = usage_by_bucket.get(key, 0.0) + credits
+
         over_time = []
         for key in _empty_buckets(range, now):
             slot = bucket_counts.get(key, {"with_tasks": 0, "no_tasks": 0})
@@ -93,15 +122,23 @@ async def get_analytics(
                     "no_tasks": slot["no_tasks"],
                 }
             )
+        usage_over_time = [
+            {"bucket": key, "usage": round(usage_by_bucket.get(key, 0.0), 6)}
+            for key in _empty_buckets(range, now)
+        ]
+        breakdown = [
+            {"source": source, "usage": round(usage, 6)}
+            for source, usage in sorted(usage_by_source.items(), key=lambda item: item[1], reverse=True)
+        ]
 
         return {
             "range": range,
             "credits": {
-                "total_usage": 0.0,
+                "total_usage": round(total_usage, 6),
                 "runway": None,
-                "breakdown_by_source": [],
-                "usage_over_time": [],
-                "available": False,
+                "breakdown_by_source": breakdown,
+                "usage_over_time": usage_over_time,
+                "available": True,
             },
             "sessions": {
                 "total": total,

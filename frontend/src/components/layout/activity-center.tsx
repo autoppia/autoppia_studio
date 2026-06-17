@@ -16,8 +16,9 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import { ActivitySummary, AppNotification, NotificationLevel } from "../../utils/types";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = process.env.REACT_APP_API_URL || "http://127.0.0.1:8080";
+const apiUrl = getApiUrl();
 const POLL_MS = 15000;
 
 const levelStyles: Record<NotificationLevel, { icon: typeof faCircleInfo; color: string }> = {

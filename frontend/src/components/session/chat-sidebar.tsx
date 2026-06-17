@@ -16,8 +16,9 @@ import { useToast } from "../common/toast";
 import { CHAT_SIDEBAR_WIDTH } from "../../constants/layout";
 import { AppDispatch } from "../../redux/store";
 import { getSessionBrowserMode } from "../../utils/browser-mode";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 interface ChatSidebarProps {
   open: boolean;
@@ -87,11 +88,16 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       ? `${task}\nADDITIONAL INFO: ${user.instructions}`
       : task;
 
-    if (socket?.connected) {
+      if (socket?.connected) {
       dispatch(addTask(task));
       setTask("");
       dispatch(addAction({ action: "Continue", reasoning: "Continuing task...", previous_success: true }));
-      socket.emit("continue-task", { task: taskWithInstructions });
+      socket.emit("continue-task", {
+        session_id: reduxSessionId || sessionId || "",
+        email: user.email || "",
+        companyId: localStorage.getItem("automata_company_id") || "",
+        task: taskWithInstructions,
+      });
     } else {
       setSubmitting(true);
       const healthy = await checkBackendHealth();
@@ -114,6 +120,9 @@ export default function ChatSidebar(props: ChatSidebarProps) {
 
       if (lastUrl) {
         newSocket.emit("resume-task", {
+          session_id: reduxSessionId || sessionId || "",
+          email: user.email || "",
+          companyId: localStorage.getItem("automata_company_id") || "",
           task: taskWithInstructions,
           lastUrl,
           actionHistory: actionHistory || [],
@@ -124,9 +133,13 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         });
       } else {
         newSocket.emit("start-task", {
+          session_id: reduxSessionId || sessionId || "",
+          email: user.email || "",
+          companyId: localStorage.getItem("automata_company_id") || "",
           task: taskWithInstructions,
           initial_url: "",
           context_id: contextId || "",
+          agent_id: agentId || "",
           browser_mode: getSessionBrowserMode(),
         });
       }

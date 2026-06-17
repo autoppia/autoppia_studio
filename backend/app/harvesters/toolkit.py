@@ -50,6 +50,9 @@ class ToolkitHarvester(BaseHarvester):
                     "surface": surface,
                     "runtimeRequirements": runtime_requirements,
                     "sideEffects": side_effects,
+                    "inputEntities": list(raw_tool.get("inputEntities") or []),
+                    "outputEntity": str(raw_tool.get("outputEntity") or ""),
+                    "outputCard": raw_tool.get("outputCard") if isinstance(raw_tool.get("outputCard"), dict) else {},
                     "permissions": {
                         "connectorId": connector_id,
                         "requiresApproval": "write" in side_effects.lower(),

@@ -7,6 +7,7 @@ import logging
 import json
 from urllib.parse import urlparse
 from pathlib import Path
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 
 from agent.apified_cua import ApifiedCUA
@@ -133,6 +134,55 @@ def _artifacts_from_tool_results(tool_results: list[dict]) -> list[dict]:
     return artifacts
 
 
+def _clean_artifact_type(value) -> str:
+    clean = "".join(ch if ch.isalnum() or ch in {"_", "-"} else "-" for ch in str(value or "markdown").lower()).strip("-")
+    return clean or "markdown"
+
+
+def _artifact_from_create_call(args: dict, context: dict | None = None, source_tool: str = "artifacts.create") -> dict:
+    context = context or {}
+    artifact_type = _clean_artifact_type(args.get("artifactType") or args.get("type") or args.get("kind") or "markdown")
+    title = str(args.get("title") or args.get("name") or "Artifact").strip()[:160] or "Artifact"
+    content = str(args.get("content") or args.get("body") or "")
+    file_name = str(args.get("fileName") or args.get("filename") or "").strip()
+    if not file_name:
+        ext = {
+            "markdown": ".md",
+            "html": ".html",
+            "react": ".jsx",
+            "svg": ".svg",
+            "mermaid": ".mmd",
+            "csv": ".csv",
+            "json": ".json",
+            "javascript": ".js",
+            "typescript": ".ts",
+            "python": ".py",
+            "text": ".txt",
+        }.get(artifact_type, ".txt")
+        safe_title = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "-" for ch in title).strip(".-") or "artifact"
+        file_name = f"{safe_title[:80]}{ext}" if "." not in safe_title else safe_title[:120]
+    now = datetime.now(timezone.utc).isoformat()
+    return {
+        "artifactId": str(uuid.uuid4()),
+        "sessionId": context.get("sessionId", ""),
+        "companyId": context.get("companyId", ""),
+        "email": context.get("email", ""),
+        "agentId": context.get("agentId", ""),
+        "agentName": context.get("agentName", ""),
+        "name": title,
+        "title": title,
+        "artifactType": artifact_type,
+        "kind": artifact_type,
+        "content": content,
+        "contentType": str(args.get("contentType") or ""),
+        "fileName": file_name,
+        "sourceTool": source_tool,
+        "metadata": args.get("metadata") if isinstance(args.get("metadata"), dict) else {},
+        "createdAt": now,
+        "updatedAt": now,
+    }
+
+
 async def _execute_tool_call(page, tool_call: dict) -> None:
     """Execute a tool_call dict (browser.* format) on a Playwright page."""
     name = tool_call.get("name", "")
@@ -243,6 +293,8 @@ class AutoppiaAgent:
         self._on_screenshot = None
         self._state = {}  # state roundtrip for the external agent runtime
         self._active_skill_id = None
+        self._artifact_context = {}
+        self.artifacts = []
 
     def set_on_action(self, callback):
         """Called before each action is executed.
@@ -255,6 +307,9 @@ class AutoppiaAgent:
         Signature: async callback(screenshot_base64: str)
         """
         self._on_screenshot = callback
+
+    def set_artifact_context(self, context: dict | None):
+        self._artifact_context = context or {}
 
     async def initialize(
         self,
@@ -356,7 +411,7 @@ class AutoppiaAgent:
                     "content": content or "Task completed",
                     "success": True,
                     "tool_results": tool_results,
-                    "artifacts": artifacts,
+                    "artifacts": [*self.artifacts, *artifacts],
                 }
                 if self._on_action and reasoning:
                     try:
@@ -372,7 +427,7 @@ class AutoppiaAgent:
                     "content": content or "Task completed",
                     "success": bool(done),
                     "tool_results": tool_results,
-                    "artifacts": artifacts,
+                    "artifacts": [*self.artifacts, *artifacts],
                 }
                 if self._on_action and reasoning:
                     try:
@@ -405,6 +460,23 @@ class AutoppiaAgent:
 
                 success = False
                 try:
+                    if tool_name in {"artifacts.create", "artifact.create", "session_artifacts.create"}:
+                        artifact = _artifact_from_create_call(tool_call.get("arguments") or {}, self._artifact_context, tool_name)
+                        self.artifacts.append(artifact)
+                        executed_any = True
+                        success = True
+                        self.history.append(
+                            {
+                                "step_index": self.step_index,
+                                "tool_call": tool_call,
+                                "action": _action_from_tool_call(tool_call),
+                                "success": True,
+                                "output": {"artifact": {key: value for key, value in artifact.items() if key != "content"}},
+                            }
+                        )
+                        previous_success = success
+                        continue
+
                     await _execute_tool_call(self.browser_executor.page, tool_call)
                     executed_any = True
                     success = True
@@ -448,7 +520,7 @@ class AutoppiaAgent:
                     "content": content or "Task completed",
                     "success": True,
                     "tool_results": tool_results,
-                    "artifacts": artifacts,
+                    "artifacts": [*self.artifacts, *artifacts],
                 }
                 if self._on_action and reasoning:
                     try:

@@ -18,8 +18,9 @@ import {
 import { AgentConfig, AgentTask } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import { useToast } from "../components/common/toast";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 interface TaskDraft {
   name: string;

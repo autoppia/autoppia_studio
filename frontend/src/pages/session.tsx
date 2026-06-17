@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect, useCallback } from "react";
+import ReactMarkdown from "react-markdown";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate, useOutletContext, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -11,6 +12,7 @@ import {
   faFileLines,
   faGlobe,
   faDiagramProject,
+  faShapes,
   faRotate,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
@@ -41,10 +43,11 @@ import {
 } from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
 import { ChatItem, HistoryItem, KnowledgeDocument, SessionArtifact, SessionDocument } from "../utils/types";
+import { getApiUrl } from "../utils/api-url";
 
 const IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 const DOCUMENT_ACCEPT = ".pdf,.md,.markdown,.txt,.csv,.json,.doc,.docx,.html,.xml,.yml,.yaml";
 
 /** Map a raw action name to a runtime activity surface. */
@@ -83,6 +86,65 @@ function formatDocumentDate(value?: string) {
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
 }
 
+function artifactRows(content: string) {
+  return content
+    .split(/\r?\n/)
+    .filter(Boolean)
+    .slice(0, 16)
+    .map((line) => line.split(",").map((cell) => cell.trim()));
+}
+
+function ArtifactPreview({ artifact }: { artifact: SessionArtifact }) {
+  const type = artifact.artifactType || artifact.kind || "text";
+  const content = artifact.content || "";
+  if (artifact.url && !content) {
+    return (
+      <iframe
+        title={artifact.name || "Artifact preview"}
+        src={artifact.url}
+        className="h-full min-h-[420px] w-full rounded-xl border border-gray-200 bg-white dark:border-dark-border"
+      />
+    );
+  }
+  if (type === "markdown") {
+    return (
+      <div className="prose prose-sm max-w-none dark:prose-invert rounded-xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+        <ReactMarkdown>{content || "Nothing to preview yet."}</ReactMarkdown>
+      </div>
+    );
+  }
+  if (type === "html" || type === "svg") {
+    return <iframe title={artifact.name || "Artifact preview"} sandbox="" srcDoc={content} className="h-full min-h-[420px] w-full rounded-xl border border-gray-200 bg-white dark:border-dark-border" />;
+  }
+  if (type === "csv") {
+    const rows = artifactRows(content);
+    return (
+      <div className="overflow-auto rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
+        <table className="min-w-full text-left text-xs">
+          <tbody>
+            {rows.length ? rows.map((row, rowIndex) => (
+              <tr key={`${rowIndex}-${row.join("-")}`} className={rowIndex === 0 ? "bg-gray-50 dark:bg-white/5" : ""}>
+                {row.map((cell, cellIndex) => (
+                  <td key={`${rowIndex}-${cellIndex}`} className="border-b border-r border-gray-100 px-3 py-2 text-gray-700 dark:border-dark-border dark:text-gray-200">
+                    {cell}
+                  </td>
+                ))}
+              </tr>
+            )) : (
+              <tr><td className="px-3 py-2 text-gray-400">Nothing to preview yet.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    );
+  }
+  return (
+    <pre className="min-h-[420px] overflow-auto rounded-xl border border-gray-200 bg-gray-950 p-4 text-xs leading-relaxed text-gray-100 dark:border-dark-border">
+      <code>{content || "Nothing to preview yet."}</code>
+    </pre>
+  );
+}
+
 function Session(): React.ReactElement {
   const browserContainerRef = useRef<HTMLDivElement | null>(null);
   const documentInputRef = useRef<HTMLInputElement | null>(null);
@@ -118,11 +180,13 @@ function Session(): React.ReactElement {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notFound, setNotFound] = useState(false);
   // Canvas vs Browser are mutually-exclusive tabs — only one is visible at a time.
-  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents">("canvas");
+  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents" | "artifacts">("canvas");
   const manualViewRef = useRef(false);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [sessionDocuments, setSessionDocuments] = useState<SessionDocument[]>([]);
   const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
+  const [persistedArtifacts, setPersistedArtifacts] = useState<SessionArtifact[]>([]);
+  const [selectedArtifactId, setSelectedArtifactId] = useState("");
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsUploading, setDocumentsUploading] = useState(false);
   const [documentsError, setDocumentsError] = useState("");
@@ -186,6 +250,31 @@ function Session(): React.ReactElement {
       setDocumentsLoading(false);
     }
   }, [companyId, reduxSessionId, sessionId, user.email]);
+
+  const loadArtifacts = useCallback(async () => {
+    const sid = reduxSessionId || sessionId || "";
+    if (!user.email || !sid) {
+      setPersistedArtifacts([]);
+      setSelectedArtifactId("");
+      return;
+    }
+    setDocumentsLoading(true);
+    setDocumentsError("");
+    try {
+      const params = new URLSearchParams({ email: user.email });
+      const res = await fetch(`${apiUrl}/sessions/${sid}/artifacts?${params.toString()}`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const items = data.artifacts || [];
+      setPersistedArtifacts(items);
+      setSelectedArtifactId((current) => current || items[0]?.artifactId || "");
+    } catch (err: any) {
+      console.error("Failed to load session artifacts:", err);
+      setDocumentsError(err?.message || "Could not load artifacts.");
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [reduxSessionId, sessionId, user.email]);
 
   const uploadDocuments = async (files: FileList | File[] | null) => {
     const list = files ? Array.from(files) : [];
@@ -280,6 +369,17 @@ function Session(): React.ReactElement {
     }
   };
 
+  const openSessionArtifact = (artifact: SessionArtifact) => {
+    if (artifact.url) {
+      window.open(artifact.url, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const sid = reduxSessionId || sessionId || "";
+    if (!user.email || !sid || !artifact.artifactId) return;
+    const params = new URLSearchParams({ email: user.email });
+    window.open(`${apiUrl}/sessions/${sid}/artifacts/${artifact.artifactId}/download?${params.toString()}`, "_blank", "noopener,noreferrer");
+  };
+
   useEffect(() => {
     const handler = (event: Event) => {
       const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
@@ -291,7 +391,8 @@ function Session(): React.ReactElement {
 
   useEffect(() => {
     if (activeView === "documents") loadDocuments();
-  }, [activeView, loadDocuments]);
+    if (activeView === "artifacts") loadArtifacts();
+  }, [activeView, loadDocuments, loadArtifacts]);
 
   const handleSelectTab = (index: number) => {
     dispatch(setActiveTabIndex(index));
@@ -477,9 +578,14 @@ function Session(): React.ReactElement {
     selectedScreenshot !== null && allScreenshots[selectedScreenshot]
       ? allScreenshots[selectedScreenshot]
       : lastScreenshot;
-  const sessionArtifacts: SessionArtifact[] = chats
+  const chatArtifacts: SessionArtifact[] = chats
     .filter((c: ChatItem) => c.role === "assistant" && c.artifacts?.length)
     .flatMap((c: ChatItem) => c.artifacts || []);
+  const sessionArtifacts: SessionArtifact[] = [
+    ...persistedArtifacts,
+    ...chatArtifacts.filter((artifact) => !persistedArtifacts.some((stored) => stored.artifactId === artifact.artifactId)),
+  ];
+  const selectedArtifact = sessionArtifacts.find((artifact) => artifact.artifactId === selectedArtifactId) || sessionArtifacts[0] || null;
   const assistantMessages = chats.filter((c: ChatItem) => c.role === "assistant");
   const latestAssistant = assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1] : null;
   const latestActions = latestAssistant?.actions || [];
@@ -546,7 +652,7 @@ function Session(): React.ReactElement {
     if (!socketId && !completed) manualViewRef.current = false;
   }, [socketId, completed]);
 
-  const selectView = (view: "canvas" | "browser" | "documents") => {
+  const selectView = (view: "canvas" | "browser" | "documents" | "artifacts") => {
     manualViewRef.current = true;
     setActiveView(view);
   };
@@ -636,59 +742,6 @@ function Session(): React.ReactElement {
         {documentsError && (
           <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
             {documentsError}
-          </div>
-        )}
-
-        {sessionArtifacts.length > 0 && (
-          <div className="mb-4 rounded-xl border border-primary/25 bg-primary/5 p-3 dark:bg-primary/10">
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Session artifacts</p>
-                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Files returned by this run. Save them to Knowledge when they should become reusable context.</p>
-              </div>
-            </div>
-            <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
-              {sessionArtifacts.map((artifact, index) => (
-                <div
-                  key={artifact.artifactId || `${artifact.url}-${index}`}
-                  className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-zinc-950/60"
-                >
-                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-                    <FontAwesomeIcon icon={faFileLines} className="text-sm" />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={artifact.name || artifact.url}>
-                      {artifact.name || "Artifact"}
-                    </p>
-                    <p className="mt-0.5 truncate text-[11px] text-gray-400">
-                      {artifact.kind || "file"}{artifact.sourceTool ? ` · ${artifact.sourceTool}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex flex-shrink-0 items-center gap-1">
-                    <button
-                      onClick={() => window.open(artifact.url, "_blank", "noopener,noreferrer")}
-                      className="h-8 rounded-lg px-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
-                    >
-                      View
-                    </button>
-                    <a
-                      href={artifact.url}
-                      download={artifact.name || undefined}
-                      className="flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
-                    >
-                      Download
-                    </a>
-                    <button
-                      onClick={() => saveArtifactToKnowledge(artifact)}
-                      disabled={!companyId || documentsUploading}
-                      className="h-8 rounded-lg bg-gradient-primary px-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
-                    >
-                      Save
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         )}
 
@@ -821,6 +874,111 @@ function Session(): React.ReactElement {
     </div>
   );
 
+  const artifactsWorkspace = (
+    <div className="flex h-full w-full overflow-hidden rounded-xl border border-gray-200 bg-white shadow-soft dark:border-dark-border dark:bg-dark-surface">
+      <aside className="flex w-[280px] flex-shrink-0 flex-col border-r border-gray-200 dark:border-dark-border">
+        <div className="border-b border-gray-200 px-4 py-3 dark:border-dark-border">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Session artifacts</p>
+              <p className="mt-0.5 text-xs text-gray-400">Outputs created by this agent run.</p>
+            </div>
+            <button
+              onClick={loadArtifacts}
+              disabled={documentsLoading}
+              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+              title="Refresh artifacts"
+            >
+              <FontAwesomeIcon icon={documentsLoading ? faSpinner : faRotate} className={`text-[10px] ${documentsLoading ? "animate-spin" : ""}`} />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-auto p-2">
+          {sessionArtifacts.length === 0 ? (
+            <div className="flex min-h-[220px] flex-col items-center justify-center rounded-xl border border-dashed border-gray-300 px-4 text-center dark:border-dark-border">
+              <span className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <FontAwesomeIcon icon={faShapes} />
+              </span>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">No artifacts yet</p>
+              <p className="mt-1 text-xs text-gray-400">Ask the agent to create a report, diagram, HTML page, table, or code artifact.</p>
+            </div>
+          ) : sessionArtifacts.map((artifact) => {
+            const active = selectedArtifact?.artifactId === artifact.artifactId;
+            return (
+              <button
+                key={artifact.artifactId || artifact.url || artifact.name}
+                onClick={() => setSelectedArtifactId(artifact.artifactId)}
+                className={`mb-2 flex w-full items-start gap-3 rounded-lg border p-3 text-left transition-colors ${
+                  active
+                    ? "border-primary/50 bg-primary/5 dark:bg-primary/10"
+                    : "border-gray-200 bg-gray-50 hover:border-primary/30 dark:border-dark-border dark:bg-zinc-900/50"
+                }`}
+              >
+                <span className="mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FontAwesomeIcon icon={faShapes} className="text-sm" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white" title={artifact.name || artifact.title}>
+                    {artifact.name || artifact.title || "Artifact"}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-gray-400">
+                    {artifact.artifactType || artifact.kind || "artifact"}{artifact.sourceTool ? ` · ${artifact.sourceTool}` : ""}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </aside>
+      <main className="flex min-w-0 flex-1 flex-col">
+        <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-dark-border">
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">
+              {selectedArtifact?.name || selectedArtifact?.title || "Artifact preview"}
+            </p>
+            <p className="mt-0.5 truncate text-xs text-gray-400">
+              {selectedArtifact ? `${selectedArtifact.artifactType || selectedArtifact.kind || "artifact"}${selectedArtifact.fileName ? ` · ${selectedArtifact.fileName}` : ""}` : "Select an artifact"}
+            </p>
+          </div>
+          {selectedArtifact && (
+            <div className="flex flex-shrink-0 items-center gap-2">
+              <button
+                onClick={() => openSessionArtifact(selectedArtifact)}
+                className="flex h-8 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faDownload} className="text-[10px]" />
+                Download
+              </button>
+              {selectedArtifact.url && (
+                <button
+                  onClick={() => saveArtifactToKnowledge(selectedArtifact)}
+                  disabled={!companyId || documentsUploading}
+                  className="h-8 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+                >
+                  Save to Knowledge
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="flex-1 overflow-auto p-4">
+          {documentsError && activeView === "artifacts" && (
+            <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+              {documentsError}
+            </div>
+          )}
+          {selectedArtifact ? (
+            <ArtifactPreview artifact={selectedArtifact} />
+          ) : (
+            <div className="flex h-full min-h-[320px] items-center justify-center text-sm text-gray-400">
+              Select an artifact to preview it.
+            </div>
+          )}
+        </div>
+      </main>
+    </div>
+  );
+
   return (
     <div className="w-full h-full flex flex-col relative bg-gray-100 dark:bg-dark-bg">
       {/* Shared section backdrop — same dark-bg image used across the app. */}
@@ -866,6 +1024,7 @@ function Session(): React.ReactElement {
             {([
               { key: "canvas", label: "Canvas", icon: faDiagramProject },
               { key: "browser", label: "Browser", icon: faGlobe },
+              { key: "artifacts", label: "Artifacts", icon: faShapes },
               { key: "documents", label: "Documents", icon: faFileLines },
             ] as const).map((tab) => {
               const isActive = activeView === tab.key;
@@ -899,6 +1058,10 @@ function Session(): React.ReactElement {
             ) : activeView === "documents" ? (
               <div className="w-full h-full min-h-[320px]">
                 {documentsWorkspace}
+              </div>
+            ) : activeView === "artifacts" ? (
+              <div className="w-full h-full min-h-[320px]">
+                {artifactsWorkspace}
               </div>
             ) : socketId && liveUrl && !completed ? (
               <div ref={browserContainerRef} className={browserContainerClass + " flex-col"}>

@@ -9,3 +9,4 @@ Pillow
 bcrypt
 PyJWT
 anthropic
+openai

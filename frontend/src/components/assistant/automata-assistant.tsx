@@ -10,13 +10,23 @@ import {
   faPenToSquare,
   faExpand,
   faCompress,
-  faCircleNotch,
-  faGear,
   faArrowRight,
+  faClock,
+  faWandMagicSparkles,
+  faPlug,
+  faRobot,
+  faListCheck,
+  faLayerGroup,
+  faToolbox,
+  faChevronDown,
+  faChevronRight,
+  faUpRightFromSquare,
+  faBrain,
 } from "@fortawesome/free-solid-svg-icons";
 import { faCircleCheck } from "@fortawesome/free-regular-svg-icons";
+import { getApiUrl } from "../../utils/api-url";
 
-const API_URL = process.env.REACT_APP_API_URL || "http://127.0.0.1:8080";
+const API_URL = getApiUrl();
 
 type AssistantMode =
   | "studio_global"
@@ -39,7 +49,25 @@ interface AssistantMessage {
 
 interface AssistantConversation {
   conversationId: string;
+  mode?: AssistantMode;
+  companyId?: string;
+  title?: string;
+  lastMessage?: string;
+  messageCount?: number;
+  updatedAt?: string;
+  createdAt?: string;
   messages: AssistantMessage[];
+}
+
+interface AssistantConversationSummary {
+  conversationId: string;
+  mode: AssistantMode;
+  companyId: string;
+  title: string;
+  lastMessage: string;
+  messageCount: number;
+  updatedAt?: string;
+  createdAt?: string;
 }
 
 /** Conservatively infer the assistant mode from the current Studio route. */
@@ -94,6 +122,213 @@ function isToolEvent(message: AssistantMessage): boolean {
   return message.role === "tool" || message.type === "tool_call" || message.type === "tool_result";
 }
 
+function isThinking(message: AssistantMessage): boolean {
+  return message.type === "thinking";
+}
+
+// ---------------------------------------------------------------------------
+// Presentational widgets (tool cards, link previews, images, timing).
+// ---------------------------------------------------------------------------
+
+const URL_RE = /https?:\/\/[^\s<>()]+/g;
+const IMG_EXT_RE = /\.(png|jpe?g|gif|webp|svg|avif)(\?[^\s]*)?$/i;
+
+/** Strip trailing punctuation that commonly clings to URLs in prose. */
+function cleanUrl(url: string): string {
+  return url.replace(/[.,;:!?)\]]+$/, "");
+}
+
+/** Non-image links found in a block of text, de-duplicated. */
+function extractLinks(text: string): string[] {
+  const found = (text.match(URL_RE) || []).map(cleanUrl);
+  return Array.from(new Set(found)).filter((u) => !IMG_EXT_RE.test(u));
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+
+/** Friendly label + icon for each studio tool the assistant can call. */
+const TOOL_META: Record<string, { label: string; icon: any }> = {
+  "studio.list_connectors": { label: "Connectors", icon: faPlug },
+  "studio.list_capabilities": { label: "Capabilities", icon: faWandMagicSparkles },
+  "studio.list_agents": { label: "Agents", icon: faRobot },
+  "studio.list_work_items": { label: "Work items", icon: faListCheck },
+  "studio.snapshot": { label: "Workspace", icon: faLayerGroup },
+};
+
+function toolMeta(name: string): { label: string; icon: any } {
+  return TOOL_META[name] || { label: name || "Tool", icon: faToolbox };
+}
+
+function nameOf(item: any): string {
+  if (typeof item === "string") return item;
+  if (item && typeof item === "object") {
+    return item.name || item.label || item.title || item.id || item.slug || JSON.stringify(item);
+  }
+  return String(item);
+}
+
+/** Turn a tool's metadata into displayable {label, items} sections. */
+function buildSections(md: Record<string, any>): { label: string; items: any[] }[] {
+  const out: { label: string; items: any[] }[] = [];
+  const arrayKeys: [string, string][] = [
+    ["connectors", "Connectors"],
+    ["tools", "Tools"],
+    ["skills", "Skills"],
+    ["agents", "Agents"],
+    ["workItems", "Work items"],
+    ["companies", "Companies"],
+  ];
+  for (const [key, label] of arrayKeys) {
+    if (Array.isArray(md[key]) && md[key].length) out.push({ label, items: md[key] });
+  }
+  if (md.counts && typeof md.counts === "object") {
+    const items = Object.entries(md.counts).map(([k, v]) => `${k}: ${v}`);
+    if (items.length) out.push({ label: "Counts", items });
+  }
+  return out;
+}
+
+function Chips({ items }: { items: any[] }) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((it, i) => (
+        <span
+          key={i}
+          className="text-[11px] px-2 py-0.5 rounded-md truncate max-w-[180px]
+            bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-gray-300
+            border border-gray-200/70 dark:border-dark-border"
+        >
+          {nameOf(it)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+/** Collapsible card shown when the assistant runs a skill / tool. */
+function ToolCard({ message }: { message: AssistantMessage }) {
+  const [open, setOpen] = useState(false);
+  const meta = toolMeta(message.toolName);
+  const sections = buildSections(message.metadata || {});
+  const hasDetails = sections.length > 0;
+  return (
+    <div className="w-full max-w-[90%] rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50/70 dark:bg-dark-surface/60 overflow-hidden">
+      <button
+        onClick={() => hasDetails && setOpen((v) => !v)}
+        disabled={!hasDetails}
+        className="w-full flex items-center gap-2.5 px-3 py-2 text-left disabled:cursor-default hover:bg-gray-100/60 dark:hover:bg-white/5 transition-colors"
+      >
+        <span className="w-6 h-6 rounded-md bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+          <FontAwesomeIcon icon={meta.icon} className="text-[11px]" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="text-xs font-medium text-gray-800 dark:text-gray-100">{meta.label}</div>
+          <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">
+            {message.content || "Done"}
+          </div>
+        </div>
+        <FontAwesomeIcon icon={faCircleCheck} className="text-[11px] text-emerald-500/80 flex-shrink-0" />
+        {hasDetails && (
+          <FontAwesomeIcon
+            icon={open ? faChevronDown : faChevronRight}
+            className="text-[10px] text-gray-400 flex-shrink-0"
+          />
+        )}
+      </button>
+      {open && hasDetails && (
+        <div className="px-3 pb-3 pt-2 space-y-2.5 border-t border-gray-200/70 dark:border-dark-border">
+          {sections.map((s) => (
+            <div key={s.label} className="space-y-1.5">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                {s.label} · {s.items.length}
+              </div>
+              <Chips items={s.items} />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Rich preview card for a web link the assistant references. */
+function LinkPreview({ url }: { url: string }) {
+  const host = hostOf(url);
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="group flex items-center gap-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+        bg-white dark:bg-dark-surface px-3 py-2 hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-white/5 transition-colors"
+    >
+      <img
+        src={`https://www.google.com/s2/favicons?domain=${host}&sz=64`}
+        alt=""
+        loading="lazy"
+        className="w-6 h-6 rounded flex-shrink-0"
+      />
+      <div className="min-w-0 flex-1">
+        <div className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{host}</div>
+        <div className="text-[10px] text-gray-400 dark:text-gray-500 truncate">{url}</div>
+      </div>
+      <FontAwesomeIcon
+        icon={faUpRightFromSquare}
+        className="text-[10px] text-gray-300 group-hover:text-primary transition-colors flex-shrink-0"
+      />
+    </a>
+  );
+}
+
+/** Custom renderers so markdown links and images become first-class widgets. */
+const MD_COMPONENTS = {
+  a: ({ href, children }: any) => (
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="text-primary underline underline-offset-2 hover:opacity-80"
+    >
+      {children}
+    </a>
+  ),
+  img: ({ src, alt }: any) => (
+    <a href={src} target="_blank" rel="noopener noreferrer" className="block my-2">
+      <img
+        src={src}
+        alt={alt || ""}
+        loading="lazy"
+        className="rounded-xl border border-gray-200 dark:border-dark-border max-h-72 w-auto object-contain"
+      />
+      {alt ? <span className="block text-[10px] text-gray-400 mt-1">{alt}</span> : null}
+    </a>
+  ),
+};
+
+/** Live elapsed-seconds counter shown while the assistant is responding. */
+function ElapsedTimer() {
+  const [secs, setSecs] = useState(0);
+  useEffect(() => {
+    const start = Date.now();
+    const id = setInterval(() => setSecs((Date.now() - start) / 1000), 100);
+    return () => clearInterval(id);
+  }, []);
+  return <span className="tabular-nums">{secs.toFixed(1)}s</span>;
+}
+
+function shortDate(value?: string): string {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
 export default function AutomataAssistant() {
   const location = useLocation();
   const email = useSelector((state: any) => state.user?.email as string | undefined);
@@ -105,6 +340,10 @@ export default function AutomataAssistant() {
   const [sending, setSending] = useState(false);
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [history, setHistory] = useState<AssistantConversationSummary[]>([]);
 
   const conversationIdRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -132,6 +371,32 @@ export default function AutomataAssistant() {
     [email, mode, location.pathname]
   );
 
+  const historyParams = useCallback(() => {
+    const params = new URLSearchParams({
+      email: email || "",
+      companyId: localStorage.getItem("automata_company_id") || "",
+      mode,
+      limit: "30",
+    });
+    return params;
+  }, [email, mode]);
+
+  const loadHistory = useCallback(async () => {
+    if (!email) return;
+    setHistoryLoading(true);
+    try {
+      const res = await fetch(`${API_URL}/assistant/conversations?${historyParams().toString()}`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      setHistory(data.conversations || []);
+    } catch (err) {
+      console.error("Failed to load Automata history:", err);
+      setError("Couldn't load Automata history.");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, [email, historyParams]);
+
   /** Lazily create the backend conversation; returns its id (or "" on failure). */
   const ensureConversation = useCallback(async (): Promise<string> => {
     if (conversationIdRef.current) return conversationIdRef.current;
@@ -149,6 +414,7 @@ export default function AutomataAssistant() {
       const conversation: AssistantConversation = data.conversation;
       conversationIdRef.current = conversation.conversationId;
       setMessages(conversation.messages || []);
+      void loadHistory();
       return conversation.conversationId;
     } catch (err) {
       console.error("Failed to start Automata conversation:", err);
@@ -157,20 +423,48 @@ export default function AutomataAssistant() {
     } finally {
       setStarting(false);
     }
-  }, [email, baseBody]);
+  }, [email, baseBody, loadHistory]);
 
   const handleOpen = useCallback(() => {
     setOpen(true);
+    void loadHistory();
     void ensureConversation();
-  }, [ensureConversation]);
+  }, [ensureConversation, loadHistory]);
 
   const newConversation = useCallback(() => {
     conversationIdRef.current = "";
     setMessages([]);
     setInput("");
     setError(null);
+    setLastDurationMs(null);
+    setHistoryOpen(false);
     void ensureConversation();
   }, [ensureConversation]);
+
+  const loadConversation = useCallback(
+    async (conversationId: string) => {
+      if (!email || !conversationId) return;
+      setStarting(true);
+      setError(null);
+      try {
+        const params = historyParams();
+        const res = await fetch(`${API_URL}/assistant/conversations/${conversationId}?${params.toString()}`);
+        if (!res.ok) throw new Error(`Request failed (${res.status})`);
+        const data = await res.json();
+        const conversation: AssistantConversation = data.conversation;
+        conversationIdRef.current = conversation.conversationId;
+        setMessages(conversation.messages || []);
+        setLastDurationMs(null);
+        setHistoryOpen(false);
+      } catch (err) {
+        console.error("Failed to load Automata conversation:", err);
+        setError("Couldn't load that Automata conversation.");
+      } finally {
+        setStarting(false);
+      }
+    },
+    [email, historyParams]
+  );
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -190,6 +484,8 @@ export default function AutomataAssistant() {
       };
       setMessages((prev) => [...prev, optimistic]);
       setSending(true);
+      setLastDurationMs(null);
+      const startedAt = Date.now();
 
       try {
         const conversationId = await ensureConversation();
@@ -207,15 +503,17 @@ export default function AutomataAssistant() {
         const conversation: AssistantConversation = data.conversation;
         // Server is the source of truth: replace with its full transcript.
         setMessages(conversation.messages || []);
+        void loadHistory();
       } catch (err) {
         console.error("Failed to send Automata message:", err);
         setError("Couldn't send your message. Please try again.");
       } finally {
         setSending(false);
+        setLastDurationMs(Date.now() - startedAt);
         window.requestAnimationFrame(() => inputRef.current?.focus());
       }
     },
-    [sending, email, ensureConversation, baseBody]
+    [sending, email, ensureConversation, baseBody, loadHistory]
   );
 
   const onSubmit = useCallback(
@@ -243,21 +541,37 @@ export default function AutomataAssistant() {
   const visibleMessages = messages.filter((m) => (m.content && m.content.trim()) || isToolEvent(m));
   const hasConversation = visibleMessages.length > 0;
 
+  // Index of the latest assistant reply — used to anchor the response-time chip.
+  let lastAssistantIdx = -1;
+  for (let i = visibleMessages.length - 1; i >= 0; i--) {
+    const m = visibleMessages[i];
+    if (!isToolEvent(m) && !isThinking(m) && m.role !== "user") {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
   if (!open) {
     return (
-      <button
-        onClick={handleOpen}
-        aria-label="Open Automata assistant"
-        className="fixed bottom-4 right-4 z-[120] flex items-center h-12 px-4 rounded-full
-          bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg
-          transition-all duration-300 active:scale-95"
-      >
-        <img
-          src="/assets/images/logos/automata_dark.webp"
-          alt="Automata"
-          className="h-4 w-auto"
-        />
-      </button>
+      <div className="fixed bottom-4 right-4 z-[120] group">
+        <div
+          role="tooltip"
+          className="pointer-events-none absolute right-full top-1/2 mr-3 -translate-y-1/2 whitespace-nowrap rounded-lg
+            bg-gray-900 px-3 py-2 text-sm font-medium text-white shadow-lg opacity-0 transition-opacity duration-150
+            group-hover:opacity-100 dark:bg-gray-700"
+        >
+          Ask Automata
+        </div>
+        <button
+          onClick={handleOpen}
+          aria-label="Open Automata assistant"
+          className="flex items-center justify-center w-14 h-14 rounded-full
+            border border-gray-200 bg-white text-xl font-semibold font-mono text-gray-800 shadow-glow hover:shadow-glow-lg
+            transition-all duration-300 active:scale-95 dark:border-dark-border dark:bg-dark-surface dark:text-white"
+        >
+          <span aria-hidden="true">&gt;_</span>
+        </button>
+      </div>
     );
   }
 
@@ -273,31 +587,43 @@ export default function AutomataAssistant() {
           : "bottom-3 right-3 left-3 sm:left-auto max-h-[calc(100vh-1.5rem)] rounded-2xl sm:w-[400px] h-[70vh] sm:h-[560px]"}`}
     >
       {/* Header */}
-      <div className="flex items-center gap-2 px-3 h-12 flex-shrink-0 border-b border-gray-200 dark:border-dark-border">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <img
-              src="/assets/images/logos/automata.webp"
-              alt="Automata"
-              className="h-4 w-auto dark:hidden"
-            />
-            <img
-              src="/assets/images/logos/automata_dark.webp"
-              alt="Automata"
-              className="h-4 w-auto hidden dark:block"
-            />
-            <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px rounded-full bg-primary/10 text-primary">
-              Beta
-            </span>
-          </div>
-          <button
-            onClick={newConversation}
-            className="text-[11px] text-gray-400 hover:text-primary dark:text-gray-500 dark:hover:text-primary leading-3 transition-colors"
-          >
-            <FontAwesomeIcon icon={faPenToSquare} className="text-[9px] mr-1" />
-            New conversation
-          </button>
+      <div
+        className={`flex items-center gap-2 flex-shrink-0 border-b border-gray-200 dark:border-dark-border ${
+          expanded ? "h-16 px-5 sm:px-8" : "h-14 px-4"
+        }`}
+      >
+        <div className="min-w-0 flex-1 flex items-center gap-2 pl-1">
+          <img
+            src="/assets/images/logos/automata.webp"
+            alt="Automata"
+            className="h-4 w-auto dark:hidden"
+          />
+          <img
+            src="/assets/images/logos/automata_dark.webp"
+            alt="Automata"
+            className="h-4 w-auto hidden dark:block"
+          />
+          <span className="text-[9px] font-bold uppercase tracking-wide px-1.5 py-px rounded-full bg-primary/10 text-primary">
+            Beta
+          </span>
         </div>
+        <button
+          onClick={() => {
+            setHistoryOpen((v) => !v);
+            void loadHistory();
+          }}
+          title="Conversation history"
+          className="flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+        >
+          <FontAwesomeIcon icon={faClock} className="text-xs" />
+        </button>
+        <button
+          onClick={newConversation}
+          title="New conversation"
+          className="flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+        >
+          <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
+        </button>
         <button
           onClick={() => setExpanded((v) => !v)}
           title={expanded ? "Exit full window" : "Full window"}
@@ -314,8 +640,58 @@ export default function AutomataAssistant() {
         </button>
       </div>
 
+      {historyOpen && (
+        <div className="flex-shrink-0 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg">
+          <div className={`${expanded ? "px-5 sm:px-8" : "px-4"} py-3`}>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Recent chats</span>
+              <button
+                onClick={() => void loadHistory()}
+                disabled={historyLoading}
+                className="text-[11px] text-gray-400 hover:text-primary disabled:opacity-50"
+              >
+                {historyLoading ? "Loading..." : "Refresh"}
+              </button>
+            </div>
+            <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1.5">
+              {history.length === 0 && !historyLoading ? (
+                <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border px-3 py-3 text-xs text-gray-400">
+                  No previous Automata chats in this company.
+                </div>
+              ) : (
+                history.map((item) => {
+                  const active = item.conversationId === conversationIdRef.current;
+                  return (
+                    <button
+                      key={item.conversationId}
+                      onClick={() => void loadConversation(item.conversationId)}
+                      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+                        active
+                          ? "border-primary/40 bg-primary/5"
+                          : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface hover:border-primary/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{item.title}</span>
+                        <span className="text-[10px] text-gray-400 flex-shrink-0">{shortDate(item.updatedAt || item.createdAt)}</span>
+                      </div>
+                      <div className="mt-0.5 text-[11px] text-gray-400 truncate">{item.lastMessage || `${item.messageCount} messages`}</div>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto scrollbar-thin px-3 py-3 space-y-3">
+      <div
+        ref={scrollRef}
+        className={`flex-1 overflow-y-auto scrollbar-thin py-4 space-y-3 ${
+          expanded ? "px-5 sm:px-8" : "px-4"
+        }`}
+      >
         {!hasConversation && (
           <div className="h-full flex flex-col items-center justify-center text-center px-2">
             <img
@@ -356,48 +732,79 @@ export default function AutomataAssistant() {
         )}
 
         {visibleMessages.map((m, i) => {
+          // Tool / skill execution → rich collapsible card.
           if (isToolEvent(m)) {
             return (
-              <div
-                key={i}
-                className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 px-1"
-              >
-                <FontAwesomeIcon
-                  icon={m.status === "completed" ? faCircleCheck : faGear}
-                  className="text-[10px] flex-shrink-0"
-                />
-                <span className="truncate">{m.content || m.toolName || "Working..."}</span>
+              <div key={i} className="flex justify-start">
+                <ToolCard message={m} />
               </div>
             );
           }
-          const isUser = m.role === "user";
-          return (
-            <div key={i} className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
+
+          // Assistant reasoning → subtle inline note.
+          if (isThinking(m)) {
+            return (
               <div
-                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed break-words ${
-                  isUser
-                    ? "bg-gradient-primary text-white rounded-br-md"
-                    : "bg-gray-100 dark:bg-dark-surface text-gray-800 dark:text-gray-100 rounded-bl-md"
-                }`}
+                key={i}
+                className="flex items-center gap-2 text-[11px] text-gray-400 dark:text-gray-500 px-1 italic"
               >
-                {isUser ? (
-                  <span className="whitespace-pre-wrap">{m.content}</span>
-                ) : (
-                  <div className="assistant-markdown space-y-2">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {m.content}
-                    </ReactMarkdown>
-                  </div>
-                )}
+                <FontAwesomeIcon icon={faBrain} className="text-[10px] flex-shrink-0" />
+                <span className="truncate">{m.content}</span>
               </div>
+            );
+          }
+
+          const isUser = m.role === "user";
+          if (isUser) {
+            return (
+              <div key={i} className="flex justify-end">
+                <div className="max-w-[85%] rounded-2xl rounded-br-md px-3 py-2 text-sm leading-relaxed break-words bg-gradient-primary text-white">
+                  <span className="whitespace-pre-wrap">{m.content}</span>
+                </div>
+              </div>
+            );
+          }
+
+          // Assistant text: markdown + link previews + response-time chip.
+          const links = extractLinks(m.content);
+          return (
+            <div key={i} className="flex flex-col items-start gap-1.5">
+              <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3 py-2 text-sm leading-relaxed break-words bg-gray-100 dark:bg-dark-surface text-gray-800 dark:text-gray-100">
+                <div className="assistant-markdown space-y-2">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
+                    {m.content}
+                  </ReactMarkdown>
+                </div>
+              </div>
+              {links.length > 0 && (
+                <div className="w-full max-w-[90%] space-y-1.5">
+                  {links.slice(0, 3).map((u) => (
+                    <LinkPreview key={u} url={u} />
+                  ))}
+                </div>
+              )}
+              {i === lastAssistantIdx && lastDurationMs != null && (
+                <span className="flex items-center gap-1 text-[10px] text-gray-400 dark:text-gray-500 pl-1">
+                  <FontAwesomeIcon icon={faClock} className="text-[9px]" />
+                  Responded in {(lastDurationMs / 1000).toFixed(1)}s
+                </span>
+              )}
             </div>
           );
         })}
 
         {(sending || starting) && (
           <div className="flex justify-start">
-            <div className="rounded-2xl rounded-bl-md bg-gray-100 dark:bg-dark-surface px-3 py-2">
-              <FontAwesomeIcon icon={faCircleNotch} spin className="text-gray-400 text-sm" />
+            <div className="flex items-center gap-2.5 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-dark-surface px-3 py-2">
+              <img src="/assets/images/logos/main.webp" alt="" className="w-4 h-4" />
+              <span className="flex gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.3s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.15s]" />
+                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" />
+              </span>
+              <span className="text-[10px] text-gray-400 dark:text-gray-500">
+                <ElapsedTimer />
+              </span>
             </div>
           </div>
         )}
@@ -412,7 +819,9 @@ export default function AutomataAssistant() {
       {/* Input */}
       <form
         onSubmit={onSubmit}
-        className="flex-shrink-0 border-t border-gray-200 dark:border-dark-border p-2.5"
+        className={`flex-shrink-0 border-t border-gray-200 dark:border-dark-border ${
+          expanded ? "px-5 sm:px-8 py-3" : "p-3"
+        }`}
       >
         <div className="flex items-end gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface px-2.5 py-1.5 focus-within:border-primary/50 transition-colors">
           <textarea

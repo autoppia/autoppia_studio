@@ -1,19 +1,17 @@
 import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle, FormEvent } from "react";
-import { useSelector, useDispatch } from "react-redux";
+import { useSelector } from "react-redux";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
-  faHome,
   faPenToSquare,
   faClock,
   faUser,
-  faCircleHalfStroke,
-  faRightFromBracket,
   faGear,
   faClipboardCheck,
   faClipboardList,
   faRobot,
   faCircleNodes,
+  faCube,
   faDiagramProject,
   faFileLines,
   faLock,
@@ -25,13 +23,13 @@ import {
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
-import { logout } from "../../redux/userSlice";
 import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 
 import { HistoryItem } from "../../utils/types";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 const COLLAPSED_WIDTH = 56;
 const EXPANDED_WIDTH = 232;
@@ -199,7 +197,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
     setAnimatingId(null);
   }, []);
 
-  const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
   const user = useSelector((state: any) => state.user);
@@ -250,19 +247,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
     navigate("/");
   };
 
-  const handleGoHome = () => {
-    window.location.href = "https://autoppia.com/";
-  };
-
-  const darkThemeHandler = () => {
-    const isDark = document.documentElement.classList.toggle("dark");
-    try {
-      localStorage.setItem("theme", isDark ? "dark" : "light");
-    } catch {
-      /* ignore storage errors */
-    }
-  };
-
   const getRelativeDate = (dateString: string | Date) => {
     const now = new Date();
     const past = new Date(dateString);
@@ -279,6 +263,8 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
   const isOnWork = location.pathname.startsWith("/work");
   const isOnConnectors = location.pathname.startsWith("/connectors");
   const isOnCapabilities = location.pathname.startsWith("/capabilities");
+  const isOnEntities = location.pathname.startsWith("/entities");
+  const isOnApprovals = location.pathname.startsWith("/approvals");
   const isOnKnowledge = location.pathname.startsWith("/knowledge");
 
   return (
@@ -389,6 +375,40 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             >
               <FontAwesomeIcon icon={faDiagramProject} className="text-sm" />
               {expanded && <span className="text-sm font-medium">Capabilities</span>}
+            </button>
+          </div>
+
+          {/* Entities button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/entities")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnEntities
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Entities"
+            >
+              <FontAwesomeIcon icon={faCube} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Entities</span>}
+            </button>
+          </div>
+
+          {/* Approvals button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/approvals")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnApprovals
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Approvals"
+            >
+              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Approvals</span>}
             </button>
           </div>
 
@@ -543,37 +563,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
         {/* Bottom section */}
         <div className={`flex flex-col flex-shrink-0 border-t border-gray-200 dark:border-zinc-800/80
           ${expanded ? "px-2 py-2 gap-0.5" : "px-2 py-2 items-center gap-1"}`}>
-          <button
-            onClick={handleGoHome}
-            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
-              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
-            title="Autoppia Home"
-          >
-            <FontAwesomeIcon icon={faHome} className="text-sm" />
-            {expanded && <span className="text-xs">Autoppia Home</span>}
-          </button>
-          <button
-            onClick={darkThemeHandler}
-            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
-              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
-            title="Toggle theme"
-          >
-            <FontAwesomeIcon icon={faCircleHalfStroke} className="text-sm" />
-            {expanded && <span className="text-xs">Toggle Theme</span>}
-          </button>
-          {/* Sign out */}
-          <button
-            onClick={() => dispatch(logout())}
-            className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
-              ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
-            title="Sign out"
-          >
-            <FontAwesomeIcon icon={faRightFromBracket} className="text-sm" />
-            {expanded && <span className="text-xs">Sign Out</span>}
-          </button>
           {/* User avatar — opens profile panel */}
           {user.isAuthenticated && (
             <button

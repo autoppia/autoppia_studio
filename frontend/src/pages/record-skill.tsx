@@ -15,8 +15,9 @@ import BrowserTabs from "../components/session/browser-tabs";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
 import type { BrowserTab } from "../redux/socketSlice";
 import { getSessionBrowserMode } from "../utils/browser-mode";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 interface RecordedAction {
   action: string;

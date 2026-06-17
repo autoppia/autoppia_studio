@@ -115,6 +115,70 @@ async def test_publish_official_connector_publishes_default_tools(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_tool_and_skill_approval_modes(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "tools_collection",
+        _Collection(
+            [
+                {
+                    "toolId": "tool-1",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "crm.update",
+                    "permissions": {"connectorId": "conn-1"},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Update CRM",
+                    "permissions": {"connectorId": "conn-1"},
+                }
+            ]
+        ),
+    )
+
+    tool = await capabilities.update_tool_approval(
+        "tool-1",
+        capabilities.CapabilityApprovalUpdateRequest(email="user@example.com", approval="never"),
+    )
+    skill = await capabilities.update_skill_approval(
+        "skill-1",
+        capabilities.CapabilityApprovalUpdateRequest(email="user@example.com", approval="always"),
+    )
+
+    assert tool["tool"]["permissions"]["approval"] == "never"
+    assert skill["skill"]["permissions"]["approval"] == "always"
+
+
+@pytest.mark.asyncio
+async def test_update_approval_rejects_invalid_mode(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "tools_collection",
+        _Collection([{"toolId": "tool-1", "email": "user@example.com", "companyId": "co-1", "name": "crm.update"}]),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await capabilities.update_tool_approval(
+            "tool-1",
+            capabilities.CapabilityApprovalUpdateRequest(email="user@example.com", approval="sometimes"),
+        )
+
+    assert exc.value.status_code == 400
+
+
+@pytest.mark.asyncio
 async def test_official_connector_rejects_harvester(monkeypatch):
     monkeypatch.setattr(capabilities, "companies_collection", _Collection([{"companyId": "co-1"}]))
     monkeypatch.setattr(

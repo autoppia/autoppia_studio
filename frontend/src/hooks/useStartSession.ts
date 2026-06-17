@@ -43,6 +43,9 @@ export default function useStartSession() {
       ? `${prompt}\nADDITIONAL INFO: ${user.instructions}`
       : prompt;
     socket.emit("start-task", {
+      session_id: sessionId,
+      email: user.email || "",
+      companyId: localStorage.getItem("automata_company_id") || "",
       task,
       initial_url: initialUrl,
       context_id: contextId,

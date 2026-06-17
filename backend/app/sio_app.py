@@ -7,7 +7,7 @@ from pathlib import Path
 
 from agent.autoppia_agent import AutoppiaAgent, _execute_tool_call
 from agent.browser_executor import BrowserExecutor
-from app.database import agents_collection
+from app.database import agents_collection, artifacts_collection
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -71,13 +71,58 @@ async def _remember_activity_context(sid: str, data: dict | None) -> None:
         return
     email = str(data.get("email") or data.get("userEmail") or "").strip()
     company_id = str(data.get("companyId") or data.get("company_id") or "").strip()
+    session_id = str(data.get("session_id") or data.get("sessionId") or "").strip()
+    agent_id = str(data.get("agent_id") or data.get("agentId") or "").strip()
     if not email:
         return
     previous = session_metadata.get(sid, {})
     if previous.get("email"):
         await sio.leave_room(sid, _activity_room(previous["email"], previous.get("companyId", "")))
-    session_metadata[sid] = {"email": email, "companyId": company_id}
+    session_metadata[sid] = {
+        **previous,
+        "email": email,
+        "companyId": company_id or previous.get("companyId", ""),
+        "sessionId": session_id or previous.get("sessionId", ""),
+        "agentId": agent_id or previous.get("agentId", ""),
+    }
     await sio.enter_room(sid, _activity_room(email, company_id))
+
+
+def _artifact_context(sid: str, data: dict | None = None) -> dict:
+    metadata = session_metadata.get(sid, {})
+    data = data if isinstance(data, dict) else {}
+    return {
+        "sessionId": str(data.get("session_id") or data.get("sessionId") or metadata.get("sessionId") or sid),
+        "email": str(data.get("email") or data.get("userEmail") or metadata.get("email") or ""),
+        "companyId": str(data.get("companyId") or data.get("company_id") or metadata.get("companyId") or ""),
+        "agentId": str(data.get("agent_id") or data.get("agentId") or metadata.get("agentId") or ""),
+        "agentName": str(data.get("agentName") or data.get("agent_name") or metadata.get("agentName") or ""),
+    }
+
+
+async def _persist_session_artifacts(sid: str, artifacts: list[dict] | None) -> list[dict]:
+    context = _artifact_context(sid)
+    persisted: list[dict] = []
+    for artifact in artifacts or []:
+        if not isinstance(artifact, dict):
+            continue
+        doc = {
+            **artifact,
+            "artifactId": str(artifact.get("artifactId") or ""),
+            "sessionId": str(artifact.get("sessionId") or context["sessionId"]),
+            "email": str(artifact.get("email") or context["email"]),
+            "companyId": str(artifact.get("companyId") or context["companyId"]),
+            "agentId": str(artifact.get("agentId") or context["agentId"]),
+            "agentName": str(artifact.get("agentName") or context["agentName"]),
+        }
+        if not doc["artifactId"] or not doc["sessionId"] or not doc["email"]:
+            persisted.append(doc)
+            continue
+        existing = await artifacts_collection.find_one({"artifactId": doc["artifactId"]}, {"_id": 0})
+        if not existing:
+            await artifacts_collection.insert_one(dict(doc))
+        persisted.append(doc)
+    return persisted
 
 
 @sio.on("subscribe-activity")
@@ -122,6 +167,8 @@ async def start_task(sid, data):
         )
 
         agent_config = AutoppiaAgent()
+        if hasattr(agent_config, "set_artifact_context"):
+            agent_config.set_artifact_context(_artifact_context(sid, data))
         agent_base_url = await _agent_base_url_for_agent(agent_id)
         await agent_config.initialize(
             task,
@@ -165,6 +212,8 @@ async def continue_task(sid, data):
         return
 
     await agent_config.add_new_task(task, preserve_history=True)
+    if hasattr(agent_config, "set_artifact_context"):
+        agent_config.set_artifact_context(_artifact_context(sid, data))
     running_tasks[sid] = asyncio.create_task(_perform_task(sid))
 
 
@@ -207,6 +256,8 @@ async def resume_task(sid, data):
         )
 
         agent_config = AutoppiaAgent()
+        if hasattr(agent_config, "set_artifact_context"):
+            agent_config.set_artifact_context(_artifact_context(sid, data))
         agent_base_url = await _agent_base_url_for_agent(agent_id) if agent_id else ""
 
         # Initialize with the saved lastUrl as the starting URL
@@ -264,6 +315,7 @@ async def stop_task(sid, data=None):
         result["actionHistory"] = getattr(agent_config, "history", [])
         result["screenshots"] = getattr(agent_config, "screenshots", [])
         result["runtimeState"] = getattr(agent_config, "_state", {})
+        result["artifacts"] = await _persist_session_artifacts(sid, result.get("artifacts") or getattr(agent_config, "artifacts", []))
 
         # Start keep-alive to keep browser session open
         old_ka = keepalive_tasks.pop(sid, None)
@@ -305,6 +357,8 @@ async def play_actions(sid, data):
         )
 
         agent_config = AutoppiaAgent()
+        if hasattr(agent_config, "set_artifact_context"):
+            agent_config.set_artifact_context(_artifact_context(sid, data))
         await agent_config.initialize("Skill playback", initial_url, storage_state_path, context_id=context_id, browser_mode=data.get("browser_mode", ""))
         sessions[sid] = agent_config
 
@@ -372,6 +426,7 @@ async def play_actions(sid, data):
         result["actionHistory"] = history
         result["screenshots"] = getattr(agent_config, "screenshots", [])
         result["runtimeState"] = getattr(agent_config, "_state", {})
+        result["artifacts"] = await _persist_session_artifacts(sid, result.get("artifacts") or getattr(agent_config, "artifacts", []))
 
         await sio.emit("result", result, to=sid)
 
@@ -935,6 +990,7 @@ async def _perform_task(sid, max_steps=25):
         result["actionHistory"] = agent_config.history
         result["screenshots"] = agent_config.screenshots or []
         result["runtimeState"] = getattr(agent_config, "_state", {})
+        result["artifacts"] = await _persist_session_artifacts(sid, result.get("artifacts") or getattr(agent_config, "artifacts", []))
 
         await sio.emit("result", result, to=sid)
 

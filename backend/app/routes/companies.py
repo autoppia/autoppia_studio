@@ -34,6 +34,14 @@ class CompanyUpdateRequest(BaseModel):
     industry: str = ""
 
 
+class CompanyEmbedSettingsRequest(BaseModel):
+    enabled: bool = False
+    publicToken: str = ""
+    hostJwtSecret: str = ""
+    clearHostJwtSecret: bool = False
+    allowedOrigins: list[str] = []
+
+
 class DemoResetRequest(BaseModel):
     email: str
 
@@ -43,12 +51,20 @@ def _now() -> str:
 
 
 def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
+    embed_settings = doc.get("embedSettings") if isinstance(doc.get("embedSettings"), dict) else {}
     return {
         "companyId": doc.get("companyId", ""),
         "email": doc.get("email", ""),
         "name": doc.get("name", ""),
         "description": doc.get("description", ""),
         "industry": doc.get("industry", ""),
+        "embedSettings": {
+            "enabled": bool(embed_settings.get("enabled")),
+            "publicToken": str(embed_settings.get("publicToken") or ""),
+            "allowedOrigins": embed_settings.get("allowedOrigins") if isinstance(embed_settings.get("allowedOrigins"), list) else [],
+            "hostJwtConfigured": bool(embed_settings.get("hostJwtSecret")),
+            "updatedAt": embed_settings.get("updatedAt", ""),
+        } if embed_settings else {},
         "status": doc.get("status", "active"),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
@@ -127,6 +143,39 @@ async def update_company(company_id: str, body: CompanyUpdateRequest, scope: Req
         }
         doc = await repo.update_owned_one({"companyId": company_id}, {"$set": update}, not_found="Company not found")
         return {"success": True, "company": _serialize(doc or {"companyId": company_id, **update})}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/companies/{company_id}/embed-settings")
+async def update_company_embed_settings(company_id: str, body: CompanyEmbedSettingsRequest, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        repo = _repo(scope)
+        existing = await repo.by_id(company_id)
+        token = body.publicToken.strip() or str(uuid.uuid4())
+        existing_settings = existing.get("embedSettings") if isinstance(existing.get("embedSettings"), dict) else {}
+        if body.clearHostJwtSecret:
+            host_jwt_secret = ""
+        elif body.hostJwtSecret.strip():
+            host_jwt_secret = body.hostJwtSecret.strip()
+        else:
+            host_jwt_secret = str(existing_settings.get("hostJwtSecret") or "")
+        settings = {
+            "enabled": bool(body.enabled),
+            "publicToken": token,
+            "hostJwtSecret": host_jwt_secret,
+            "allowedOrigins": [origin.strip().rstrip("/") for origin in body.allowedOrigins if origin.strip()],
+            "updatedAt": _now(),
+        }
+        doc = await repo.update_owned_one(
+            {"companyId": company_id},
+            {"$set": {"embedSettings": settings, "updatedAt": _now()}},
+            not_found="Company not found",
+        )
+        serialized = _serialize(doc or {"companyId": company_id, "embedSettings": settings})
+        return {"success": True, "company": serialized, "embedSettings": serialized.get("embedSettings", {})}
     except HTTPException:
         raise
     except Exception as e:

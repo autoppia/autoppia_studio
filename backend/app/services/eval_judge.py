@@ -38,12 +38,21 @@ async def judge_eval_run(*, run: dict[str, Any], eval_doc: dict[str, Any], user_
         f"Run:\n{json.dumps(payload, ensure_ascii=False)[:12000]}\n\n"
         f"User context:\n{json.dumps(user_context or {}, ensure_ascii=False)[:4000]}"
     )
-    response = await client.responses.create(
-        model=model,
-        input=prompt,
-        text={"format": {"type": "json_object"}},
-    )
-    raw = response.output_text
+    try:
+        response = await client.responses.create(
+            model=model,
+            input=prompt,
+            text={"format": {"type": "json_object"}},
+        )
+        raw = str(getattr(response, "output_text", "") or "")
+    except Exception as exc:
+        return {
+            "label": "pending",
+            "confidence": 0.0,
+            "needsHumanReview": True,
+            "reasoning": f"LLMJudge failed: {exc}",
+            "judge": f"{model}_error",
+        }
     try:
         data = json.loads(raw)
     except Exception:

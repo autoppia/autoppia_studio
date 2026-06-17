@@ -4,7 +4,7 @@ from typing import Any, List
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.database import (
     agents_collection,
@@ -37,6 +37,28 @@ class BenchmarkRunCreateRequest(BaseModel):
     agentName: str = ""
 
 
+class BenchmarkCreateRequest(BaseModel):
+    email: str
+    companyId: str = ""
+    name: str
+    description: str = ""
+    websiteUrl: str = ""
+    agentId: str = ""
+    agentName: str = ""
+
+
+class BenchmarkTaskCreateRequest(BaseModel):
+    email: str
+    companyId: str = ""
+    agentId: str = ""
+    name: str = ""
+    prompt: str
+    successCriteria: str = ""
+    initialUrl: str = ""
+    judgeType: str = "manual"
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class RunUpdateRequest(BaseModel):
     label: str | None = None
     actions: List[Any] | None = None
@@ -47,11 +69,19 @@ class RunUpdateRequest(BaseModel):
 class JudgeRunRequest(BaseModel):
     userContext: dict[str, Any] = {}
     apply: bool = True
+    force: bool = False
+
+
+def _clean_judge_type(value: Any) -> str:
+    normalized = str(value or "manual").strip().lower()
+    if normalized in {"llm", "llmjudge", "llm_judge"}:
+        return "llm"
+    return "manual"
 
 
 async def _agent_name(agent_id: str, fallback: str = "") -> str:
     if not agent_id:
-        return fallback or "Autoppia Agent"
+        return fallback or "Generalist Agent"
     doc = await agents_collection.find_one({"agentId": agent_id}, {"_id": 0, "name": 1})
     return str((doc or {}).get("name") or fallback or "Custom Agent")
 
@@ -72,10 +102,15 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
         "agentName": benchmark_doc.get("agentName", ""),
         "agentTaskName": task.get("taskName") or task.get("name") or "",
         "successCriteria": task.get("successCriteria", ""),
+        "judgeType": _clean_judge_type(task.get("judgeType")),
         "status": task.get("status", ""),
         "source": task.get("source", "benchmark_task"),
         "createdAt": task.get("createdAt"),
     }
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
 async def _benchmark_task_eval(eval_id: str) -> dict[str, Any] | None:
@@ -147,7 +182,92 @@ async def list_all_runs(email: str, companyId: str = ""):
         run["agentId"] = run.get("agentId", "")
         run["agentName"] = run.get("agentName", "")
         run["agentTaskName"] = ev.get("agentTaskName", "")
+        run["judgeType"] = _clean_judge_type(run.get("judgeType") or ev.get("judgeType"))
+        run["labelSource"] = run.get("labelSource") or ("manual_review" if run["judgeType"] == "manual" else "llm_pending")
     return {"runs": runs}
+
+
+@router.get("/benchmarks")
+async def list_benchmarks(email: str, companyId: str = ""):
+    query: dict[str, Any] = {"email": email}
+    if companyId:
+        query["companyId"] = companyId
+    benchmarks = await benchmarks_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)
+    tasks = await benchmark_tasks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
+    return {
+        "benchmarks": [
+            {
+                **benchmark,
+                "tasks": [_task_to_eval(task, benchmark) for task in tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), [])],
+            }
+            for benchmark in benchmarks
+        ]
+    }
+
+
+@router.post("/benchmarks")
+async def create_benchmark(body: BenchmarkCreateRequest):
+    name = body.name.strip()
+    if not body.email.strip():
+        raise HTTPException(status_code=400, detail="email is required")
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    now = _now()
+    benchmark_id = str(uuid4())
+    agent_name = body.agentName or await _agent_name(body.agentId, "")
+    doc = {
+        "benchmarkId": benchmark_id,
+        "email": body.email,
+        "companyId": body.companyId,
+        "agentId": body.agentId,
+        "agentName": agent_name if body.agentId else body.agentName,
+        "name": name,
+        "description": body.description,
+        "websiteUrl": body.websiteUrl,
+        "source": "manual",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    await benchmarks_collection.insert_one(doc)
+    return {"success": True, "benchmark": doc}
+
+
+@router.post("/benchmarks/{benchmark_id}/tasks")
+async def create_benchmark_task(benchmark_id: str, body: BenchmarkTaskCreateRequest):
+    benchmark = await benchmarks_collection.find_one({"benchmarkId": benchmark_id}, {"_id": 0})
+    if not benchmark:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+    prompt = body.prompt.strip()
+    name = body.name.strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="prompt is required")
+    now = _now()
+    metadata = dict(body.metadata or {})
+    initial_url = body.initialUrl.strip()
+    if initial_url:
+        metadata["startUrl"] = initial_url
+    task = {
+        "taskId": str(uuid4()),
+        "email": body.email or benchmark.get("email", ""),
+        "companyId": body.companyId or benchmark.get("companyId", ""),
+        "agentId": body.agentId or benchmark.get("agentId", ""),
+        "benchmarkId": benchmark_id,
+        "name": name or prompt[:80],
+        "taskName": name or prompt[:80],
+        "prompt": prompt,
+        "successCriteria": body.successCriteria,
+        "judgeType": _clean_judge_type(body.judgeType),
+        "metadata": metadata,
+        "status": "pending",
+        "source": "manual",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    await benchmark_tasks_collection.insert_one(task)
+    return {"success": True, "task": _task_to_eval(task, benchmark)}
 
 
 @router.post("/benchmarks/{benchmark_id}/runs")
@@ -190,6 +310,8 @@ async def create_benchmark_run(benchmark_id: str, body: BenchmarkRunCreateReques
             "sessionId": body.sessionId,
             "actions": [],
             "label": "pending",
+            "judgeType": _clean_judge_type(ev.get("judgeType")),
+            "labelSource": "manual_review" if _clean_judge_type(ev.get("judgeType")) == "manual" else "llm_pending",
             "screenshots": [],
             "createdAt": now,
         }
@@ -250,6 +372,12 @@ async def list_runs(eval_id: str):
         {"_id": 0, "actions": 0},
     ).sort("createdAt", -1)
     runs = await cursor.to_list(length=500)
+    ev = await evals_collection.find_one({"evalId": eval_id}, {"_id": 0})
+    if not ev:
+        ev = await _benchmark_task_eval(eval_id)
+    for run in runs:
+        run["judgeType"] = _clean_judge_type(run.get("judgeType") or (ev or {}).get("judgeType"))
+        run["labelSource"] = run.get("labelSource") or ("manual_review" if run["judgeType"] == "manual" else "llm_pending")
     return {"runs": runs}
 
 
@@ -278,6 +406,8 @@ async def create_run(eval_id: str, body: RunCreateRequest):
         "sessionId": body.sessionId,
         "actions": [],
         "label": "pending",
+        "judgeType": _clean_judge_type(ev.get("judgeType")),
+        "labelSource": "manual_review" if _clean_judge_type(ev.get("judgeType")) == "manual" else "llm_pending",
         "screenshots": [],
         "createdAt": datetime.now(timezone.utc).isoformat(),
     }
@@ -300,6 +430,9 @@ async def update_run(eval_id: str, run_id: str, body: RunUpdateRequest):
         if body.label not in ("pass", "fail", "pending"):
             raise HTTPException(status_code=400, detail="Label must be 'pass', 'fail', or 'pending'")
         update["label"] = body.label
+        update["labelSource"] = "manual_override" if body.label in {"pass", "fail"} else "manual_review"
+        update["manualOverride"] = body.label in {"pass", "fail"}
+        update["reviewedAt"] = _now()
     if body.actions is not None:
         update["actions"] = body.actions
     if body.sessionId is not None:
@@ -324,11 +457,14 @@ async def judge_run(eval_id: str, run_id: str, body: JudgeRunRequest):
     run = await eval_runs_collection.find_one({"runId": run_id, "evalId": eval_id}, {"_id": 0})
     if not ev or not run:
         raise HTTPException(status_code=404, detail="Eval run not found")
+    judge_type = _clean_judge_type(ev.get("judgeType") or run.get("judgeType"))
+    if judge_type != "llm" and not body.force:
+        raise HTTPException(status_code=400, detail="This task is configured for manual review. Change the task judge to LLMJudge or call with force=true.")
     judgement = await judge_eval_run(run=run, eval_doc=ev, user_context=body.userContext)
     if body.apply:
         await eval_runs_collection.update_one(
             {"runId": run_id, "evalId": eval_id},
-            {"$set": {"label": judgement["label"], "judge": judgement}},
+            {"$set": {"label": judgement["label"], "judge": judgement, "judgeType": "llm", "labelSource": "llm_judge", "judgedAt": _now()}},
         )
     return {"success": True, "judgement": judgement}
 

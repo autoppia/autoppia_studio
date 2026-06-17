@@ -2,6 +2,7 @@ import pytest
 
 from fastapi import HTTPException
 
+from app.routes import agent_configs
 from app.routes.api import agents as api_agents
 from app.routes.api.agents import AgentStepRequest, _step_url
 from app.services import agent_runtime
@@ -52,6 +53,8 @@ class _FakeAgentsCollection:
             return None
         if query.get("email") and query.get("email") != "user@example.com":
             return None
+        if query.get("companyId") and query.get("companyId") != "company-1":
+            return None
         return {
             "agentId": "agent-1",
             "name": "Celeris Agent",
@@ -78,6 +81,34 @@ class _FakeAgentsCollection:
                 "tasks": [{"name": "Test Skill", "prompt": "Use test skill"}],
             }
         ])
+
+
+@pytest.mark.asyncio
+async def test_selected_agent_run_is_scoped_to_company(monkeypatch):
+    monkeypatch.setattr(agent_configs, "agents_collection", _FakeAgentsCollection())
+
+    docs = await agent_configs._agent_docs_for_run(
+        agent_configs.AgentRunTaskRequest(
+            email="user@example.com",
+            companyId="company-1",
+            prompt="hello",
+            target="selected",
+            agentId="agent-1",
+        )
+    )
+    assert docs[0]["agentId"] == "agent-1"
+
+    with pytest.raises(HTTPException) as exc:
+        await agent_configs._agent_docs_for_run(
+            agent_configs.AgentRunTaskRequest(
+                email="user@example.com",
+                companyId="company-2",
+                prompt="hello",
+                target="selected",
+                agentId="agent-1",
+            )
+        )
+    assert exc.value.status_code == 404
 
 
 class _FakeCapabilitiesCollection:

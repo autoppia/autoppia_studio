@@ -18,8 +18,9 @@ import ConfirmModal from "../components/common/confirm-modal";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
 import { Credential } from "../utils/types";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 const TYPES = [
   { value: "token", label: "Token" },

@@ -5,8 +5,9 @@ import { faPaperPlane } from "@fortawesome/free-solid-svg-icons";
 
 import { useToast } from "../components/common/toast";
 import GoogleSignInButton from "../components/common/google-sign-in-button";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 export default function SignUp() {
   const [email, setEmail] = useState("");

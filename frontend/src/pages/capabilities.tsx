@@ -4,7 +4,9 @@ import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
+  faArrowRightLong,
   faBuilding,
+  faCube,
   faCheck,
   faCircleNodes,
   faClipboardCheck,
@@ -36,6 +38,7 @@ const apiUrl = getApiUrl();
 
 type TabKey = "capabilities" | "runs";
 type CapabilityTabKey = "tools" | "trajectories" | "skills";
+type ApprovalMode = "always" | "auto" | "never";
 type CapabilityDetail =
   | { kind: "tool"; item: CompanyTool }
   | { kind: "trajectory"; item: CompanyTrajectory }
@@ -75,6 +78,24 @@ function riskTone(risk: string) {
   if (s === "high") return "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30";
   if (s === "medium") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function approvalMode(item?: { permissions?: Record<string, any>; riskLevel?: string; sideEffects?: string }): ApprovalMode {
+  const explicit = String(item?.permissions?.approval || "").toLowerCase();
+  if (explicit === "always" || explicit === "never" || explicit === "auto") return explicit;
+  return "auto";
+}
+
+function approvalTone(mode: ApprovalMode) {
+  if (mode === "always") return "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-300 border-red-200 dark:border-red-500/30";
+  if (mode === "never") return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+  return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-500/30";
+}
+
+function approvalLabel(mode: ApprovalMode) {
+  if (mode === "always") return "approval always";
+  if (mode === "never") return "approval never";
+  return "approval auto";
 }
 
 function humanizeName(value?: string) {
@@ -125,6 +146,29 @@ function RequirementChips({ values }: { values?: string[] }) {
           {item}
         </span>
       ))}
+    </div>
+  );
+}
+
+/** Semantic-entity chips for a tool/skill: which entities it reads and which it produces. */
+function EntityChips({ inputEntities, outputEntity }: { inputEntities?: string[]; outputEntity?: string }) {
+  const inputs = (inputEntities || []).filter(Boolean);
+  const output = (outputEntity || "").trim();
+  if (inputs.length === 0 && !output) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {inputs.map((name) => (
+        <span key={`in-${name}`} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
+          <FontAwesomeIcon icon={faCube} className="text-[9px]" />
+          {name}
+        </span>
+      ))}
+      {output && (
+        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium border bg-primary/10 text-primary border-primary/30">
+          <FontAwesomeIcon icon={faArrowRightLong} className="text-[9px]" />
+          {output}
+        </span>
+      )}
     </div>
   );
 }
@@ -266,11 +310,39 @@ function CapabilityDetailModal({
   const isTool = detail.kind === "tool";
   const isTrajectory = detail.kind === "trajectory";
   const isSkill = detail.kind === "skill";
+  const configurableApprovalItem: CompanyTool | CompanySkill | null = isTool ? detail.item : isSkill ? detail.item : null;
+  const [selectedApproval, setSelectedApproval] = useState<ApprovalMode>(approvalMode(configurableApprovalItem || undefined));
   const title = isTool ? detail.item.name : detail.item.name || (isTrajectory ? detail.item.trajectoryId : detail.item.skillId);
   const icon = isTool ? faWrench : isTrajectory ? faRoute : faWandMagicSparkles;
   const linkedTrajectory = isSkill ? (detail.item.trajectoryIds || []).map((id) => trajectoriesById.get(id)).find(Boolean) : null;
   const calls = isTrajectory ? trajectoryToolCallList(detail.item) : linkedTrajectory ? trajectoryToolCallList(linkedTrajectory) : [];
   const requirements = isTool || isTrajectory || isSkill ? detail.item.runtimeRequirements : [];
+  const entityItem: CompanyTool | CompanySkill | null = isTool ? detail.item : isSkill ? detail.item : null;
+
+  const updateApprovalMode = async (mode: ApprovalMode) => {
+    if (!configurableApprovalItem || busyAction || mode === selectedApproval) return;
+    setBusyAction(`approval-${mode}`);
+    setActionResult(null);
+    try {
+      const endpoint = isTool
+        ? `${apiUrl}/tools/${(configurableApprovalItem as CompanyTool).toolId}/approval`
+        : `${apiUrl}/skills/${(configurableApprovalItem as CompanySkill).skillId}/approval`;
+      const res = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userEmail, approval: mode }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail || "Could not update approval policy.");
+      setSelectedApproval(mode);
+      setActionResult(data);
+      await onReload();
+    } catch (err: any) {
+      setActionResult({ success: false, error: err?.message || "Could not update approval policy." });
+    } finally {
+      setBusyAction("");
+    }
+  };
 
   const testTool = async () => {
     if (!isTool || busyAction) return;
@@ -336,6 +408,55 @@ function CapabilityDetailModal({
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Runtime requirements</p>
             <RequirementChips values={requirements} />
           </section>
+
+          {configurableApprovalItem && (
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Approval policy</p>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(selectedApproval)}`}>
+                  <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />
+                  {approvalLabel(selectedApproval)}
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {([
+                  { value: "auto" as ApprovalMode, label: "Auto", hint: "Writes stop when risk policy requires it." },
+                  { value: "always" as ApprovalMode, label: "Always", hint: "Every call requires explicit approval." },
+                  { value: "never" as ApprovalMode, label: "Never", hint: "This capability runs without approval." },
+                ]).map((item) => (
+                  <button
+                    key={item.value}
+                    onClick={() => updateApprovalMode(item.value)}
+                    disabled={!!busyAction}
+                    className={`min-h-[72px] rounded-lg border p-3 text-left transition-colors disabled:opacity-60 ${
+                      selectedApproval === item.value
+                        ? "border-primary/40 bg-primary/10 text-primary"
+                        : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 hover:border-primary/30"
+                    }`}
+                  >
+                    <span className="block text-xs font-semibold">
+                      {busyAction === `approval-${item.value}` ? <FontAwesomeIcon icon={faSpinner} className="mr-1 animate-spin" /> : null}
+                      {item.label}
+                    </span>
+                    <span className="mt-1 block text-[11px] leading-4 text-gray-400 dark:text-gray-500">{item.hint}</span>
+                  </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {entityItem && (((entityItem.inputEntities || []).length > 0) || entityItem.outputEntity || (entityItem.outputCard && Object.keys(entityItem.outputCard).length > 0)) && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Entities</p>
+              <EntityChips inputEntities={entityItem.inputEntities} outputEntity={entityItem.outputEntity} />
+              {entityItem.outputCard && Object.keys(entityItem.outputCard).length > 0 && (
+                <div className="mt-2">
+                  <p className="text-[11px] text-gray-400 mb-1">Output card</p>
+                  <JsonBlock value={entityItem.outputCard} />
+                </div>
+              )}
+            </section>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             {isTool && (
@@ -934,10 +1055,18 @@ export default function Capabilities(): React.ReactElement {
                                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${riskTone(tool.riskLevel)}`}>
                                       <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{tool.riskLevel} risk
                                     </span>
+                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
+                                      {approvalLabel(approvalMode(tool))}
+                                    </span>
                                     {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
                                     {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}
                                     {tool.discoveryRelevance?.score !== undefined && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">rel {tool.discoveryRelevance.score}</span>}
                                   </div>
+                                  {((tool.inputEntities || []).length > 0 || tool.outputEntity) && (
+                                    <div className="mt-2">
+                                      <EntityChips inputEntities={tool.inputEntities} outputEntity={tool.outputEntity} />
+                                    </div>
+                                  )}
                                 </button>
                               ))}
                             </div>
@@ -1067,7 +1196,15 @@ export default function Capabilities(): React.ReactElement {
                                   <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{skill.riskPolicy.replace(/_/g, " ")}
                                 </span>
                               )}
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(skill))}`}>
+                                {approvalLabel(approvalMode(skill))}
+                              </span>
                             </div>
+                            {((skill.inputEntities || []).length > 0 || skill.outputEntity) && (
+                              <div className="mt-2">
+                                <EntityChips inputEntities={skill.inputEntities} outputEntity={skill.outputEntity} />
+                              </div>
+                            )}
                             {originLabel && (
                               <div className="mt-2 flex items-center gap-1.5 text-[11px] text-gray-400 dark:text-gray-500">
                                 <FontAwesomeIcon icon={faTractor} className="text-[9px]" />

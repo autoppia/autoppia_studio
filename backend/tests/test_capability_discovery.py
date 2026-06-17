@@ -179,7 +179,7 @@ async def test_broad_discovery_publishes_custom_web_tools_without_generic_skills
         [_custom_web_connector()],
     )
 
-    assert {tool["name"] for tool in result["tools"]} == {"web.fetch", "browser.navigate"}
+    assert {tool["name"] for tool in result["tools"]} == {"web.fetch", "web.fetch_text", "web.extract_links", "browser.navigate"}
     assert result["skills"] == []
     assert promoted == []
     assert trajectories.docs == []

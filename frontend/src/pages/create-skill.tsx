@@ -13,8 +13,9 @@ import {
   faUserCircle,
 } from "@fortawesome/free-solid-svg-icons";
 import { websites } from "../utils/mock/mockDB";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 type GenerationMode = "agent" | "record";
 
@@ -410,7 +411,7 @@ export default function CreateSkill() {
                           outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200 cursor-pointer"
                       >
                         <FontAwesomeIcon icon={faRobot} className="text-xs text-primary flex-shrink-0" />
-                        <span className="flex-1 truncate text-gray-900 dark:text-white">Autoppia Agent</span>
+                        <span className="flex-1 truncate text-gray-900 dark:text-white">Generalist Agent</span>
                         <FontAwesomeIcon
                           icon={faChevronDown}
                           className={`text-[10px] text-gray-400 transition-transform duration-200 flex-shrink-0 ${agentDropdownOpen ? "rotate-180" : ""}`}
@@ -427,7 +428,7 @@ export default function CreateSkill() {
                                 onClick={() => { setAgent("autoppia"); setAgentDropdownOpen(false); }}
                                 className="w-full text-left px-3 py-2 text-sm rounded-lg bg-primary/5 text-primary font-medium"
                               >
-                                Autoppia Agent
+                                Generalist Agent
                               </button>
                             </div>
                           </div>

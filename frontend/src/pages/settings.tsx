@@ -24,14 +24,17 @@ import {
   faReceipt,
   faChartLine,
   faShieldHalved,
+  faCode,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserTabs from "../components/session/browser-tabs";
 import ConfirmModal from "../components/common/confirm-modal";
 import Credentials from "./credentials";
 import Analytics from "./analytics";
 import type { BrowserTab } from "../redux/socketSlice";
+import type { Company } from "../utils/types";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 // UI-only placeholder until the wallet backend ships.
 const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR", loading: false };
@@ -72,6 +75,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     label: "Developer",
     items: [
       { id: "api-keys", label: "API Keys", icon: faKey },
+      { id: "embed", label: "Embed", icon: faCode },
     ],
   },
   {
@@ -1348,6 +1352,360 @@ function InvoicesTab() {
   );
 }
 
+// ── Embed Tab ───────────────────────────────────────────────────────
+
+function generateToken(): string {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return `pk_${crypto.randomUUID().replace(/-/g, "")}`;
+    }
+  } catch {
+    // fall through to manual generation
+  }
+  let token = "pk_";
+  const chars = "abcdef0123456789";
+  for (let i = 0; i < 32; i++) {
+    token += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return token;
+}
+
+function EmbedTab() {
+  const user = useSelector((state: any) => state.user);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
+  const [company, setCompany] = useState<Company | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  // Editable form state
+  const [enabled, setEnabled] = useState(false);
+  const [publicToken, setPublicToken] = useState("");
+  const [originsText, setOriginsText] = useState("");
+  const [hostJwtSecret, setHostJwtSecret] = useState("");
+  const [clearHostJwtSecret, setClearHostJwtSecret] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const applySettings = useCallback((c: Company | null) => {
+    const settings = c?.embedSettings || {};
+    setEnabled(Boolean(settings.enabled));
+    setPublicToken(settings.publicToken || "");
+    setOriginsText((settings.allowedOrigins || []).join("\n"));
+    setHostJwtSecret("");
+    setClearHostJwtSecret(false);
+  }, []);
+
+  const loadCompanies = useCallback(async () => {
+    if (!user.email) {
+      setLoading(false);
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/companies?email=${encodeURIComponent(user.email)}`);
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      const companies: Company[] = data.companies || [];
+      const currentId = localStorage.getItem("automata_company_id") || "";
+      const selected =
+        companies.find((c) => c.companyId === currentId) || null;
+      setCompany(selected);
+      applySettings(selected);
+    } catch (err) {
+      console.error("Failed to load companies:", err);
+      setError("Failed to load company settings.");
+    } finally {
+      setLoading(false);
+    }
+  }, [user.email, applySettings]);
+
+  useEffect(() => {
+    loadCompanies();
+  }, [loadCompanies, companyId]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
+      setCompanyId(next);
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
+
+  const handleSave = async () => {
+    if (!company || saving) return;
+    setSaving(true);
+    setError("");
+    setSaved(false);
+    const allowedOrigins = originsText
+      .split("\n")
+      .map((line) => line.trim())
+      .filter(Boolean);
+    try {
+      const res = await fetch(`${apiUrl}/companies/${company.companyId}/embed-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled, publicToken, allowedOrigins, hostJwtSecret, clearHostJwtSecret }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      if (data.company) {
+        setCompany(data.company);
+        applySettings(data.company);
+      }
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error("Failed to save embed settings:", err);
+      setError("Failed to save embed settings. Please try again.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const needsHostJwt = Boolean(company?.embedSettings?.hostJwtConfigured || hostJwtSecret.trim());
+  const snippetAttrs = [
+    `src="${apiUrl}/embed/v1/widget.js"`,
+    `data-token="${publicToken || "YOUR_PUBLIC_TOKEN"}"`,
+    needsHostJwt ? `data-user-ref="EMPLOYEE_ID"` : "",
+    needsHostJwt ? `data-host-jwt="SIGNED_EMPLOYEE_JWT"` : "",
+    "async",
+  ].filter(Boolean).join(" ");
+  const snippet = `<script ${snippetAttrs}></script>`;
+
+  const handleCopySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(snippet);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      console.error("Failed to copy snippet");
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-48 text-gray-400 dark:text-gray-500">
+        <FontAwesomeIcon icon={faSpinner} className="animate-spin text-lg" />
+      </div>
+    );
+  }
+
+  if (!company) {
+    return (
+      <div className="text-center py-12 text-gray-400 dark:text-gray-500">
+        <FontAwesomeIcon icon={faCode} className="text-3xl mb-3 block mx-auto opacity-40" />
+        <p className="text-sm font-medium text-gray-500 dark:text-gray-400">No company selected</p>
+        <p className="text-xs mt-1.5 max-w-sm mx-auto">
+          Select a company from the workspace switcher in the top bar to configure its embed widget.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Embed the <span className="font-medium text-gray-700 dark:text-gray-300">{company.name}</span> assistant
+        widget on your website. Configure access below, then paste the snippet into your site.
+      </p>
+
+      {/* Enabled toggle */}
+      <div className="flex items-center justify-between rounded-xl border border-gray-200 dark:border-dark-border
+        bg-gray-50 dark:bg-dark-bg px-5 py-4">
+        <div className="min-w-0 pr-4">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Enable embed widget</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+            When off, the widget script will not load on your site.
+          </p>
+        </div>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={enabled}
+          onClick={() => setEnabled((v) => !v)}
+          className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors duration-200
+            ${enabled ? "bg-gradient-primary" : "bg-gray-300 dark:bg-dark-border"}`}
+        >
+          <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200
+              ${enabled ? "translate-x-6" : "translate-x-1"}`}
+          />
+        </button>
+      </div>
+
+      {/* Public token */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          Public token
+        </label>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+          Identifies your company to the embed widget. Safe to expose in client-side code.
+        </p>
+        <div className="flex items-center gap-2">
+          <input
+            type="text"
+            value={publicToken}
+            onChange={(e) => setPublicToken(e.target.value)}
+            placeholder="Generate or paste a public token"
+            className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+              bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100 font-mono
+              placeholder-gray-400 dark:placeholder-gray-500 outline-none
+              focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200"
+          />
+          <button
+            type="button"
+            onClick={() => setPublicToken(generateToken())}
+            className="flex-shrink-0 px-4 py-2.5 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
+              bg-gray-100 dark:bg-dark-border hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors duration-200"
+          >
+            Generate
+          </button>
+        </div>
+      </div>
+
+      {/* Allowed origins */}
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">
+          Allowed origins
+        </label>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+          One origin per line (e.g. <span className="font-mono">https://example.com</span>). Leave empty to allow any origin.
+        </p>
+        <textarea
+          value={originsText}
+          onChange={(e) => setOriginsText(e.target.value)}
+          rows={4}
+          spellCheck={false}
+          placeholder={"https://example.com\nhttps://app.example.com"}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+            bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100 font-mono resize-y
+            placeholder-gray-400 dark:placeholder-gray-500 outline-none
+            focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200"
+        />
+      </div>
+
+      {/* Host identity */}
+      <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4">
+        <div className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:justify-between">
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Host JWT identity</p>
+            <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 leading-relaxed">
+              Optional HS256 secret for ERP-signed employee identity. Leave blank to keep the current secret.
+            </p>
+          </div>
+          <span className={`mt-1 inline-flex w-fit rounded-md px-2 py-1 text-[11px] font-semibold ${
+            company.embedSettings?.hostJwtConfigured && !clearHostJwtSecret
+              ? "bg-green-50 text-green-600 dark:bg-green-500/10"
+              : "bg-gray-100 text-gray-500 dark:bg-dark-border dark:text-gray-400"
+          }`}>
+            {company.embedSettings?.hostJwtConfigured && !clearHostJwtSecret ? "Configured" : "Not configured"}
+          </span>
+        </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input
+            type="password"
+            value={hostJwtSecret}
+            onChange={(e) => {
+              setHostJwtSecret(e.target.value);
+              if (e.target.value.trim()) setClearHostJwtSecret(false);
+            }}
+            placeholder={company.embedSettings?.hostJwtConfigured ? "Enter a new secret to rotate" : "Optional HS256 shared secret"}
+            className="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+              bg-white dark:bg-dark-surface text-sm text-gray-800 dark:text-gray-100 font-mono
+              placeholder-gray-400 dark:placeholder-gray-500 outline-none
+              focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200"
+          />
+          {company.embedSettings?.hostJwtConfigured && (
+            <button
+              type="button"
+              onClick={() => {
+                setHostJwtSecret("");
+                setClearHostJwtSecret((value) => !value);
+              }}
+              className={`px-4 py-2.5 rounded-xl text-sm font-medium transition-colors duration-200 ${
+                clearHostJwtSecret
+                  ? "bg-red-50 text-red-600 dark:bg-red-500/10"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-dark-border dark:text-gray-300 dark:hover:bg-gray-600"
+              }`}
+            >
+              {clearHostJwtSecret ? "Will clear" : "Clear secret"}
+            </button>
+          )}
+        </div>
+        {needsHostJwt && (
+          <p className="text-xs text-gray-400 dark:text-gray-500 mt-2 leading-relaxed">
+            Your ERP should set <span className="font-mono">data-user-ref</span> and a short-lived
+            <span className="font-mono"> data-host-jwt</span> on the script tag for each employee session.
+          </p>
+        )}
+      </div>
+
+      {/* Save row */}
+      <div className="flex items-center gap-3">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="flex items-center gap-2 px-5 py-2 rounded-xl text-sm font-semibold text-white
+            bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all duration-200
+            disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none"
+        >
+          {saving ? (
+            <FontAwesomeIcon icon={faSpinner} className="animate-spin text-xs" />
+          ) : (
+            <FontAwesomeIcon icon={faCheck} className="text-xs" />
+          )}
+          <span>Save changes</span>
+        </button>
+        {saved && <span className="text-xs font-medium text-green-600">Saved</span>}
+        {error && <span className="text-xs font-medium text-red-500">{error}</span>}
+      </div>
+
+      {/* Embed snippet */}
+      <div className="border-t border-gray-100 dark:border-dark-border pt-6">
+        <div className="flex items-center justify-between mb-1.5">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Embed snippet
+          </label>
+          <button
+            type="button"
+            onClick={handleCopySnippet}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all duration-200
+              ${copied
+                ? "text-green-600 bg-green-50 dark:bg-green-500/10"
+                : "text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-dark-border hover:bg-gray-200 dark:hover:bg-gray-600"
+              }`}
+          >
+            <FontAwesomeIcon icon={copied ? faCheck : faCopy} className="text-xs" />
+            <span>{copied ? "Copied" : "Copy"}</span>
+          </button>
+        </div>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+          Paste this before the closing <span className="font-mono">&lt;/body&gt;</span> tag on your site.
+        </p>
+        <textarea
+          readOnly
+          value={snippet}
+          rows={2}
+          spellCheck={false}
+          onFocus={(e) => e.currentTarget.select()}
+          className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
+            bg-gray-50 dark:bg-dark-bg text-xs text-gray-700 dark:text-gray-200 font-mono resize-none
+            outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200
+            break-all whitespace-pre-wrap"
+        />
+        {!publicToken && (
+          <p className="text-xs text-amber-500 mt-1.5">
+            Generate a public token above to complete the snippet.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Tab Content Router ──────────────────────────────────────────────
 
 function TabContent({ tab }: { tab: TabId }) {
@@ -1356,6 +1714,8 @@ function TabContent({ tab }: { tab: TabId }) {
       return <ProfilesTab />;
     case "api-keys":
       return <APIKeysTab />;
+    case "embed":
+      return <EmbedTab />;
     case "credit":
       return <CreditTab />;
     case "invoices":

@@ -17,8 +17,9 @@ import {
 import { EvalItem, EvalRun } from "../utils/types";
 import ConfirmModal from "../components/common/confirm-modal";
 import useStartSession from "../hooks/useStartSession";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 interface Profile {
   id: string;

@@ -6,15 +6,29 @@ from pathlib import Path
 from typing import List, Any
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from app.database import session_documents_collection, sessions_collection
+from app.database import artifacts_collection, session_documents_collection, sessions_collection
 from app.routes.knowledge import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, create_knowledge_document_record
 
 router = APIRouter()
 
 SESSION_DOCUMENT_STORAGE_DIR = Path(os.getenv("SESSION_DOCUMENT_STORAGE_DIR", Path.home() / ".automata" / "session_documents"))
+
+ARTIFACT_TEXT_TYPES = {
+    "markdown": ("text/markdown; charset=utf-8", ".md"),
+    "html": ("text/html; charset=utf-8", ".html"),
+    "react": ("text/plain; charset=utf-8", ".jsx"),
+    "javascript": ("text/javascript; charset=utf-8", ".js"),
+    "typescript": ("text/plain; charset=utf-8", ".ts"),
+    "python": ("text/x-python; charset=utf-8", ".py"),
+    "svg": ("image/svg+xml; charset=utf-8", ".svg"),
+    "mermaid": ("text/plain; charset=utf-8", ".mmd"),
+    "csv": ("text/csv; charset=utf-8", ".csv"),
+    "json": ("application/json; charset=utf-8", ".json"),
+    "text": ("text/plain; charset=utf-8", ".txt"),
+}
 
 
 def _safe_filename(value: str) -> str:
@@ -36,6 +50,43 @@ def _serialize_session_document(doc: dict) -> dict:
         "status": doc.get("status", "uploaded"),
         "source": doc.get("source", "session_upload"),
         "knowledgeDocumentId": doc.get("knowledgeDocumentId", ""),
+        "createdAt": doc.get("createdAt"),
+        "updatedAt": doc.get("updatedAt"),
+    }
+
+
+def _clean_artifact_type(value: Any) -> str:
+    clean = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value or "markdown").strip().lower()).strip("-")
+    return clean or "markdown"
+
+
+def _artifact_file_name(title: str, artifact_type: str, file_name: str = "") -> str:
+    candidate = Path(str(file_name or title or "artifact")).name
+    stem = re.sub(r"[^a-zA-Z0-9._-]+", "-", candidate).strip(".-") or "artifact"
+    _, ext = ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])
+    if "." not in stem:
+        stem = f"{stem}{ext}"
+    return stem[:160]
+
+
+def _serialize_session_artifact(doc: dict) -> dict:
+    artifact_type = _clean_artifact_type(doc.get("artifactType") or doc.get("kind"))
+    content_type, _ = ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])
+    return {
+        "artifactId": doc.get("artifactId", ""),
+        "sessionId": doc.get("sessionId", ""),
+        "companyId": doc.get("companyId", ""),
+        "email": doc.get("email", ""),
+        "name": doc.get("name") or doc.get("title") or "Artifact",
+        "title": doc.get("title") or doc.get("name") or "Artifact",
+        "artifactType": artifact_type,
+        "kind": artifact_type,
+        "content": doc.get("content", ""),
+        "contentType": doc.get("contentType") or content_type,
+        "fileName": doc.get("fileName") or _artifact_file_name(doc.get("title") or doc.get("name") or "Artifact", artifact_type),
+        "url": doc.get("url", ""),
+        "sourceTool": doc.get("sourceTool", ""),
+        "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -74,6 +125,17 @@ class PromoteSessionDocumentRequest(BaseModel):
     email: str
     companyId: str
     source: str = "session_document"
+
+
+class SessionArtifactCreateRequest(BaseModel):
+    email: str
+    companyId: str = ""
+    title: str = "Artifact"
+    artifactType: str = "markdown"
+    content: str = ""
+    fileName: str = ""
+    sourceTool: str = "artifacts.create"
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 @router.get("/sessions")
@@ -176,6 +238,53 @@ async def list_session_documents(session_id: str, email: str):
     await _ensure_session_access(session_id, email)
     cursor = session_documents_collection.find({"sessionId": session_id, "email": email}, {"_id": 0, "storagePath": 0}).sort("createdAt", -1)
     return {"documents": [_serialize_session_document(doc) async for doc in cursor]}
+
+
+@router.get("/sessions/{session_id}/artifacts")
+async def list_session_artifacts(session_id: str, email: str):
+    await _ensure_session_access(session_id, email)
+    cursor = artifacts_collection.find({"sessionId": session_id, "email": email}, {"_id": 0}).sort("createdAt", -1)
+    return {"artifacts": [_serialize_session_artifact(doc) async for doc in cursor]}
+
+
+@router.post("/sessions/{session_id}/artifacts")
+async def create_session_artifact(session_id: str, body: SessionArtifactCreateRequest):
+    await _ensure_session_access(session_id, body.email)
+    artifact_type = _clean_artifact_type(body.artifactType)
+    now = datetime.now(timezone.utc).isoformat()
+    title = re.sub(r"\s+", " ", str(body.title or "Artifact").strip())[:160] or "Artifact"
+    doc = {
+        "artifactId": str(uuid.uuid4()),
+        "sessionId": session_id,
+        "companyId": body.companyId,
+        "email": body.email,
+        "title": title,
+        "name": title,
+        "artifactType": artifact_type,
+        "kind": artifact_type,
+        "content": body.content or "",
+        "contentType": ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])[0],
+        "fileName": _artifact_file_name(title, artifact_type, body.fileName),
+        "sourceTool": body.sourceTool or "artifacts.create",
+        "metadata": body.metadata,
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    await artifacts_collection.insert_one(dict(doc))
+    return {"success": True, "artifact": _serialize_session_artifact(doc)}
+
+
+@router.get("/sessions/{session_id}/artifacts/{artifact_id}/download")
+async def download_session_artifact(session_id: str, artifact_id: str, email: str):
+    await _ensure_session_access(session_id, email)
+    doc = await artifacts_collection.find_one({"sessionId": session_id, "artifactId": artifact_id, "email": email}, {"_id": 0})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Session artifact not found")
+    artifact = _serialize_session_artifact(doc)
+    if artifact.get("url"):
+        raise HTTPException(status_code=400, detail="Remote artifact should be opened from its URL")
+    headers = {"Content-Disposition": f'attachment; filename="{artifact["fileName"]}"'}
+    return Response(content=artifact.get("content", ""), media_type=artifact.get("contentType") or "text/plain; charset=utf-8", headers=headers)
 
 
 @router.post("/sessions/{session_id}/documents")

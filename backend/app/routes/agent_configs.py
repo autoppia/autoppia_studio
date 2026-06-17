@@ -152,7 +152,10 @@ async def _agent_docs_for_run(body: AgentRunTaskRequest) -> list[dict[str, Any]]
     if body.target == "selected":
         if not body.agentId:
             raise HTTPException(status_code=400, detail="agentId is required for selected target")
-        doc = await agents_collection.find_one({"agentId": body.agentId, "email": body.email}, {"_id": 0})
+        query: dict[str, Any] = {"agentId": body.agentId, "email": body.email}
+        if body.companyId:
+            query["companyId"] = body.companyId
+        doc = await agents_collection.find_one(query, {"_id": 0})
         if not doc:
             raise HTTPException(status_code=404, detail="Agent not found")
         return [doc]

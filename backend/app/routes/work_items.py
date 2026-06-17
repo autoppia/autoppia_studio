@@ -1,4 +1,3 @@
-import asyncio
 import json
 import os
 import uuid
@@ -14,6 +13,8 @@ from app.repositories import WorkBoardRepository, WorkItemRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.notifications import create_notification
 from app.services.agent_runtime import agent_step_result
+from app.services.metering import run_credits_spent
+from app.services.queue import enqueue_job
 from app.services.trajectory_judges import list_trajectory_judges
 
 router = APIRouter()
@@ -206,7 +207,7 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
 
 def _deterministic_judge_result(results: list[dict[str, Any]], success_criteria: str = "") -> dict[str, Any]:
     ok_results = [item for item in results if item.get("status") == "ok"]
-    failed_results = [item for item in results if item.get("status") == "failed"]
+    failed_results = [item for item in results if item.get("status") in {"failed", "budget_exhausted"}]
     completed = [
         item
         for item in ok_results
@@ -303,15 +304,34 @@ def _is_executable_browser_call(call: dict[str, Any]) -> bool:
     return name.startswith("browser.") and name not in {"browser.done", "browser.screenshot", "browser.snapshot", "browser.extract"}
 
 
+def _deep_merge_state(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(base)
+    for key, value in patch.items():
+        if isinstance(value, dict) and isinstance(merged.get(key), dict):
+            merged[key] = _deep_merge_state(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_id: str) -> dict[str, Any]:
     agent_id = str(doc.get("agentId") or "")
     browser_enabled = bool(item.get("browserEnabled", True))
     max_steps = max(1, min(30, int(item.get("maxSteps", 8) or 8)))
     runtime_budget = max(0.0, float(item.get("maxBudgetCredits", item.get("maxCreditsPerRun", 0.0)) or 0.0))
-    state: dict[str, Any] = {}
+    raw_pending_resume = item.get("pendingApproval") if isinstance(item.get("pendingApproval"), dict) else {}
+    pending_resume = raw_pending_resume if str(raw_pending_resume.get("agentId") or "") in {"", agent_id} else {}
+    state: dict[str, Any] = pending_resume.get("state") if isinstance(pending_resume.get("state"), dict) else {}
+    state_patch = pending_resume.get("statePatch") if isinstance(pending_resume.get("statePatch"), dict) else {}
+    if state_patch:
+        state = _deep_merge_state(state, state_patch)
+    if pending_resume.get("approvalKey"):
+        approved = set(state.get("approvedConnectorToolCalls") or [])
+        approved.add(str(pending_resume.get("approvalKey") or ""))
+        state["approvedConnectorToolCalls"] = list(approved)
     steps: list[dict[str, Any]] = []
     final_result: dict[str, Any] = {}
-    current_url = str(doc.get("websiteUrl") or "")
+    current_url = str(pending_resume.get("currentUrl") or doc.get("websiteUrl") or "")
     browser = None
 
     try:
@@ -324,6 +344,25 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
             current_url = browser.get_current_url()
 
         for step_index in range(max_steps):
+            if runtime_budget > 0:
+                spent = await run_credits_spent(run_id)
+                if spent >= runtime_budget:
+                    final_result = {
+                        "done": True,
+                        "content": f"Run stopped after spending {spent:.2f}/{runtime_budget:.2f} credits.",
+                        "state_out": state,
+                    }
+                    return {
+                        "agentId": agent_id,
+                        "agentName": doc.get("name", ""),
+                        "status": "budget_exhausted",
+                        "result": final_result,
+                        "steps": steps,
+                        "finalUrl": current_url,
+                        "stepCount": len(steps),
+                        "creditsSpent": spent,
+                        "maxBudgetCredits": runtime_budget,
+                    }
             result = await agent_step_result(
                 agent_id,
                 {
@@ -371,7 +410,53 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
                     step_record["executed"] = executed
                     step_record["url"] = current_url
 
+            last_tool_results = list(final_result.get("tool_results") or []) if isinstance(final_result.get("tool_results"), list) else []
+            if step_record.get("executed"):
+                last_tool_results.extend(
+                    {
+                        "tool": item.get("name", ""),
+                        "success": bool(item.get("success")),
+                        **({"error": item.get("error")} if item.get("error") else {}),
+                    }
+                    for item in step_record["executed"]
+                    if isinstance(item, dict)
+                )
+            if last_tool_results:
+                state = {**state, "automata_last_tool_results": last_tool_results}
+                step_record["toolResults"] = last_tool_results
+
             steps.append(step_record)
+            approval_call = next(
+                (
+                    call
+                    for call in tool_calls
+                    if isinstance(call, dict)
+                    and str(call.get("name") or "") == "api.human_approval"
+                    and isinstance(call.get("arguments"), dict)
+                ),
+                None,
+            )
+            if approval_call:
+                approval_args = approval_call.get("arguments") or {}
+                return {
+                    "agentId": agent_id,
+                    "agentName": doc.get("name", ""),
+                    "status": "waiting_approval",
+                    "result": final_result,
+                    "steps": steps,
+                    "finalUrl": current_url,
+                    "stepCount": len(steps),
+                    "pendingApproval": {
+                        "approvalId": str(approval_args.get("approvalId") or ""),
+                        "approvalKey": str(approval_args.get("approvalKey") or ""),
+                        "proposedAction": approval_args.get("proposedAction") if isinstance(approval_args.get("proposedAction"), dict) else {},
+                        "state": state,
+                        "statePatch": approval_args.get("statePatch") if isinstance(approval_args.get("statePatch"), dict) else {},
+                        "stepIndex": step_index,
+                        "currentUrl": current_url,
+                        "agentId": agent_id,
+                    },
+                }
             if final_result.get("done") is True:
                 break
             if not tool_calls and final_result.get("content"):
@@ -418,6 +503,37 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         for doc in docs:
             results.append(await _run_agent_work_steps(item, doc, run_id))
 
+        waiting = next((result for result in results if result.get("status") == "waiting_approval"), None)
+        if waiting:
+            pending = waiting.get("pendingApproval") if isinstance(waiting.get("pendingApproval"), dict) else {}
+            await work_items_collection.update_one(
+                {"workItemId": work_item_id},
+                {
+                    "$set": {
+                        "status": "REVIEW",
+                        "report": {
+                            "runId": run_id,
+                            "target": item.get("runTarget", "selected"),
+                            "resultCount": len(results),
+                            "results": results,
+                            "summary": "Waiting for human approval before continuing.",
+                        },
+                        "pendingApproval": {**pending, "status": "pending", "runId": run_id, "updatedAt": _now()},
+                        "updatedAt": _now(),
+                    },
+                    "$push": {"runHistory": {"runId": run_id, "status": "WAITING_APPROVAL", "createdAt": _now(), "approvalId": pending.get("approvalId", "")}},
+                },
+            )
+            await _notify_work_item(
+                item,
+                title="Work item waiting for approval",
+                message=f"{item.get('title', 'Work item')} needs approval before continuing.",
+                level="warning",
+                run_id=run_id,
+                status="REVIEW",
+            )
+            return
+
         judge = await _judge_result(item, results)
         next_status = "DONE" if judge["label"] == "success" else "REVIEW" if judge["label"] == "needs_review" else "FAILED"
         report = {
@@ -434,6 +550,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                     "status": next_status,
                     "report": report,
                     "judge": judge,
+                    "pendingApproval": {},
                     "nextRunAt": _next_run_at(
                         frequency=str(item.get("scheduleFrequency") or "none"),
                         schedule_time=str(item.get("scheduleTime") or "09:00"),
@@ -682,7 +799,7 @@ async def run_work_item(work_item_id: str, body: WorkItemRunRequest = WorkItemRu
     run_id = str(uuid.uuid4())
     updates["lastRunId"] = run_id
     await repo.update_owned_one({"workItemId": work_item_id}, {"$set": updates}, not_found="Work item not found")
-    asyncio.create_task(_run_work_item(work_item_id, run_id))
+    await enqueue_job("work_run", {"workItemId": work_item_id, "runId": run_id}, dedupe_key=f"work_run:{work_item_id}:{run_id}")
     refreshed = await work_items_collection.find_one({"workItemId": work_item_id}, {"_id": 0})
     await _notify_work_item(
         refreshed or existing,
@@ -771,7 +888,7 @@ async def run_due_scheduled_work_items_once() -> int:
             run_id=run_id,
             status="RUNNING",
         )
-        asyncio.create_task(_run_work_item(str(doc.get("workItemId")), run_id))
+        await enqueue_job("work_run", {"workItemId": str(doc.get("workItemId")), "runId": run_id}, dedupe_key=f"work_run:{doc.get('workItemId')}:{run_id}")
         started += 1
     return started
 
@@ -782,6 +899,8 @@ async def scheduled_work_loop() -> None:
             await run_due_scheduled_work_items_once()
         except Exception:
             pass
+        import asyncio
+
         await asyncio.sleep(60)
 def _board_repo(scope: RequestScope) -> WorkBoardRepository:
     return WorkBoardRepository(work_boards_collection, coerce_request_scope(scope))

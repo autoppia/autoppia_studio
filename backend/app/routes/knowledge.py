@@ -10,23 +10,40 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 import httpx
 
-from app.database import companies_collection, connectors_collection, knowledge_documents_collection
+from app.database import (
+    companies_collection,
+    connectors_collection,
+    knowledge_documents_collection,
+    tools_collection,
+    vector_databases_collection,
+)
+from app.services.knowledge_index import delete_knowledge_document_vectors
+from app.services.queue import enqueue_job
 
 router = APIRouter()
 
 KNOWLEDGE_STORAGE_DIR = Path(os.getenv("KNOWLEDGE_STORAGE_DIR", Path.home() / ".automata" / "knowledge"))
 MAX_UPLOAD_BYTES = int(os.getenv("KNOWLEDGE_MAX_UPLOAD_BYTES", str(15 * 1024 * 1024)))
-ALLOWED_EXTENSIONS = {".txt", ".md", ".pdf", ".csv", ".json", ".doc", ".docx"}
+ALLOWED_EXTENSIONS = {".txt", ".md", ".markdown", ".pdf", ".csv", ".json", ".doc", ".docx", ".html", ".xml", ".yml", ".yaml"}
 
 
 class KnowledgeFromUrlRequest(BaseModel):
     email: str
     companyId: str
+    vectorDatabaseId: str = ""
     url: str
     filename: str = ""
     contentType: str = ""
     source: str = "session_artifact"
     metadata: dict = Field(default_factory=dict)
+
+
+class VectorDatabaseCreateRequest(BaseModel):
+    email: str
+    companyId: str
+    name: str
+    provider: str = "local"
+    collectionName: str = ""
 
 
 def _now() -> str:
@@ -38,6 +55,11 @@ def _safe_filename(value: str) -> str:
     stem = re.sub(r"[^a-zA-Z0-9._-]+", "-", Path(name).stem).strip("-") or "document"
     suffix = Path(name).suffix.lower()
     return f"{stem[:80]}{suffix}"
+
+
+def _safe_slug(value: str) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9_-]+", "-", str(value or "").strip().lower()).strip("-")
+    return slug[:80] or "knowledge"
 
 
 def _filename_from_url(url: str) -> str:
@@ -59,8 +81,57 @@ def _serialize(doc: dict) -> dict:
         "status": doc.get("status", "uploaded"),
         "source": doc.get("source", "upload"),
         "connectorId": doc.get("connectorId", ""),
+        "vectorDatabaseId": doc.get("vectorDatabaseId", ""),
+        "vectorDatabaseName": doc.get("vectorDatabaseName", ""),
+        "vectorCollectionName": doc.get("vectorCollectionName", ""),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
+    }
+
+
+def _embedding_payload() -> dict:
+    embedding_provider = os.getenv("AUTOMATA_EMBEDDINGS", "hash").strip().lower() or "hash"
+    embedding_model = (
+        os.getenv("AUTOMATA_OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+        if embedding_provider == "openai"
+        else f"hash-{os.getenv('AUTOMATA_HASH_EMBEDDING_DIMENSIONS', '256')}"
+    )
+    return {"embeddingProvider": embedding_provider, "embeddingModel": embedding_model}
+
+
+def _vector_index_payload(company_id: str, connector: dict | None = None, *, documents: list[dict] | None = None) -> dict:
+    config = (connector or {}).get("config") if isinstance((connector or {}).get("config"), dict) else {}
+    provider = str(config.get("vectorStoreProvider") or os.getenv("AUTOMATA_VECTORSTORE", "local")).strip().lower() or "local"
+    collection = str(config.get("collectionName") or f"company-{company_id}")
+    embedding = _embedding_payload()
+    docs = documents or []
+    return {
+        "provider": provider,
+        "collectionName": collection,
+        **embedding,
+        "indexedDocuments": sum(1 for doc in docs if str(doc.get("status") or "").lower() in {"indexed", "ready"}),
+        "documentCount": len(docs),
+    }
+
+
+def _serialize_vector_database(db: dict, *, documents: list[dict] | None = None, connector: dict | None = None) -> dict:
+    docs = documents or []
+    embedding = _embedding_payload()
+    return {
+        "vectorDatabaseId": db.get("vectorDatabaseId", ""),
+        "email": db.get("email", ""),
+        "companyId": db.get("companyId", ""),
+        "name": db.get("name", ""),
+        "provider": db.get("provider", "local"),
+        "collectionName": db.get("collectionName", ""),
+        **embedding,
+        "status": db.get("status", "ready"),
+        "connectorId": db.get("connectorId") or (connector or {}).get("connectorId", ""),
+        "documentCount": len(docs),
+        "indexedDocuments": sum(1 for doc in docs if str(doc.get("status") or "").lower() in {"indexed", "ready"}),
+        "totalSize": sum(int(doc.get("size") or 0) for doc in docs),
+        "createdAt": db.get("createdAt"),
+        "updatedAt": db.get("updatedAt"),
     }
 
 
@@ -69,36 +140,203 @@ async def _ensure_company(email: str, company_id: str) -> None:
         raise HTTPException(status_code=404, detail="Company not found")
 
 
-async def _ensure_knowledge_connector(email: str, company_id: str) -> str:
-    existing = await connectors_collection.find_one({"email": email, "companyId": company_id, "type": "knowledge"}, {"_id": 0})
+async def _ensure_default_vector_databases(email: str, company_id: str) -> list[dict]:
+    existing = await vector_databases_collection.find({"email": email, "companyId": company_id}, {"_id": 0}).sort("createdAt", 1).to_list(length=100)
     if existing:
+        primary = existing[0]
+        await knowledge_documents_collection.update_many(
+            {"email": email, "companyId": company_id, "vectorDatabaseId": {"$in": [None, ""]}},
+            {
+                "$set": {
+                    "vectorDatabaseId": primary.get("vectorDatabaseId", ""),
+                    "vectorDatabaseName": primary.get("name", ""),
+                    "vectorCollectionName": primary.get("collectionName", f"company-{company_id}"),
+                    "updatedAt": _now(),
+                }
+            },
+        )
+        return existing
+
+    now = _now()
+    defaults = [
+        ("Company Knowledge", f"company-{company_id}-knowledge"),
+        ("Product Docs", f"company-{company_id}-product-docs"),
+    ]
+    docs = []
+    for name, collection in defaults:
+        doc = {
+            "vectorDatabaseId": str(uuid.uuid4()),
+            "email": email,
+            "companyId": company_id,
+            "name": name,
+            "provider": os.getenv("AUTOMATA_VECTORSTORE", "local").strip().lower() or "local",
+            "collectionName": collection,
+            "status": "ready",
+            "createdAt": now,
+            "updatedAt": now,
+        }
+        await vector_databases_collection.insert_one(dict(doc))
+        docs.append(doc)
+    await knowledge_documents_collection.update_many(
+        {"email": email, "companyId": company_id, "vectorDatabaseId": {"$in": [None, ""]}},
+        {
+            "$set": {
+                "vectorDatabaseId": docs[0]["vectorDatabaseId"],
+                "vectorDatabaseName": docs[0]["name"],
+                "vectorCollectionName": docs[0]["collectionName"],
+                "updatedAt": now,
+            }
+        },
+    )
+    return docs
+
+
+async def _ensure_vector_database(email: str, company_id: str, vector_database_id: str = "") -> dict:
+    await _ensure_default_vector_databases(email, company_id)
+    query = {"email": email, "companyId": company_id}
+    if vector_database_id:
+        query["vectorDatabaseId"] = vector_database_id
+    doc = await vector_databases_collection.find_one(query, {"_id": 0}, sort=[("createdAt", 1)])
+    if not doc:
+        raise HTTPException(status_code=404, detail="Vector database not found")
+    return doc
+
+
+async def _ensure_knowledge_connector(email: str, company_id: str, vector_db: dict | None = None) -> str:
+    vector_db = vector_db or await _ensure_vector_database(email, company_id)
+    vector_database_id = str(vector_db.get("vectorDatabaseId") or "")
+    collection_name = str(vector_db.get("collectionName") or f"company-{company_id}")
+    provider = str(vector_db.get("provider") or os.getenv("AUTOMATA_VECTORSTORE", "local")).strip().lower() or "local"
+    existing = await connectors_collection.find_one(
+        {"email": email, "companyId": company_id, "type": "knowledge", "config.vectorDatabaseId": vector_database_id},
+        {"_id": 0},
+    )
+    if not existing and not vector_database_id:
+        existing = await connectors_collection.find_one({"email": email, "companyId": company_id, "type": "knowledge"}, {"_id": 0})
+    if existing:
+        connector_id = str(existing.get("connectorId") or "")
+        config = existing.get("config") if isinstance(existing.get("config"), dict) else {}
+        vector_updates = {
+            "name": existing.get("name") or f"Documents - {vector_db.get('name', 'Knowledge')}",
+            "config.vectorDatabaseId": vector_database_id,
+            "config.vectorDatabaseName": vector_db.get("name", ""),
+            "config.collectionName": config.get("collectionName") or collection_name,
+            "config.vectorStoreProvider": config.get("vectorStoreProvider") or provider,
+        }
         if existing.get("status") != "connected":
-            await connectors_collection.update_one(
-                {"connectorId": existing.get("connectorId")},
-                {"$set": {"status": "connected", "updatedAt": _now()}},
-            )
-        return str(existing.get("connectorId") or "")
+            vector_updates["status"] = "connected"
+        await connectors_collection.update_one(
+            {"connectorId": connector_id},
+            {"$set": {**vector_updates, "updatedAt": _now()}},
+        )
+        await _ensure_knowledge_tools(email, company_id, connector_id)
+        await vector_databases_collection.update_one(
+            {"vectorDatabaseId": vector_database_id},
+            {"$set": {"connectorId": connector_id, "updatedAt": _now()}},
+        )
+        await knowledge_documents_collection.update_many(
+            {"email": email, "companyId": company_id, "vectorDatabaseId": vector_database_id},
+            {"$set": {"connectorId": connector_id, "updatedAt": _now()}},
+        )
+        return connector_id
 
     now = _now()
     connector_id = str(uuid.uuid4())
+    name = f"Documents - {vector_db.get('name', 'Knowledge')}"
     await connectors_collection.insert_one(
         {
             "connectorId": connector_id,
             "email": email,
             "companyId": company_id,
-            "name": "Documents",
+            "name": name,
             "type": "knowledge",
             "category": "knowledge",
-            "description": "Company knowledge connector for uploaded documents and internal sources.",
+            "description": f"Knowledge connector bound to the {vector_db.get('name', 'Knowledge')} vector database.",
             "status": "connected",
             "provider": "official",
             "generationStatus": "autoppia_supported",
-            "config": {"collectionName": f"company-{company_id}"},
+            "config": {
+                "vectorDatabaseId": vector_database_id,
+                "vectorDatabaseName": vector_db.get("name", ""),
+                "collectionName": collection_name,
+                "vectorStoreProvider": provider,
+            },
             "createdAt": now,
             "updatedAt": now,
         }
     )
+    await _ensure_knowledge_tools(email, company_id, connector_id)
+    await vector_databases_collection.update_one(
+        {"vectorDatabaseId": vector_database_id},
+        {"$set": {"connectorId": connector_id, "updatedAt": now}},
+    )
+    await knowledge_documents_collection.update_many(
+        {"email": email, "companyId": company_id, "vectorDatabaseId": vector_database_id},
+        {"$set": {"connectorId": connector_id, "updatedAt": now}},
+    )
     return connector_id
+
+
+async def _ensure_knowledge_tools(email: str, company_id: str, connector_id: str) -> None:
+    if not connector_id:
+        return
+    now = _now()
+    connector = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0}) or {}
+    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    db_name = str(config.get("vectorDatabaseName") or connector.get("name") or "Knowledge")
+    tool_segment = "_".join(part for part in re.sub(r"[^a-zA-Z0-9]+", "_", db_name.lower()).split("_") if part)[:48] or "knowledge"
+    specs = [
+        {
+            "name": f"knowledge.{tool_segment}.search",
+            "description": f"Search documents indexed in {db_name} using vector similarity and return cited chunks.",
+            "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "topK": {"type": "integer"}, "k": {"type": "integer"}, "minScore": {"type": "number"}, "documentId": {"type": "string"}, "source": {"type": "string"}}},
+            "outputSchema": {"type": "object", "properties": {"results": {"type": "array"}}},
+        },
+        {
+            "name": f"knowledge.{tool_segment}.list_documents",
+            "description": f"List stored documents in {db_name}.",
+            "inputSchema": {"type": "object", "properties": {"status": {"type": "string"}, "limit": {"type": "integer"}}},
+            "outputSchema": {"type": "object", "properties": {"documents": {"type": "array"}}},
+        },
+        {
+            "name": f"knowledge.{tool_segment}.stats",
+            "description": f"Return document and indexing stats for {db_name}.",
+            "inputSchema": {"type": "object", "properties": {}},
+            "outputSchema": {"type": "object", "additionalProperties": True},
+        },
+        {
+            "name": f"knowledge.{tool_segment}.read_document",
+            "description": f"Read a stored {db_name} document by documentId.",
+            "inputSchema": {"type": "object", "properties": {"documentId": {"type": "string"}}},
+            "outputSchema": {"type": "object", "additionalProperties": True},
+        },
+    ]
+    for spec in specs:
+        tool_id = f"{connector_id}:{spec['name']}"
+        existing = await tools_collection.find_one({"toolId": tool_id}, {"_id": 0, "createdAt": 1})
+        await tools_collection.update_one(
+            {"toolId": tool_id},
+            {
+                "$set": {
+                    "toolId": tool_id,
+                    "email": email,
+                    "companyId": company_id,
+                    "connectorId": connector_id,
+                    "name": spec["name"],
+                    "description": spec["description"],
+                    "sideEffects": "reads",
+                    "riskLevel": "low",
+                    "executionType": "connector_tool",
+                    "runtimeRequirements": ["vectorstore", "embedding_model"],
+                    "inputSchema": spec["inputSchema"],
+                    "outputSchema": spec["outputSchema"],
+                    "permissions": {"approval": "never"},
+                    "createdAt": existing.get("createdAt") if existing else now,
+                    "updatedAt": now,
+                }
+            },
+            upsert=True,
+        )
 
 
 async def create_knowledge_document_record(
@@ -109,9 +347,11 @@ async def create_knowledge_document_record(
     content: bytes,
     content_type: str,
     source: str,
+    vector_database_id: str = "",
     metadata: dict | None = None,
 ) -> dict:
     await _ensure_company(email, company_id)
+    vector_db = await _ensure_vector_database(email, company_id, vector_database_id)
     safe_name = _safe_filename(filename or "document")
     suffix = Path(safe_name).suffix.lower()
     if suffix not in ALLOWED_EXTENSIONS:
@@ -124,7 +364,7 @@ async def create_knowledge_document_record(
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File is too large")
 
-    connector_id = await _ensure_knowledge_connector(email, company_id)
+    connector_id = await _ensure_knowledge_connector(email, company_id, vector_db)
     now = _now()
     document_id = str(uuid.uuid4())
     company_dir = KNOWLEDGE_STORAGE_DIR / company_id
@@ -139,29 +379,84 @@ async def create_knowledge_document_record(
         "filename": safe_name,
         "contentType": content_type or "application/octet-stream",
         "size": len(content),
-        "status": "uploaded",
+        "status": "indexing",
         "source": source or "upload",
         "connectorId": connector_id,
+        "vectorDatabaseId": vector_db.get("vectorDatabaseId", ""),
+        "vectorDatabaseName": vector_db.get("name", ""),
+        "vectorCollectionName": vector_db.get("collectionName", f"company-{company_id}"),
         "storagePath": str(storage_path),
         "metadata": metadata or {},
         "createdAt": now,
         "updatedAt": now,
     }
     await knowledge_documents_collection.insert_one(dict(doc))
+    await enqueue_job("knowledge_index", {"documentId": document_id}, dedupe_key=f"knowledge_index:{document_id}")
     return doc
 
 
 @router.get("/knowledge/documents")
 async def list_knowledge_documents(email: str, companyId: str):
     await _ensure_company(email, companyId)
+    vector_dbs = await _ensure_default_vector_databases(email, companyId)
+    for vector_db in vector_dbs:
+        await _ensure_knowledge_connector(email, companyId, vector_db)
+    connectors = await connectors_collection.find({"email": email, "companyId": companyId, "type": "knowledge"}, {"_id": 0}).to_list(length=100)
+    connectors_by_db = {
+        str((connector.get("config") or {}).get("vectorDatabaseId") or ""): connector
+        for connector in connectors
+        if isinstance(connector.get("config"), dict)
+    }
     cursor = knowledge_documents_collection.find({"email": email, "companyId": companyId}, {"_id": 0, "storagePath": 0}).sort("createdAt", -1)
-    return {"documents": [_serialize(doc) async for doc in cursor]}
+    docs = await cursor.to_list(length=500)
+    primary = vector_dbs[0] if vector_dbs else {}
+    primary_docs = [doc for doc in docs if doc.get("vectorDatabaseId") == primary.get("vectorDatabaseId")]
+    connector = connectors_by_db.get(str(primary.get("vectorDatabaseId") or ""))
+    return {
+        "documents": [_serialize(doc) for doc in docs],
+        "vectorDatabases": [
+            _serialize_vector_database(
+                vector_db,
+                documents=[doc for doc in docs if doc.get("vectorDatabaseId") == vector_db.get("vectorDatabaseId")],
+                connector=connectors_by_db.get(str(vector_db.get("vectorDatabaseId") or "")),
+            )
+            for vector_db in vector_dbs
+        ],
+        "vectorIndex": _vector_index_payload(companyId, connector, documents=primary_docs),
+    }
+
+
+@router.post("/knowledge/vector-databases")
+async def create_vector_database(body: VectorDatabaseCreateRequest):
+    await _ensure_company(body.email, body.companyId)
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name is required")
+    now = _now()
+    vector_database_id = str(uuid.uuid4())
+    collection_name = body.collectionName.strip() or f"company-{body.companyId}-{_safe_slug(name)}"
+    doc = {
+        "vectorDatabaseId": vector_database_id,
+        "email": body.email,
+        "companyId": body.companyId,
+        "name": name,
+        "provider": (body.provider or "local").strip().lower() or "local",
+        "collectionName": collection_name,
+        "status": "ready",
+        "createdAt": now,
+        "updatedAt": now,
+    }
+    await vector_databases_collection.insert_one(dict(doc))
+    connector_id = await _ensure_knowledge_connector(body.email, body.companyId, doc)
+    doc["connectorId"] = connector_id
+    return {"success": True, "vectorDatabase": _serialize_vector_database(doc)}
 
 
 @router.post("/knowledge/documents")
 async def upload_knowledge_document(
     email: str = Form(...),
     companyId: str = Form(...),
+    vectorDatabaseId: str = Form(""),
     source: str = Form("upload"),
     file: UploadFile = File(...),
 ):
@@ -177,6 +472,7 @@ async def upload_knowledge_document(
     if len(content) > MAX_UPLOAD_BYTES:
         raise HTTPException(status_code=413, detail="File is too large")
 
+    vector_database_id = vectorDatabaseId if isinstance(vectorDatabaseId, str) else ""
     doc = await create_knowledge_document_record(
         email=email,
         company_id=companyId,
@@ -184,6 +480,7 @@ async def upload_knowledge_document(
         content=content,
         content_type=file.content_type or "application/octet-stream",
         source=source or "upload",
+        vector_database_id=vector_database_id,
     )
     return {"success": True, "document": _serialize(doc), "connectorId": doc.get("connectorId", "")}
 
@@ -219,6 +516,7 @@ async def create_knowledge_document_from_url(body: KnowledgeFromUrlRequest):
         content=content,
         content_type=body.contentType or response.headers.get("content-type", "application/octet-stream").split(";", 1)[0],
         source=body.source or "session_artifact",
+        vector_database_id=body.vectorDatabaseId,
         metadata=body.metadata or {},
     )
     return {"success": True, "document": _serialize(doc), "connectorId": doc.get("connectorId", "")}
@@ -235,6 +533,7 @@ async def delete_knowledge_document(document_id: str):
             Path(storage_path).unlink(missing_ok=True)
         except OSError:
             pass
+    await delete_knowledge_document_vectors(str(doc.get("companyId") or ""), document_id, collection=str(doc.get("vectorCollectionName") or ""))
     await knowledge_documents_collection.delete_one({"documentId": document_id})
     return {"success": True}
 

@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { setUser } from "../../redux/userSlice";
+import { getApiUrl } from "../../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 export default function ConfigTab() {
   const user = useSelector((state: any) => state.user);

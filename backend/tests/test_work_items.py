@@ -163,15 +163,19 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
             "state_out": {"memory": {"ok": True}},
         }
 
-    created_tasks = []
+    jobs = []
 
-    def fake_create_task(coro):
-        created_tasks.append(coro)
-        return None
+    async def fake_enqueue_job(job_type, payload, **kwargs):
+        jobs.append((job_type, payload, kwargs))
+        return {"jobId": "job-1", "type": job_type, "payload": payload}
+
+    async def fake_run_credits_spent(run_id):
+        return 0.0
 
     monkeypatch.setattr(work_items, "agent_step_result", fake_agent_step_result)
-    monkeypatch.setattr(work_items.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(work_items, "enqueue_job", fake_enqueue_job)
     monkeypatch.setattr(work_items, "create_notification", fake_create_notification)
+    monkeypatch.setattr(work_items, "run_credits_spent", fake_run_credits_spent)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -191,7 +195,7 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
         WorkItemRunRequest(),
         RequestScope(email="user@example.com", token_email="user@example.com"),
     )
-    await created_tasks[0]
+    await work_items._run_work_item(work_item_id, started["runId"])
     refreshed = await collection.find_one({"workItemId": work_item_id})
 
     assert started["workItem"]["status"] == "RUNNING"
@@ -200,6 +204,114 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     assert refreshed["report"]["results"][0]["agentId"] == "agent-1"
     assert refreshed["runHistory"][0]["runId"] == started["runId"]
     assert [item["title"] for item in notifications] == ["Work item started", "Work item done"]
+    assert jobs[0][0] == "work_run"
+
+
+@pytest.mark.asyncio
+async def test_run_agent_work_steps_stops_when_budget_exhausted(monkeypatch):
+    called = False
+
+    async def fake_agent_step_result(agent_id, payload):
+        nonlocal called
+        called = True
+        return {"done": True, "content": "should not run", "tool_calls": []}
+
+    async def fake_run_credits_spent(run_id):
+        return 1.0
+
+    monkeypatch.setattr(work_items, "agent_step_result", fake_agent_step_result)
+    monkeypatch.setattr(work_items, "run_credits_spent", fake_run_credits_spent)
+
+    result = await work_items._run_agent_work_steps(
+        {
+            "prompt": "Do work",
+            "browserEnabled": False,
+            "maxSteps": 3,
+            "maxBudgetCredits": 1.0,
+            "maxCreditsPerRun": 1.0,
+            "workItemId": "work-1",
+        },
+        {"agentId": "agent-1", "name": "Agent One", "websiteUrl": "https://example.com"},
+        "run-1",
+    )
+
+    assert called is False
+    assert result["status"] == "budget_exhausted"
+    assert result["creditsSpent"] == 1.0
+    assert result["stepCount"] == 0
+
+
+@pytest.mark.asyncio
+async def test_run_work_item_pauses_on_human_approval(monkeypatch):
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    collection = _WorkItems()
+    boards = _Boards()
+    agents = _Agents()
+    monkeypatch.setattr(work_items, "work_items_collection", collection)
+    monkeypatch.setattr(work_items, "work_boards_collection", boards)
+    monkeypatch.setattr(work_items, "agents_collection", agents)
+
+    async def fake_create_notification(**kwargs):
+        return kwargs
+
+    async def fake_agent_step_result(agent_id, payload):
+        return {
+            "done": False,
+            "content": None,
+            "reasoning": "Approval required",
+            "tool_calls": [
+                {
+                    "name": "api.human_approval",
+                    "arguments": {
+                        "approvalId": "approval-1",
+                        "approvalKey": "crm.update:0:abc",
+                        "proposedAction": {"name": "crm.update", "arguments": {"id": "1"}},
+                    },
+                }
+            ],
+            "state_out": {"pendingConnectorApproval": "crm.update:0:abc"},
+        }
+
+    jobs = []
+
+    async def fake_enqueue_job(job_type, payload, **kwargs):
+        jobs.append((job_type, payload, kwargs))
+        return {"jobId": "job-1", "type": job_type, "payload": payload}
+
+    async def fake_run_credits_spent(run_id):
+        return 0.0
+
+    monkeypatch.setattr(work_items, "agent_step_result", fake_agent_step_result)
+    monkeypatch.setattr(work_items, "enqueue_job", fake_enqueue_job)
+    monkeypatch.setattr(work_items, "create_notification", fake_create_notification)
+    monkeypatch.setattr(work_items, "run_credits_spent", fake_run_credits_spent)
+
+    created = await work_items.create_work_item(
+        WorkItemCreateRequest(
+            email="user@example.com",
+            companyId="company-1",
+            title="Approval task",
+            prompt="Update CRM",
+            agentId="agent-1",
+            runTarget="selected",
+            browserEnabled=False,
+        )
+    )
+    work_item_id = created["workItem"]["workItemId"]
+    started = await work_items.run_work_item(
+        work_item_id,
+        WorkItemRunRequest(),
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+    await work_items._run_work_item(work_item_id, started["runId"])
+    refreshed = await collection.find_one({"workItemId": work_item_id})
+
+    assert refreshed["status"] == "REVIEW"
+    assert refreshed["pendingApproval"]["approvalId"] == "approval-1"
+    assert refreshed["pendingApproval"]["approvalKey"] == "crm.update:0:abc"
+    assert refreshed["runHistory"][0]["status"] == "WAITING_APPROVAL"
+    assert started["runId"] == refreshed["pendingApproval"]["runId"]
+    assert jobs[0][0] == "work_run"
 
 
 @pytest.mark.asyncio
@@ -248,13 +360,12 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     )
     work_item_id = created["workItem"]["workItemId"]
     collection.docs[work_item_id]["nextRunAt"] = "2000-01-01T00:00:00+00:00"
-    created_tasks = []
+    jobs = []
     notifications = []
 
-    def fake_create_task(coro):
-        created_tasks.append(coro)
-        coro.close()
-        return None
+    async def fake_enqueue_job(job_type, payload, **kwargs):
+        jobs.append((job_type, payload, kwargs))
+        return {"jobId": "job-1", "type": job_type, "payload": payload}
 
     async def fake_run_work_item(work_item_id, run_id):
         return None
@@ -262,7 +373,7 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     async def fake_notify(*args, **kwargs):
         notifications.append((args, kwargs))
 
-    monkeypatch.setattr(work_items.asyncio, "create_task", fake_create_task)
+    monkeypatch.setattr(work_items, "enqueue_job", fake_enqueue_job)
     monkeypatch.setattr(work_items, "_run_work_item", fake_run_work_item)
     monkeypatch.setattr(work_items, "_notify_work_item", fake_notify)
 
@@ -271,5 +382,5 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     assert started == 1
     assert collection.docs[work_item_id]["status"] == "RUNNING"
     assert collection.docs[work_item_id]["lastRunId"]
-    assert len(created_tasks) == 1
+    assert len(jobs) == 1
     assert len(notifications) == 1

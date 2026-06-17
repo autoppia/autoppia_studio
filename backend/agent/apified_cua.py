@@ -48,6 +48,26 @@ class ApifiedCUA:
             "url": url,
             "step_index": int(step_index),
             "include_reasoning": True,
+            "runtime_tools": [
+                {
+                    "name": "artifacts.create",
+                    "description": "Create a renderable artifact in the current session. Use for reports, markdown docs, HTML, SVG, Mermaid, CSV/JSON, code, and other deliverables that should be shown to the user in the session UI.",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "title": {"type": "string"},
+                            "artifactType": {
+                                "type": "string",
+                                "description": "markdown, html, react, svg, mermaid, csv, json, javascript, typescript, python, or text",
+                            },
+                            "content": {"type": "string"},
+                            "fileName": {"type": "string"},
+                            "metadata": {"type": "object"},
+                        },
+                        "required": ["title", "artifactType", "content"],
+                    },
+                }
+            ],
         }
         if history is not None:
             payload["history"] = history

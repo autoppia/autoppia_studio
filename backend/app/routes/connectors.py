@@ -1,4 +1,5 @@
 import uuid
+import os
 from datetime import datetime, timezone
 import smtplib
 from typing import Any
@@ -18,6 +19,12 @@ SECRET_PLACEHOLDER = "__configured__"
 
 def _tool(name: str, description: str, side_effects: str = "reads") -> dict[str, Any]:
     return {"name": name, "description": description, "sideEffects": side_effects, "inputSchema": {"type": "object", "properties": {}}}
+
+
+def _safe_tool_segment(value: str) -> str:
+    segment = "".join(char.lower() if char.isalnum() else "_" for char in str(value or "knowledge"))
+    segment = "_".join(part for part in segment.split("_") if part)
+    return segment[:48] or "knowledge"
 
 
 def _api_toolkit(name: str, prefix: str, auth_fields: list[str], config_fields: list[str] | None = None, requirements: list[str] | None = None) -> dict[str, Any]:
@@ -53,6 +60,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "configFields": ["smtpServer", "smtpPort", "imapServer", "imapPort"],
         "runtimeRequirements": ["smtp_credentials", "network"],
         "tools": [
+            {"name": "smtp.draft_email", "description": "Prepare an email draft without sending it.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
             {"name": "smtp.send_email", "description": "Send an email through SMTP after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
             {"name": "imap.read_email", "description": "Read email through IMAP when configured.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"folder": {"type": "string"}, "limit": {"type": "integer"}}}},
         ],
@@ -63,7 +71,10 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "configFields": ["workspaceId"],
         "runtimeRequirements": ["api_credentials", "network"],
         "tools": [
+            {"name": "holded.list_clients", "description": "List Holded contacts/clients.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}}}},
             {"name": "holded.search_clients", "description": "Search clients in Holded.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
+            {"name": "holded.list_invoices", "description": "List recent Holded invoices.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"limit": {"type": "integer"}, "status": {"type": "string"}}}},
+            {"name": "holded.search_invoices", "description": "Search Holded invoices by customer, number, notes or raw invoice fields.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "limit": {"type": "integer"}}}},
             {"name": "holded.get_invoice", "description": "Fetch an invoice.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"invoiceId": {"type": "string"}}}},
         ],
     },
@@ -73,6 +84,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "configFields": ["defaultChatId"],
         "runtimeRequirements": ["bot_token", "network"],
         "tools": [
+            {"name": "telegram.get_chat", "description": "Fetch Telegram chat metadata for the configured or provided chat.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}}}},
             {"name": "telegram.send_message", "description": "Send a Telegram message after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}, "message": {"type": "string"}}}},
         ],
     },
@@ -83,6 +95,8 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "runtimeRequirements": ["browser_or_http", "network"],
         "tools": [
             {"name": "web.fetch", "description": "Fetch a public page.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
+            {"name": "web.fetch_text", "description": "Fetch a public page and return cleaned visible text.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "maxChars": {"type": "integer"}}}},
+            {"name": "web.extract_links", "description": "Fetch a public page and extract links with labels.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}, "limit": {"type": "integer"}}}},
             {"name": "browser.navigate", "description": "Open a website in browser runtime.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
         ],
     },
@@ -103,7 +117,9 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "configFields": ["collectionName", "sourceUrl"],
         "runtimeRequirements": ["vectorstore", "embedding_model"],
         "tools": [
-            {"name": "knowledge.search", "description": "Search company documents.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
+            {"name": "knowledge.search", "description": "Search company documents with configurable topK and optional filters.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "topK": {"type": "integer"}, "k": {"type": "integer"}, "minScore": {"type": "number"}, "documentId": {"type": "string"}, "source": {"type": "string"}}}},
+            {"name": "knowledge.list_documents", "description": "List indexed/stored documents available in this vector database.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"status": {"type": "string"}, "limit": {"type": "integer"}}}},
+            {"name": "knowledge.stats", "description": "Return document and indexing stats for this vector database.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {}}},
             {"name": "knowledge.read_document", "description": "Read a document chunk.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"documentId": {"type": "string"}}}},
         ],
     },
@@ -251,6 +267,37 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
         runtime_requirements = list(connector.get("runtimeRequirements") or ["browser", "network"])
         auth_fields = list(defaults["authFields"]) if connector.get("authRequired") else []
         config_fields = ["baseUrl", "startUrl", "loginUrl"] if connector.get("authRequired") else ["baseUrl", "startUrl"]
+    if connector_type == "knowledge":
+        db_name = str(config.get("vectorDatabaseName") or connector.get("name") or "Knowledge")
+        db_segment = _safe_tool_segment(db_name)
+        toolkit_name = f"{db_name} Toolkit"
+        config_fields = ["vectorDatabaseId", "collectionName", "vectorStoreProvider"]
+        tools = [
+            {
+                "name": f"knowledge.{db_segment}.search",
+                "description": f"Search documents indexed in {db_name} with configurable topK and optional filters.",
+                "sideEffects": "none",
+                "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "topK": {"type": "integer"}, "k": {"type": "integer"}, "minScore": {"type": "number"}, "documentId": {"type": "string"}, "source": {"type": "string"}}},
+            },
+            {
+                "name": f"knowledge.{db_segment}.list_documents",
+                "description": f"List documents stored in {db_name}.",
+                "sideEffects": "none",
+                "inputSchema": {"type": "object", "properties": {"status": {"type": "string"}, "limit": {"type": "integer"}}},
+            },
+            {
+                "name": f"knowledge.{db_segment}.stats",
+                "description": f"Return document and indexing stats for {db_name}.",
+                "sideEffects": "none",
+                "inputSchema": {"type": "object", "properties": {}},
+            },
+            {
+                "name": f"knowledge.{db_segment}.read_document",
+                "description": f"Read a document from {db_name}.",
+                "sideEffects": "none",
+                "inputSchema": {"type": "object", "properties": {"documentId": {"type": "string"}}},
+            },
+        ]
     if custom_api:
         runtime_requirements = ["api_docs_or_openapi", "api_credentials_optional", "network"]
         tools = [
@@ -374,6 +421,23 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
+    if str(connector["type"]).lower() == "knowledge":
+        config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+        provider = str(config.get("vectorStoreProvider") or os.getenv("AUTOMATA_VECTORSTORE", "local")).strip().lower() or "local"
+        collection = str(config.get("collectionName") or f"company-{connector['companyId']}")
+        embedding_provider = os.getenv("AUTOMATA_EMBEDDINGS", "hash").strip().lower() or "hash"
+        connector["vectorIndex"] = {
+            "vectorDatabaseId": str(config.get("vectorDatabaseId") or ""),
+            "name": str(config.get("vectorDatabaseName") or connector.get("name") or "Knowledge"),
+            "provider": provider,
+            "collectionName": collection,
+            "embeddingProvider": embedding_provider,
+            "embeddingModel": (
+                os.getenv("AUTOMATA_OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+                if embedding_provider == "openai"
+                else f"hash-{os.getenv('AUTOMATA_HASH_EMBEDDING_DIMENSIONS', '256')}"
+            ),
+        }
     connector["toolkit"] = connector_toolkit(connector)
     return connector
 

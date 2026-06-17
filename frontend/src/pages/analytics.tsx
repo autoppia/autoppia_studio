@@ -12,8 +12,9 @@ import {
   faSpinner,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 type RangeKey = "24h" | "7d" | "30d" | "90d";
 
