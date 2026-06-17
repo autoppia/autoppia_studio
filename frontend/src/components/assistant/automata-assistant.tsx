@@ -261,15 +261,14 @@ export default function AutomataAssistant() {
 
   return (
     <div
-      className={`fixed z-[120] bottom-3 right-3 left-3 sm:left-auto
-        flex flex-col overflow-hidden rounded-2xl
+      className={`fixed z-[120]
+        flex flex-col overflow-hidden
         border border-gray-200 dark:border-dark-border
         bg-white dark:bg-dark-bg shadow-2xl dark:shadow-black/60
-        animate-slide-up
-        max-h-[calc(100vh-1.5rem)]
+        animate-slide-up transition-all duration-200
         ${expanded
-          ? "sm:w-[520px] h-[80vh] sm:h-[680px]"
-          : "sm:w-[400px] h-[70vh] sm:h-[560px]"}`}
+          ? "inset-0 w-screen h-screen max-h-screen rounded-none"
+          : "bottom-3 right-3 left-3 sm:left-auto max-h-[calc(100vh-1.5rem)] rounded-2xl sm:w-[400px] h-[70vh] sm:h-[560px]"}`}
     >
       {/* Header */}
       <div className="flex items-center gap-2 px-3 h-12 flex-shrink-0 border-b border-gray-200 dark:border-dark-border">
@@ -293,8 +292,8 @@ export default function AutomataAssistant() {
         </div>
         <button
           onClick={() => setExpanded((v) => !v)}
-          title={expanded ? "Minimize" : "Expand"}
-          className="hidden sm:flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+          title={expanded ? "Exit full window" : "Full window"}
+          className="flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
         >
           <FontAwesomeIcon icon={expanded ? faCompress : faExpand} className="text-xs" />
         </button>
@@ -318,7 +317,7 @@ export default function AutomataAssistant() {
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[260px]">
               Your Studio helper. Ask me anything about onboarding or getting things done here.
             </p>
-            <div className="w-full mt-5 space-y-2">
+            <div className="w-full max-w-md mt-5 space-y-2">
               {SUGGESTIONS[mode].map((s) => (
                 <button
                   key={s}
