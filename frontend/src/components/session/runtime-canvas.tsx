@@ -155,7 +155,11 @@ function CoreHub({ busy, ready, label = "CORE" }: { busy: boolean; ready: boolea
         style={{ background: `radial-gradient(circle, ${accent}35 0%, transparent 68%)` }}
       />
       <div className="relative h-36 w-36">
-        <svg viewBox="0 0 120 120" className={`absolute inset-0 h-36 w-36 ${busy ? "animate-spin" : ""}`} style={{ animationDuration: "30s" }}>
+        <svg
+          viewBox="0 0 120 120"
+          className={`absolute inset-0 h-36 w-36 ${busy ? "animate-spin" : ""}`}
+          style={{ animationDuration: "30s", filter: `drop-shadow(0 0 16px ${accent}55)` }}
+        >
           <defs>
             <linearGradient id="runtime-root-border" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor={accent} stopOpacity="0.95" />
@@ -175,15 +179,23 @@ function CoreHub({ busy, ready, label = "CORE" }: { busy: boolean; ready: boolea
         <svg viewBox="0 0 120 120" className="absolute inset-2 h-32 w-32">
           <defs>
             <linearGradient id="runtime-root-fill" x1="0%" y1="0%" x2="100%" y2="100%">
-              <stop offset="0%" stopColor="#16131f" />
-              <stop offset="100%" stopColor="#0c0a14" />
+              <stop offset="0%" stopColor="#0c1929" />
+              <stop offset="100%" stopColor="#0a0f1a" />
             </linearGradient>
+            <filter id="runtime-root-glow" x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
           </defs>
           <path
             d="M60 12 L98 36 L98 84 L60 108 L22 84 L22 36 Z"
             fill="url(#runtime-root-fill)"
             stroke={accent}
             strokeWidth="1.5"
+            filter="url(#runtime-root-glow)"
           />
         </svg>
         <div className="absolute inset-0 flex items-center justify-center">
@@ -232,7 +244,7 @@ function AgentAvatar({ node, dot }: { node: PositionedAgent; dot: string }) {
 
   return (
     <div
-      className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_16px_rgba(0,0,0,0.4)]"
+      className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_16px_rgba(0,0,0,0.4)]"
       style={{ background: showImage ? "#0c0a14" : "linear-gradient(150deg,rgba(125,211,252,0.20),rgba(167,139,250,0.12))" }}
     >
       {showImage ? (
@@ -264,74 +276,119 @@ function AgentNode({
 }) {
   const meta = STATE_META[node.state];
   const active = node.state === "running";
+  const done = node.state === "done";
+  const failed = node.state === "failed";
   const browserOn = node.browserEnabled !== false;
   const activity = node.activity || "tool";
 
+  // Refactor-style state tint: cards are tinted by their run state, the way the
+  // old Studio canvas coloured each worker card.
+  const tint = active ? "125,211,252" : done ? "52,211,153" : failed ? "248,113,113" : "148,163,184";
+  const cardBackground = `linear-gradient(145deg, rgba(${tint},${active ? 0.08 : done ? 0.05 : 0.04}) 0%, rgba(13,12,20,0.97) 58%, rgba(10,9,16,0.98))`;
+  const cardBorder = `1.5px solid rgba(${tint},${active ? 0.5 : done ? 0.34 : failed ? 0.42 : 0.2})`;
+  const cardShadow = active
+    ? `0 0 26px rgba(${tint},0.22), 0 20px 50px rgba(0,0,0,0.5)`
+    : `0 18px 46px rgba(0,0,0,0.45)`;
+
   return (
     <div
-      className={`group pointer-events-auto absolute w-[268px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`group pointer-events-auto absolute w-[286px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onPointerDown={(event) => onPointerDown?.(event, node)}
       onClick={() => onClick?.(node)}
     >
       {active && (
-        <>
-          <div
-            className="absolute -inset-6 rounded-[34px] blur-2xl"
-            style={{ background: `radial-gradient(ellipse at 50% 50%, ${meta.glow}, transparent 72%)` }}
-          />
-          <div className="absolute right-3.5 top-3.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/40 text-sky-100 animate-pulse">
-            <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
-          </div>
-        </>
+        <div
+          className="absolute -inset-7 rounded-[38px] blur-2xl animate-pulse-soft"
+          style={{ background: `radial-gradient(ellipse at 50% 50%, rgba(${tint},0.26), transparent 72%)` }}
+        />
       )}
 
       <div
-        className={`relative overflow-hidden rounded-[20px] border ${meta.border} bg-[linear-gradient(155deg,rgba(255,255,255,0.07),rgba(20,18,28,0.96)_55%,rgba(11,10,18,0.98))] p-4 shadow-[0_22px_52px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 group-hover:-translate-y-0.5 group-hover:border-white/25 group-hover:shadow-[0_30px_64px_rgba(0,0,0,0.55)]`}
-        style={{ boxShadow: active ? `0 0 30px ${meta.glow}, 0 22px 52px rgba(0,0,0,0.5)` : undefined }}
+        className="relative overflow-hidden rounded-[20px] backdrop-blur-xl transition-all duration-300 group-hover:-translate-y-1 group-hover:scale-[1.015] group-hover:shadow-[0_34px_72px_rgba(0,0,0,0.6)]"
+        style={{ background: cardBackground, border: cardBorder, boxShadow: cardShadow }}
       >
-        {/* subtle inner top highlight */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+        {/* glass inner ring + top highlight */}
+        <div className="pointer-events-none absolute inset-0 rounded-[20px] ring-1 ring-inset ring-white/5" />
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/35 to-transparent" />
 
         {/* left status accent bar */}
         <div className="absolute left-0 top-0 h-full w-[3px]" style={{ background: meta.accent }} />
 
-        {/* top accent line */}
-        <div
-          className={`absolute left-0 right-0 top-0 h-[3px] ${active ? "animate-pulse" : ""}`}
-          style={{
-            background: active
-              ? "linear-gradient(90deg,transparent,#7dd3fc,transparent)"
-              : node.state === "done"
-                ? "linear-gradient(90deg,transparent,rgba(52,211,153,0.55),transparent)"
-                : node.state === "failed"
-                  ? "linear-gradient(90deg,transparent,rgba(248,113,113,0.45),transparent)"
-                  : "linear-gradient(90deg,transparent,rgba(148,163,184,0.28),transparent)",
-          }}
-        />
+        {/* top status rail — sliding shimmer while running, static glow otherwise. */}
+        {active ? (
+          <>
+            <div className="pointer-events-none absolute inset-x-0 top-0 h-[3px] overflow-hidden">
+              <div
+                className="h-full w-full animate-shimmer-slide"
+                style={{ background: "linear-gradient(90deg,transparent,#7dd3fc,transparent)" }}
+              />
+            </div>
+            <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[2px] overflow-hidden">
+              <div
+                className="h-full w-full animate-shimmer-slide"
+                style={{ background: "linear-gradient(90deg,transparent,rgba(125,211,252,0.45),transparent)", animationDirection: "reverse" }}
+              />
+            </div>
+          </>
+        ) : (
+          <div
+            className="absolute left-0 right-0 top-0 h-[3px]"
+            style={{
+              background: done
+                ? "linear-gradient(90deg,transparent,rgba(52,211,153,0.6),transparent)"
+                : failed
+                  ? "linear-gradient(90deg,transparent,rgba(248,113,113,0.5),transparent)"
+                  : "linear-gradient(90deg,transparent,rgba(148,163,184,0.3),transparent)",
+            }}
+          />
+        )}
 
-        <div className="flex items-start gap-3">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-4 pt-4">
           <AgentAvatar node={node} dot={meta.dot} />
-          <div className="min-w-0 flex-1 pt-0.5">
-            <p className="truncate text-[14px] font-semibold leading-tight text-white">{node.name}</p>
-            <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/[0.04] px-2 py-0.5">
-              <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-              <span className={`text-[10px] font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[15px] font-semibold leading-tight text-white">{node.name}</p>
+            <div className="mt-2 flex items-center gap-1.5">
+              <span
+                className="inline-flex items-center gap-1.5 rounded-full border px-2 py-[3px]"
+                style={{ borderColor: `rgba(${tint},0.4)`, background: `rgba(${tint},0.12)` }}
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
+                <span className={`text-[10px] font-bold uppercase tracking-[0.08em] ${meta.text}`}>{meta.label}</span>
+              </span>
+              {active && (
+                <span className="inline-flex h-[22px] w-[22px] items-center justify-center rounded-full border border-white/10 bg-black/40 text-sky-100">
+                  <FontAwesomeIcon icon={faWandMagicSparkles} className="animate-pulse text-[10px]" />
+                </span>
+              )}
             </div>
           </div>
         </div>
 
-        {/* capability badges */}
-        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+        {/* divider */}
+        <div className="mx-4 mt-3.5 h-px bg-white/[0.07]" />
+
+        {/* capability row */}
+        <div className="flex flex-wrap items-center gap-1.5 px-4 pt-3">
           <ActivityChip activity={node.activity} />
           <CapabilityBadge icon={faGlobe} label="Browser" on={browserOn} />
           <CapabilityBadge icon={faWandMagicSparkles} label="Skill" on={activity === "skill"} />
           <CapabilityBadge icon={faWrench} label="Tools" on={activity === "tool" || activity === "browser"} />
         </div>
 
-        <p className="mt-3 truncate rounded-xl border border-white/5 bg-black/30 px-3 py-2 text-[10.5px] leading-tight text-zinc-400">
-          {node.detail || (browserOn ? "Waiting for activity" : "Browser off")}
-        </p>
+        {/* status / detail row — wraps to 2 lines so labels never clip. */}
+        <div className="px-4 pb-4 pt-3">
+          <div className="flex items-start gap-2 rounded-xl border border-white/[0.06] bg-black/40 px-3 py-2">
+            <FontAwesomeIcon
+              icon={ACTIVITY_ICON[activity]}
+              className={`mt-[2px] text-[11px] ${active ? "text-sky-300 animate-pulse" : "text-zinc-500"}`}
+            />
+            <p className="line-clamp-2 flex-1 text-[11px] leading-snug text-zinc-300">
+              {node.detail || (browserOn ? "Waiting for activity" : "Browser off")}
+            </p>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -345,10 +402,10 @@ function SignalPaths({ agents }: { agents: PositionedAgent[] }) {
     <svg className="pointer-events-none absolute inset-0 h-full w-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 100 100">
       <defs>
         <linearGradient id="runtime-signal-gradient" x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.22" />
-          <stop offset="45%" stopColor="#60a5fa" stopOpacity="0.88" />
-          <stop offset="78%" stopColor="#a78bfa" stopOpacity="0.70" />
-          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.22" />
+          <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.25" />
+          <stop offset="35%" stopColor="#60a5fa" stopOpacity="0.90" />
+          <stop offset="70%" stopColor="#34d399" stopOpacity="0.75" />
+          <stop offset="100%" stopColor="#22d3ee" stopOpacity="0.25" />
         </linearGradient>
       </defs>
       {agents.map((agent) => {
@@ -361,11 +418,11 @@ function SignalPaths({ agents }: { agents: PositionedAgent[] }) {
               <path
                 d={path}
                 fill="none"
-                stroke={processing ? "url(#runtime-signal-gradient)" : "rgba(96,165,250,0.42)"}
-                strokeWidth={processing ? 1.35 : 1.1}
-                opacity={processing ? 0.46 : 0.28}
+                stroke={processing ? "url(#runtime-signal-gradient)" : "rgba(96,165,250,0.55)"}
+                strokeWidth={processing ? 1.7 : 1.25}
+                opacity={processing ? 0.55 : 0.32}
                 strokeLinecap="round"
-                filter="blur(0.35px)"
+                filter="blur(0.5px)"
               />
             )}
             <path
@@ -458,10 +515,12 @@ function AddAgentMenu({ children }: { children?: ReactNode }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/70 bg-white text-zinc-900 shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-black/5 transition-all hover:scale-105 hover:bg-zinc-50 ${open ? "rotate-45" : ""}`}
+        className={`relative flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-zinc-900 shadow-[0_0_0_4px_rgba(255,255,255,0.10),0_14px_36px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,1)] ring-1 ring-white/80 transition-all duration-200 hover:scale-110 hover:bg-white hover:shadow-[0_0_0_5px_rgba(255,255,255,0.16),0_18px_44px_rgba(0,0,0,0.65)] active:scale-100 ${open ? "rotate-45" : ""}`}
         title="Add agent"
       >
-        <FontAwesomeIcon icon={faPlus} className="text-sm" />
+        {/* soft white halo so it reads as prominent on the dark canvas */}
+        <span className="pointer-events-none absolute -inset-2 -z-10 rounded-3xl bg-white/20 blur-md" />
+        <FontAwesomeIcon icon={faPlus} className="text-lg font-black" />
       </button>
     </div>
   );
@@ -728,49 +787,56 @@ export default function RuntimeCanvas({
   return (
     <section
       ref={canvasRef}
-      className="relative h-full w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 text-white shadow-[0_24px_70px_rgba(0,0,0,0.30)] dark:border-dark-border dark:bg-dark-bg"
+      className="relative h-full w-full overflow-hidden rounded-2xl border border-gray-200 bg-gray-50 text-white shadow-[0_24px_70px_rgba(0,0,0,0.30)] dark:border-white/10 dark:bg-[#070510] dark:shadow-[0_30px_90px_rgba(0,0,0,0.65)]"
       style={{ minHeight }}
       data-testid="runtime-canvas"
     >
-      {/* Premium layered backdrop — darker canvas with depth (radial glows + masked grid + vignette). */}
-      <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-[#0b0913] dark:to-[#060509]" />
+      {/* Premium layered backdrop — deep dark canvas with strong app bg image + depth. */}
+      <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-[#0a0714] dark:via-[#070510] dark:to-[#040308]" />
+      {/* App dark-bg image, used strongly so the surface clearly reads as the Studio backdrop. */}
       <div className="absolute inset-0 hidden dark:block">
-        <img src="/assets/images/bg/dark-bg.webp" alt="" className="h-full w-full object-cover opacity-60" />
+        <img
+          src="/assets/images/bg/dark-bg.webp"
+          alt=""
+          className="h-full w-full object-cover opacity-90 saturate-150 contrast-110"
+        />
+        {/* tint the photo toward the brand so it doesn't wash out */}
+        <div className="absolute inset-0 bg-[#070510]/45 mix-blend-multiply" />
       </div>
-      {/* Layered radial/linear glows for depth */}
+      {/* Brand spotlight behind the hub + ambient corner glows for depth. */}
       <div
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(1100px 560px at 50% -6%, rgba(96,165,250,0.10), transparent 60%), radial-gradient(720px 520px at 12% 92%, rgba(167,139,250,0.10), transparent 58%), radial-gradient(720px 520px at 88% 88%, rgba(34,211,238,0.07), transparent 58%)",
+            "radial-gradient(900px 520px at 50% 8%, rgba(233,124,60,0.16), transparent 62%), radial-gradient(1100px 620px at 50% -8%, rgba(96,165,250,0.16), transparent 60%), radial-gradient(760px 560px at 10% 96%, rgba(167,139,250,0.14), transparent 58%), radial-gradient(760px 560px at 92% 92%, rgba(34,211,238,0.10), transparent 58%)",
         }}
       />
-      {/* Grid with depth — fades toward the edges via a radial mask. */}
+      {/* Fine grid — brighter, fades toward the edges via a radial mask. */}
       <div
-        className="absolute inset-0 opacity-[0.12] dark:opacity-[0.20]"
+        className="absolute inset-0 opacity-[0.14] dark:opacity-[0.34]"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(148,163,184,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.22) 1px, transparent 1px)",
-          backgroundSize: "46px 46px",
-          maskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 35%, transparent 92%)",
-          WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 35%, transparent 92%)",
+            "linear-gradient(rgba(148,170,210,0.30) 1px, transparent 1px), linear-gradient(90deg, rgba(148,170,210,0.30) 1px, transparent 1px)",
+          backgroundSize: "44px 44px",
+          maskImage: "radial-gradient(ellipse 82% 72% at 50% 36%, black 32%, transparent 92%)",
+          WebkitMaskImage: "radial-gradient(ellipse 82% 72% at 50% 36%, black 32%, transparent 92%)",
         }}
       />
       {/* Coarse grid for layered depth */}
       <div
-        className="absolute inset-0 hidden opacity-[0.10] dark:block"
+        className="absolute inset-0 hidden opacity-[0.20] dark:block"
         style={{
           backgroundImage:
-            "linear-gradient(rgba(148,163,184,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.14) 1px, transparent 1px)",
-          backgroundSize: "184px 184px",
-          maskImage: "radial-gradient(ellipse 85% 75% at 50% 38%, black 30%, transparent 95%)",
-          WebkitMaskImage: "radial-gradient(ellipse 85% 75% at 50% 38%, black 30%, transparent 95%)",
+            "linear-gradient(rgba(160,180,220,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(160,180,220,0.22) 1px, transparent 1px)",
+          backgroundSize: "176px 176px",
+          maskImage: "radial-gradient(ellipse 88% 78% at 50% 36%, black 28%, transparent 95%)",
+          WebkitMaskImage: "radial-gradient(ellipse 88% 78% at 50% 36%, black 28%, transparent 95%)",
         }}
       />
-      {/* Edge vignette */}
+      {/* Strong edge vignette to seat the content and deepen the corners. */}
       <div
         className="pointer-events-none absolute inset-0 hidden dark:block"
-        style={{ background: "radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)" }}
+        style={{ background: "radial-gradient(ellipse 92% 82% at 50% 42%, transparent 48%, rgba(0,0,0,0.78) 100%)" }}
       />
 
       {/* Pan surface — sits behind the scaled content; dragging it pans the viewport. */}
