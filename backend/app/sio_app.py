@@ -18,6 +18,7 @@ socket_app = None  # Will be set in main.py after FastAPI app is created
 sessions = {}
 keepalive_tasks = {}  # sid -> asyncio.Task for browser keep-alive pings
 running_tasks = {}  # sid -> asyncio.Task for the currently running _perform_task
+session_metadata = {}  # sid -> {email, companyId}; populated by activity subscription or task payloads
 
 home_dir = Path.home()
 storage_state_dir = home_dir / ".automata" / "storage_states"
@@ -41,8 +42,58 @@ async def connect(sid, environ):
     logger.info(f"Client connected: {sid}")
 
 
+def _activity_room(email: str, company_id: str = "") -> str:
+    return f"activity:{email}:{company_id or '_'}"
+
+
+def active_session_count(email: str = "", company_id: str = "") -> int:
+    if not email:
+        return len(sessions)
+    count = 0
+    for sid, metadata in session_metadata.items():
+        if metadata.get("email") != email:
+            continue
+        if company_id and metadata.get("companyId", "") != company_id:
+            continue
+        if sid in sessions or sid in running_tasks:
+            count += 1
+    return count
+
+
+async def emit_activity_event(email: str, company_id: str = "", event: str = "activity-updated", payload: dict | None = None) -> None:
+    if not email:
+        return
+    await sio.emit(event, payload or {}, room=_activity_room(email, company_id))
+
+
+async def _remember_activity_context(sid: str, data: dict | None) -> None:
+    if not isinstance(data, dict):
+        return
+    email = str(data.get("email") or data.get("userEmail") or "").strip()
+    company_id = str(data.get("companyId") or data.get("company_id") or "").strip()
+    if not email:
+        return
+    previous = session_metadata.get(sid, {})
+    if previous.get("email"):
+        await sio.leave_room(sid, _activity_room(previous["email"], previous.get("companyId", "")))
+    session_metadata[sid] = {"email": email, "companyId": company_id}
+    await sio.enter_room(sid, _activity_room(email, company_id))
+
+
+@sio.on("subscribe-activity")
+async def subscribe_activity(sid, data):
+    await _remember_activity_context(sid, data)
+    metadata = session_metadata.get(sid, {})
+    await sio.emit(
+        "activity-subscribed",
+        {"email": metadata.get("email", ""), "companyId": metadata.get("companyId", "")},
+        to=sid,
+    )
+
+
 @sio.on("start-task")
 async def start_task(sid, data):
+    await _remember_activity_context(sid, data)
     task = data.get("task")
     initial_url = data.get("initial_url")
     context_id = data.get("context_id", "")
@@ -90,6 +141,7 @@ async def start_task(sid, data):
 
         # Send initial tabs list
         await _emit_tabs(sid, agent_config)
+        await _emit_initial_screenshot(sid, agent_config)
 
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
@@ -99,6 +151,7 @@ async def start_task(sid, data):
 
 @sio.on("continue-task")
 async def continue_task(sid, data):
+    await _remember_activity_context(sid, data)
     task = data.get("task")
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
@@ -117,10 +170,13 @@ async def continue_task(sid, data):
 
 @sio.on("resume-task")
 async def resume_task(sid, data):
+    await _remember_activity_context(sid, data)
     task = data.get("task")
     last_url = data.get("lastUrl")
     action_history = data.get("actionHistory", [])
     context_id = data.get("context_id", "")
+    agent_id = data.get("agent_id", "")
+    runtime_state = data.get("runtimeState") if isinstance(data.get("runtimeState"), dict) else {}
 
     if not task:
         await sio.emit("error", {"message": "No task provided"}, to=sid)
@@ -129,7 +185,10 @@ async def resume_task(sid, data):
         await sio.emit("error", {"message": "No lastUrl provided for resume"}, to=sid)
         return
 
-    logger.info(f"Resuming task: {task}, Last URL: {last_url}, History steps: {len(action_history)}, Context ID: {context_id}")
+    logger.info(
+        f"Resuming task: {task}, Last URL: {last_url}, History steps: {len(action_history)}, "
+        f"Context ID: {context_id}, Agent ID: {agent_id}"
+    )
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -148,14 +207,24 @@ async def resume_task(sid, data):
         )
 
         agent_config = AutoppiaAgent()
+        agent_base_url = await _agent_base_url_for_agent(agent_id) if agent_id else ""
 
         # Initialize with the saved lastUrl as the starting URL
-        await agent_config.initialize(task, last_url, storage_state_path, context_id=context_id, browser_mode=data.get("browser_mode", ""))
+        await agent_config.initialize(
+            task,
+            last_url,
+            storage_state_path,
+            context_id=context_id,
+            agent_base_url=agent_base_url,
+            browser_mode=data.get("browser_mode", ""),
+        )
 
         # Pre-load action history so CUA has context of previous actions
         if action_history:
             agent_config.history = action_history
             agent_config.step_index = len(action_history)
+        if runtime_state:
+            agent_config._state = runtime_state
 
         sessions[sid] = agent_config
 
@@ -164,6 +233,7 @@ async def resume_task(sid, data):
             await sio.emit("live_url", {"url": live_url}, to=sid)
 
         await _emit_tabs(sid, agent_config)
+        await _emit_initial_screenshot(sid, agent_config)
 
         running_tasks[sid] = asyncio.create_task(_perform_task(sid))
     except Exception as e:
@@ -193,6 +263,7 @@ async def stop_task(sid, data=None):
             pass
         result["actionHistory"] = getattr(agent_config, "history", [])
         result["screenshots"] = getattr(agent_config, "screenshots", [])
+        result["runtimeState"] = getattr(agent_config, "_state", {})
 
         # Start keep-alive to keep browser session open
         old_ka = keepalive_tasks.pop(sid, None)
@@ -242,6 +313,7 @@ async def play_actions(sid, data):
             await sio.emit("live_url", {"url": live_url}, to=sid)
 
         await _emit_tabs(sid, agent_config)
+        await _emit_initial_screenshot(sid, agent_config)
 
         # Wire up tab-change callback so frontend updates tab bar on navigation
         async def on_tab_change_play():
@@ -299,6 +371,7 @@ async def play_actions(sid, data):
             pass
         result["actionHistory"] = history
         result["screenshots"] = getattr(agent_config, "screenshots", [])
+        result["runtimeState"] = getattr(agent_config, "_state", {})
 
         await sio.emit("result", result, to=sid)
 
@@ -753,6 +826,7 @@ async def disconnect(sid):
         task.cancel()
     # Clean up recording actions
     recording_actions.pop(sid, None)
+    session_metadata.pop(sid, None)
     session_data = sessions.get(sid)
     if session_data:
         if isinstance(session_data, dict) and session_data.get("recording"):
@@ -777,6 +851,25 @@ async def _emit_tabs(sid, agent_config):
                 await sio.emit("tabs", {"tabs": tabs, "activeIndex": active_index}, to=sid)
     except Exception as e:
         logger.warning(f"Failed to emit tabs: {e}")
+
+
+async def _emit_initial_screenshot(sid, agent_config):
+    """Emit one local browser screenshot after initialization.
+
+    Local Playwright sessions do not have a Browserbase live URL. Some approved
+    skills complete through API/tool replay without any browser action, so this
+    keeps the Browser tab useful instead of showing the startup loader forever.
+    """
+    try:
+        screenshot = await agent_config.take_screenshot()
+        if not screenshot:
+            return
+        screenshots = getattr(agent_config, "screenshots", None)
+        if isinstance(screenshots, list) and screenshot not in screenshots:
+            screenshots.append(screenshot)
+        await sio.emit("screenshot", {"screenshot": screenshot}, to=sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit initial screenshot: {e}")
 
 
 async def _keepalive_loop(sid, interval=30):
@@ -841,6 +934,7 @@ async def _perform_task(sid, max_steps=25):
             logger.warning(f"Failed to get current URL: {e}")
         result["actionHistory"] = agent_config.history
         result["screenshots"] = agent_config.screenshots or []
+        result["runtimeState"] = getattr(agent_config, "_state", {})
 
         await sio.emit("result", result, to=sid)
 

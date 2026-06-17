@@ -18,6 +18,8 @@ from app.database import (
 from app.harvesters import harvest_connector_capabilities
 from app.harvesters.base import connector_surface
 from app.harvesters.toolkit import ToolkitHarvester
+from app.connectors import execute_connector_tool
+from app.routes.connectors import connector_toolkit
 
 router = APIRouter()
 
@@ -56,6 +58,17 @@ class PromoteTrajectoryRequest(BaseModel):
     whenToUse: str = ""
     permissions: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: str = "human_approval_for_writes"
+
+
+class ToolTestRequest(BaseModel):
+    email: str = ""
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class TrajectoryReviewRequest(BaseModel):
+    email: str = ""
+    label: str = "approved"
+    notes: str = ""
 
 
 class CompanyCapabilityPublishRequest(BaseModel):
@@ -104,11 +117,20 @@ def _serialize_tool(doc: dict[str, Any]) -> dict[str, Any]:
         "outputSchema": doc.get("outputSchema", {}),
         "executionType": doc.get("executionType", ""),
         "surface": doc.get("surface", ""),
+        "runtimeRequirements": doc.get("runtimeRequirements", []),
         "sideEffects": doc.get("sideEffects", "reads"),
         "permissions": doc.get("permissions", {}),
         "riskLevel": doc.get("riskLevel", "low"),
         "status": doc.get("status", "draft"),
         "source": doc.get("source", ""),
+        "discovererName": doc.get("discovererName", ""),
+        "discovererVersion": doc.get("discovererVersion", ""),
+        "discoveryScope": doc.get("discoveryScope", ""),
+        "discoveryRelevance": doc.get("discoveryRelevance", {}),
+        "discoveryEvidence": doc.get("discoveryEvidence", []),
+        "lastTestAt": doc.get("lastTestAt"),
+        "lastTestStatus": doc.get("lastTestStatus"),
+        "lastTestResult": doc.get("lastTestResult"),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -123,6 +145,7 @@ def _serialize_trajectory(doc: dict[str, Any]) -> dict[str, Any]:
         "agentId": doc.get("agentId", ""),
         "connectorIds": doc.get("connectorIds", []),
         "toolIds": doc.get("toolIds", []),
+        "runtimeRequirements": doc.get("runtimeRequirements", []),
         "name": doc.get("name") or doc.get("taskName", ""),
         "intent": doc.get("intent") or doc.get("prompt", ""),
         "description": doc.get("prompt", ""),
@@ -132,7 +155,9 @@ def _serialize_trajectory(doc: dict[str, Any]) -> dict[str, Any]:
         "taskId": doc.get("taskId", ""),
         "finalUrl": doc.get("finalUrl", ""),
         "judge": doc.get("judge", {}),
+        "review": doc.get("review", {}),
         "harvester": doc.get("harvester", {}),
+        "metadata": doc.get("metadata", {}),
         "trajectory": doc.get("trajectory", []),
         "steps": doc.get("steps") or doc.get("trajectory") or doc.get("actions", []),
         "validations": doc.get("validations", []),
@@ -154,6 +179,7 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "connectorIds": doc.get("connectorIds", []),
         "toolIds": doc.get("toolIds", []),
         "trajectoryIds": doc.get("trajectoryIds", []),
+        "runtimeRequirements": doc.get("runtimeRequirements", []),
         "name": doc.get("name", ""),
         "description": doc.get("description", ""),
         "whenToUse": doc.get("whenToUse", ""),
@@ -166,6 +192,8 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "source": doc.get("source", ""),
         "harvesterType": doc.get("harvesterType", ""),
         "harvesterRunId": doc.get("harvesterRunId", ""),
+        "discovererName": doc.get("discovererName", ""),
+        "discovererVersion": doc.get("discovererVersion", ""),
         "judge": doc.get("judge", {}),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
@@ -364,6 +392,7 @@ async def _harvest_capabilities_for_connector(
     surface = connector_surface(connector)
     connector_type = str(connector.get("type") or "").lower()
     connector_id = str(connector.get("connectorId") or "")
+    runtime_requirements = list(connector_toolkit(connector).get("runtimeRequirements") or [])
     run = await _create_capability_run(
         connector=connector,
         run_kind="benchmark_harvester",
@@ -405,6 +434,7 @@ async def _harvest_capabilities_for_connector(
                     "evalId": eval_id,
                     "connectorIds": [connector_id],
                     "toolIds": tool_ids if connector_type == "api" else [],
+                    "runtimeRequirements": runtime_requirements,
                     "steps": [],
                     "inputSchema": {"type": "object", "properties": {"task": {"type": "string"}}},
                     "validations": [{"type": "user_or_benchmark_confirmation", "criteria": task.get("successCriteria", "")}],
@@ -429,6 +459,7 @@ async def _harvest_capabilities_for_connector(
                     "connectorIds": [connector_id],
                     "toolIds": tool_ids if connector_type == "api" else [],
                     "trajectoryIds": [trajectory_id],
+                    "runtimeRequirements": runtime_requirements,
                     "benchmarkId": benchmark_id,
                     "evalId": eval_id,
                     "permissions": {"connectorId": connector_id, "requiresBenchmarkApproval": True},
@@ -513,6 +544,7 @@ async def create_company_tool(company_id: str, body: ToolCreateRequest):
         "outputSchema": body.outputSchema,
         "executionType": body.executionType,
         "surface": connector_surface(connector),
+        "runtimeRequirements": connector_toolkit(connector).get("runtimeRequirements", []),
         "sideEffects": body.sideEffects,
         "permissions": body.permissions,
         "riskLevel": body.riskLevel,
@@ -523,6 +555,34 @@ async def create_company_tool(company_id: str, body: ToolCreateRequest):
     }
     await tools_collection.insert_one(doc)
     return {"success": True, "tool": _serialize_tool(doc)}
+
+
+@router.post("/tools/{tool_id}/test")
+async def test_company_tool(tool_id: str, body: ToolTestRequest):
+    tool = await tools_collection.find_one({"toolId": tool_id}, {"_id": 0})
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    if body.email and tool.get("email") != body.email:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    now = _now()
+    try:
+        result = await execute_connector_tool(
+            company_id=str(tool.get("companyId") or ""),
+            tool_name=str(tool.get("name") or ""),
+            arguments=body.arguments,
+        )
+        await tools_collection.update_one(
+            {"toolId": tool_id},
+            {"$set": {"lastTestAt": now, "lastTestStatus": "passed" if result.get("success") else "failed", "lastTestResult": result, "updatedAt": now}},
+        )
+        return {"success": bool(result.get("success")), "result": result}
+    except Exception as exc:
+        result = {"tool": tool.get("name", ""), "success": False, "error": str(exc)}
+        await tools_collection.update_one(
+            {"toolId": tool_id},
+            {"$set": {"lastTestAt": now, "lastTestStatus": "failed", "lastTestResult": result, "updatedAt": now}},
+        )
+        return {"success": False, "result": result}
 
 
 @router.post("/connectors/{connector_id}/publish-tools")
@@ -608,6 +668,7 @@ async def create_company_trajectory(company_id: str, body: CompanyTrajectoryCrea
         "prompt": body.prompt or body.intent,
         "connectorIds": body.connectorIds,
         "toolIds": body.toolIds,
+        "runtimeRequirements": [],
         "steps": body.steps,
         "inputSchema": body.inputSchema,
         "validations": body.validations,
@@ -641,6 +702,7 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         "connectorIds": trajectory.get("connectorIds", []),
         "toolIds": trajectory.get("toolIds", []),
         "trajectoryIds": [trajectory_id],
+        "runtimeRequirements": trajectory.get("runtimeRequirements", []),
         "permissions": body.permissions,
         "riskPolicy": body.riskPolicy,
         "runtime": "trajectory_executor_with_recovery",
@@ -658,3 +720,29 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         {"$set": {"status": "promoted", "promotedSkillId": capability_id, "updatedAt": now}},
     )
     return {"success": True, "skill": _serialize_skill(doc)}
+
+
+@router.post("/trajectories/{trajectory_id}/review")
+async def review_trajectory(trajectory_id: str, body: TrajectoryReviewRequest):
+    trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
+    if not trajectory:
+        raise HTTPException(status_code=404, detail="Trajectory not found")
+    if body.email and trajectory.get("email") != body.email:
+        raise HTTPException(status_code=404, detail="Trajectory not found")
+    label = str(body.label or "").lower().strip()
+    if label not in {"approved", "rejected", "needs_review"}:
+        raise HTTPException(status_code=400, detail="label must be approved, rejected, or needs_review")
+    now = _now()
+    status = "approved" if label == "approved" else "rejected" if label == "rejected" else "needs_review"
+    review = {
+        "label": label,
+        "reviewerEmail": body.email,
+        "notes": body.notes,
+        "reviewedAt": now,
+    }
+    await trajectories_collection.update_one(
+        {"trajectoryId": trajectory_id},
+        {"$set": {"status": status, "review": review, "updatedAt": now}},
+    )
+    updated = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0}) or {**trajectory, "status": status, "review": review}
+    return {"success": True, "trajectory": _serialize_trajectory(updated)}

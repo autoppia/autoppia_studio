@@ -1,5 +1,6 @@
 import sys
 import os
+import asyncio
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -43,6 +44,8 @@ from app.routes import analytics as analytics_routes
 from app.routes import agent_creation as agent_creation_routes
 from app.routes import runtime as runtime_routes
 from app.routes import validator_rounds as validator_rounds_routes
+from app.routes import work_items as work_items_routes
+from app.routes import notifications as notifications_routes
 
 def _production_mode() -> bool:
     return os.getenv("AUTOMATA_ENV", os.getenv("ENVIRONMENT", os.getenv("APP_ENV", ""))).strip().lower() in {
@@ -105,6 +108,8 @@ fastapi_app.include_router(analytics_routes.router)
 fastapi_app.include_router(agent_creation_routes.router)
 fastapi_app.include_router(runtime_routes.router)
 fastapi_app.include_router(validator_rounds_routes.router)
+fastapi_app.include_router(work_items_routes.router)
+fastapi_app.include_router(notifications_routes.router)
 
 
 @fastapi_app.get("/health")
@@ -162,6 +167,10 @@ async def startup_event():
         {"is_verified": {"$exists": False}},
         {"$set": {"is_verified": True, "auth_provider": "email"}},
     )
+    from app.services.workers import notification_cleanup_worker_loop, scheduled_work_worker_loop
+
+    asyncio.create_task(scheduled_work_worker_loop())
+    asyncio.create_task(notification_cleanup_worker_loop())
 
 
 # Wrap FastAPI inside Socket.IO ASGI app so both share the same origin

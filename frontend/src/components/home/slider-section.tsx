@@ -2,29 +2,29 @@ import React, { useMemo, useRef, useState } from "react";
 import Slider from "react-slick";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faFilm, faListCheck, faMagnifyingGlass, faRightToBracket, faRobot } from "@fortawesome/free-solid-svg-icons";
-import { Operator } from "../../utils/types";
+import { AgentConfig } from "../../utils/types";
 
 interface SliderSectionProps {
   setPrompt: React.Dispatch<React.SetStateAction<string>>;
   setInitialUrl: React.Dispatch<React.SetStateAction<string>>;
-  operators: Operator[];
-  setSelectedOperator: React.Dispatch<React.SetStateAction<Operator | null>>;
+  agents: AgentConfig[];
+  setSelectedAgent: React.Dispatch<React.SetStateAction<AgentConfig | null>>;
 }
 
 export default function SliderSection(props: SliderSectionProps) {
-  const { setPrompt, setInitialUrl, operators, setSelectedOperator } = props;
+  const { setPrompt, setInitialUrl, agents, setSelectedAgent } = props;
 
   const [slideIndex, setSlideIndex] = useState<number>(0);
   let sliderRef = useRef<Slider | null>(null);
 
-  const operatorPrompts = useMemo(() => {
-    const trainedTasks = operators.flatMap((operator) =>
-      (operator.tasks || []).map((task, index) => ({
-        title: task.name || `${operator.name} Task ${index + 1}`,
+  const agentPrompts = useMemo(() => {
+    const trainedTasks = agents.flatMap((agent) =>
+      (agent.tasks || []).map((task, index) => ({
+        title: task.name || `${agent.name} Task ${index + 1}`,
         prompt: task.prompt,
-        url: operator.websiteUrl,
-        operatorName: operator.name,
-        operator,
+        url: agent.websiteUrl,
+        agentName: agent.name,
+        agent,
         icon: index === 0 ? faRightToBracket : index === 1 ? faMagnifyingGlass : index === 2 ? faFilm : faRobot,
       }))
     ).filter((item) => item.prompt);
@@ -36,36 +36,36 @@ export default function SliderSection(props: SliderSectionProps) {
         title: "Autocinema Login",
         prompt: "Log in to Autocinema with username user1 and password Passw0rd!",
         url: "http://84.247.180.192:8000",
-        operatorName: "Autocinema",
-        operator: null,
+        agentName: "Autocinema",
+        agent: null,
         icon: faRightToBracket,
       },
       {
         title: "Autocinema Search",
         prompt: "Search for The Matrix in Autocinema",
         url: "http://84.247.180.192:8000",
-        operatorName: "Autocinema",
-        operator: null,
+        agentName: "Autocinema",
+        agent: null,
         icon: faMagnifyingGlass,
       },
       {
         title: "Autocinema Film Detail",
         prompt: "Open a film detail page in Autocinema",
         url: "http://84.247.180.192:8000",
-        operatorName: "Autocinema",
-        operator: null,
+        agentName: "Autocinema",
+        agent: null,
         icon: faFilm,
       },
     ];
-  }, [operators]);
+  }, [agents]);
 
   const promptSlides = useMemo(() => {
     const slides = [];
-    for (let i = 0; i < operatorPrompts.length; i += 4) {
-      slides.push(operatorPrompts.slice(i, i + 4));
+    for (let i = 0; i < agentPrompts.length; i += 4) {
+      slides.push(agentPrompts.slice(i, i + 4));
     }
-    return slides.length > 0 ? slides : [operatorPrompts];
-  }, [operatorPrompts]);
+    return slides.length > 0 ? slides : [agentPrompts];
+  }, [agentPrompts]);
 
   const settings = {
     accessibility: false,
@@ -91,7 +91,7 @@ export default function SliderSection(props: SliderSectionProps) {
       onClick={() => {
         setPrompt(item.prompt);
         setInitialUrl(item.url);
-        if (item.operator) setSelectedOperator(item.operator);
+        if (item.agent) setSelectedAgent(item.agent);
       }}
     >
       <div className="flex-shrink-0 flex items-center justify-center w-10 h-10 bg-gradient-primary rounded-lg
@@ -101,17 +101,17 @@ export default function SliderSection(props: SliderSectionProps) {
       <div className="min-w-0">
         <span className="block text-sm text-gray-700 dark:text-gray-200 font-medium leading-snug truncate">{item.title}</span>
         <span className="block text-[11px] text-gray-400 dark:text-gray-500 truncate">
-          {item.operatorName || "Operator trained task"}
+          {item.agentName || "Agent trained task"}
         </span>
       </div>
     </div>
   );
 
   const renderSlide = (slide: any[], slideNumber: number) => (
-    <div className="py-2 px-1" key={`operator-examples-${slideNumber}`}>
+    <div className="py-2 px-1" key={`agent-examples-${slideNumber}`}>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
         {slide.map((item, index) => (
-          <PromptCard key={`${item.title}-${index}`} item={item} index={index} group={`operator-${slideNumber}`} />
+          <PromptCard key={`${item.title}-${index}`} item={item} index={index} group={`agent-${slideNumber}`} />
         ))}
         {slide.length < 4 && Array.from({ length: 4 - slide.length }).map((_, index) => (
           <div

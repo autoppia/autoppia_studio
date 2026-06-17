@@ -1,8 +1,8 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useSelector, useDispatch } from "react-redux";
 import { useParams, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faPaperPlane, faWandMagicSparkles, faStop, faThumbsUp, faThumbsDown } from "@fortawesome/free-solid-svg-icons";
+import { faPaperPlane, faWandMagicSparkles, faStop, faThumbsUp, faThumbsDown, faPlay } from "@fortawesome/free-solid-svg-icons";
 
 import AgentResponse from "./agent-response";
 import UserMessage from "./user-message";
@@ -15,8 +15,9 @@ import { checkBackendHealth } from "../../utils/health";
 import { useToast } from "../common/toast";
 import { CHAT_SIDEBAR_WIDTH } from "../../constants/layout";
 import { AppDispatch } from "../../redux/store";
+import { getSessionBrowserMode } from "../../utils/browser-mode";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface ChatSidebarProps {
   open: boolean;
@@ -37,6 +38,8 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const [submitting, setSubmitting] = useState(false);
   const [showConvertModal, setShowConvertModal] = useState(false);
   const [evalSaving, setEvalSaving] = useState(false);
+  // Whether the user has chosen to re-open a historical session to continue it.
+  const [continuing, setContinuing] = useState(false);
 
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
@@ -49,14 +52,33 @@ export default function ChatSidebar(props: ChatSidebarProps) {
   const liveUrl = useSelector((state: any) => state.socket.liveUrl);
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
+  const runtimeState = useSelector((state: any) => state.socket.runtimeState);
   const contextId = useSelector((state: any) => state.socket.contextId);
+  const agentId = useSelector((state: any) => state.socket.agentId);
   const reduxSessionId = useSelector((state: any) => state.socket.sessionId);
   const prompt = useSelector((state: any) => state.socket.prompt);
   const initialUrl = useSelector((state: any) => state.socket.initialUrl);
   const user = useSelector((state: any) => state.user);
 
+  // The sidebar persists across session navigations (same route), so clear the
+  // "continue" intent whenever we switch to a different session.
+  useEffect(() => {
+    setContinuing(false);
+  }, [sessionId]);
+
   const isRunning = !!socketId && !completed;
   const showPostActions = !isRunning && chats.length > 0;
+  // Last screenshot across the conversation — used as the browser view when there is
+  // no Browserbase live URL (local browser mode emits screenshots, never a live_url).
+  const lastScreenshot = chats
+    .filter((c: any) => c.role === "assistant" && c.screenshots?.length)
+    .flatMap((c: any) => c.screenshots || [])
+    .slice(-1)[0] as string | undefined;
+  // A live session keeps a socket object in this tab (running, just-completed, or
+  // starting). When it's absent we're viewing a saved/idle session loaded from
+  // history — read-only until the user explicitly re-opens it to continue.
+  const isHistorical = !socket && chats.length > 0;
+  const showContinuePrompt = isHistorical && !continuing && !evalMode;
 
   const handleSubmit = async () => {
     if (!task.trim() || submitting) return;
@@ -95,13 +117,17 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           task: taskWithInstructions,
           lastUrl,
           actionHistory: actionHistory || [],
+          runtimeState: runtimeState || {},
           context_id: contextId || "",
+          agent_id: agentId || "",
+          browser_mode: getSessionBrowserMode(),
         });
       } else {
         newSocket.emit("start-task", {
           task: taskWithInstructions,
           initial_url: "",
           context_id: contextId || "",
+          browser_mode: getSessionBrowserMode(),
         });
       }
     }
@@ -196,6 +222,16 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           <FontAwesomeIcon icon={faStop} className="text-xs" />
           Stop Agent
         </button>
+      ) : showContinuePrompt ? (
+        <button
+          onClick={() => setContinuing(true)}
+          className="flex items-center justify-center gap-2 w-full h-10 rounded-xl text-sm font-semibold
+            bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-[1.02]
+            transition-all duration-200 cursor-pointer"
+        >
+          <FontAwesomeIcon icon={faPlay} className="text-xs" />
+          Continue session
+        </button>
       ) : !evalMode && (
         <div
           className="flex flex-grow items-center bg-gray-50 dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border
@@ -203,9 +239,10 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         >
           <input
             className="border-none outline-none flex-grow bg-transparent text-gray-800 dark:text-gray-200 text-sm placeholder:text-gray-400"
-            placeholder="Type here ..."
+            placeholder={isHistorical ? "Continue from where you left off ..." : "Type here ..."}
             value={task}
             disabled={submitting}
+            autoFocus={continuing}
             onChange={handleChangeTask}
             onKeyDown={handleKeyDown}
           />
@@ -263,8 +300,11 @@ export default function ChatSidebar(props: ChatSidebarProps) {
             })}
           </div>
 
-          {socketId && (
-            <div className="flex flex-col relative bg-white dark:bg-dark-surface rounded-2xl w-full self-center flex-shrink-0 mt-3 overflow-hidden shadow-soft border border-gray-200 dark:border-dark-border">
+          {/* Inline browser preview — only on small screens; on lg+ the session's Browser tab shows it.
+              live_url only exists in Browserbase mode; in local mode we show the latest screenshot,
+              and only fall back to the loader while a run is actively initializing. */}
+          {socketId && (liveUrl || lastScreenshot || isRunning) && (
+            <div className="lg:hidden flex flex-col relative bg-white dark:bg-dark-surface rounded-2xl w-full self-center flex-shrink-0 mt-3 overflow-hidden shadow-soft border border-gray-200 dark:border-dark-border">
               {liveUrl ? (
                 <iframe
                   src={liveUrl}
@@ -273,6 +313,13 @@ export default function ChatSidebar(props: ChatSidebarProps) {
                   allow="clipboard-read; clipboard-write"
                   className="w-full border-0"
                   style={{ height: "400px", pointerEvents: "none" }}
+                />
+              ) : lastScreenshot ? (
+                <img
+                  src={`data:image/png;base64,${lastScreenshot}`}
+                  alt="Browser state"
+                  className="w-full object-contain bg-white dark:bg-dark-surface"
+                  style={{ height: "400px" }}
                 />
               ) : (
                 <BrowserLoading minHeight="400px" />

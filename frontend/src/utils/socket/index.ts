@@ -1,10 +1,10 @@
 import { io } from "socket.io-client";
 
-import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setTabs, setActiveTabIndex } from "../../redux/socketSlice";
-import { addAction, addResult } from "../../redux/chatSlice";
+import { setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setRuntimeState, setTabs, setActiveTabIndex } from "../../redux/socketSlice";
+import { addAction, addResult, addScreenshot } from "../../redux/chatSlice";
 import { AppDispatch } from "../../redux/store";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = false, initialUrl?: string) => {
   const socket = io(`${apiUrl}`, {
@@ -58,8 +58,12 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
   });
 
   // Emitted before each action executes
-  socket.on("action", ({ reasoning, action, previous_success }) => {
-    dispatch(addAction({ action, reasoning, previous_success }));
+  socket.on("action", ({ reasoning, action, previous_success, skill }) => {
+    dispatch(addAction({ action, reasoning, previous_success, skill }));
+  });
+
+  socket.on("screenshot", ({ screenshot }) => {
+    dispatch(addScreenshot(screenshot));
   });
 
   socket.on("result", (result) => {
@@ -69,6 +73,7 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
         success: result.success,
         state: result.success ? "success" : "error",
         screenshots: result.screenshots || [],
+        artifacts: result.artifacts || [],
       })
     );
     if (result.lastUrl) {
@@ -76,6 +81,9 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
     }
     if (result.actionHistory) {
       dispatch(setActionHistory(result.actionHistory));
+    }
+    if (result.runtimeState) {
+      dispatch(setRuntimeState(result.runtimeState));
     }
   });
 

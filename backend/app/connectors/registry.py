@@ -4,6 +4,7 @@ from typing import Any, Type
 
 from app.connectors.base import BaseConnector, ConnectorConfig, ConnectorExecutionError
 from app.connectors.implementations import (
+    BOPAConnector,
     GenericApiConnector,
     GmailConnector,
     HoldedConnector,
@@ -61,6 +62,7 @@ CONNECTOR_CLASSES: dict[str, Type[BaseConnector]] = {
     "telegram": TelegramConnector,
     "knowledge": KnowledgeConnector,
     "web": WebConnector,
+    "bopa": BOPAConnector,
 }
 
 

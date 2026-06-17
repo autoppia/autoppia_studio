@@ -14,8 +14,9 @@ import BrowserLoading from "../components/session/browser-loading";
 import BrowserTabs from "../components/session/browser-tabs";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
 import type { BrowserTab } from "../redux/socketSlice";
+import { getSessionBrowserMode } from "../utils/browser-mode";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface RecordedAction {
   action: string;
@@ -71,6 +72,7 @@ export default function RecordSkill() {
       socket.emit("start-record", {
         initial_url: initialUrl,
         context_id: contextId,
+        browser_mode: getSessionBrowserMode(),
       });
     });
 

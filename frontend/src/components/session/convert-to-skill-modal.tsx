@@ -13,7 +13,7 @@ import {
 import { useToast } from "../common/toast";
 import { SkillParameter } from "../../utils/types";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface ActionEntry {
   action: string;

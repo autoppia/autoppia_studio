@@ -5,6 +5,7 @@ import asyncio
 import base64
 import logging
 import json
+from urllib.parse import urlparse
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -85,6 +86,51 @@ def _normalize_tool_call(tool_call: dict) -> dict:
 def _action_from_tool_call(tool_call: dict) -> dict:
     args = tool_call.get("arguments") if isinstance(tool_call.get("arguments"), dict) else {}
     return args if isinstance(args, dict) else {}
+
+
+def _artifact_name_from_url(url: str, fallback: str) -> str:
+    try:
+        path = urlparse(url).path
+        name = Path(path).name
+        return name or fallback
+    except Exception:
+        return fallback
+
+
+def _artifacts_from_tool_results(tool_results: list[dict]) -> list[dict]:
+    artifacts: list[dict] = []
+    seen: set[str] = set()
+    url_keys = {"downloadUrl", "download_url", "pdfUrl", "pdf_url", "fileUrl", "file_url"}
+
+    for result in tool_results or []:
+        if not isinstance(result, dict):
+            continue
+        output = result.get("output") if isinstance(result.get("output"), dict) else {}
+        for key, value in output.items():
+            if not isinstance(value, str) or not value.startswith(("http://", "https://")):
+                continue
+            key_lower = key.lower()
+            looks_downloadable = key in url_keys or "download" in key_lower or "pdf" in key_lower or ".pdf" in value.lower()
+            if not looks_downloadable or value in seen:
+                continue
+            seen.add(value)
+            content_type = str(output.get("contentType") or output.get("content_type") or "")
+            filename = str(output.get("filename") or output.get("fileName") or "")
+            if not filename:
+                filename = _artifact_name_from_url(value, f"{key_lower or 'artifact'}")
+            artifacts.append(
+                {
+                    "artifactId": str(uuid.uuid4()),
+                    "name": filename,
+                    "url": value,
+                    "kind": "pdf" if "pdf" in content_type.lower() or value.lower().endswith(".pdf") else "file",
+                    "contentType": content_type,
+                    "size": output.get("contentLength") or output.get("content_length") or output.get("size"),
+                    "sourceTool": result.get("tool") or "",
+                    "metadata": {k: v for k, v in output.items() if k not in {key, "contentType", "content_type", "contentLength", "content_length"}},
+                }
+            )
+    return artifacts
 
 
 async def _execute_tool_call(page, tool_call: dict) -> None:
@@ -279,6 +325,8 @@ class AutoppiaAgent:
             done = response.get("done", False)
             state_out = response.get("state_out", {})
             capability_match = response.get("capability_match") if isinstance(response.get("capability_match"), dict) else None
+            tool_results = response.get("tool_results") if isinstance(response.get("tool_results"), list) else []
+            artifacts = _artifacts_from_tool_results(tool_results)
 
             if capability_match and self._on_action:
                 skill_id = str(capability_match.get("skillId") or "")
@@ -307,6 +355,8 @@ class AutoppiaAgent:
                 self.result = {
                     "content": content or "Task completed",
                     "success": True,
+                    "tool_results": tool_results,
+                    "artifacts": artifacts,
                 }
                 if self._on_action and reasoning:
                     try:
@@ -321,6 +371,8 @@ class AutoppiaAgent:
                 self.result = {
                     "content": content or "Task completed",
                     "success": bool(done),
+                    "tool_results": tool_results,
+                    "artifacts": artifacts,
                 }
                 if self._on_action and reasoning:
                     try:
@@ -395,6 +447,8 @@ class AutoppiaAgent:
                 self.result = {
                     "content": content or "Task completed",
                     "success": True,
+                    "tool_results": tool_results,
+                    "artifacts": artifacts,
                 }
                 if self._on_action and reasoning:
                     try:

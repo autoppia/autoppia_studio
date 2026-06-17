@@ -3,6 +3,7 @@ import re
 import uuid
 import json
 import asyncio
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 
@@ -10,6 +11,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import (
+    benchmarks_collection,
+    benchmark_tasks_collection,
     companies_collection,
     connectors_collection,
     evals_collection,
@@ -18,7 +21,8 @@ from app.database import (
     agents_collection,
     trajectories_collection,
 )
-from app.routes.agent_creation import ensure_agent_creation_job
+from app.routes.agent_creation import start_harvester
+from app.services.capability_discovery import run_capability_discovery
 
 router = APIRouter()
 
@@ -56,9 +60,9 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
     },
     "bopa": {
         "name": "BOPA",
-        "type": "web",
+        "type": "bopa",
         "category": "web",
-        "description": "BOPA public website connector.",
+        "description": "Official BOPA public bulletin connector.",
         "config": {"baseUrl": "https://www.bopa.ad/"},
     },
     "documents": {
@@ -132,6 +136,21 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
 
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
 GENERIC_BROWSER_HINTS = ("website", "web", "portal", "government", "gobierno", "bopa.ad", "url")
+AUTH_WEB_HINTS = (
+    "login",
+    "sign in",
+    "signin",
+    "log in",
+    "private",
+    "privado",
+    "privada",
+    "portal",
+    "usuario",
+    "password",
+    "contraseña",
+    "credenciales",
+    "auth",
+)
 SYSTEM_STOPWORDS = {
     "API",
     "CRM",
@@ -143,6 +162,15 @@ SYSTEM_STOPWORDS = {
     "Empresa",
     "Tareas",
     "Tasks",
+    "Connector",
+    "Conector",
+    "Integration",
+    "Integracion",
+    "Integración",
+    "Tool",
+    "Toolkit",
+    "HTTP",
+    "HTTPS",
 }
 ONBOARDING_MODEL = os.getenv("OPENAI_ONBOARDING_MODEL", "gpt-5-mini")
 DEFAULT_OPERATOR_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", "http://127.0.0.1:5060/step").strip()
@@ -317,7 +345,7 @@ def _known_connector(keyword: str) -> dict[str, Any]:
             }
         )
         connector["status"] = "connected" if connector["config"].get("refreshToken") else "needs_auth"
-    elif connector["type"] in {"web", "knowledge"}:
+    elif connector["type"] in {"web", "knowledge", "bopa"}:
         connector["status"] = "connected"
     else:
         connector["status"] = "needs_auth"
@@ -339,12 +367,103 @@ def _default_draft() -> dict[str, Any]:
         },
         "connectors": [],
         "tasks": [],
+        "automationPlan": [],
+        "capabilityDiscovery": {
+            "mode": "task_scoped",
+            "label": "Only what is needed for the requested tasks",
+            "description": "Harvest only the tools, trajectories and skills needed to solve the benchmark tasks in this onboarding draft.",
+        },
         "questions": [
             "What company or workflow are we automating?",
             "Which systems do you use? For example Gmail, SMTP, Holded, Telegram, BOPA, CRM, ERP, dashboards or APIs.",
             "List 3-10 tasks you want the agent to handle.",
+            "Should Automata only learn the tools needed for these tasks, or also auto-discover additional useful tools and skills from the connected systems?",
         ],
     }
+
+
+def _set_discovery_mode(draft: dict[str, Any], mode: str) -> None:
+    clean = "broad_autodiscovery" if mode == "broad_autodiscovery" else "task_scoped"
+    draft["capabilityDiscovery"] = {
+        "mode": clean,
+        "label": "Auto-discover additional tools and skills" if clean == "broad_autodiscovery" else "Only what is needed for the requested tasks",
+        "description": (
+            "After creating task-scoped skills, explore the connected systems for additional reusable tools, trajectories and skills."
+            if clean == "broad_autodiscovery"
+            else "Harvest only the tools, trajectories and skills needed to solve the benchmark tasks in this onboarding draft."
+        ),
+    }
+
+
+def _plan_key(item: dict[str, Any]) -> str:
+    return f"{item.get('connectorName') or item.get('system') or ''}:{item.get('strategy') or ''}:{item.get('toolName') or ''}".lower()
+
+
+def _add_automation_plan(draft: dict[str, Any], item: dict[str, Any]) -> None:
+    plans = draft.setdefault("automationPlan", [])
+    key = _plan_key(item)
+    for existing in plans:
+        if _plan_key(existing) == key:
+            existing.update({k: v for k, v in item.items() if v not in ("", None, [], {})})
+            return
+    plans.append(item)
+
+
+def _refresh_automation_plan(draft: dict[str, Any]) -> None:
+    draft["automationPlan"] = [
+        item for item in draft.get("automationPlan", [])
+        if str(item.get("connectorName") or "") != "All connectors"
+    ]
+    discovery = draft.get("capabilityDiscovery") if isinstance(draft.get("capabilityDiscovery"), dict) else {}
+    mode = str(discovery.get("mode") or "task_scoped")
+    _add_automation_plan(
+        draft,
+        {
+            "connectorName": "All connectors",
+            "strategy": mode,
+            "runtimeRequirements": [],
+            "message": discovery.get("description") or (
+                "Explore connected systems for additional reusable tools and skills."
+                if mode == "broad_autodiscovery"
+                else "Focus harvesting on the requested benchmark tasks."
+            ),
+        },
+    )
+    for connector in draft.get("connectors", []):
+        connector_type = str(connector.get("type") or "").lower()
+        name = str(connector.get("name") or connector_type or "Connector")
+        if connector_type == "bopa":
+            _add_automation_plan(
+                draft,
+                {
+                    "connectorName": name,
+                    "strategy": "structured_api_tool",
+                    "toolName": "bopa.latest_bulletin_pdf",
+                    "runtimeRequirements": ["network"],
+                    "message": "Detected a public structured API/tool path. Automata will prefer a deterministic connector tool over browser replay.",
+                },
+            )
+        elif connector_type == "api" and connector.get("provider") == "custom":
+            config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+            _add_automation_plan(
+                draft,
+                {
+                    "connectorName": name,
+                    "strategy": "api_harvester" if config.get("openApiUrl") or config.get("docsUrl") else "needs_api_docs",
+                    "runtimeRequirements": ["network"],
+                    "message": "Custom API connectors should generate typed tools from API docs/OpenAPI, then bind benchmark tasks to those tools.",
+                },
+            )
+        elif connector_type == "web":
+            _add_automation_plan(
+                draft,
+                {
+                    "connectorName": name,
+                    "strategy": "browser_trajectory",
+                    "runtimeRequirements": ["browser", "network"],
+                    "message": "No structured API/tool path is known yet. Automata will use browser trajectories unless an API is discovered.",
+                },
+            )
 
 
 def _connector_key(connector: dict[str, Any]) -> str:
@@ -355,7 +474,61 @@ def _normalized_connector_name(value: str) -> str:
     return re.sub(r"\b(api|connector|integration|toolkit)\b", "", value.lower()).strip(" -_:")
 
 
+def _clean_detected_name(value: str) -> str:
+    cleaned = re.split(r"\s+(?:y|and|para|for|con|with|que|to)\b", value.strip(" .,:;"), maxsplit=1, flags=re.IGNORECASE)[0]
+    return cleaned.strip(" .,:;") or value.strip(" .,:;")
+
+
+def _url_host(url: str) -> str:
+    return re.sub(r"^https?://", "", str(url or "").strip(), flags=re.IGNORECASE).split("/", 1)[0].strip().lower()
+
+
+def _display_name_from_url(url: str) -> str:
+    host = _url_host(url)
+    if not host:
+        return "Custom Web"
+    parts = [part for part in host.split(".") if part and part not in {"www", "app", "portal"}]
+    base = parts[0] if parts else host
+    return re.sub(r"[^a-zA-Z0-9]+", " ", base).strip().title() or host
+
+
+def _web_auth_required(text: str, url: str = "") -> bool:
+    lower = f"{text}\n{url}".lower()
+    return any(hint in lower for hint in AUTH_WEB_HINTS)
+
+
+def _custom_web_connector(url: str, user_message: str = "") -> dict[str, Any]:
+    auth_required = _web_auth_required(user_message, url)
+    host = _url_host(url)
+    return {
+        "name": _display_name_from_url(url),
+        "type": "web",
+        "category": "web",
+        "description": f"Custom web connector for {host or url}. Automata will discover whether this is best automated through HTTP/API tools or browser trajectories.",
+        "config": {"baseUrl": url, "startUrl": url},
+        "status": "needs_auth" if auth_required else "connected",
+        "provider": "custom",
+        "generationStatus": "start_url_provided",
+        "surface": "webapp",
+        "authRequired": auth_required,
+        "discoveryStatus": "pending",
+        "discoveryMode": "task_scoped",
+        "runtimeRequirements": ["browser", "network"],
+    }
+
+
 def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
+    connector_type = str(connector.get("type") or "").lower()
+    connector_config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    connector_url = str(connector_config.get("baseUrl") or connector_config.get("startUrl") or "").rstrip("/")
+    if connector_type == "web" and connector_url:
+        for existing in draft["connectors"]:
+            existing_config = existing.get("config") if isinstance(existing.get("config"), dict) else {}
+            existing_url = str(existing_config.get("baseUrl") or existing_config.get("startUrl") or "").rstrip("/")
+            if existing.get("type") == "web" and existing_url == connector_url:
+                existing.update({k: v for k, v in connector.items() if v not in ("", None, {})})
+                existing["config"] = {**existing_config, **connector_config}
+                return
     if connector.get("type") == "knowledge":
         for existing in draft["connectors"]:
             if existing.get("type") == "knowledge":
@@ -383,12 +556,68 @@ def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
             "status": connector.get("status", "not_connected"),
             "provider": connector.get("provider", "custom" if connector.get("type") == "api" else "official"),
             "generationStatus": connector.get("generationStatus", "needs_docs" if connector.get("type") == "api" else "autoppia_supported"),
+            **({key: connector[key] for key in ("surface", "authRequired", "discoveryStatus", "discoveryMode", "runtimeRequirements") if key in connector}),
         }
     )
 
 
+def _normalize_connector_duplicates(draft: dict[str, Any]) -> None:
+    has_bopa = any(str(connector.get("type") or "").lower() == "bopa" for connector in draft.get("connectors", []))
+    normalized: list[dict[str, Any]] = []
+    custom_web_hosts = {
+        _url_host(str(((connector.get("config") if isinstance(connector.get("config"), dict) else {}) or {}).get("baseUrl") or ((connector.get("config") if isinstance(connector.get("config"), dict) else {}) or {}).get("startUrl") or ""))
+        for connector in draft.get("connectors", [])
+        if str(connector.get("type") or "").lower() == "web" and str(connector.get("provider") or "").lower() == "custom"
+    }
+    for connector in draft.get("connectors", []):
+        connector_type = str(connector.get("type") or "").lower()
+        name = str(connector.get("name") or "")
+        config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+        config_text = json.dumps(config, ensure_ascii=False).lower()
+        base_url = str(config.get("baseUrl") or config.get("startUrl") or "").rstrip("/")
+        if has_bopa and connector_type == "web" and "bopa.ad" in base_url.lower():
+            continue
+        if has_bopa and connector_type == "api" and ("bopa" in name.lower() or "bopa" in config_text):
+            continue
+        if connector_type == "api" and str(connector.get("provider") or "").lower() == "custom":
+            docs_url = str(config.get("openApiUrl") or config.get("docsUrl") or "")
+            base_host = _url_host(str(config.get("baseUrl") or docs_url))
+            speculative_name = any(token in name.lower() for token in ("possible", "public api", "api publica", "api pública"))
+            if base_host in custom_web_hosts and (not docs_url or not _looks_like_docs_url(docs_url)) and speculative_name:
+                continue
+        if connector_type == "web" and str(connector.get("provider") or "").lower() == "custom":
+            connector.setdefault("surface", "webapp")
+            connector.setdefault("discoveryStatus", "pending")
+            connector.setdefault("discoveryMode", "task_scoped")
+            connector.setdefault("runtimeRequirements", ["browser", "network"])
+            config.setdefault("startUrl", config.get("baseUrl") or "")
+            connector["config"] = config
+        duplicate = None
+        if connector_type == "web" and base_url:
+            duplicate = next(
+                (
+                    item
+                    for item in normalized
+                    if item.get("type") == "web"
+                    and str(((item.get("config") if isinstance(item.get("config"), dict) else {}) or {}).get("baseUrl") or ((item.get("config") if isinstance(item.get("config"), dict) else {}) or {}).get("startUrl") or "").rstrip("/") == base_url
+                ),
+                None,
+            )
+        if duplicate:
+            duplicate.update({key: value for key, value in connector.items() if value not in ("", None, {})})
+            duplicate["config"] = {**(duplicate.get("config") or {}), **config}
+        else:
+            normalized.append(connector)
+    draft["connectors"] = normalized
+
+
 def _extract_urls(text: str) -> list[str]:
     return [url.rstrip(".,;)") for url in re.findall(r"https?://[^\s,)]+", text)]
+
+
+def _looks_like_docs_url(url: str) -> bool:
+    lower = str(url or "").lower()
+    return any(token in lower for token in ("docs", "api-docs", "openapi", "swagger", "developer", "developers"))
 
 
 def _looks_like_api_docs(text: str) -> bool:
@@ -424,6 +653,13 @@ def _extract_custom_systems(text: str) -> list[str]:
             if not raw or raw in SYSTEM_STOPWORDS:
                 continue
             raw_lower = raw.lower()
+            raw_normalized = _normalized_connector_name(raw)
+            if raw_lower.startswith(("un ", "una ", "a ", "an ")):
+                continue
+            if any(token in raw_lower for token in ("http determin", "https determin", "deterministico", "determinístico", "deterministic")):
+                continue
+            if raw_normalized in {"", "un", "una", "a", "an", "http", "https", "web", "browser", "tool", "tools", "conector", "connector"}:
+                continue
             if any(term in raw_lower for term in KNOWLEDGE_SYSTEM_TERMS):
                 continue
             if raw.lower() in KNOWN_CONNECTORS:
@@ -447,8 +683,14 @@ def _has_auth_hint(text: str) -> bool:
 def _normalize_custom_connectors(draft: dict[str, Any], user_message: str) -> None:
     custom_systems = _extract_custom_systems(user_message)
     lower = user_message.lower()
+    user_urls = set(_extract_urls(user_message))
     normalized_systems = {_normalized_connector_name(system): system for system in custom_systems}
     normalized_connectors: list[dict[str, Any]] = []
+    custom_web_hosts = {
+        _url_host(str(((connector.get("config") if isinstance(connector.get("config"), dict) else {}) or {}).get("baseUrl") or ((connector.get("config") if isinstance(connector.get("config"), dict) else {}) or {}).get("startUrl") or ""))
+        for connector in draft.get("connectors", [])
+        if str(connector.get("type") or "").lower() == "web" and str(connector.get("provider") or "").lower() == "custom"
+    }
 
     for connector in draft.get("connectors", []):
         connector_type = str(connector.get("type") or "").lower()
@@ -470,6 +712,16 @@ def _normalize_custom_connectors(draft: dict[str, Any], user_message: str) -> No
                 normalized_name = _normalized_connector_name(name)
             connector["provider"] = "custom"
             config = dict(config)
+            docs_before = str(config.get("docsUrl") or config.get("openApiUrl") or "")
+            speculative_name = any(token in name.lower() for token in ("possible", "public api", "api publica", "api pública"))
+            if (
+                custom_web_hosts
+                and speculative_name
+                and docs_before
+                and docs_before not in user_urls
+                and _url_host(str(config.get("baseUrl") or docs_before)) in custom_web_hosts
+            ):
+                continue
             docs_url = config.get("docsUrl") or config.get("openApiUrl") or _extract_docs_url(user_message, name)
             if docs_url:
                 config.setdefault("docsUrl", docs_url)
@@ -498,6 +750,18 @@ def _normalize_custom_connectors(draft: dict[str, Any], user_message: str) -> No
 
 
 def _extract_tasks(text: str) -> list[str]:
+    labelled_tasks: list[str] = []
+    for match in re.finditer(
+        r"\b(?:task|tarea)\s*:\s*[\"'“”]?(.*?)(?=(?:\n\s*(?:task|tarea)\s*:)|\b(?:pistas?|ayuda|hints?|pasos sugeridos|ruta sugerida)\s*:|$)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    ):
+        task = match.group(1).strip().strip("\"'“” .")
+        if len(task) >= 12:
+            labelled_tasks.append(task)
+    if labelled_tasks:
+        return labelled_tasks[:10]
+
     normalized = re.sub(r"\s+(\d+[\).:-]\s*)", r"\n\1", text)
     lines = [line.strip(" -\t") for line in normalized.splitlines()]
     numbered_lines = [line for line in lines if re.match(r"^\d+[\).:-]\s*", line)]
@@ -505,10 +769,13 @@ def _extract_tasks(text: str) -> list[str]:
         lines = numbered_lines
     tasks: list[str] = []
     for line in lines:
-        cleaned = re.sub(r"^\d+[\).:-]\s*", "", line).strip()
+        cleaned = re.sub(r"^\d+[\).:-]\s*", "", line).strip().strip("\"'“”")
+        lower_cleaned = cleaned.lower()
         if len(cleaned) < 18:
             continue
-        if any(word in cleaned.lower() for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "encontrar", "consultar", "leer", "resumir", "preparar", "enviar", "responder", "download", "summar", "find", "prepare", "send", "notify", "read")):
+        if any(phrase in lower_cleaned for phrase in ("crear un agent", "crear un agente", "crear una sola task", "crea una sola task", "company:", "website:", "connector:")):
+            continue
+        if any(word in lower_cleaned for word in ("task", "tarea", "necesito", "quiero", "recibo", "buscar", "encontrar", "consultar", "leer", "resumir", "preparar", "enviar", "responder", "descargar", "descargarse", "descarregar", "baixar", "download", "summar", "find", "prepare", "send", "notify", "read")):
             tasks.append(cleaned)
     if not tasks and any(word in text.lower() for word in ("tasks", "tareas", "automate", "automatizar")):
         chunks = re.split(r"[.;]\s+", text)
@@ -526,6 +793,8 @@ def task_name_from_prompt(prompt: str, fallback_index: int = 1) -> str:
     if not text:
         return f"Workflow {fallback_index}"
     if "bopa" in lower:
+        if any(term in lower for term in ("pdf", "boletin", "butllet", "bulletin", "download", "descargar", "descarreg")):
+            return "Download latest BOPA bulletin PDF"
         if any(term in lower for term in ("email", "cliente", "client")):
             return "Summarize BOPA update for client email"
         return "Summarize latest BOPA labor update"
@@ -551,6 +820,107 @@ def task_name_from_prompt(prompt: str, fallback_index: int = 1) -> str:
     if not title:
         return f"Workflow {fallback_index}"
     return title[:1].upper() + title[1:60]
+
+
+def _task_text_without_hints(text: str) -> str:
+    marker = re.search(r"\b(?:pistas?|ayuda|hints?|pasos sugeridos|ruta sugerida)\s*(?:para [^:\n]+)?[:\n]", text, flags=re.IGNORECASE)
+    return text[: marker.start()] if marker else text
+
+
+def _extract_hint_block(text: str) -> str:
+    marker = re.search(r"\b(?:pistas?|ayuda|hints?|pasos sugeridos|ruta sugerida)\s*(?:para [^:\n]+)?[:\n]", text, flags=re.IGNORECASE)
+    if not marker:
+        return ""
+    return text[marker.end() :]
+
+
+def _extract_task_metadata(user_message: str, task_prompt: str = "") -> dict[str, Any]:
+    text = str(user_message or "")
+    hint_block = _extract_hint_block(text)
+    hints: list[str] = []
+    for line in hint_block.splitlines():
+        cleaned = re.sub(r"^\s*(?:[-*]|\d+[\).:-])\s*", "", line).strip()
+        if not cleaned:
+            continue
+        if re.search(r"\b(?:tarea|task)\s+se\s+considera\b", cleaned, flags=re.IGNORECASE):
+            break
+        hints.append(cleaned)
+    if not hints and hint_block:
+        hints = [item.strip() for item in re.split(r"\s*(?:;|\n)\s*", hint_block) if len(item.strip()) > 8][:10]
+
+    urls = _extract_urls(text)
+    start_url = ""
+    for url in urls:
+        if "bopa.ad" in url.lower():
+            start_url = url
+            break
+    if not start_url and urls:
+        start_url = urls[0]
+
+    lower = f"{text}\n{task_prompt}".lower()
+    expected_artifacts: list[str] = []
+    if "pdf" in lower or "boletin" in lower or "butllet" in lower:
+        expected_artifacts.append("pdf_download")
+
+    metadata: dict[str, Any] = {}
+    if hints:
+        metadata["hints"] = hints[:10]
+    if start_url:
+        metadata["startUrl"] = start_url
+    if expected_artifacts:
+        metadata["expectedArtifacts"] = expected_artifacts
+    if "bopa.ad" in lower:
+        metadata["site"] = "BOPA"
+    return metadata
+
+
+def _merge_task_metadata(task: dict[str, Any], metadata: dict[str, Any]) -> None:
+    if not metadata:
+        return
+    existing = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    merged = dict(existing)
+    if metadata.get("hints"):
+        current_hints = [str(item) for item in merged.get("hints", []) if item] if isinstance(merged.get("hints"), list) else []
+        seen_hint_keys = {_hint_key(item) for item in current_hints}
+        for hint in metadata["hints"]:
+            key = _hint_key(str(hint))
+            if hint and key not in seen_hint_keys:
+                current_hints.append(hint)
+                seen_hint_keys.add(key)
+        merged["hints"] = current_hints[:10]
+    for key, value in metadata.items():
+        if key == "hints":
+            continue
+        if value not in ("", None, [], {}):
+            merged[key] = value
+    task["metadata"] = merged
+
+
+def _hint_key(value: str) -> str:
+    value = re.sub(r"^\s*(?:[-*]|\d+[\).:-])\s*", "", value)
+    normalized = unicodedata.normalize("NFKD", value.lower())
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9:/.-]+", " ", ascii_text).strip(" .")
+
+
+def _same_task_intent(existing: dict[str, Any], prompt: str, metadata: dict[str, Any]) -> bool:
+    existing_prompt = str(existing.get("prompt") or "").lower()
+    prompt_lower = str(prompt or "").lower()
+    existing_metadata = existing.get("metadata") if isinstance(existing.get("metadata"), dict) else {}
+    existing_artifacts = existing_metadata.get("expectedArtifacts") if isinstance(existing_metadata.get("expectedArtifacts"), list) else []
+    artifacts = metadata.get("expectedArtifacts") if isinstance(metadata.get("expectedArtifacts"), list) else []
+    both_pdf = (
+        any("pdf" in str(item).lower() for item in existing_artifacts)
+        or "pdf" in existing_prompt
+        or "pdf" in str(existing.get("successCriteria") or "").lower()
+    ) and (any("pdf" in str(item).lower() for item in artifacts) or "pdf" in prompt_lower)
+    both_bopa = (
+        existing_metadata.get("site") == "BOPA"
+        or "bopa" in existing_prompt
+        or "bopa.ad" in json.dumps(existing_metadata, ensure_ascii=False).lower()
+    ) and (metadata.get("site") == "BOPA" or "bopa" in prompt_lower or "bopa.ad" in json.dumps(metadata, ensure_ascii=False).lower())
+    latest_bulletin = any(term in existing_prompt for term in ("bolet", "butllet", "bulletin")) or any(term in prompt_lower for term in ("bolet", "butllet", "bulletin"))
+    return bool(both_pdf and both_bopa and latest_bulletin)
 
 
 def _ensure_extracted_setup(draft: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
@@ -587,7 +957,8 @@ def _ensure_extracted_setup(draft: dict[str, Any], user_message: str) -> list[di
 
 def _ensure_extracted_tasks(draft: dict[str, Any], user_message: str) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
-    extracted = _extract_tasks(user_message)
+    extracted = _extract_tasks(_task_text_without_hints(user_message))
+    task_metadata = _extract_task_metadata(user_message)
     if len(extracted) > 1:
         draft["tasks"] = [
             existing for existing in draft["tasks"]
@@ -595,15 +966,26 @@ def _ensure_extracted_tasks(draft: dict[str, Any], user_message: str) -> list[di
             and not re.search(r"\b2[\).:-]\s+", existing["prompt"])
         ]
     for task in extracted:
-        if any(existing["prompt"].strip().lower() == task.lower() for existing in draft["tasks"]):
+        existing_task = next((existing for existing in draft["tasks"] if existing["prompt"].strip().lower() == task.lower()), None)
+        metadata = _extract_task_metadata(user_message, task)
+        if not existing_task:
+            existing_task = next((existing for existing in draft["tasks"] if _same_task_intent(existing, task, metadata)), None)
+        if existing_task:
+            _merge_task_metadata(existing_task, metadata)
             continue
-        name = task_name_from_prompt(task, len(draft["tasks"]) + 1)
+        if not metadata and len(extracted) == 1:
+            metadata = dict(task_metadata)
+        if metadata.get("site") == "BOPA" and "pdf_download" in (metadata.get("expectedArtifacts") or []):
+            name = "Download latest BOPA bulletin PDF"
+        else:
+            name = task_name_from_prompt(task, len(draft["tasks"]) + 1)
         draft["tasks"].append(
             {
                 "name": name,
                 "prompt": task,
                 "successCriteria": "The user approves the result and all sensitive writes are confirmed before execution.",
                 "status": "draft",
+                **({"metadata": metadata} if metadata else {}),
             }
         )
         events.extend(
@@ -633,12 +1015,25 @@ def _prune_stale_task_events(events: list[dict[str, Any]], draft: dict[str, Any]
 def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
     text = message.strip()
     lower = text.lower()
+
+    if any(term in lower for term in ("auto discover", "autodiscover", "auto-descub", "descubrir mas", "descubrir más", "mas skills", "más skills", "mas tools", "más tools", "todas las tools", "todas las skills", "explorar todo")):
+        _set_discovery_mode(draft, "broad_autodiscovery")
+    if any(term in lower for term in ("solo las necesarias", "solo lo necesario", "solo estas tasks", "solo estas tareas", "only necessary", "only these tasks", "task scoped", "task-scoped")):
+        _set_discovery_mode(draft, "task_scoped")
     custom_systems = _extract_custom_systems(text)
 
     if not draft["company"]["name"]:
+        called_match = re.search(r"(?:company|empresa|compañ[ií]a)\s+(?:llamada?|called)\s+([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{1,40})", text, flags=re.IGNORECASE)
+        if called_match:
+            draft["company"]["name"] = _clean_detected_name(called_match.group(1))
+    if not draft["company"]["name"]:
+        label_match = re.search(r"(?:company|empresa|compañ[ií]a|project|proyecto)\s*:\s*([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{1,40})", text, flags=re.IGNORECASE)
+        if label_match:
+            draft["company"]["name"] = _clean_detected_name(label_match.group(1))
+    if not draft["company"]["name"]:
         name_match = re.search(r"(?:company|empresa|compañ[ií]a|asesor[ií]a)\s+(?:is|es|called|llamada?)?\s*([A-ZÁÉÍÓÚÑ][\wÁÉÍÓÚÑáéíóúñ -]{2,40})", text)
         if name_match:
-            draft["company"]["name"] = name_match.group(1).strip(" .")
+            draft["company"]["name"] = _clean_detected_name(name_match.group(1))
     if "celeris" in lower and not draft["company"].get("name"):
         draft["company"]["name"] = "Celeris"
         draft["company"]["industry"] = "Labor advisory, Andorra"
@@ -657,20 +1052,16 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
             _merge_connector(draft, _known_connector("bopa"))
         elif not draft["agent"]["websiteUrl"]:
             draft["agent"]["websiteUrl"] = url
-            _merge_connector(
-                draft,
-                {
-                    "name": re.sub(r"^https?://", "", url).split("/")[0],
-                    "type": "web",
-                    "category": "web",
-                    "description": f"Browser/web connector for {url}",
-                    "config": {"baseUrl": url},
-                    "status": "connected",
-                },
-            )
+            _merge_connector(draft, _custom_web_connector(url, text))
+        else:
+            _merge_connector(draft, _custom_web_connector(url, text))
 
     for keyword in KNOWN_CONNECTORS:
         if keyword in {"docs", "documents"} and _looks_like_api_docs(text):
+            continue
+        if keyword == "pdf" and any(term in lower for term in ("download", "descargar", "descarregar", "baixar")) and _extract_urls(text):
+            continue
+        if keyword == "x" and not re.search(r"(?<![a-z0-9])x(?![a-z0-9])", lower):
             continue
         if keyword in lower:
             _merge_connector(draft, _known_connector(keyword))
@@ -753,6 +1144,8 @@ def _apply_message(draft: dict[str, Any], message: str) -> dict[str, Any]:
         draft["agent"]["websiteUrl"] = "https://www.bopa.ad/"
 
     _normalize_custom_connectors(draft, text)
+    _normalize_connector_duplicates(draft)
+    _refresh_automation_plan(draft)
     _refresh_onboarding_questions(draft)
     return draft
 
@@ -783,6 +1176,11 @@ def _questions_for_missing(missing: list[str]) -> list[str]:
 
 
 def _auth_fields_for_connector(connector: dict[str, Any]) -> list[str]:
+    connector_type = str(connector.get("type") or "").lower()
+    if connector_type == "web" and connector.get("provider") == "custom":
+        if connector.get("authRequired") or connector.get("status") == "needs_auth":
+            return ["login URL if different", "test username", "test password or session setup notes"]
+        return ["start URL"]
     if connector.get("provider") == "custom":
         config = connector.get("config") or {}
         fields = []
@@ -814,11 +1212,14 @@ def _connectors_by_status(draft: dict[str, Any]) -> tuple[list[str], list[str], 
 def _status_summary(draft: dict[str, Any]) -> str:
     connected, needs_auth, not_connected = _connectors_by_status(draft)
     task_count = len(draft.get("tasks", []))
+    discovery = draft.get("capabilityDiscovery") if isinstance(draft.get("capabilityDiscovery"), dict) else {}
+    discovery_label = discovery.get("label") or ("Auto-discover additional tools and skills" if discovery.get("mode") == "broad_autodiscovery" else "Only what is needed for the requested tasks")
     lines = [
         f"Working: {', '.join(connected) if connected else 'no connected connectors yet'}.",
         f"Needs auth: {', '.join(needs_auth) if needs_auth else 'none'}.",
         f"Not connected: {', '.join(not_connected) if not_connected else 'none'}.",
         f"Benchmark tasks: {task_count}.",
+        f"Discovery scope: {discovery_label}.",
     ]
     if needs_auth:
         lines.append("Left: add missing auth/docs in connector settings. For custom connectors, provide API docs/OpenAPI URL, or ask Automata to search public docs and generate a toolkit draft.")
@@ -830,11 +1231,29 @@ def _status_summary(draft: dict[str, Any]) -> str:
 
 
 def _auth_question(draft: dict[str, Any]) -> str:
-    _, needs_auth, _ = _connectors_by_status(draft)
-    if not needs_auth:
+    auth_connectors = [
+        connector for connector in draft.get("connectors", [])
+        if str(connector.get("status") or "") == "needs_auth"
+    ]
+    if not auth_connectors:
         return ""
-    names = ", ".join(item.split(" (", 1)[0] for item in needs_auth)
-    return f"These connectors still need auth or API docs before they can run: {names}. Open Connectors to add credentials/docs, or ask Automata to search public docs and generate a toolkit draft."
+    web_names = [
+        str(connector.get("name") or "Web connector")
+        for connector in auth_connectors
+        if connector.get("type") == "web"
+    ]
+    other_names = [
+        str(connector.get("name") or connector.get("type") or "Connector")
+        for connector in auth_connectors
+        if connector.get("type") != "web"
+    ]
+    parts = []
+    if web_names:
+        parts.append(f"These web connectors need login/session setup before private flows can run: {', '.join(web_names)}.")
+    if other_names:
+        parts.append(f"These connectors still need auth or API docs before they can run: {', '.join(other_names)}.")
+    parts.append("Open Connectors to add credentials/docs, or tell Automata the public start URL, login URL, and whether test credentials are available.")
+    return " ".join(parts)
 
 
 def _refresh_onboarding_questions(draft: dict[str, Any]) -> str:
@@ -927,6 +1346,10 @@ ONBOARDING_TOOLS: list[dict[str, Any]] = [
                     "name": {"type": "string"},
                     "prompt": {"type": "string"},
                     "successCriteria": {"type": "string"},
+                    "hints": {"type": "array", "items": {"type": "string"}},
+                    "startUrl": {"type": "string"},
+                    "expectedArtifacts": {"type": "array", "items": {"type": "string"}},
+                    "metadata": {"type": "object", "additionalProperties": True},
                 },
                 "required": ["prompt"],
             },
@@ -979,6 +1402,10 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
         base_url = str(args.get("baseUrl") or "").strip()
         openapi_url = str(args.get("openApiUrl") or "").strip()
         docs_url = str(args.get("docsUrl") or "").strip()
+        if connector_type == "web" and ("bopa" in connector_name.lower() or "bopa.ad" in base_url.lower()):
+            connector_type = "bopa"
+            connector_name = "BOPA"
+            base_url = base_url or "https://www.bopa.ad/"
         known_key = connector_type if connector_type in KNOWN_CONNECTORS else connector_name.lower()
         connector = _known_connector(known_key) if known_key in KNOWN_CONNECTORS else {
             "name": connector_name,
@@ -986,19 +1413,35 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
             "category": args.get("category") or ("api" if connector_type == "api" else "software"),
             "description": args.get("description") or f"Custom {connector_type} connector for {connector_name}. Add docs/auth so Automata can generate and test its toolkit.",
             "status": "connected" if connector_type in {"web", "knowledge"} else "not_connected",
-            "provider": "custom" if connector_type == "api" else "official",
+            "provider": "custom" if connector_type in {"api", "web"} else "official",
             "generationStatus": "needs_docs" if connector_type == "api" else "autoppia_supported",
             "config": {},
         }
+        if connector_type == "web" and connector.get("provider") == "custom":
+            auth_required = _web_auth_required(json.dumps(args, ensure_ascii=False), base_url)
+            connector.update(
+                {
+                    "category": "web",
+                    "status": "needs_auth" if auth_required else "connected" if base_url else "not_connected",
+                    "surface": "webapp",
+                    "authRequired": auth_required,
+                    "discoveryStatus": "pending",
+                    "discoveryMode": "task_scoped",
+                    "runtimeRequirements": ["browser", "network"],
+                    "generationStatus": "start_url_provided" if base_url else "needs_start_url",
+                }
+            )
         connector["name"] = connector_name
         connector["category"] = args.get("category") or connector.get("category", "software")
         connector["description"] = args.get("description") or connector.get("description", "")
         if base_url:
             connector.setdefault("config", {})["baseUrl"] = base_url
-        if openapi_url:
+            if connector_type == "web":
+                connector.setdefault("config", {})["startUrl"] = base_url
+        if connector_type == "api" and openapi_url:
             connector.setdefault("config", {})["openApiUrl"] = openapi_url
             connector["generationStatus"] = "docs_provided"
-        if docs_url:
+        if connector_type == "api" and docs_url:
             connector.setdefault("config", {})["docsUrl"] = docs_url
             connector["generationStatus"] = "docs_provided"
         _merge_connector(draft, connector)
@@ -1021,7 +1464,23 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
 
     if name == "add_task":
         prompt = str(args.get("prompt") or "").strip()
-        if prompt and not any(existing["prompt"].lower() == prompt.lower() for existing in draft["tasks"]):
+        metadata = {}
+        if isinstance(args.get("metadata"), dict):
+            metadata.update(args["metadata"])
+        hints = args.get("hints")
+        if isinstance(hints, list):
+            metadata["hints"] = [str(item).strip() for item in hints if str(item).strip()]
+        if args.get("startUrl"):
+            metadata["startUrl"] = str(args["startUrl"]).strip()
+        expected_artifacts = args.get("expectedArtifacts")
+        if isinstance(expected_artifacts, list):
+            metadata["expectedArtifacts"] = [str(item).strip() for item in expected_artifacts if str(item).strip()]
+        inferred_metadata = _extract_task_metadata(prompt, prompt)
+        metadata = {**inferred_metadata, **metadata}
+        existing_task = next((existing for existing in draft["tasks"] if existing["prompt"].lower() == prompt.lower()), None)
+        if prompt and existing_task:
+            _merge_task_metadata(existing_task, metadata)
+        elif prompt:
             task_name = str(args.get("name") or "").strip()
             draft["tasks"].append(
                 {
@@ -1029,6 +1488,7 @@ def _apply_tool_call(draft: dict[str, Any], name: str, args: dict[str, Any]) -> 
                     "prompt": prompt,
                     "successCriteria": str(args.get("successCriteria") or "The user approves the result and all sensitive writes are confirmed before execution.").strip(),
                     "status": "draft",
+                    **({"metadata": metadata} if metadata else {}),
                 }
             )
         return f"Created benchmark task: {prompt[:80]}"
@@ -1050,9 +1510,11 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
     system = (
         "You are Automata's onboarding agent. Convert the user's natural language into a structured company agent setup. "
         "You must use tools to update the draft: set_company, add_connector, set_agent, add_task, then finish. "
-        "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, web, knowledge, api. "
+        "Create connectors for every system mentioned. Known connector types are gmail, smtp, holded, telegram, bopa, web, knowledge, api. "
         "Use api for unknown SaaS/API systems and web for browser-only websites. Use knowledge for documents or files. "
         "Create one add_task tool call for each distinct workflow or requested task. Do not merge multiple workflows into one task. "
+        "If the user gives operational hints, navigation steps, start URLs, or expected artifacts for a task, pass them as add_task hints/startUrl/expectedArtifacts instead of making separate tasks from the hints. "
+        "If the user asks to auto-discover more tools/skills beyond the requested tasks, keep the tasks task-focused and let the discovery scope express broad autodiscovery; do not invent extra benchmark tasks unless the user requested them. "
         "Give every task a concrete 3-7 word name based on the workflow, never generic names like Task 1 or Task 2. "
         "If the system is not an official known connector, still create it as a custom api connector. Ask for API docs/OpenAPI URL and auth, or say Automata can search public docs to draft the toolkit. "
         "In the final summary, explain what is working, what is not connected, what needs auth, and what is left. "
@@ -1127,7 +1589,9 @@ async def _run_llm_onboarding_agent(draft: dict[str, Any], user_message: str) ->
     visible_events.extend(_ensure_extracted_setup(draft, user_message))
     visible_events.extend(_ensure_extracted_tasks(draft, user_message))
     _normalize_custom_connectors(draft, user_message)
+    _normalize_connector_duplicates(draft)
     visible_events = _prune_stale_task_events(visible_events, draft)
+    _refresh_automation_plan(draft)
     auth_question = _refresh_onboarding_questions(draft)
     if auth_question:
         visible_events.extend(
@@ -1152,6 +1616,8 @@ async def _run_onboarding_agent(draft: dict[str, Any], user_message: str) -> tup
         setup_events = _ensure_extracted_setup(fallback_draft, user_message)
         task_events = _ensure_extracted_tasks(fallback_draft, user_message)
         _normalize_custom_connectors(fallback_draft, user_message)
+        _normalize_connector_duplicates(fallback_draft)
+        _refresh_automation_plan(fallback_draft)
         auth_question = _refresh_onboarding_questions(fallback_draft)
         auth_events = [
             _event("tool_call", "Checking connector auth status.", tool_name="check_connector_auth"),
@@ -1195,13 +1661,14 @@ async def _create_eval(
             "evalId": eval_id,
             "email": email,
             "prompt": task["prompt"],
-            "initialUrl": website_url,
+            "initialUrl": (task.get("metadata") or {}).get("startUrl") or website_url,
             "benchmarkId": f"agent-{agent_id}",
             "benchmarkName": f"{agent_name} Benchmark",
             "agentId": agent_id,
             "agentName": agent_name,
             "agentTaskName": task["name"],
             "successCriteria": task.get("successCriteria", ""),
+            "metadata": task.get("metadata") if isinstance(task.get("metadata"), dict) else {},
             "createdAt": now,
         }
     )
@@ -1312,22 +1779,31 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         }
         await companies_collection.insert_one(dict(company))
 
+    capability_discovery = draft.get("capabilityDiscovery") if isinstance(draft.get("capabilityDiscovery"), dict) else {"mode": "task_scoped"}
     connectors = []
     for item in draft.get("connectors", []):
         connector_id = str(uuid.uuid4())
-        status = item.get("status") or ("connected" if item.get("type") in ("web", "knowledge") else "not_connected")
+        connector_type = str(item.get("type") or "api").lower()
+        status = item.get("status") or ("connected" if connector_type in ("web", "knowledge", "bopa") else "not_connected")
+        if connector_type == "bopa":
+            status = "connected"
         connector = {
             "connectorId": connector_id,
             "email": body.email,
             "companyId": company_id,
             "name": item.get("name", "Connector"),
-            "type": item.get("type", "api"),
+            "type": connector_type,
             "category": item.get("category", "software"),
             "description": item.get("description", ""),
             "status": status,
             "config": item.get("config", {}),
-            "provider": item.get("provider", "custom" if item.get("type") == "api" else "official"),
-            "generationStatus": item.get("generationStatus", "needs_docs" if item.get("type") == "api" and item.get("provider") == "custom" else "autoppia_supported"),
+            "provider": item.get("provider", "custom" if connector_type == "api" else "official"),
+            "generationStatus": item.get("generationStatus", "needs_docs" if connector_type == "api" and item.get("provider") == "custom" else "autoppia_supported"),
+            "surface": item.get("surface", "webapp" if connector_type == "web" else "api" if connector_type == "api" else ""),
+            "authRequired": bool(item.get("authRequired", False)),
+            "discoveryStatus": item.get("discoveryStatus", "pending" if item.get("provider") == "custom" else "ready"),
+            "discoveryMode": item.get("discoveryMode", capability_discovery.get("mode", "task_scoped") if isinstance(capability_discovery, dict) else "task_scoped"),
+            "runtimeRequirements": item.get("runtimeRequirements") or (["browser", "network"] if connector_type == "web" else ["network"] if connector_type == "api" else []),
             "createdAt": now,
             "updatedAt": now,
         }
@@ -1347,6 +1823,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         prompt = str(task.get("prompt") or "").strip()
         if not prompt:
             continue
+        metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
         tasks.append(
             {
                 "name": task_name_from_prompt(prompt, index) if not task.get("name") or re.fullmatch(r"Task\s+\d+", str(task.get("name") or ""), flags=re.IGNORECASE) else task.get("name"),
@@ -1354,6 +1831,7 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
                 "successCriteria": task.get("successCriteria", "The user confirms the result."),
                 "status": "draft",
                 "trajectoryId": "",
+                "metadata": metadata,
             }
         )
 
@@ -1369,9 +1847,12 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         "status": "ready" if DEFAULT_OPERATOR_RUNTIME_ENDPOINT else "draft",
         "trainingStatus": "needs_trajectories",
         "harvester": "Automata Onboarding Agent",
+        "capabilityDiscovery": capability_discovery,
+        "capabilityDiscoverer": capability_discovery.get("discoverer", "default_toolkit:v1"),
         "runtimeCapabilities": {
-            "browser": any(connector.get("type") == "web" for connector in connectors),
-            "apiCalls": any(connector.get("type") in ("api", "holded", "gmail", "smtp", "telegram") for connector in connectors),
+            "browser": any(connector.get("type") == "web" or "browser" in (connector.get("runtimeRequirements") or []) for connector in connectors),
+            "apiCalls": any(connector.get("type") not in ("web", "knowledge") for connector in connectors),
+            "network": any(connector.get("type") != "knowledge" for connector in connectors),
             "knowledge": any(connector.get("type") == "knowledge" for connector in connectors),
             "python": False,
             "humanApprovalForWrites": True,
@@ -1384,7 +1865,28 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         "updatedAt": now,
     }
     await agents_collection.insert_one(dict(agent_config))
-    await ensure_agent_creation_job(agent_config)
+    discovery_result = await run_capability_discovery(agent_config, connectors)
+    benchmark_id = f"agent-{agent_id}"
+    await benchmarks_collection.update_one(
+        {"benchmarkId": benchmark_id},
+        {
+            "$set": {
+                "benchmarkId": benchmark_id,
+                "email": body.email,
+                "companyId": company_id,
+                "agentId": agent_id,
+                "agentName": agent_name,
+                "name": f"{agent_name} Benchmark",
+                "description": f"Onboarding benchmark for {agent_name}.",
+                "capabilityDiscovery": capability_discovery,
+                "websiteUrl": website_url,
+                "status": "draft",
+                "updatedAt": now,
+            },
+            "$setOnInsert": {"createdAt": now},
+        },
+        upsert=True,
+    )
 
     web_id = f"default-{agent_id}"
     await agent_webs_collection.insert_one(
@@ -1405,19 +1907,44 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
     for task in tasks:
         trajectory_id = str(uuid.uuid4())
         trajectory_ids.append(trajectory_id)
+        task_metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+        task_metadata = {**task_metadata, "capabilityDiscovery": capability_discovery}
         await trajectories_collection.insert_one(
             {
                 "trajectoryId": trajectory_id,
                 "agentId": agent_id,
+                "companyId": company_id,
                 "email": body.email,
                 "webId": web_id,
+                "benchmarkId": benchmark_id,
                 "taskName": task["name"],
                 "prompt": task["prompt"],
                 "successCriteria": task.get("successCriteria", ""),
+                "metadata": task_metadata,
                 "source": "onboarding_agent",
                 "status": "needs_harvest",
                 "actions": [],
                 "screenshots": [],
+                "createdAt": now,
+                "updatedAt": now,
+            }
+        )
+        await benchmark_tasks_collection.insert_one(
+            {
+                "taskId": str(uuid.uuid4()),
+                "candidateTrajectoryId": trajectory_id,
+                "email": body.email,
+                "companyId": company_id,
+                "agentId": agent_id,
+                "benchmarkId": benchmark_id,
+                "name": task["name"],
+                "taskName": task["name"],
+                "prompt": task["prompt"],
+                "successCriteria": task.get("successCriteria", ""),
+                "metadata": task_metadata,
+                "status": "needs_harvest",
+                "trajectoryId": "",
+                "source": "onboarding_agent",
                 "createdAt": now,
                 "updatedAt": now,
             }
@@ -1431,6 +1958,8 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
                 task=task,
             )
         )
+
+    await start_harvester(agent_id)
 
     await onboarding_sessions_collection.update_one(
         {"sessionId": session_id},
@@ -1450,4 +1979,5 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         "connectorIds": [connector["connectorId"] for connector in connectors],
         "trajectoryIds": trajectory_ids,
         "evalIds": eval_ids,
+        "capabilityDiscovery": discovery_result,
     }

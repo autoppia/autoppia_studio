@@ -22,12 +22,16 @@ import {
   faTimesCircle,
   faClock,
   faReceipt,
+  faChartLine,
+  faShieldHalved,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserTabs from "../components/session/browser-tabs";
 import ConfirmModal from "../components/common/confirm-modal";
+import Credentials from "./credentials";
+import Analytics from "./analytics";
 import type { BrowserTab } from "../redux/socketSlice";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 // UI-only placeholder until the wallet backend ships.
 const WALLET_PLACEHOLDER = { balance: "0.00", currency: "EUR", loading: false };
@@ -59,7 +63,9 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     label: "Account",
     items: [
-      { id: "profiles", label: "Profiles", icon: faUserCircle },
+      { id: "profiles", label: "Browser Profiles", icon: faUserCircle },
+      { id: "credentials", label: "Credentials", icon: faShieldHalved },
+      { id: "analytics", label: "Analytics", icon: faChartLine },
     ],
   },
   {
@@ -85,6 +91,7 @@ interface Profile {
   id: string;
   name: string;
   contextId: string;
+  profileProvider?: string;
   createdAt: string;
 }
 
@@ -141,7 +148,7 @@ function CreateProfileModal({
           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
             bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
             placeholder-gray-400 dark:placeholder-gray-500 outline-none
-            focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all duration-200"
+            focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200"
         />
 
         <div className="flex justify-end gap-3 mt-5">
@@ -221,7 +228,7 @@ function ProfilesTab() {
       const res = await fetch(`${apiUrl}/profiles`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email, name }),
+        body: JSON.stringify({ email: user.email, name, provider: "local" }),
       });
       const data = await res.json();
       if (data.profile) {
@@ -320,14 +327,16 @@ function ProfilesTab() {
     try {
       const res = await fetch(`${apiUrl}/profiles/${id}/run`, { method: "POST" });
       const data = await res.json();
-      if (data.liveUrl) {
+      if (data.liveUrl || data.provider === "local") {
         setActiveProfileId(id);
-        setLiveUrl(data.liveUrl);
+        setLiveUrl(data.liveUrl || null);
         if (data.tabs && data.tabs.length > 0) {
           setProfileTabs(data.tabs);
           setProfileActiveTabIndex(0);
         }
-        startTabPolling(id);
+        if (data.liveUrl) {
+          startTabPolling(id);
+        }
       }
     } catch (err) {
       console.error("Failed to run profile:", err);
@@ -447,7 +456,7 @@ function ProfilesTab() {
               key={profile.id}
               className={`rounded-xl border transition-all duration-200 ${
                 activeProfileId === profile.id
-                  ? "border-[#FF7E5F] bg-[#FF7E5F]/5 dark:bg-[#FF7E5F]/10"
+                  ? "border-primary bg-primary/5 dark:bg-primary/10"
                   : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg hover:border-gray-300 dark:hover:border-gray-600"
               }`}
             >
@@ -464,8 +473,8 @@ function ProfilesTab() {
                           if (e.key === "Escape") handleCancelEdit();
                         }}
                         autoFocus
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-[#FF7E5F] bg-white dark:bg-dark-bg
-                          text-sm text-gray-800 dark:text-gray-100 outline-none ring-1 ring-[#FF7E5F]/30"
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-primary bg-white dark:bg-dark-bg
+                          text-sm text-gray-800 dark:text-gray-100 outline-none ring-1 ring-primary/30"
                       />
                       <button
                         onClick={() => handleSaveName(profile.id)}
@@ -537,7 +546,7 @@ function ProfilesTab() {
                     <button
                       onClick={() => handleStartEdit(profile)}
                       className="flex items-center justify-center w-8 h-8 rounded-lg
-                        text-gray-400 hover:text-[#FF7E5F] hover:bg-[#FF7E5F]/10
+                        text-gray-400 hover:text-primary hover:bg-primary/10
                         transition-all duration-200 opacity-0 group-hover:opacity-100"
                       title="Rename profile"
                     >
@@ -579,7 +588,7 @@ function ProfilesTab() {
       )}
 
       {/* Live browser modal - portaled to body so backdrop covers full page */}
-      {activeProfileId && liveUrl && createPortal(
+      {activeProfileId && createPortal(
         <div className="fixed inset-0 z-50 flex items-center justify-center">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
           <div className="relative w-full max-w-5xl mx-4 flex flex-col bg-dark-bg overflow-hidden rounded-xl"
@@ -614,21 +623,34 @@ function ProfilesTab() {
                 </button>
               </div>
             </div>
-            <BrowserTabs
-              tabs={profileTabs}
-              activeIndex={profileActiveTabIndex}
-              onSelectTab={handleSelectProfileTab}
-              onNewTab={handleNewProfileTab}
-              onCloseTab={handleCloseProfileTab}
-              compact
-            />
-            <iframe
-              src={liveUrl}
-              sandbox="allow-same-origin allow-scripts"
-              allow="clipboard-read; clipboard-write"
-              className="flex-1 w-full border-0"
-              title="Profile browser session"
-            />
+            {liveUrl ? (
+              <>
+                <BrowserTabs
+                  tabs={profileTabs}
+                  activeIndex={profileActiveTabIndex}
+                  onSelectTab={handleSelectProfileTab}
+                  onNewTab={handleNewProfileTab}
+                  onCloseTab={handleCloseProfileTab}
+                  compact
+                />
+                <iframe
+                  src={liveUrl}
+                  sandbox="allow-same-origin allow-scripts"
+                  allow="clipboard-read; clipboard-write"
+                  className="flex-1 w-full border-0"
+                  title="Profile browser session"
+                />
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center px-8 text-center">
+                <div>
+                  <p className="text-sm font-semibold text-gray-100">Local browser window is open</p>
+                  <p className="mt-2 text-xs text-gray-400 max-w-md">
+                    Log in in the Chrome/Chromium window on this machine. When finished, click Stop & Save here to persist cookies for runtime.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>,
         document.body
@@ -698,7 +720,7 @@ function CreateAPIKeyModal({
           className="w-full px-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
             bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
             placeholder-gray-400 dark:placeholder-gray-500 outline-none
-            focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all duration-200"
+            focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all duration-200"
         />
 
         <div className="flex justify-end gap-3 mt-5">
@@ -879,7 +901,7 @@ function APIKeysTab() {
 
       {/* Newly created key banner */}
       {newlyCreatedKey && (
-        <div className="rounded-xl border border-[#FF7E5F]/30 bg-[#FF7E5F]/5 dark:bg-[#FF7E5F]/10 p-4">
+        <div className="rounded-xl border border-primary/30 bg-primary/5 dark:bg-primary/10 p-4">
           <p className="text-xs font-medium text-gray-600 dark:text-gray-300 mb-2">
             Copy your API key now. It won't be shown again.
           </p>
@@ -930,8 +952,8 @@ function APIKeysTab() {
                           if (e.key === "Escape") handleCancelEdit();
                         }}
                         autoFocus
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-[#FF7E5F] bg-white dark:bg-dark-bg
-                          text-sm text-gray-800 dark:text-gray-100 outline-none ring-1 ring-[#FF7E5F]/30"
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-primary bg-white dark:bg-dark-bg
+                          text-sm text-gray-800 dark:text-gray-100 outline-none ring-1 ring-primary/30"
                       />
                       <button
                         onClick={() => handleSaveName(apiKey.id)}
@@ -968,7 +990,7 @@ function APIKeysTab() {
                     <button
                       onClick={() => handleStartEdit(apiKey)}
                       className="flex items-center justify-center w-8 h-8 rounded-lg
-                        text-gray-400 hover:text-[#FF7E5F] hover:bg-[#FF7E5F]/10
+                        text-gray-400 hover:text-primary hover:bg-primary/10
                         transition-all duration-200 opacity-0 group-hover:opacity-100"
                       title="Rename key"
                     >
@@ -1078,7 +1100,7 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
                 className={`py-2 rounded-xl text-sm font-semibold border transition-all duration-150
                   ${amount === String(val)
                     ? "bg-gradient-primary text-white border-transparent shadow-glow"
-                    : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:border-[#FF7E5F] hover:text-[#FF7E5F]"
+                    : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:border-primary hover:text-primary"
                   }`}
               >
                 €{val}
@@ -1104,7 +1126,7 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
               onChange={(e) => { setAmount(e.target.value); setAmountError(""); setShowComingSoon(false); }}
               className="w-full pl-7 pr-4 py-2.5 rounded-xl border border-gray-200 dark:border-dark-border
                 bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
-                outline-none focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all"
+                outline-none focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all"
             />
           </div>
           {amountError
@@ -1115,8 +1137,8 @@ function AddFundsModal({ open, onClose }: { open: boolean; onClose: () => void }
 
         {/* Coming soon notice */}
         {showComingSoon && (
-          <div className="rounded-xl border border-[#FF7E5F]/30 bg-[#FF7E5F]/10 px-4 py-3 flex items-start gap-2.5">
-            <FontAwesomeIcon icon={faClock} className="text-[#FF7E5F] mt-0.5 text-sm flex-shrink-0" />
+          <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-3 flex items-start gap-2.5">
+            <FontAwesomeIcon icon={faClock} className="text-primary mt-0.5 text-sm flex-shrink-0" />
             <div>
               <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
                 Card payments are not available yet
@@ -1338,6 +1360,10 @@ function TabContent({ tab }: { tab: TabId }) {
       return <CreditTab />;
     case "invoices":
       return <InvoicesTab />;
+    case "credentials":
+      return <Credentials />;
+    case "analytics":
+      return <Analytics />;
     default:
       return null;
   }
@@ -1346,6 +1372,10 @@ function TabContent({ tab }: { tab: TabId }) {
 // ── Settings Page ───────────────────────────────────────────────────
 
 const DEFAULT_TAB: TabId = "profiles";
+
+// These tabs embed full-page views that bring their own header/layout,
+// so they render edge-to-edge instead of inside the settings card.
+const FULL_BLEED_TABS: TabId[] = ["credentials", "analytics"];
 
 export default function Settings(): React.ReactElement {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -1399,7 +1429,7 @@ export default function Settings(): React.ReactElement {
                         className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-all duration-150
                           ${
                             isActive
-                              ? "bg-gradient-primary/10 text-[#FF7E5F] font-semibold"
+                              ? "bg-gradient-primary/10 text-primary font-semibold"
                               : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface"
                           }`}
                       >
@@ -1415,19 +1445,25 @@ export default function Settings(): React.ReactElement {
         </aside>
 
         {/* Main content */}
-        <div className="flex-1 overflow-auto px-6 py-8">
-          <div className="max-w-3xl mx-auto">
-            {activeMeta && (
-              <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-6">
-                {activeMeta.label}
-              </h2>
-            )}
+        {FULL_BLEED_TABS.includes(activeTab) ? (
+          <div className="flex-1 min-w-0 overflow-hidden relative">
+            <TabContent tab={activeTab} />
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto px-6 py-8">
+            <div className="max-w-3xl mx-auto">
+              {activeMeta && (
+                <h2 className="text-xl font-semibold text-gray-800 dark:text-gray-100 mb-6">
+                  {activeMeta.label}
+                </h2>
+              )}
 
-            <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-6 shadow-soft">
-              <TabContent tab={activeTab} />
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-6 shadow-soft">
+                <TabContent tab={activeTab} />
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

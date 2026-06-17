@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useDispatch } from "react-redux";
 import Cookies from "js-cookie";
@@ -9,7 +9,7 @@ import { setUser } from "../redux/userSlice";
 import { useToast } from "../components/common/toast";
 import GoogleSignInButton from "../components/common/google-sign-in-button";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -19,6 +19,14 @@ export default function SignIn() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { showToast } = useToast();
+
+  // If the user landed here because their session expired mid-use, say so.
+  useEffect(() => {
+    if (sessionStorage.getItem("automata_session_expired")) {
+      sessionStorage.removeItem("automata_session_expired");
+      showToast("Your session expired. Please sign in again.", "info");
+    }
+  }, [showToast]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,22 +68,10 @@ export default function SignIn() {
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
           <img
-            src="/assets/images/logos/main.webp"
-            alt="Autoppia"
-            className="h-12 mb-3"
+            src="/assets/images/logos/autoppia-studio.webp"
+            alt="Autoppia Studio"
+            className="h-12 object-contain"
           />
-          <div className="flex items-center gap-1">
-            <img
-              src="/assets/images/logos/automata.webp"
-              alt="Automata"
-              className="h-5 dark:hidden"
-            />
-            <img
-              src="/assets/images/logos/automata_dark.webp"
-              alt="Automata"
-              className="h-5 hidden dark:block"
-            />
-          </div>
         </div>
 
         {/* Card */}

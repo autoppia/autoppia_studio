@@ -8,25 +8,26 @@ import "./App.css";
 import Home from "./pages/home";
 import Session from "./pages/session";
 import Settings from "./pages/settings";
-import Skills from "./pages/skills";
-import CreateSkill from "./pages/create-skill";
-import SkillDetail from "./pages/skill-detail";
-import RecordSkill from "./pages/record-skill";
 import Evals from "./pages/evals";
 import EvalDetail from "./pages/eval-detail";
-import Operators from "./pages/operators";
-import OperatorDetail from "./pages/operator-detail";
+import Agents from "./pages/agents";
+import AgentDetail from "./pages/agent-detail";
 import Connectors from "./pages/connectors";
+import Capabilities from "./pages/capabilities";
+import Credentials from "./pages/credentials";
 import Knowledge from "./pages/knowledge";
 import Analytics from "./pages/analytics";
+import Work from "./pages/work";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
 import MainLayout from "./components/layout/main-layout";
 import { ToastProvider } from "./components/common/toast";
-import { setUser } from "./redux/userSlice";
+import { setUser, logout } from "./redux/userSlice";
+import { installAuthFetch } from "./utils/auth-fetch";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+installAuthFetch(apiUrl);
 
 function App() {
   const dispatch = useDispatch();
@@ -76,6 +77,17 @@ function App() {
     checkAuth();
   }, [dispatch]);
 
+  // The auth-fetch wrapper fires this when a token-bearing request is rejected
+  // (401) — the JWT is invalid/expired. Tear down the session and redirect.
+  useEffect(() => {
+    const onExpired = () => {
+      dispatch(logout());
+      setAuthState("unauthenticated");
+    };
+    window.addEventListener("automata-auth-expired", onExpired);
+    return () => window.removeEventListener("automata-auth-expired", onExpired);
+  }, [dispatch]);
+
   // Sync authState with Redux isAuthenticated (sign-in/sign-up and logout)
   useEffect(() => {
     if (isAuthenticated && authState === "unauthenticated") {
@@ -107,19 +119,21 @@ function App() {
                 <Route path="/" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />
-                <Route path="/skills" element={<Skills />} />
-                <Route path="/trajectories" element={<Skills />} />
-                <Route path="/skills/create" element={<CreateSkill />} />
-                <Route path="/skills/record" element={<RecordSkill />} />
-                <Route path="/skills/:skillId" element={<SkillDetail />} />
+                {/* Skills are no longer a separate section — they live under Capabilities. */}
+                <Route path="/skills" element={<Navigate to="/capabilities" replace />} />
+                <Route path="/trajectories" element={<Navigate to="/capabilities" replace />} />
+                <Route path="/skills/create" element={<Navigate to="/capabilities" replace />} />
+                <Route path="/skills/record" element={<Navigate to="/capabilities" replace />} />
+                <Route path="/skills/:skillId" element={<Navigate to="/capabilities" replace />} />
                 <Route path="/evals" element={<Evals />} />
                 <Route path="/evals/:evalId" element={<EvalDetail />} />
                 <Route path="/evals/:evalId/run/:id" element={<Session />} />
-                <Route path="/operators" element={<Operators />} />
-                <Route path="/operators/:operatorId" element={<OperatorDetail />} />
-                <Route path="/agents" element={<Operators />} />
-                <Route path="/agents/:operatorId" element={<OperatorDetail />} />
+                <Route path="/agents" element={<Agents />} />
+                <Route path="/agents/:agentId" element={<AgentDetail />} />
+                <Route path="/work" element={<Work />} />
                 <Route path="/connectors" element={<Connectors />} />
+                <Route path="/capabilities" element={<Capabilities />} />
+                <Route path="/credentials" element={<Credentials />} />
                 <Route path="/knowledge" element={<Knowledge />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>

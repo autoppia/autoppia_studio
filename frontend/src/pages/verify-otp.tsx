@@ -8,7 +8,7 @@ import { faCheck } from "@fortawesome/free-solid-svg-icons";
 import { setUser } from "../redux/userSlice";
 import { useToast } from "../components/common/toast";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 const OTP_LENGTH = 6;
 const COOLDOWN_SECONDS = 60;
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from app.connectors.base import BaseConnector, ConnectorExecutionError, HttpApiConnector, read_text_file
 from app.database import knowledge_documents_collection
+from app.services.bopa import latest_bopa_pdf
 
 
 class GenericApiConnector(HttpApiConnector):
@@ -107,6 +108,27 @@ class HoldedConnector(HttpApiConnector):
             data = await self._request("GET", f"{base_url.rstrip('/')}/invoicing/v1/documents/invoice/{invoice_id}", headers=headers)
             return self.result(tool_name, data)
         raise ConnectorExecutionError(f"Holded does not implement {tool_name}")
+
+
+class BOPAConnector(BaseConnector):
+    async def execute(self, tool_name: str, arguments: dict[str, Any]):
+        if tool_name not in {"bopa.latest_bulletin_pdf", "bopa.latest_bulletin", "bopa.list_bulletins"}:
+            raise ConnectorExecutionError(f"BOPA does not implement {tool_name}")
+        data = latest_bopa_pdf()
+        if tool_name == "bopa.latest_bulletin_pdf":
+            return self.result(tool_name, data)
+        if tool_name == "bopa.latest_bulletin":
+            return self.result(
+                tool_name,
+                {
+                    "numBOPA": data.get("numBOPA", ""),
+                    "number": data.get("number", ""),
+                    "publishedAt": data.get("publishedAt", ""),
+                    "isExtra": data.get("isExtra", False),
+                    "pdfUrl": data.get("pdfUrl", ""),
+                },
+            )
+        return self.result(tool_name, {"items": [data], "source": data.get("apiUrl", "")})
 
 
 class KnowledgeConnector(BaseConnector):

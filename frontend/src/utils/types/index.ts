@@ -14,11 +14,39 @@ export interface ChatItem {
   role: string;
   content?: string;
   actions?: string[];
+  actionMetadata?: ({ skill?: Record<string, any> } | undefined)[];
   actionResults?: (boolean | undefined)[];
   screenshots?: string[];
+  artifacts?: SessionArtifact[];
   thinking?: string;
   state?: string;
   reasoning?: string;
+}
+
+export interface SessionArtifact {
+  artifactId: string;
+  name: string;
+  url: string;
+  kind?: string;
+  contentType?: string;
+  size?: number | string;
+  sourceTool?: string;
+  metadata?: Record<string, any>;
+}
+
+export interface SessionDocument {
+  documentId: string;
+  sessionId: string;
+  email: string;
+  companyId?: string;
+  filename: string;
+  contentType: string;
+  size: number;
+  status: string;
+  source: string;
+  knowledgeDocumentId?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface SkillParameter {
@@ -39,15 +67,19 @@ export interface Skill {
 
 export interface EvalItem {
   evalId: string;
+  taskId?: string;
   email?: string;
+  companyId?: string;
   prompt: string;
   initialUrl: string;
   benchmarkId?: string;
   benchmarkName?: string;
-  operatorId?: string;
-  operatorName?: string;
-  operatorTaskName?: string;
+  agentId?: string;
+  agentName?: string;
+  agentTaskName?: string;
   successCriteria?: string;
+  status?: string;
+  source?: string;
   createdAt?: string;
 }
 
@@ -60,16 +92,16 @@ export interface EvalRun {
   initialUrl?: string;
   benchmarkId?: string;
   benchmarkName?: string;
-  operatorId?: string;
-  operatorName?: string;
-  operatorTaskName?: string;
+  agentId?: string;
+  agentName?: string;
+  agentTaskName?: string;
   actions: any[];
   label: "pass" | "fail" | "pending";
   screenshots?: string[];
   createdAt?: string;
 }
 
-export interface OperatorTask {
+export interface AgentTask {
   name: string;
   prompt: string;
   successCriteria?: string;
@@ -77,9 +109,9 @@ export interface OperatorTask {
   trajectoryId?: string;
 }
 
-export interface OperatorTrajectory {
+export interface AgentTrajectory {
   trajectoryId?: string;
-  operatorId?: string;
+  agentId?: string;
   webId?: string;
   name?: string;
   taskName?: string;
@@ -93,9 +125,9 @@ export interface OperatorTrajectory {
   updatedAt?: string;
 }
 
-export interface OperatorWeb {
+export interface AgentWeb {
   webId: string;
-  operatorId: string;
+  agentId: string;
   name: string;
   baseUrl: string;
   authRequired: boolean;
@@ -103,9 +135,9 @@ export interface OperatorWeb {
   updatedAt?: string;
 }
 
-export interface OperatorCapability {
+export interface AgentCapability {
   capabilityId: string;
-  operatorId: string;
+  agentId: string;
   webId?: string;
   name: string;
   description: string;
@@ -125,8 +157,21 @@ export interface RuntimeCapabilities {
   humanApprovalForWrites?: boolean;
 }
 
-export interface Operator {
-  operatorId: string;
+export interface RuntimeSpec {
+  browserEnabled?: boolean;
+  browserMode?: "visible" | "headless";
+  maxCreditsPerRun?: number;
+  tools?: {
+    browser?: boolean;
+    connectors?: boolean;
+    skills?: boolean;
+    knowledge?: boolean;
+  };
+}
+
+export interface AgentConfig {
+  agentConfigId?: string;
+  agentId: string;
   email: string;
   companyId?: string;
   name: string;
@@ -137,11 +182,34 @@ export interface Operator {
   trainingStatus: string;
   harvester?: string;
   runtimeCapabilities?: RuntimeCapabilities;
+  runtimeSpec?: RuntimeSpec;
   apiSpecUrl?: string;
   apiAuthConfigured?: boolean;
-  tasks: OperatorTask[];
-  trajectories: OperatorTrajectory[];
+  tasks: AgentTask[];
+  trajectories: AgentTrajectory[];
   successCriteria: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+
+export interface AgentCreationStep {
+  key: string;
+  label: string;
+  status: string;
+  message?: string;
+  updatedAt?: string;
+}
+
+export interface AgentCreationJob {
+  jobId: string;
+  agentId: string;
+  companyId?: string;
+  email?: string;
+  status: string;
+  currentStep: string;
+  steps: AgentCreationStep[];
+  events: Array<{ type: string; message: string; createdAt?: string }>;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -176,6 +244,139 @@ export interface AgentToolkit {
   }>;
 }
 
+export interface RuntimeEvent {
+  runId: string;
+  agentId: string;
+  companyId?: string;
+  eventType: string;
+  stepIndex?: number | null;
+  toolName?: string;
+  status?: string;
+  payload?: Record<string, any>;
+  result?: Record<string, any>;
+  error?: string;
+  createdAt?: string;
+}
+
+export type WorkStatus = "TODO" | "RUNNING" | "REVIEW" | "DONE" | "FAILED";
+export type WorkRunTarget = "selected" | "all";
+
+export interface WorkBoard {
+  boardId: string;
+  email: string;
+  companyId?: string;
+  name: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface WorkItem {
+  workItemId: string;
+  email: string;
+  companyId?: string;
+  boardId?: string;
+  title: string;
+  prompt: string;
+  successCriteria?: string;
+  agentId?: string;
+  agentName?: string;
+  runTarget: WorkRunTarget;
+  browserEnabled: boolean;
+  browserMode: "visible" | "headless";
+  maxCreditsPerRun: number;
+  maxBudgetCredits?: number;
+  maxSteps?: number;
+  triggerType?: "manual" | "scheduled";
+  scheduleFrequency?: "none" | "daily" | "weekly";
+  scheduleTime?: string;
+  scheduleDayOfWeek?: number;
+  nextRunAt?: string;
+  triggerConfig?: Record<string, any>;
+  sourceTaskId?: string;
+  sourceBenchmarkId?: string;
+  judgeImplementation?: string;
+  status: WorkStatus;
+  report?: {
+    runId?: string;
+    target?: WorkRunTarget;
+    resultCount?: number;
+    results?: Array<{
+      agentId: string;
+      agentName?: string;
+      status: "ok" | "failed";
+      result?: Record<string, any>;
+      error?: string;
+      steps?: any[];
+      stepCount?: number;
+      finalUrl?: string;
+    }>;
+    summary?: string;
+  };
+  judge?: {
+    label?: "success" | "needs_review" | "failed" | string;
+    reason?: string;
+    judgeType?: string;
+  };
+  runHistory?: any[];
+  lastRunId?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  startedAt?: string;
+  completedAt?: string;
+}
+
+export type NotificationLevel = "info" | "success" | "warning" | "error";
+
+export interface AppNotification {
+  notificationId: string;
+  title: string;
+  message?: string;
+  level: NotificationLevel;
+  source?: string;
+  entityType?: string;
+  entityId?: string;
+  actionUrl?: string;
+  metadata?: Record<string, any>;
+  read: boolean;
+  createdAt?: string;
+  readAt?: string;
+}
+
+export interface RunningWorkItem {
+  workItemId: string;
+  title: string;
+  agentName?: string;
+  runTarget?: WorkRunTarget;
+  startedAt?: string;
+  lastRunId?: string;
+}
+
+export interface ActivityStatusCounts {
+  runningTasks: number;
+  queuedTasks: number;
+  reviewTasks: number;
+  doneTasks: number;
+  failedTasks: number;
+  scheduledDue: number;
+  scheduledUpcoming: number;
+  activeSessions: number;
+  evalRunsPending: number;
+  evalRunsPassed: number;
+  evalRunsFailed: number;
+  harvestersRunning: number;
+  harvestersCompleted: number;
+  harvestersFailed: number;
+}
+
+export interface ActivitySummary {
+  status: ActivityStatusCounts;
+  running: RunningWorkItem[];
+  notifications: {
+    unreadCount: number;
+    recent: AppNotification[];
+  };
+}
+
 export interface Connector {
   connectorId: string;
   companyId: string;
@@ -187,11 +388,32 @@ export interface Connector {
   status: string;
   provider?: string;
   generationStatus?: string;
+  surface?: string;
+  authRequired?: boolean;
+  discoveryStatus?: string;
+  discoveryMode?: string;
+  runtimeRequirements?: string[];
   config?: Record<string, any>;
+  credentialFields?: Record<string, { configured: boolean }>;
   lastTestAt?: string;
   lastTestStatus?: string;
   lastTestMessage?: string;
   toolkit: AgentToolkit;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface Credential {
+  credentialId: string;
+  secretRef: string;
+  email: string;
+  companyId?: string;
+  name: string;
+  type: string;
+  createdFor: string;
+  metadata?: Record<string, any>;
+  configured: boolean;
+  maskedValue: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -208,6 +430,120 @@ export interface KnowledgeDocument {
   connectorId?: string;
   createdAt?: string;
   updatedAt?: string;
+}
+
+export interface CompanyTool {
+  capabilityId: string;
+  capabilityKind: "tool";
+  toolId: string;
+  companyId: string;
+  connectorId: string;
+  connectorName: string;
+  name: string;
+  displayName: string;
+  description: string;
+  inputSchema?: any;
+  outputSchema?: any;
+  executionType: string;
+  surface: string;
+  runtimeRequirements?: string[];
+  sideEffects: string;
+  permissions?: Record<string, any>;
+  riskLevel: string;
+  status: string;
+  source: string;
+  discovererName?: string;
+  discovererVersion?: string;
+  discoveryScope?: string;
+  discoveryRelevance?: Record<string, any>;
+  discoveryEvidence?: any[];
+  lastTestAt?: string;
+  lastTestStatus?: string;
+  lastTestResult?: any;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CompanyTrajectory {
+  capabilityId: string;
+  capabilityKind: "trajectory";
+  trajectoryId: string;
+  companyId: string;
+  agentId?: string;
+  taskId?: string;
+  connectorIds: string[];
+  toolIds: string[];
+  runtimeRequirements?: string[];
+  name: string;
+  intent: string;
+  description: string;
+  successCriteria?: string;
+  benchmarkId?: string;
+  evalId?: string;
+  finalUrl?: string;
+  judge?: Record<string, any>;
+  review?: Record<string, any>;
+  harvester?: Record<string, any>;
+  trajectory?: any[];
+  steps: any[];
+  validations: any[];
+  recoverySteps: any[];
+  status: string;
+  source: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CompanySkill {
+  capabilityId: string;
+  capabilityKind: "skill";
+  skillId: string;
+  companyId: string;
+  agentId?: string;
+  connectorIds: string[];
+  toolIds?: string[];
+  trajectoryIds: string[];
+  runtimeRequirements?: string[];
+  name: string;
+  description: string;
+  whenToUse: string;
+  permissions?: Record<string, any>;
+  riskPolicy: string;
+  runtime: string;
+  status: string;
+  source?: string;
+  harvesterType?: string;
+  harvesterRunId?: string;
+  judge?: Record<string, any>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface HarvesterRun {
+  harvesterRunId: string;
+  runKind?: "tool_publication" | "harvester" | string;
+  email?: string;
+  companyId: string;
+  connectorId: string;
+  connectorName: string;
+  harvesterType?: string;
+  surface?: string;
+  status: string;
+  discoveredTools: number;
+  generatedTrajectories: number;
+  generatedSkills: number;
+  logs: string[];
+  errors: string[];
+  startedAt?: string;
+  completedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CompanyCapabilities {
+  tools: CompanyTool[];
+  trajectories: CompanyTrajectory[];
+  skills: CompanySkill[];
 }
 
 export interface ParameterizeResult {

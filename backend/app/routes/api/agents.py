@@ -10,7 +10,7 @@ from app.api_errors import api_error
 from app.middleware import verify_api_key
 from app.services.observability import record_runtime_event
 from app.services.agent_runtime import step_url as _step_url
-from app.services.agent_runtime import agent_step_result
+from app.services.agent_runtime import agent_step_result, runtime_contract_payload
 from app.services.agent_runtime import load_agent_config, serialize_agent
 
 router = APIRouter()
@@ -71,6 +71,9 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "sideEffects": doc.get("sideEffects", "reads"),
         "riskPolicy": doc.get("riskPolicy", ""),
         "riskLevel": doc.get("riskLevel", ""),
+        "connectorIds": doc.get("connectorIds") or [],
+        "toolIds": doc.get("toolIds") or [],
+        "runtimeRequirements": doc.get("runtimeRequirements") or [],
         "trajectoryCount": len(doc.get("trajectoryIds") or []),
         "trajectoryIds": doc.get("trajectoryIds") or [],
         "judge": doc.get("judge") or {},
@@ -81,11 +84,14 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
 
 @router.get("/agents/{agent_id}/runtime-contract", tags=["Agents"])
 async def runtime_contract(agent_id: str, api_key: dict[str, Any] = Depends(verify_api_key)):
-    await _owned_agent(agent_id, api_key)
+    agent_config = await _owned_agent(agent_id, api_key)
+    runtime_contract = await runtime_contract_payload(agent_config)
     return {
         "protocolVersion": "1.0",
         "stepEndpoint": f"/api/v1/agents/{agent_id}/step",
         "auth": {"header": "x-api-key"},
+        "runtimeCapabilities": runtime_contract["runtimeCapabilities"],
+        "runtimeSpec": runtime_contract["runtimeSpec"],
         "request": {
             "requiredOneOf": ["prompt", "task"],
             "properties": {
@@ -109,18 +115,10 @@ async def runtime_contract(agent_id: str, api_key: dict[str, Any] = Depends(veri
                 "executionMode": {"type": "string", "enum": ["skill_replay", "generalist", "connector_tool"]},
             },
         },
-        "toolCalls": [
-            "browser.navigate",
-            "browser.snapshot",
-            "browser.click",
-            "browser.input",
-            "browser.select_option",
-            "browser.select_dropdown",
-            "browser.send_keys",
-            "browser.wait",
-            "browser.done",
-            "api.human_approval",
-        ],
+        "toolCalls": runtime_contract["toolCalls"],
+        "unavailableToolCalls": runtime_contract["unavailableToolCalls"],
+        "tools": runtime_contract["tools"],
+        "skills": runtime_contract["skills"],
         "example": {
             "request": {"prompt": "Summarize latest BOPA labor updates.", "url": "about:blank", "step_index": 0, "state_in": {}},
             "response": {"tool_calls": [{"name": "browser.navigate", "arguments": {"url": "https://www.bopa.ad/"}}], "done": False, "state_out": {}},

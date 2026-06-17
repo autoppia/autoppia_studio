@@ -13,6 +13,20 @@ class RuntimeCapabilities(BaseModel):
     humanApprovalForWrites: bool = True
 
 
+class RuntimeSpec(BaseModel):
+    browserEnabled: bool = True
+    browserMode: Literal["visible", "headless"] = "visible"
+    maxCreditsPerRun: float = 5.0
+    tools: dict[str, bool] = Field(
+        default_factory=lambda: {
+            "browser": True,
+            "connectors": True,
+            "skills": True,
+            "knowledge": False,
+        }
+    )
+
+
 class AgentTask(BaseModel):
     name: str
     prompt: str
@@ -35,6 +49,7 @@ class AgentCallable(BaseModel):
     trajectoryIds: list[str] = Field(default_factory=list)
     executionType: str = ""
     runtime: str = ""
+    runtimeRequirements: list[str] = Field(default_factory=list)
     permissions: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -51,6 +66,8 @@ class AgentConfig(BaseModel):
     status: str = "draft"
     trainingStatus: str = "not_started"
     runtimeCapabilities: RuntimeCapabilities = Field(default_factory=RuntimeCapabilities)
+    runtimeSpec: RuntimeSpec = Field(default_factory=RuntimeSpec)
+    capabilityDiscovery: dict[str, Any] = Field(default_factory=lambda: {"mode": "task_scoped"})
     tasks: list[AgentTask] = Field(default_factory=list)
     tools: list[AgentCallable] = Field(default_factory=list)
     skills: list[AgentCallable] = Field(default_factory=list)

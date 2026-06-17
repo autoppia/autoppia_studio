@@ -4,12 +4,26 @@ import { useParams, useNavigate, useOutletContext, useLocation } from "react-rou
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
+  faBuilding,
+  faCloudArrowUp,
+  faDownload,
   faExpand,
+  faFileLines,
+  faGlobe,
+  faDiagramProject,
+  faRotate,
+  faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
 import ChatSidebar from "../components/session/chat-sidebar";
-import BrowserLoading from "../components/session/browser-loading";
+import RuntimeCanvas, {
+  RecentActivityStrip,
+  RuntimeRunState,
+  RuntimeActivity,
+  RuntimeTimelineStep,
+} from "../components/session/runtime-canvas";
 import BrowserTabs from "../components/session/browser-tabs";
+import BrowserLoading from "../components/session/browser-loading";
 import ScreenshotStrip from "../components/session/screenshot-strip";
 import IconButton from "../components/common/icon-button";
 import { setChats, resetChat } from "../redux/chatSlice";
@@ -19,20 +33,59 @@ import {
   setSessionInfo,
   setLastUrl,
   setActionHistory,
+  setRuntimeState,
   setContextId,
-  setOperatorInfo,
+  setAgentInfo,
   setActiveTabIndex,
   setLiveUrl,
 } from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
-import { ChatItem, HistoryItem } from "../utils/types";
+import { ChatItem, HistoryItem, KnowledgeDocument, SessionArtifact, SessionDocument } from "../utils/types";
 
 const IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const DOCUMENT_ACCEPT = ".pdf,.md,.markdown,.txt,.csv,.json,.doc,.docx,.html,.xml,.yml,.yaml";
+
+/** Map a raw action name to a runtime activity surface. */
+function activityForAction(action?: string): RuntimeActivity {
+  if (!action) return "tool";
+  if (action === "skill.use") return "skill";
+  if (action === "browser.done") return "done";
+  if (action.startsWith("browser.")) return "browser";
+  return "tool";
+}
+
+function prettyAction(action: string): string {
+  if (action === "skill.use") return "Using skill";
+  if (action.startsWith("browser.") || action.startsWith("user.")) {
+    return action
+      .replace("browser.", "")
+      .replace("user.", "")
+      .split("_")
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+      .join(" ");
+  }
+  return action;
+}
+
+function formatDocumentSize(size: number) {
+  if (!size) return "-";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(0)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function formatDocumentDate(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
 
 function Session(): React.ReactElement {
   const browserContainerRef = useRef<HTMLDivElement | null>(null);
+  const documentInputRef = useRef<HTMLInputElement | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const navigate = useNavigate();
   const { id: sessionId, evalId: evalIdFromParam } = useParams<{ id: string; evalId: string }>();
@@ -46,8 +99,8 @@ function Session(): React.ReactElement {
     evalMode?: boolean;
     evalId?: string;
     runId?: string;
-    operatorId?: string;
-    operatorName?: string;
+    agentId?: string;
+    agentName?: string;
   } | null;
   const isEvalMode = locationState?.evalMode || location.pathname.startsWith("/evals/");
   const { addHistoryItem } = useOutletContext<{
@@ -64,6 +117,15 @@ function Session(): React.ReactElement {
   );
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  // Canvas vs Browser are mutually-exclusive tabs — only one is visible at a time.
+  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents">("canvas");
+  const manualViewRef = useRef(false);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
+  const [sessionDocuments, setSessionDocuments] = useState<SessionDocument[]>([]);
+  const [knowledgeDocuments, setKnowledgeDocuments] = useState<KnowledgeDocument[]>([]);
+  const [documentsLoading, setDocumentsLoading] = useState(false);
+  const [documentsUploading, setDocumentsUploading] = useState(false);
+  const [documentsError, setDocumentsError] = useState("");
 
   const chats = useSelector((state: any) => state.chat.chats);
   const completed = useSelector((state: any) => state.chat.completed);
@@ -75,12 +137,161 @@ function Session(): React.ReactElement {
   const initialUrl = useSelector((state: any) => state.socket.initialUrl);
   const lastUrl = useSelector((state: any) => state.socket.lastUrl);
   const actionHistory = useSelector((state: any) => state.socket.actionHistory);
+  const runtimeState = useSelector((state: any) => state.socket.runtimeState);
   const contextId = useSelector((state: any) => state.socket.contextId);
-  const operatorId = useSelector((state: any) => state.socket.operatorId);
-  const operatorName = useSelector((state: any) => state.socket.operatorName);
+  const agentId = useSelector((state: any) => state.socket.agentId);
+  const agentName = useSelector((state: any) => state.socket.agentName);
   const tabs = useSelector((state: any) => state.socket.tabs);
   const activeTabIndex = useSelector((state: any) => state.socket.activeTabIndex);
   const user = useSelector((state: any) => state.user);
+
+  const loadDocuments = useCallback(async () => {
+    if (!user.email) {
+      setSessionDocuments([]);
+      setKnowledgeDocuments([]);
+      return;
+    }
+    setDocumentsLoading(true);
+    setDocumentsError("");
+    try {
+      const sid = reduxSessionId || sessionId || "";
+      const requests: Promise<Response>[] = [];
+      const sessionParams = new URLSearchParams({ email: user.email });
+      if (sid) requests.push(fetch(`${apiUrl}/sessions/${sid}/documents?${sessionParams.toString()}`));
+      if (companyId) {
+        const knowledgeParams = new URLSearchParams({ email: user.email, companyId });
+        requests.push(fetch(`${apiUrl}/knowledge/documents?${knowledgeParams.toString()}`));
+      }
+      const responses = await Promise.all(requests);
+      for (const res of responses) {
+        if (!res.ok) throw new Error(await res.text());
+      }
+      let cursor = 0;
+      if (sid) {
+        const data = await responses[cursor++].json();
+        setSessionDocuments(data.documents || []);
+      } else {
+        setSessionDocuments([]);
+      }
+      if (companyId) {
+        const data = await responses[cursor]?.json();
+        setKnowledgeDocuments(data?.documents || []);
+      } else {
+        setKnowledgeDocuments([]);
+      }
+    } catch (err: any) {
+      console.error("Failed to load session documents:", err);
+      setDocumentsError(err?.message || "Could not load documents.");
+    } finally {
+      setDocumentsLoading(false);
+    }
+  }, [companyId, reduxSessionId, sessionId, user.email]);
+
+  const uploadDocuments = async (files: FileList | File[] | null) => {
+    const list = files ? Array.from(files) : [];
+    const sid = reduxSessionId || sessionId || "";
+    if (!list.length || !user.email || !sid || documentsUploading) return;
+    setDocumentsUploading(true);
+    setDocumentsError("");
+    try {
+      for (const file of list) {
+        const body = new FormData();
+        body.append("email", user.email);
+        body.append("companyId", companyId || "");
+        body.append("source", "session_upload");
+        body.append("file", file);
+        const res = await fetch(`${apiUrl}/sessions/${sid}/documents`, { method: "POST", body });
+        if (!res.ok) throw new Error(await res.text());
+      }
+      await loadDocuments();
+    } catch (err: any) {
+      console.error("Failed to upload session document:", err);
+      setDocumentsError(err?.message || "Could not upload document.");
+    } finally {
+      setDocumentsUploading(false);
+      if (documentInputRef.current) documentInputRef.current.value = "";
+    }
+  };
+
+  const saveArtifactToKnowledge = async (artifact: SessionArtifact) => {
+    if (!user.email || !companyId || !artifact.url) return;
+    setDocumentsUploading(true);
+    setDocumentsError("");
+    try {
+      const res = await fetch(`${apiUrl}/knowledge/documents/from-url`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          companyId,
+          url: artifact.url,
+          filename: artifact.name,
+          contentType: artifact.contentType || "",
+          source: "session_artifact",
+          metadata: {
+            artifactId: artifact.artifactId,
+            sourceTool: artifact.sourceTool,
+            sessionId,
+            ...(artifact.metadata || {}),
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await loadDocuments();
+    } catch (err: any) {
+      console.error("Failed to save artifact to Knowledge:", err);
+      setDocumentsError(err?.message || "Could not save artifact to Knowledge.");
+    } finally {
+      setDocumentsUploading(false);
+    }
+  };
+
+  const openDocument = (documentId: string) => {
+    if (!user.email || !companyId) return;
+    const params = new URLSearchParams({ email: user.email, companyId });
+    window.open(`${apiUrl}/knowledge/documents/${documentId}/download?${params.toString()}`, "_blank", "noopener,noreferrer");
+  };
+
+  const openSessionDocument = (documentId: string) => {
+    const sid = reduxSessionId || sessionId || "";
+    if (!user.email || !sid) return;
+    const params = new URLSearchParams({ email: user.email });
+    window.open(`${apiUrl}/sessions/${sid}/documents/${documentId}/download?${params.toString()}`, "_blank", "noopener,noreferrer");
+  };
+
+  const promoteSessionDocument = async (documentId: string) => {
+    const sid = reduxSessionId || sessionId || "";
+    if (!user.email || !companyId || !sid) return;
+    setDocumentsUploading(true);
+    setDocumentsError("");
+    try {
+      const res = await fetch(`${apiUrl}/sessions/${sid}/documents/${documentId}/promote-to-knowledge`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, companyId, source: "session_document" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      await loadDocuments();
+    } catch (err: any) {
+      console.error("Failed to save session document to Knowledge:", err);
+      setDocumentsError(err?.message || "Could not save session document to Knowledge.");
+    } finally {
+      setDocumentsUploading(false);
+    }
+  };
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
+      setCompanyId(next);
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
+
+  useEffect(() => {
+    if (activeView === "documents") loadDocuments();
+  }, [activeView, loadDocuments]);
 
   const handleSelectTab = (index: number) => {
     dispatch(setActiveTabIndex(index));
@@ -145,11 +356,14 @@ function Session(): React.ReactElement {
         if (session.actionHistory) {
           dispatch(setActionHistory(session.actionHistory));
         }
+        if (session.runtimeState) {
+          dispatch(setRuntimeState(session.runtimeState));
+        }
         if (session.contextId) {
           dispatch(setContextId(session.contextId));
         }
-        if (session.operatorId) {
-          dispatch(setOperatorInfo({ operatorId: session.operatorId, operatorName: session.operatorName || "" }));
+        if (session.agentId) {
+          dispatch(setAgentInfo({ agentId: session.agentId, agentName: session.agentName || "" }));
         }
       } catch (err) {
         console.error("Failed to load session:", err);
@@ -181,9 +395,10 @@ function Session(): React.ReactElement {
           chatHistory: chats,
           lastUrl: lastUrl || "",
           actionHistory: actionHistory || [],
+          runtimeState: runtimeState || {},
           contextId: contextId || "",
-          operatorId: operatorId || locationState?.operatorId || "",
-          operatorName: operatorName || locationState?.operatorName || "",
+          agentId: agentId || locationState?.agentId || "",
+          agentName: agentName || locationState?.agentName || "",
         }),
       });
       setHistorySaved(true);
@@ -209,14 +424,15 @@ function Session(): React.ReactElement {
     historySaved,
     lastUrl,
     actionHistory,
+    runtimeState,
     user.email,
     prompt,
     initialUrl,
     contextId,
-    operatorId,
-    operatorName,
-    locationState?.operatorId,
-    locationState?.operatorName,
+    agentId,
+    agentName,
+    locationState?.agentId,
+    locationState?.agentName,
     addHistoryItem,
   ]);
 
@@ -261,6 +477,79 @@ function Session(): React.ReactElement {
     selectedScreenshot !== null && allScreenshots[selectedScreenshot]
       ? allScreenshots[selectedScreenshot]
       : lastScreenshot;
+  const sessionArtifacts: SessionArtifact[] = chats
+    .filter((c: ChatItem) => c.role === "assistant" && c.artifacts?.length)
+    .flatMap((c: ChatItem) => c.artifacts || []);
+  const assistantMessages = chats.filter((c: ChatItem) => c.role === "assistant");
+  const latestAssistant = assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1] : null;
+  const latestActions = latestAssistant?.actions || [];
+  const runtimeRunState: RuntimeRunState = completed
+    ? latestAssistant?.state === "error"
+      ? "failed"
+      : "done"
+    : socketId
+      ? "running"
+      : "idle";
+  const runtimeTimeline: RuntimeTimelineStep[] = assistantMessages.flatMap((message: ChatItem) =>
+    (message.actions || []).map((action, index) => ({
+      label: prettyAction(action),
+      activity: activityForAction(action),
+      status:
+        message.actionResults?.[index] === false
+          ? "failed"
+          : message.actionResults?.[index] === true || action === "browser.done"
+            ? "ok"
+            : completed
+              ? "ok"
+              : "pending",
+    })),
+  );
+  const runtimeAgents = [
+    {
+      id: agentId || "active-agent",
+      name: agentName || "Automata Agent",
+      state: runtimeRunState,
+      activity: activityForAction(latestActions[latestActions.length - 1]),
+      detail: latestActions.length > 0 ? prettyAction(latestActions[latestActions.length - 1]) : prompt || "Waiting for task",
+      browserEnabled: Boolean(liveUrl || displayedScreenshot),
+    },
+  ];
+  const runtimeCanvas = (
+    <RuntimeCanvas
+      agents={runtimeAgents}
+      timeline={runtimeTimeline}
+      title="AgentRuntime"
+      subtitle={prompt || "No task is running"}
+      minHeight="100%"
+      showActivityDock={false}
+    />
+  );
+
+  // Whether there is anything to show on the Browser tab.
+  const hasBrowserContent = Boolean(liveUrl) || Boolean(displayedScreenshot);
+  // A run is live (socket connected and task not finished) — the browser is initializing or running.
+  const browserActive = Boolean(socketId) && !completed;
+
+  // Auto-focus the Browser tab the moment a run starts (so the user sees it initialize),
+  // unless they manually picked a tab. Fall back to Canvas when idle with nothing to show.
+  useEffect(() => {
+    if (manualViewRef.current) return;
+    if (browserActive) {
+      setActiveView("browser");
+    } else if (!hasBrowserContent) {
+      setActiveView("canvas");
+    }
+  }, [browserActive, hasBrowserContent]);
+
+  // Reset the manual override once a run fully ends, so the next run can auto-focus the browser again.
+  useEffect(() => {
+    if (!socketId && !completed) manualViewRef.current = false;
+  }, [socketId, completed]);
+
+  const selectView = (view: "canvas" | "browser" | "documents") => {
+    manualViewRef.current = true;
+    setActiveView(view);
+  };
 
   // Disconnect the agent when navigating away from the session page
   const socketRef = useRef<any>(null);
@@ -297,22 +586,252 @@ function Session(): React.ReactElement {
   };
 
   const browserContainerClass =
-    "flex relative bg-white dark:bg-dark-surface rounded-xl w-full shadow-soft flex-grow overflow-hidden border border-gray-200 dark:border-dark-border h-full";
+    "flex relative bg-white dark:bg-dark-surface rounded-xl w-full shadow-soft flex-grow overflow-hidden border border-gray-200 dark:border-dark-border h-full min-h-[320px]";
+
+  const documentsWorkspace = (
+    <div className="flex h-full w-full flex-col rounded-xl border border-gray-200 bg-white shadow-soft dark:border-dark-border dark:bg-dark-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-gray-200 px-4 py-3 dark:border-dark-border">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-900 dark:text-white">Session documents</p>
+          <p className="mt-0.5 text-xs text-gray-400">
+            Session files stay temporary until you save them to Company Knowledge.
+          </p>
+        </div>
+        <div className="flex flex-shrink-0 items-center gap-2">
+          <button
+            onClick={loadDocuments}
+            disabled={documentsLoading}
+            className="flex h-8 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+          >
+            <FontAwesomeIcon icon={documentsLoading ? faSpinner : faRotate} className={`text-[10px] ${documentsLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+          <button
+            onClick={() => documentInputRef.current?.click()}
+            disabled={documentsUploading || !(reduxSessionId || sessionId)}
+            className="flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+          >
+            <FontAwesomeIcon icon={documentsUploading ? faSpinner : faCloudArrowUp} className={`text-[10px] ${documentsUploading ? "animate-spin" : ""}`} />
+            Upload
+          </button>
+          <input
+            ref={documentInputRef}
+            type="file"
+            accept={DOCUMENT_ACCEPT}
+            multiple
+            className="hidden"
+            onChange={(event) => uploadDocuments(event.target.files)}
+          />
+        </div>
+      </div>
+
+      <div
+        className="flex-1 overflow-auto p-4"
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          uploadDocuments(event.dataTransfer.files);
+        }}
+      >
+        {documentsError && (
+          <div className="mb-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+            {documentsError}
+          </div>
+        )}
+
+        {sessionArtifacts.length > 0 && (
+          <div className="mb-4 rounded-xl border border-primary/25 bg-primary/5 p-3 dark:bg-primary/10">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">Session artifacts</p>
+                <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">Files returned by this run. Save them to Knowledge when they should become reusable context.</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+              {sessionArtifacts.map((artifact, index) => (
+                <div
+                  key={artifact.artifactId || `${artifact.url}-${index}`}
+                  className="flex items-center gap-3 rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-zinc-950/60"
+                >
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                    <FontAwesomeIcon icon={faFileLines} className="text-sm" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={artifact.name || artifact.url}>
+                      {artifact.name || "Artifact"}
+                    </p>
+                    <p className="mt-0.5 truncate text-[11px] text-gray-400">
+                      {artifact.kind || "file"}{artifact.sourceTool ? ` · ${artifact.sourceTool}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-shrink-0 items-center gap-1">
+                    <button
+                      onClick={() => window.open(artifact.url, "_blank", "noopener,noreferrer")}
+                      className="h-8 rounded-lg px-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                    >
+                      View
+                    </button>
+                    <a
+                      href={artifact.url}
+                      download={artifact.name || undefined}
+                      className="flex h-8 items-center rounded-lg px-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                    >
+                      Download
+                    </a>
+                    <button
+                      onClick={() => saveArtifactToKnowledge(artifact)}
+                      disabled={!companyId || documentsUploading}
+                      className="h-8 rounded-lg bg-gradient-primary px-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+                    >
+                      Save
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {documentsLoading ? (
+          <div className="flex h-full min-h-[320px] items-center justify-center">
+            <FontAwesomeIcon icon={faSpinner} className="text-2xl text-primary animate-spin" />
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">This Session</p>
+                  <p className="mt-0.5 text-xs text-gray-400">Temporary files available to this session. Promote them only when they should become reusable Knowledge.</p>
+                </div>
+              </div>
+              {sessionDocuments.length === 0 ? (
+                <button
+                  onClick={() => documentInputRef.current?.click()}
+                  className="flex min-h-[220px] w-full flex-col items-center justify-center rounded-xl border-2 border-dashed border-gray-300 px-6 text-center transition-colors hover:border-primary/60 hover:bg-gray-50 dark:border-dark-border dark:hover:bg-white/5"
+                >
+                  <span className="mb-3 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <FontAwesomeIcon icon={faCloudArrowUp} />
+                  </span>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Drop files here or click to upload</p>
+                  <p className="mt-1 text-xs text-gray-400">Uploads stay in this session until you save them to Knowledge.</p>
+                </button>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+                  {sessionDocuments.map((document) => (
+                    <div
+                      key={document.documentId}
+                      className="group rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-primary/40 dark:border-dark-border dark:bg-zinc-900/50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                          <FontAwesomeIcon icon={faFileLines} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={document.filename}>
+                            {document.filename}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-gray-400">
+                            {formatDocumentSize(document.size)} · {formatDocumentDate(document.createdAt)}
+                          </p>
+                          <p className="mt-1 truncate text-[10px] text-gray-400">
+                            {document.source?.replace(/_/g, " ") || "session upload"} · {document.status || "stored"}
+                          </p>
+                        </div>
+                        <div className="flex flex-shrink-0 items-center gap-1">
+                          <button
+                            onClick={() => openSessionDocument(document.documentId)}
+                            className="h-8 rounded-lg px-2 text-xs font-semibold text-gray-500 transition-colors hover:bg-gray-100 hover:text-gray-900 dark:text-gray-300 dark:hover:bg-white/5 dark:hover:text-white"
+                          >
+                            View
+                          </button>
+                          <button
+                            onClick={() => promoteSessionDocument(document.documentId)}
+                            disabled={!companyId || documentsUploading || Boolean(document.knowledgeDocumentId)}
+                            className="h-8 rounded-lg bg-gradient-primary px-2 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
+                            title={companyId ? "Save to Company Knowledge" : "Select a company first"}
+                          >
+                            {document.knowledgeDocumentId ? "Saved" : "Save"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+
+            <section>
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Company Knowledge</p>
+                  <p className="mt-0.5 text-xs text-gray-400">Persistent documents available across agents and sessions for the selected company.</p>
+                </div>
+              </div>
+              {!companyId ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 text-center dark:border-dark-border dark:bg-zinc-900/50">
+                  <span className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 dark:border-dark-border dark:bg-zinc-950">
+                    <FontAwesomeIcon icon={faBuilding} />
+                  </span>
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">No company selected</p>
+                  <p className="mt-1 text-xs text-gray-400">Select a company from the top bar to see persistent Knowledge.</p>
+                </div>
+              ) : knowledgeDocuments.length === 0 ? (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-6 text-center text-sm text-gray-400 dark:border-dark-border dark:bg-zinc-900/50">
+                  No Company Knowledge documents yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+                  {knowledgeDocuments.map((document) => (
+                    <div
+                      key={document.documentId}
+                      className="group rounded-lg border border-gray-200 bg-gray-50 p-3 transition-colors hover:border-primary/40 dark:border-dark-border dark:bg-zinc-900/50"
+                    >
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                          <FontAwesomeIcon icon={faFileLines} />
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-gray-900 dark:text-white" title={document.filename}>
+                            {document.filename}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-gray-400">
+                            {formatDocumentSize(document.size)} · {formatDocumentDate(document.createdAt)}
+                          </p>
+                          <p className="mt-1 truncate text-[10px] text-gray-400">
+                            {document.source?.replace(/_/g, " ") || "upload"} · {document.status || "stored"}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => openDocument(document.documentId)}
+                          className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-primary/10 hover:text-primary"
+                          title="Open document"
+                        >
+                          <FontAwesomeIcon icon={faDownload} className="text-xs" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        )}
+      </div>
+    </div>
+  );
 
   return (
     <div className="w-full h-full flex flex-col relative bg-gray-100 dark:bg-dark-bg">
+      {/* Shared section backdrop — same dark-bg image used across the app. */}
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
-        <img
-          src="/assets/images/bg/dark-bg.webp"
-          alt=""
-          className="w-full h-full object-cover"
-        />
+        <img src="/assets/images/bg/dark-bg.webp" alt="" className="w-full h-full object-cover" />
       </div>
 
       {/* Top header bar — full width, h-14 matches sidebar logo row */}
       <div
-        className="flex items-center justify-between w-full h-14 px-5 border-b border-gray-200 dark:border-dark-border
-        bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm relative z-10 flex-shrink-0"
+        className="flex items-center justify-between w-full h-14 px-5 border-b border-gray-200 dark:border-zinc-800/80
+        bg-white/80 dark:bg-dark-bg/85 backdrop-blur-sm relative z-10 flex-shrink-0"
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-gray-800 dark:text-gray-100">
@@ -323,7 +842,11 @@ function Session(): React.ReactElement {
             </span>
           </span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3 min-w-0">
+          {/* Recent activity — last few tools/actions, right-aligned on the header row */}
+          <div className="hidden md:flex min-w-0 max-w-[46vw] overflow-x-auto scrollbar-thin">
+            <RecentActivityStrip timeline={runtimeTimeline} limit={5} />
+          </div>
           {!showChatSidebar && (
             <IconButton
               icon={faBars}
@@ -338,9 +861,46 @@ function Session(): React.ReactElement {
       <div className="flex flex-1 min-h-0 relative">
         {/* Browser view area */}
         <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-4 h-full relative overflow-hidden">
-          {/* Browser view */}
-          <div className="flex w-full flex-grow min-h-0 relative overflow-hidden mt-2">
-            {socketId && liveUrl && !completed ? (
+          {/* Tab switcher — Canvas and Browser are mutually exclusive */}
+          <div className="mb-3 flex items-center gap-1 flex-shrink-0 w-fit rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/60 p-1 backdrop-blur-sm">
+            {([
+              { key: "canvas", label: "Canvas", icon: faDiagramProject },
+              { key: "browser", label: "Browser", icon: faGlobe },
+              { key: "documents", label: "Documents", icon: faFileLines },
+            ] as const).map((tab) => {
+              const isActive = activeView === tab.key;
+              const showLiveDot = tab.key === "browser" && Boolean(socketId && liveUrl && !completed);
+              return (
+                <button
+                  key={tab.key}
+                  onClick={() => selectView(tab.key)}
+                  className={`flex items-center gap-2 rounded-lg px-3.5 h-8 text-xs font-semibold transition-all duration-200 ${
+                    isActive
+                      ? "bg-gradient-primary text-white shadow-glow"
+                      : "text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5"
+                  }`}
+                >
+                  <FontAwesomeIcon icon={tab.icon} className="text-[11px]" />
+                  {tab.label}
+                  {showLiveDot && (
+                    <span className="ml-0.5 h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Active panel */}
+          <div className="flex w-full flex-grow min-h-0 relative overflow-hidden">
+            {activeView === "canvas" ? (
+              <div className="w-full h-full min-h-[320px]">
+                {runtimeCanvas}
+              </div>
+            ) : activeView === "documents" ? (
+              <div className="w-full h-full min-h-[320px]">
+                {documentsWorkspace}
+              </div>
+            ) : socketId && liveUrl && !completed ? (
               <div ref={browserContainerRef} className={browserContainerClass + " flex-col"}>
                 <BrowserTabs
                   tabs={tabs}
@@ -358,19 +918,15 @@ function Session(): React.ReactElement {
                   style={{ pointerEvents: "none" }}
                 />
               </div>
-            ) : socketId && !liveUrl && !completed ? (
-              <div className={browserContainerClass}>
-                <BrowserLoading minHeight="600px" />
-              </div>
             ) : displayedScreenshot ? (
               <div ref={browserContainerRef} className={browserContainerClass}>
                 <img
                   src={`data:image/png;base64,${displayedScreenshot}`}
-                  alt="Last browser state"
+                  alt="Browser state"
                   className="w-full h-full object-contain bg-white dark:bg-dark-surface"
                 />
                 <button
-                  className="absolute top-6 right-3 z-10 flex items-center justify-center w-8 h-8 rounded-lg
+                  className="absolute top-3 right-3 z-10 flex items-center justify-center w-8 h-8 rounded-lg
                     bg-black/40 hover:bg-black/60 text-white/80 hover:text-white
                     transition-all duration-200 backdrop-blur-sm"
                   onClick={handleFullScreen}
@@ -379,20 +935,26 @@ function Session(): React.ReactElement {
                   <FontAwesomeIcon icon={faExpand} className="text-xs" />
                 </button>
               </div>
-            ) : (
+            ) : browserActive ? (
+              // Run is live but the live URL / first screenshot has not arrived yet — show the init animation.
               <div className={browserContainerClass}>
-                <div className="w-full h-full flex items-center justify-center text-gray-400 dark:text-gray-500">
-                  <div className="text-center">
-                    <p className="text-lg font-medium">No screenshot available</p>
-                    <p className="text-sm mt-1">Start a task to see the browser view here</p>
-                  </div>
+                <BrowserLoading minHeight="320px" />
+              </div>
+            ) : (
+              <div className={browserContainerClass + " items-center justify-center"}>
+                <div className="text-center px-6">
+                  <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-2xl border border-gray-200 dark:border-zinc-800/80 bg-gray-50 dark:bg-zinc-900/70 text-gray-400 dark:text-zinc-500">
+                    <FontAwesomeIcon icon={faGlobe} />
+                  </span>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-zinc-200">No browser activity yet</p>
+                  <p className="mt-1 text-xs text-gray-400 dark:text-zinc-500">Start a task to see the live browser here.</p>
                 </div>
               </div>
             )}
           </div>
 
-          {/* Screenshot strip — only when no task is actively running */}
-          {allScreenshots.length > 0 && (!socketId || completed) && (
+          {/* Screenshot strip — browser tab, only when no task is actively running */}
+          {activeView === "browser" && allScreenshots.length > 0 && (!socketId || completed) && (
             <div className="w-full px-5 mt-2 flex-shrink-0">
               <ScreenshotStrip
                 screenshots={allScreenshots}

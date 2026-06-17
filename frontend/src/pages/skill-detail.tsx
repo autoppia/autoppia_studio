@@ -22,8 +22,9 @@ import { checkBackendHealth } from "../utils/health";
 import { AppDispatch } from "../redux/store";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
 import ConfirmModal from "../components/common/confirm-modal";
+import { getSessionBrowserMode } from "../utils/browser-mode";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface Profile {
   id: string;
@@ -151,6 +152,7 @@ export default function SkillDetail() {
       initial_url: initialUrl,
       context_id: contextId,
       delay: 1.0,
+      browser_mode: getSessionBrowserMode(),
     });
 
     navigate(`/session/${sessionId}`, { state: { activeSessionId: sessionId } });

@@ -37,7 +37,7 @@ const chatSlice = createSlice({
     },
     // Called before each action executes — adds action with reasoning to the chat
     addAction: (state, action) => {
-      const { action: actionName, reasoning, previous_success } = action.payload;
+      const { action: actionName, reasoning, previous_success, skill } = action.payload;
       const lastIndex = state.chats.length - 1;
       const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
 
@@ -53,6 +53,7 @@ const chatSlice = createSlice({
           thinking: reasoning || actionName || lastChat.thinking,
           reasoning: reasoning || lastChat.reasoning,
           actions: [...(lastChat.actions || []), actionName],
+          actionMetadata: [...(lastChat.actionMetadata || []), skill ? { skill } : undefined],
           actionResults: [...prevResults, undefined], // current action is pending
         };
       } else {
@@ -63,8 +64,10 @@ const chatSlice = createSlice({
             thinking: reasoning || actionName || "Thinking...",
             state: "thinking",
             actions: [actionName],
+            actionMetadata: [skill ? { skill } : undefined],
             actionResults: [undefined], // pending
             screenshots: [],
+            artifacts: [],
             reasoning: reasoning || undefined,
           },
         ];
@@ -87,6 +90,7 @@ const chatSlice = createSlice({
           state: action.payload.state,
           actionResults: prevResults,
           screenshots: action.payload.screenshots || lastChat.screenshots || [],
+          artifacts: action.payload.artifacts || lastChat.artifacts || [],
         };
       } else {
         state.chats = [
@@ -96,13 +100,35 @@ const chatSlice = createSlice({
             content: action.payload.content,
             state: action.payload.state,
             screenshots: action.payload.screenshots || [],
+            artifacts: action.payload.artifacts || [],
           },
         ];
       }
       state.completed = true;
+    },
+    addScreenshot: (state, action) => {
+      const screenshot = action.payload;
+      if (!screenshot) return;
+      const lastIndex = state.chats.length - 1;
+      const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
+      if (lastChat && lastChat.role === "assistant") {
+        state.chats[lastIndex] = {
+          ...lastChat,
+          screenshots: [...(lastChat.screenshots || []), screenshot],
+        };
+      } else {
+        state.chats = [
+          ...state.chats,
+          {
+            role: "assistant",
+            state: "thinking",
+            screenshots: [screenshot],
+          },
+        ];
+      }
     }
   },
 });
 
-export const { resetChat, setChats, addTask, addAction, addResult } = chatSlice.actions;
+export const { resetChat, setChats, addTask, addAction, addResult, addScreenshot } = chatSlice.actions;
 export default chatSlice.reducer;

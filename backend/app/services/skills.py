@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,7 +14,9 @@ def now_iso() -> str:
 
 
 def skill_slug(value: str) -> str:
-    text = re.sub(r"[^a-zA-Z0-9]+", "_", value.strip().lower()).strip("_")
+    normalized = unicodedata.normalize("NFKD", value.strip().lower())
+    ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_text).strip("_")
     return text or "skill"
 
 
@@ -49,6 +52,7 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
         {"_id": 0},
     )
     capability_id = str((existing or {}).get("capabilityId") or capability_id)
+    metadata = trajectory.get("metadata") if isinstance(trajectory.get("metadata"), dict) else {}
     await capabilities_collection.update_one(
         {"capabilityId": capability_id},
         {
@@ -64,6 +68,9 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
                 "description": trajectory.get("prompt", ""),
                 "whenToUse": trajectory.get("prompt", ""),
                 "inputSchema": {"type": "object", "properties": {"instruction": {"type": "string"}}},
+                "connectorIds": trajectory.get("connectorIds", []),
+                "toolIds": trajectory.get("toolIds", []),
+                "runtimeRequirements": trajectory.get("runtimeRequirements", []),
                 "sideEffects": "writes"
                 if any(
                     "send" in str((tool.get("name") or tool.get("action") or tool) if isinstance(tool, dict) else tool).lower()
@@ -79,6 +86,8 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
                 if isinstance(trajectory.get("harvester"), dict)
                 else trajectory.get("harvesterType", ""),
                 "harvesterRunId": trajectory.get("harvesterRunId", ""),
+                "discovererName": metadata.get("discoveredBy", ""),
+                "discovererVersion": metadata.get("discovererVersion", ""),
                 "judge": judge or {},
                 "updatedAt": now,
             },

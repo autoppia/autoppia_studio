@@ -13,7 +13,7 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 type RangeKey = "24h" | "7d" | "30d" | "90d";
 
@@ -58,14 +58,28 @@ export default function Analytics() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!user.email) return;
+    if (!user.email) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     setError(null);
 
+    const responseMessage = async (res: Response) => {
+      const text = await res.text();
+      if (!text) return "Failed to load analytics";
+      try {
+        const json = JSON.parse(text);
+        return json?.detail || json?.message || "Failed to load analytics";
+      } catch {
+        return text.slice(0, 180);
+      }
+    };
+
     fetch(`${apiUrl}/analytics?email=${encodeURIComponent(user.email)}&range=${range}`)
       .then(async (res) => {
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) throw new Error(await responseMessage(res));
         return res.json();
       })
       .then((json: AnalyticsResponse) => {
@@ -145,46 +159,47 @@ export default function Analytics() {
               {/* API Credits Usage */}
               <section>
                 <h2 className="text-base font-semibold text-gray-800 dark:text-gray-100 mb-4">
-                  API Credits Usage
+                  Billing Telemetry
                 </h2>
 
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-                  <div className="lg:col-span-1 bg-white dark:bg-dark-surface rounded-xl
-                    border border-gray-200 dark:border-dark-border shadow-soft p-5 space-y-5">
-                    <StatRow
-                      icon={faCoins}
-                      label="Total Usage"
-                      value={`$${(credits?.total_usage ?? 0).toFixed(4)}`}
-                    />
-                    <StatRow
-                      icon={faClock}
-                      label="Runway"
-                      value={credits?.runway != null ? `${credits.runway}` : "—"}
-                    />
+                {credits?.available ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                    <div className="lg:col-span-1 bg-white dark:bg-dark-surface rounded-xl
+                      border border-gray-200 dark:border-dark-border shadow-soft p-5 space-y-5">
+                      <StatRow
+                        icon={faCoins}
+                        label="Total Usage"
+                        value={`$${(credits.total_usage ?? 0).toFixed(4)}`}
+                      />
+                      <StatRow
+                        icon={faClock}
+                        label="Runway"
+                        value={credits.runway != null ? `${credits.runway}` : "—"}
+                      />
 
-                    <div className="pt-4 border-t border-gray-100 dark:border-dark-border">
-                      <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
-                        Breakdown by Source
+                      <div className="pt-4 border-t border-gray-100 dark:border-dark-border">
+                        <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2">
+                          Breakdown by Source
+                        </p>
+                        <p className="text-sm text-gray-400 dark:text-gray-500">
+                          {credits.breakdown_by_source.length ? "Usage sources loaded" : "No usage in this range"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-xl
+                      border border-gray-200 dark:border-dark-border shadow-soft p-5">
+                      <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
+                        Usage Over Time
                       </p>
-                      <p className="text-sm text-gray-400 dark:text-gray-500">
-                        {credits?.available ? "No data available" : "Billing telemetry not available yet"}
-                      </p>
+                      <ChartPlaceholder icon={faChartLine} label="No usage in this range" />
                     </div>
                   </div>
-
-                  <div className="lg:col-span-2 bg-white dark:bg-dark-surface rounded-xl
-                    border border-gray-200 dark:border-dark-border shadow-soft p-5">
-                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
-                      Usage Over Time
-                    </p>
-                    <ChartPlaceholder
-                      icon={faChartLine}
-                      label={credits?.available
-                        ? "No usage in this range"
-                        : "Billing telemetry not available yet"}
-                    />
+                ) : (
+                  <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft p-5">
+                    <ChartPlaceholder icon={faCoins} label="Billing telemetry is not connected yet" />
                   </div>
-                </div>
+                )}
               </section>
 
               {/* Agent Sessions */}

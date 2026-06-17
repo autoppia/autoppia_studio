@@ -19,6 +19,7 @@ import {
   faFlagCheckered,
   faGlobe,
   faBrain,
+  faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
 import {
   faCircleCheck,
@@ -47,6 +48,7 @@ const ACTION_ICONS: Record<string, IconDefinition> = {
   "browser.extract": faCode,
   "browser.screenshot": faGlobe,
   "browser.done": faFlagCheckered,
+  "skill.use": faWandMagicSparkles,
   "Initialize": faGlobe,
   "Continue": faCompass,
 };
@@ -56,11 +58,34 @@ function getActionIcon(actionName: string): IconDefinition {
 }
 
 function formatToolName(toolName: string): string {
+  if (toolName === "skill.use") return "Using Skill";
   const name = toolName.replace("browser.", "").replace("user.", "");
   return name
     .split("_")
     .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
     .join(" ");
+}
+
+type ActionGroup =
+  | { kind: "action"; index: number }
+  | { kind: "skill"; index: number; children: number[] };
+
+/** Group the flat action list so that actions following a "skill.use" entry
+ *  are nested as children of that skill (until the next skill.use). */
+function buildActionGroups(actions: string[]): ActionGroup[] {
+  const groups: ActionGroup[] = [];
+  let currentSkill: { kind: "skill"; index: number; children: number[] } | null = null;
+  actions.forEach((action, index) => {
+    if (action === "skill.use") {
+      currentSkill = { kind: "skill", index, children: [] };
+      groups.push(currentSkill);
+    } else if (currentSkill) {
+      currentSkill.children.push(index);
+    } else {
+      groups.push({ kind: "action", index });
+    }
+  });
+  return groups;
 }
 
 /** Get the latest action name, formatted for display. */
@@ -76,6 +101,7 @@ interface AgentResponseProps {
   role: string;
   content?: string;
   actions?: string[];
+  actionMetadata?: ({ skill?: Record<string, any> } | undefined)[];
   actionResults?: (boolean | undefined)[];
   thinking?: string;
   reasoning?: string;
@@ -83,8 +109,9 @@ interface AgentResponseProps {
 }
 
 function AgentResponse(props: AgentResponseProps) {
-  const { content, actions, actionResults, thinking, reasoning, state } = props;
+  const { content, actions, actionMetadata, actionResults, thinking, reasoning, state } = props;
   const [collapsed, setCollapsed] = useState(false);
+  const [expandedSkills, setExpandedSkills] = useState<Record<number, boolean>>({});
 
   const hasActions = actions && actions.length > 0;
   const showExpanded = hasActions && !collapsed;
@@ -98,6 +125,39 @@ function AgentResponse(props: AgentResponseProps) {
     : latestResult === false
       ? "text-red-500"
       : "text-primary animate-pulse";
+
+  // Renders a single (non-skill) action row by its index in the flat list.
+  const renderActionRow = (index: number) => {
+    const action = actions![index];
+    const icon = getActionIcon(action);
+    const result = actionResults?.[index];
+    const isSuccess = result === true;
+    const isFailed = result === false;
+
+    const iconColor = isSuccess
+      ? "text-emerald-500"
+      : isFailed
+        ? "text-red-500"
+        : "text-primary animate-pulse";
+
+    return (
+      <div
+        key={action + index}
+        className="w-full rounded-lg p-2 text-sm transition-all duration-200 text-gray-600 dark:text-gray-300"
+      >
+        <div className="flex items-center gap-2">
+          <span className="flex-shrink-0 w-4 text-center">
+            <FontAwesomeIcon icon={icon} className={`text-xs ${iconColor}`} />
+          </span>
+          <span className="font-medium text-xs text-gray-500 dark:text-gray-400">
+            {action.startsWith("browser.") || action.startsWith("user.")
+              ? formatToolName(action)
+              : action}
+          </span>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="mb-4 animate-fade-in">
@@ -179,38 +239,63 @@ function AgentResponse(props: AgentResponseProps) {
             <div className="border-t border-gray-200 dark:border-dark-border mb-1" />
           )}
 
-          {/* Action list */}
+          {/* Action list — actions following a "skill.use" belong to that skill
+              and are nested under it, hidden until the skill row is expanded. */}
           {actions &&
-            actions.map((action, index) => {
-              const icon = getActionIcon(action);
-              const result = actionResults?.[index];
-              const isSuccess = result === true;
-              const isFailed = result === false;
+            buildActionGroups(actions).map((group) => {
+              // Plain (non-skill) action row
+              if (group.kind === "action") {
+                return renderActionRow(group.index);
+              }
 
-              const iconColor = isSuccess
-                ? "text-emerald-500"
-                : isFailed
-                  ? "text-red-500"
-                  : "text-primary animate-pulse";
+              // Skill group: collapsible header + nested inner actions
+              const skill = actionMetadata?.[group.index]?.skill;
+              const expanded = !!expandedSkills[group.index];
+              const childCount = group.children.length;
 
               return (
-                <div
-                  key={action + index}
-                  className="w-full text-gray-600 dark:text-gray-300 rounded-lg p-2 text-sm transition-all duration-200"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="flex-shrink-0 w-4 text-center">
-                      <FontAwesomeIcon
-                        icon={icon}
-                        className={`text-xs ${iconColor}`}
-                      />
-                    </span>
-                    <span className="font-medium text-xs text-gray-500 dark:text-gray-400">
-                      {action.startsWith("browser.") || action.startsWith("user.")
-                        ? formatToolName(action)
-                        : action}
-                    </span>
-                  </div>
+                <div key={"skill" + group.index} className="w-full">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      childCount > 0 &&
+                      setExpandedSkills((prev) => ({
+                        ...prev,
+                        [group.index]: !prev[group.index],
+                      }))
+                    }
+                    className={`w-full rounded-lg p-2 text-sm transition-all duration-200 bg-primary/5 dark:bg-primary/10 ${
+                      childCount > 0 ? "hover:bg-primary/10 dark:hover:bg-primary/15" : "cursor-default"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="flex-shrink-0 w-4 text-center">
+                        <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs text-primary" />
+                      </span>
+                      <span className="font-medium text-xs text-primary">
+                        {`Using skill: ${skill?.name || "Approved skill"}`}
+                      </span>
+                      {skill?.status && (
+                        <span className="text-[10px] font-medium uppercase tracking-wide text-primary/70">
+                          {String(skill.status)}
+                        </span>
+                      )}
+                      {childCount > 0 && (
+                        <span className="ml-auto flex items-center gap-1.5 text-[10px] text-primary/70">
+                          <span>{childCount} {childCount === 1 ? "step" : "steps"}</span>
+                          <FontAwesomeIcon
+                            icon={expanded ? faChevronUp : faChevronDown}
+                            className="text-[10px]"
+                          />
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                  {expanded && childCount > 0 && (
+                    <div className="ml-3 mt-0.5 border-l border-primary/20 pl-2">
+                      {group.children.map((childIndex) => renderActionRow(childIndex))}
+                    </div>
+                  )}
                 </div>
               );
             })}

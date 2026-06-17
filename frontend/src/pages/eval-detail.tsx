@@ -18,7 +18,7 @@ import { EvalItem, EvalRun } from "../utils/types";
 import ConfirmModal from "../components/common/confirm-modal";
 import useStartSession from "../hooks/useStartSession";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface Profile {
   id: string;
@@ -173,7 +173,7 @@ export default function EvalDetail() {
         contextId,
         { evalMode: true, evalId, runId },
         `/evals/${evalId}/run`,
-        evalItem.operatorId ? { operatorId: evalItem.operatorId, operatorName: evalItem.operatorName || "" } : undefined,
+        evalItem.agentId ? { agentId: evalItem.agentId, agentName: evalItem.agentName || "" } : undefined,
       );
     } catch (err) {
       console.error("Failed to create run:", err);

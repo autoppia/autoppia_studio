@@ -12,6 +12,7 @@ db = client.get_default_database(default="automata")
 
 users_collection = db["users"]
 sessions_collection = db["sessions"]
+session_documents_collection = db["session_documents"]
 profiles_collection = db["profiles"]
 api_keys_collection = db["api_keys"]
 skills_collection = db["skills"]
@@ -31,6 +32,9 @@ trajectories_collection = db["trajectories"]
 capabilities_collection = db["capabilities"]
 tools_collection = db["tools"]
 harvester_runs_collection = db["harvester_runs"]
+work_boards_collection = db["work_boards"]
+work_items_collection = db["work_items"]
+notifications_collection = db["notifications"]
 tool_runs_collection = db["tool_runs"]
 trajectory_runs_collection = db["trajectory_runs"]
 capability_grants_collection = db["capability_grants"]
@@ -39,6 +43,7 @@ validator_round_tasks_collection = db["validator_round_tasks"]
 validator_agent_runs_collection = db["validator_agent_runs"]
 validator_evaluations_collection = db["validator_evaluations"]
 validator_task_logs_collection = db["validator_task_logs"]
+worker_locks_collection = db["worker_locks"]
 
 
 async def ensure_indexes():
@@ -46,6 +51,10 @@ async def ensure_indexes():
     await users_collection.create_index("email", unique=True)
     await sessions_collection.create_index("email")
     await sessions_collection.create_index("createdAt")
+    await session_documents_collection.create_index("sessionId")
+    await session_documents_collection.create_index("documentId", unique=True)
+    await session_documents_collection.create_index("email")
+    await session_documents_collection.create_index("companyId")
     await profiles_collection.create_index("email")
     await api_keys_collection.create_index("email")
     await api_keys_collection.create_index("keyHash", unique=True)
@@ -103,6 +112,21 @@ async def ensure_indexes():
     await harvester_runs_collection.create_index("agentId")
     await harvester_runs_collection.create_index("connectorId")
     await harvester_runs_collection.create_index("harvesterRunId", unique=True)
+    await work_boards_collection.create_index("email")
+    await work_boards_collection.create_index("companyId")
+    await work_boards_collection.create_index("boardId", unique=True)
+    await work_items_collection.create_index("email")
+    await work_items_collection.create_index("companyId")
+    await work_items_collection.create_index("boardId")
+    await work_items_collection.create_index("agentId")
+    await work_items_collection.create_index("status")
+    await work_items_collection.create_index("nextRunAt")
+    await work_items_collection.create_index("workItemId", unique=True)
+    await notifications_collection.create_index("email")
+    await notifications_collection.create_index("companyId")
+    await notifications_collection.create_index("notificationId", unique=True)
+    await notifications_collection.create_index("read")
+    await notifications_collection.create_index("createdAt")
     await tool_runs_collection.create_index("toolId")
     await tool_runs_collection.create_index("agentId")
     await tool_runs_collection.create_index("companyId")
@@ -125,4 +149,6 @@ async def ensure_indexes():
     await validator_evaluations_collection.create_index("evaluation_id")
     await validator_task_logs_collection.create_index("validator_round_id")
     await validator_task_logs_collection.create_index("task_id")
+    await worker_locks_collection.create_index("lockId", unique=True)
+    await worker_locks_collection.create_index("expiresAt")
     logger.info("MongoDB indexes ensured")

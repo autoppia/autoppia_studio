@@ -5,15 +5,15 @@ import {
   faPaperPlane,
   faAngleDown,
   faGlobe,
-  faUserCircle,
+  faWindowMaximize,
   faRobot,
 } from "@fortawesome/free-solid-svg-icons";
 
 import { websites } from "../../utils/mock/mockDB";
 import useStartSession from "../../hooks/useStartSession";
-import { Operator } from "../../utils/types";
+import { AgentConfig } from "../../utils/types";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface Profile {
   id: string;
@@ -28,9 +28,9 @@ interface TaskSectionProps {
   setInitialUrl: React.Dispatch<React.SetStateAction<string>>;
   openedDropdown: string | null;
   setOpenedDropdown: React.Dispatch<React.SetStateAction<string | null>>;
-  operators: Operator[];
-  selectedOperator: Operator | null;
-  setSelectedOperator: React.Dispatch<React.SetStateAction<Operator | null>>;
+  agents: AgentConfig[];
+  selectedAgent: AgentConfig | null;
+  setSelectedAgent: React.Dispatch<React.SetStateAction<AgentConfig | null>>;
 }
 
 export default function TaskSection(props: TaskSectionProps) {
@@ -41,9 +41,9 @@ export default function TaskSection(props: TaskSectionProps) {
     setInitialUrl,
     openedDropdown,
     setOpenedDropdown,
-    operators,
-    selectedOperator,
-    setSelectedOperator,
+    agents,
+    selectedAgent,
+    setSelectedAgent,
   } = props;
 
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
@@ -133,9 +133,9 @@ export default function TaskSection(props: TaskSectionProps) {
         prompt,
         initialUrl,
         selectedProfile?.contextId || "",
-        selectedOperator ? { operatorId: selectedOperator.operatorId, operatorName: selectedOperator.name } : undefined,
+        selectedAgent ? { agentId: selectedAgent.agentId, agentName: selectedAgent.name } : undefined,
         "/session",
-        selectedOperator ? { operatorId: selectedOperator.operatorId, operatorName: selectedOperator.name } : undefined,
+        selectedAgent ? { agentId: selectedAgent.agentId, agentName: selectedAgent.name } : undefined,
       );
     } finally {
       setSubmitting(false);
@@ -224,7 +224,7 @@ export default function TaskSection(props: TaskSectionProps) {
                 border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
               onClick={() => setOpenedDropdown("profile")}
             >
-              <FontAwesomeIcon icon={faUserCircle} className={`text-xs ${selectedProfile ? "text-primary" : "opacity-60"}`} />
+              <FontAwesomeIcon icon={faWindowMaximize} className={`text-xs ${selectedProfile ? "text-primary" : "opacity-60"}`} />
               <span className="whitespace-nowrap">{selectedProfile ? selectedProfile.name : "No Profile"}</span>
               <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
             </button>
@@ -267,17 +267,17 @@ export default function TaskSection(props: TaskSectionProps) {
               type="button"
               className="flex items-center gap-2 rounded-xl px-3 h-9 transition-all duration-300
                 border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
-              onClick={() => setOpenedDropdown("operator")}
+              onClick={() => setOpenedDropdown("agent")}
             >
               <FontAwesomeIcon icon={faRobot} className="text-xs text-primary" />
               <span className="whitespace-nowrap max-w-[150px] truncate">
-                {selectedOperator ? selectedOperator.name : "Autoppia Agent"}
+                {selectedAgent ? selectedAgent.name : "Autoppia Agent"}
               </span>
               <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
             </button>
             <div
               style={{
-                display: openedDropdown === "operator" ? "block" : "none",
+                display: openedDropdown === "agent" ? "block" : "none",
                 width: 260,
               }}
               className="absolute right-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
@@ -286,25 +286,25 @@ export default function TaskSection(props: TaskSectionProps) {
                 <button
                   className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                   onClick={() => {
-                    setSelectedOperator(null);
+                    setSelectedAgent(null);
                     setOpenedDropdown(null);
                   }}
                 >
                   Autoppia Agent
                 </button>
-                {operators.map((operator) => (
+                {agents.map((agent) => (
                   <button
-                    key={operator.operatorId}
+                    key={agent.agentId}
                     className="block w-full p-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                     onClick={() => {
-                      setSelectedOperator(operator);
-                      if (operator.websiteUrl) setInitialUrl(operator.websiteUrl);
+                      setSelectedAgent(agent);
+                      if (agent.websiteUrl) setInitialUrl(agent.websiteUrl);
                       setOpenedDropdown(null);
                     }}
                   >
-                    <span className="block text-sm font-medium truncate">{operator.name}</span>
+                    <span className="block text-sm font-medium truncate">{agent.name}</span>
                     <span className="block text-[11px] opacity-70 truncate">
-                      {operator.tasks?.length || 0} trained tasks
+                      {agent.tasks?.length || 0} trained tasks
                     </span>
                   </button>
                 ))}
@@ -312,32 +312,32 @@ export default function TaskSection(props: TaskSectionProps) {
             </div>
           </div>
 
-          {selectedOperator && selectedOperator.tasks?.length > 0 && (
+          {selectedAgent && selectedAgent.tasks?.length > 0 && (
             <div className="relative text-sm font-medium flex-shrink-0">
               <button
                 type="button"
                 className="flex items-center gap-2 rounded-xl px-3 h-9 transition-all duration-300
                   border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg text-gray-700 dark:text-gray-200 hover:border-gray-300 dark:hover:border-gray-600"
-                onClick={() => setOpenedDropdown("operatorTask")}
+                onClick={() => setOpenedDropdown("agentTask")}
               >
                 <span className="whitespace-nowrap">Trained Tasks</span>
                 <FontAwesomeIcon icon={faAngleDown} className="text-xs opacity-60" />
               </button>
               <div
                 style={{
-                  display: openedDropdown === "operatorTask" ? "block" : "none",
+                  display: openedDropdown === "agentTask" ? "block" : "none",
                   width: 280,
                 }}
                 className="absolute right-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
               >
                 <div className="p-1 max-h-[240px] overflow-auto scrollbar-thin">
-                  {selectedOperator.tasks.map((task, index) => (
+                  {selectedAgent.tasks.map((task, index) => (
                     <button
                       key={`${task.name}-${index}`}
                       className="block w-full p-2.5 rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                       onClick={() => {
                         setPrompt(task.prompt);
-                        if (selectedOperator.websiteUrl) setInitialUrl(selectedOperator.websiteUrl);
+                        if (selectedAgent.websiteUrl) setInitialUrl(selectedAgent.websiteUrl);
                         setOpenedDropdown(null);
                       }}
                     >

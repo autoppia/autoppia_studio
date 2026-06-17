@@ -30,6 +30,10 @@ class ToolkitHarvester(BaseHarvester):
             tool_name = str(raw_tool.get("name") or "tool")
             tool_id = f"{connector_id}:{slug(tool_name)}"
             side_effects = str(raw_tool.get("sideEffects") or "reads")
+            execution_type = _execution_type(surface, tool_name)
+            runtime_requirements = list(raw_tool.get("runtimeRequirements") or toolkit.get("runtimeRequirements") or [])
+            if execution_type == "browser_action" and "browser" not in runtime_requirements:
+                runtime_requirements.append("browser")
             tools.append(
                 {
                     "toolId": tool_id,
@@ -42,8 +46,9 @@ class ToolkitHarvester(BaseHarvester):
                     "description": raw_tool.get("description", ""),
                     "inputSchema": raw_tool.get("inputSchema") or {"type": "object", "properties": {}},
                     "outputSchema": raw_tool.get("outputSchema") or {"type": "object", "additionalProperties": True},
-                    "executionType": _execution_type(surface, tool_name),
+                    "executionType": execution_type,
                     "surface": surface,
+                    "runtimeRequirements": runtime_requirements,
                     "sideEffects": side_effects,
                     "permissions": {
                         "connectorId": connector_id,

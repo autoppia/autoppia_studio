@@ -14,7 +14,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { websites } from "../utils/mock/mockDB";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 type GenerationMode = "agent" | "record";
 
@@ -46,8 +46,8 @@ export default function CreateSkill() {
   const [profileDropdownOpen, setProfileDropdownOpen] = useState(false);
   const [urlDropdownOpen, setUrlDropdownOpen] = useState(false);
   const [filteredWebsites, setFilteredWebsites] = useState(websites);
-  const [, setOperator] = useState("autoppia");
-  const [operatorDropdownOpen, setOperatorDropdownOpen] = useState(false);
+  const [, setAgent] = useState("autoppia");
+  const [agentDropdownOpen, setAgentDropdownOpen] = useState(false);
   const goalRef = useRef<HTMLTextAreaElement>(null);
   const instructionsRef = useRef<HTMLTextAreaElement>(null);
 
@@ -122,7 +122,7 @@ export default function CreateSkill() {
   const closeDropdowns = () => {
     setUrlDropdownOpen(false);
     setProfileDropdownOpen(false);
-    setOperatorDropdownOpen(false);
+    setAgentDropdownOpen(false);
   };
 
   return (
@@ -333,7 +333,7 @@ export default function CreateSkill() {
                 </div>
               </div>
 
-              {/* Profile & Operator — inline row */}
+              {/* Profile & Agent — inline row */}
               <div className="flex items-start gap-4">
                 {/* Profile selector */}
                 <div className="flex-1 space-y-2">
@@ -395,16 +395,16 @@ export default function CreateSkill() {
                   </div>
                 </div>
 
-                {/* Operator selector */}
+                {/* Agent selector */}
                 {mode === "agent" && (
                   <div className="flex-1 space-y-2">
                     <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      Operator
+                      Agent
                     </label>
                     <div className="relative" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
-                        onClick={() => setOperatorDropdownOpen((v) => !v)}
+                        onClick={() => setAgentDropdownOpen((v) => !v)}
                         className="w-full h-10 px-3 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border
                           text-sm text-left flex items-center gap-2
                           outline-none focus:border-gray-300 dark:focus:border-gray-600 transition-colors duration-200 cursor-pointer"
@@ -413,18 +413,18 @@ export default function CreateSkill() {
                         <span className="flex-1 truncate text-gray-900 dark:text-white">Autoppia Agent</span>
                         <FontAwesomeIcon
                           icon={faChevronDown}
-                          className={`text-[10px] text-gray-400 transition-transform duration-200 flex-shrink-0 ${operatorDropdownOpen ? "rotate-180" : ""}`}
+                          className={`text-[10px] text-gray-400 transition-transform duration-200 flex-shrink-0 ${agentDropdownOpen ? "rotate-180" : ""}`}
                         />
                       </button>
-                      {operatorDropdownOpen && (
+                      {agentDropdownOpen && (
                         <>
-                          <div className="fixed inset-0 z-10" onClick={() => setOperatorDropdownOpen(false)} />
+                          <div className="fixed inset-0 z-10" onClick={() => setAgentDropdownOpen(false)} />
                           <div className="absolute top-full left-0 right-0 mt-1 z-20 rounded-xl bg-white dark:bg-dark-surface
                             border border-gray-200 dark:border-dark-border shadow-lg overflow-hidden">
                             <div className="p-1">
                               <button
                                 type="button"
-                                onClick={() => { setOperator("autoppia"); setOperatorDropdownOpen(false); }}
+                                onClick={() => { setAgent("autoppia"); setAgentDropdownOpen(false); }}
                                 className="w-full text-left px-3 py-2 text-sm rounded-lg bg-primary/5 text-primary font-medium"
                               >
                                 Autoppia Agent

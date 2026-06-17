@@ -37,6 +37,8 @@ def iwa_task_payload(task_doc: dict[str, Any], agent_config: dict[str, Any] | No
         "prompt": prompt,
         "specifications": _jsonable(specifications),
         "original_prompt": str(metadata.get("originalPrompt") or prompt),
+        "hints": _jsonable(metadata.get("hints") if isinstance(metadata.get("hints"), list) else []),
+        "expected_artifacts": _jsonable(metadata.get("expectedArtifacts") if isinstance(metadata.get("expectedArtifacts"), list) else []),
     }
     return {key: value for key, value in payload.items() if value not in ("", None, {}, [])}
 
@@ -159,7 +161,8 @@ def internal_actions_from_trajectory(trajectory: list[Any]) -> list[dict[str, An
         if not name:
             continue
         args = raw.get("arguments") if isinstance(raw.get("arguments"), dict) else {}
-        actions.append({"action": f"browser.{name}", "args": args})
+        action_name = name if "." in name and not name.startswith("browser.") else f"browser.{name}"
+        actions.append({"action": action_name, "args": args})
     return actions
 
 

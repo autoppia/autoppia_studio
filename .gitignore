@@ -164,6 +164,8 @@ cython_debug/
 *.idea/
 temp
 tmp
+reports/
+.playwright-mcp/
 
 
 .DS_Store

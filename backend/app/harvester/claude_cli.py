@@ -13,6 +13,7 @@ from typing import Any
 
 from app.database import benchmark_tasks_collection, capabilities_collection, connectors_collection, trajectories_collection
 from app.routes.credentials import resolve_secret_refs
+from app.services.bopa import latest_bopa_pdf
 from app.services.iwa_modeling import canonical_tool_trajectory, internal_actions_from_trajectory, iwa_task_payload
 
 
@@ -32,6 +33,25 @@ ACTION_SCHEMA: dict[str, Any] = {
                     "arguments": {"type": "object"},
                 },
                 "required": ["name", "arguments"],
+            },
+        },
+        "discoveredTools": {
+            "type": "array",
+            "description": "Optional connector tools discovered from public API/docs while harvesting. Prefer this when a deterministic API can solve the task.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "description": {"type": "string"},
+                    "inputSchema": {"type": "object"},
+                    "outputSchema": {"type": "object"},
+                    "runtimeRequirements": {"type": "array", "items": {"type": "string"}},
+                    "sideEffects": {"type": "string"},
+                    "executionType": {"type": "string"},
+                    "discoveryEvidence": {"type": "array", "items": {"type": "object"}},
+                    "discoveryRelevance": {"type": "object"},
+                },
+                "required": ["name", "description"],
             },
         },
         "evidence": {
@@ -63,6 +83,7 @@ class HarvestResult:
     final_url: str = ""
     final_html: str = ""
     execution_history: list[dict[str, Any]] | None = None
+    discovered_tools: list[dict[str, Any]] | None = None
     raw_output: str = ""
 
 
@@ -196,6 +217,7 @@ def parse_harvester_output(stdout: str) -> HarvestResult:
         final_url=final_url,
         final_html=str(parsed.get("finalHtml") or parsed.get("final_html") or ""),
         execution_history=parsed.get("execution_history") if isinstance(parsed.get("execution_history"), list) else parsed.get("executionHistory") if isinstance(parsed.get("executionHistory"), list) else None,
+        discovered_tools=parsed.get("discoveredTools") if isinstance(parsed.get("discoveredTools"), list) else parsed.get("discovered_tools") if isinstance(parsed.get("discovered_tools"), list) else [],
         raw_output=stdout,
     )
 
@@ -206,6 +228,55 @@ def _infer_final_url(evidence: list[str]) -> str:
         if match:
             return match.group(0).rstrip(".,)")
     return ""
+
+
+def _is_bopa_pdf_task(agent_config: dict[str, Any], task: dict[str, Any]) -> bool:
+    metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    text = json.dumps(
+        {
+            "prompt": task.get("prompt", ""),
+            "successCriteria": task.get("successCriteria", ""),
+            "websiteUrl": agent_config.get("websiteUrl", ""),
+            "metadata": metadata,
+        },
+        ensure_ascii=False,
+    ).lower()
+    has_bopa = "bopa" in text or "bopa.ad" in text or metadata.get("site") == "BOPA"
+    has_pdf = "pdf" in text or any("pdf" in str(item).lower() for item in metadata.get("expectedArtifacts", []) if item)
+    has_latest_bulletin = any(term in text for term in ("bolet", "butllet", "bulletin", "últim", "ultimo", "latest"))
+    return bool(has_bopa and has_pdf and has_latest_bulletin)
+
+
+async def try_bopa_pdf_harvest(agent_config: dict[str, Any], task: dict[str, Any]) -> HarvestResult | None:
+    if not _is_bopa_pdf_task(agent_config, task):
+        return None
+    data = await asyncio.to_thread(latest_bopa_pdf)
+    trajectory = [{"name": "bopa.latest_bulletin_pdf", "arguments": {}}]
+    return HarvestResult(
+        success=True,
+        confidence=0.96,
+        summary=f"Found latest BOPA bulletin {data['numBOPA']} and verified its PDF link.",
+        actions=internal_actions_from_trajectory(trajectory),
+        trajectory=trajectory,
+        evidence=[
+            f"BOPA API: {data['apiUrl']}",
+            f"Latest bulletin: {data['numBOPA']} published at {data['publishedAt']} extra={data['isExtra']}",
+            f"PDF: {data['pdfUrl']} contentType={data['contentType']} contentLength={data['contentLength']}",
+        ],
+        notes="Deterministic BOPA public bulletin resolver used before LLM/browser harvesting.",
+        final_url=data["pdfUrl"],
+        discovered_tools=[
+            {
+                "name": "bopa.latest_bulletin_pdf",
+                "description": "Resolve the latest official BOPA bulletin PDF using the public BOPA API.",
+                "inputSchema": {"type": "object", "properties": {}},
+                "outputSchema": {"type": "object", "additionalProperties": True},
+                "runtimeRequirements": ["network"],
+                "sideEffects": "reads",
+                "executionType": "api_call",
+            }
+        ],
+    )
 
 
 async def _load_connectors(company_id: str) -> tuple[list[dict[str, Any]], dict[str, str]]:
@@ -247,11 +318,13 @@ Recommended browser approach:
 - Create a short Playwright Python script if browser exploration is needed.
 - Use stable selectors and record the replayable actions you perform.
 - Prefer IWA tool names: `navigate`, `click`, `input`, `select_dropdown`, `send_keys`, `wait`.
+- If you discover a public API, stable HTTP endpoint, SDK method, or deterministic file URL pattern that solves the task, prefer a connector/API tool over browser replay. Return that tool in `discoveredTools` and use its tool name in `trajectory`.
 - Use IWA selectors only: `attributeValueSelector`, `tagContainsSelector`, or `xpathSelector`.
 
 Result:
 - `success=true` only when the task is actually complete.
 - If unsure, use `success=false` and explain `failureReason`.
+- User-provided task hints in `task.hints` are operational guidance. Use them to explore efficiently, but still verify the final state against `successCriteria`.
 """.strip()
         + "\n",
         encoding="utf-8",
@@ -260,7 +333,7 @@ Result:
 
 def _build_prompt(*, task_file: Path, output_file: Path) -> str:
     return f"""
-You are Automata Harvester, the trajectory discovery runtime used during custom agent creation.
+You are Automata Harvester, the task-specific trajectory runtime used during custom agent creation.
 
 Your job:
 1. Read the task package at {task_file}.
@@ -279,6 +352,7 @@ Important rules:
 - A trajectory may be `success=true` for write tasks when the read/exploration/draft is complete and the final write is represented as a pending approved action, not when the write is actually performed.
 - Prefer stable selectors: labels, roles, text, data-testid, href, semantic attributes. Avoid brittle absolute xpaths.
 - `trajectory` must be the replayable sequence of IWA/subnet tool calls. Do not return a sequence of action objects.
+- For API/tool-based solutions, `trajectory` can contain connector tool calls such as `vendor.latest_report` or `system.lookup_record`; include matching definitions in `discoveredTools`.
 - Tool call format examples:
   {{"name": "navigate", "arguments": {{"url": "https://example.com"}}}}
   {{"name": "click", "arguments": {{"selector": {{"type": "attributeValueSelector", "attribute": "id", "value": "submit"}}}}}}
@@ -286,6 +360,9 @@ Important rules:
 - Do not return `roleSelector`, `cssSelector`, or `pressKey`; convert them to `xpathSelector`/`attributeValueSelector` and `send_keys`.
 - Include `finalUrl` whenever browser exploration reaches a final page.
 - Include `execution_history` when possible. Each item should have `stepIndex`, `toolCall`, `url`, and any available `text` or `html`.
+- Read and follow user-provided task hints from `task.hints`, `task.startUrl`, and `task.expectedArtifacts` when present. These are not extra tasks; they are guidance for completing the one task.
+- Focus on the one target task. Capability discoverers may already have published connector tools; prefer those stable tools when they solve the task.
+- If you discover a stable public API/tool while solving this task, report it in `discoveredTools` with evidence, but do not invent broad unrelated skills. Broad connector exploration belongs to the capability discoverer.
 - If the task cannot be completed, return success=false, confidence, failureReason, evidence, and any partial trajectory tool calls.
 
 Return JSON matching this schema:
@@ -293,7 +370,42 @@ Return JSON matching this schema:
 """.strip()
 
 
+def _harvester_task_payload(agent_config: dict[str, Any], task: dict[str, Any], connectors: list[dict[str, Any]]) -> dict[str, Any]:
+    metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+    hints = metadata.get("hints") if isinstance(metadata.get("hints"), list) else []
+    expected_artifacts = metadata.get("expectedArtifacts") if isinstance(metadata.get("expectedArtifacts"), list) else []
+    capability_discovery = metadata.get("capabilityDiscovery") if isinstance(metadata.get("capabilityDiscovery"), dict) else agent_config.get("capabilityDiscovery") if isinstance(agent_config.get("capabilityDiscovery"), dict) else {"mode": "task_scoped"}
+    return {
+        "agent_config": {
+            "agentId": agent_config.get("agentId", ""),
+            "name": agent_config.get("name", ""),
+            "websiteUrl": agent_config.get("websiteUrl", ""),
+            "customInstructions": agent_config.get("customInstructions", ""),
+            "runtimeCapabilities": agent_config.get("runtimeCapabilities", {}),
+            "capabilityDiscovery": capability_discovery,
+        },
+        "task": {
+            "taskId": task.get("taskId") or task.get("trajectoryId", ""),
+            "trajectoryId": task.get("trajectoryId", ""),
+            "taskName": task.get("taskName", ""),
+            "prompt": task.get("prompt", ""),
+            "successCriteria": task.get("successCriteria", ""),
+            "metadata": metadata,
+            "hints": hints,
+            "startUrl": metadata.get("startUrl") or task.get("initialUrl") or agent_config.get("websiteUrl", ""),
+            "expectedArtifacts": expected_artifacts,
+            "capabilityDiscovery": capability_discovery,
+        },
+        "iwa_task": iwa_task_payload(task, agent_config),
+        "connectors": connectors,
+    }
+
+
 async def run_claude_harvest(agent_config: dict[str, Any], task: dict[str, Any]) -> HarvestResult:
+    bopa_result = await try_bopa_pdf_harvest(agent_config, task)
+    if bopa_result is not None:
+        return bopa_result
+
     claude_bin = shutil.which(os.getenv("AUTOMATA_CLAUDE_BIN", "claude"))
     if not claude_bin:
         raise RuntimeError("Claude CLI is not installed or not on PATH")
@@ -303,24 +415,7 @@ async def run_claude_harvest(agent_config: dict[str, Any], task: dict[str, Any])
     run_dir.mkdir(parents=True, exist_ok=True)
 
     connectors, secrets_by_placeholder = await _load_connectors(str(agent_config.get("companyId") or ""))
-    task_payload = {
-        "agent_config": {
-            "agentId": agent_config.get("agentId", ""),
-            "name": agent_config.get("name", ""),
-            "websiteUrl": agent_config.get("websiteUrl", ""),
-            "customInstructions": agent_config.get("customInstructions", ""),
-            "runtimeCapabilities": agent_config.get("runtimeCapabilities", {}),
-        },
-        "task": {
-            "taskId": task.get("taskId") or task.get("trajectoryId", ""),
-            "trajectoryId": task.get("trajectoryId", ""),
-            "taskName": task.get("taskName", ""),
-            "prompt": task.get("prompt", ""),
-            "successCriteria": task.get("successCriteria", ""),
-        },
-        "iwa_task": iwa_task_payload(task, agent_config),
-        "connectors": connectors,
-    }
+    task_payload = _harvester_task_payload(agent_config, task, connectors)
     task_file = run_dir / "task.json"
     output_file = run_dir / "result.json"
     _write_json(task_file, task_payload)

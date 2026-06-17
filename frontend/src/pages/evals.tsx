@@ -13,10 +13,10 @@ import {
   faListCheck,
   faClockRotateLeft,
 } from "@fortawesome/free-solid-svg-icons";
-import { EvalItem, EvalRun, Operator } from "../utils/types";
+import { AgentConfig, EvalItem, EvalRun } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 type TabKey = "benchmarks" | "runs";
 
@@ -24,7 +24,7 @@ interface Benchmark {
   benchmarkId: string;
   name: string;
   websiteUrl: string;
-  operatorId: string;
+  agentId: string;
   tasks: EvalItem[];
 }
 
@@ -50,36 +50,58 @@ function labelClass(label: string) {
   return "bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 border-yellow-200 dark:border-yellow-500/30";
 }
 
+function statusClass(status?: string) {
+  const s = (status || "").toLowerCase();
+  if (["approved", "ready", "completed"].includes(s)) return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (["harvest_failed", "failed", "error"].includes(s)) return "bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/30";
+  if (["needs_harvest", "harvesting", "harvested", "pending"].includes(s)) return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
 export default function Evals() {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
   const startSession = useStartSession();
 
   const [activeTab, setActiveTab] = useState<TabKey>("benchmarks");
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
-  const [operators, setOperators] = useState<Operator[]>([]);
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [runningEvalId, setRunningEvalId] = useState<string | null>(null);
   const [runningBenchmarkId, setRunningBenchmarkId] = useState<string | null>(null);
   const [savingRunId, setSavingRunId] = useState<string | null>(null);
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
-  const [selectedOperatorId, setSelectedOperatorId] = useState("");
+  const [selectedAgentId, setSelectedAgentId] = useState("");
 
   useEffect(() => {
     if (!user.email) return;
     fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user.email]);
+  }, [companyId, user.email]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
+      setCompanyId(next);
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
 
   const fetchData = async () => {
     setLoading(true);
     try {
-      const [evalsRes, runsRes, operatorsRes] = await Promise.all([
-        fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
-        fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
-        fetch(`${apiUrl}/operators?email=${encodeURIComponent(user.email)}`),
+      const scoped = new URLSearchParams({ email: user.email });
+      if (companyId) scoped.set("companyId", companyId);
+      const agentParams = new URLSearchParams({ email: user.email });
+      if (companyId) agentParams.set("companyId", companyId);
+      const [evalsRes, runsRes, agentsRes] = await Promise.all([
+        fetch(`${apiUrl}/evals?${scoped.toString()}`),
+        fetch(`${apiUrl}/eval-runs?${scoped.toString()}`),
+        fetch(`${apiUrl}/agents?${agentParams.toString()}`),
       ]);
       if (!evalsRes.ok) throw new Error(await evalsRes.text());
       const evalsData = await evalsRes.json();
@@ -88,9 +110,9 @@ export default function Evals() {
         const runsData = await runsRes.json();
         setRuns(runsData.runs || []);
       }
-      if (operatorsRes.ok) {
-        const operatorsData = await operatorsRes.json();
-        setOperators(operatorsData.operators || []);
+      if (agentsRes.ok) {
+        const agentsData = await agentsRes.json();
+        setAgents(agentsData.agents || []);
       }
     } catch (err) {
       console.error("Failed to fetch benchmark data:", err);
@@ -102,7 +124,7 @@ export default function Evals() {
   const benchmarks = useMemo<Benchmark[]>(() => {
     const grouped = new Map<string, Benchmark>();
     for (const item of evals) {
-      const key = item.benchmarkId || item.operatorId || `manual:${item.initialUrl || "default"}`;
+      const key = item.benchmarkId || item.agentId || `manual:${item.initialUrl || "default"}`;
       const existing = grouped.get(key);
       if (existing) {
         existing.tasks.push(item);
@@ -110,9 +132,9 @@ export default function Evals() {
       }
       grouped.set(key, {
         benchmarkId: key,
-        name: item.benchmarkName || item.operatorName || "Manual Benchmark",
+        name: item.benchmarkName || item.agentName || "Manual Benchmark",
         websiteUrl: item.initialUrl || "",
-        operatorId: item.operatorId || "",
+        agentId: item.agentId || "",
         tasks: [item],
       });
     }
@@ -131,7 +153,7 @@ export default function Evals() {
   const filteredRuns = runs.filter((run) => {
     const q = search.toLowerCase();
     return (
-      (run.operatorName || "").toLowerCase().includes(q) ||
+      (run.agentName || "").toLowerCase().includes(q) ||
       (run.prompt || "").toLowerCase().includes(q) ||
       (run.label || "").toLowerCase().includes(q)
     );
@@ -139,21 +161,21 @@ export default function Evals() {
 
   const openRunSelector = (next: PendingRun) => {
     setPendingRun(next);
-    const currentOperator = next.evalItem?.operatorId || next.benchmark?.operatorId || "";
-    setSelectedOperatorId(currentOperator);
+    const currentAgent = next.evalItem?.agentId || next.benchmark?.agentId || "";
+    setSelectedAgentId(currentAgent);
   };
 
-  const selectedOperator = operators.find((operator) => operator.operatorId === selectedOperatorId) || null;
-  const selectedOperatorName = selectedOperator?.name || (selectedOperatorId ? "Custom Agent" : "Autoppia Agent");
+  const selectedAgent = agents.find((agent) => agent.agentId === selectedAgentId) || null;
+  const selectedAgentName = selectedAgent?.name || (selectedAgentId ? "Custom Agent" : "Autoppia Agent");
 
-  const runEval = async (evalItem: EvalItem, operatorId = selectedOperatorId) => {
+  const runEval = async (evalItem: EvalItem, agentId = selectedAgentId) => {
     if (runningEvalId) return;
     setRunningEvalId(evalItem.evalId);
     try {
       const res = await fetch(`${apiUrl}/evals/${evalItem.evalId}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Agent" }),
+        body: JSON.stringify({ sessionId: "", agentId, agentName: agentId ? selectedAgentName : "Autoppia Agent" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -163,7 +185,7 @@ export default function Evals() {
         "",
         { evalMode: true, evalId: evalItem.evalId, runId: data.runId },
         `/evals/${evalItem.evalId}/run`,
-        operatorId ? { operatorId, operatorName: selectedOperatorName } : undefined,
+        agentId ? { agentId, agentName: selectedAgentName } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark task:", err);
@@ -171,14 +193,14 @@ export default function Evals() {
     }
   };
 
-  const runBenchmark = async (benchmark: Benchmark, operatorId = selectedOperatorId) => {
+  const runBenchmark = async (benchmark: Benchmark, agentId = selectedAgentId) => {
     if (runningBenchmarkId || runningEvalId || benchmark.tasks.length === 0) return;
     setRunningBenchmarkId(benchmark.benchmarkId);
     try {
-      const res = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmark.operatorId)}/runs`, {
+      const res = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmark.agentId)}/runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId: "", operatorId, operatorName: operatorId ? selectedOperatorName : "Autoppia Agent" }),
+        body: JSON.stringify({ sessionId: "", agentId, agentName: agentId ? selectedAgentName : "Autoppia Agent" }),
       });
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
@@ -198,7 +220,7 @@ export default function Evals() {
           benchmarkRunId: data.benchmarkRunId,
         },
         `/evals/${firstTask.evalId}/run`,
-        operatorId ? { operatorId, operatorName: selectedOperatorName } : undefined,
+        agentId ? { agentId, agentName: selectedAgentName } : undefined,
       );
     } catch (err) {
       console.error("Failed to run benchmark:", err);
@@ -211,9 +233,9 @@ export default function Evals() {
     setPendingRun(null);
     if (!next) return;
     if (next.type === "task" && next.evalItem) {
-      await runEval(next.evalItem, selectedOperatorId);
+      await runEval(next.evalItem, selectedAgentId);
     } else if (next.type === "benchmark" && next.benchmark) {
-      await runBenchmark(next.benchmark, selectedOperatorId);
+      await runBenchmark(next.benchmark, selectedAgentId);
     }
   };
 
@@ -309,7 +331,7 @@ export default function Evals() {
             </div>
           ) : activeTab === "benchmarks" ? (
             filteredBenchmarks.length === 0 ? (
-              <EmptyState text="No benchmarks yet. Create an agent to generate a benchmark." />
+              <EmptyState text={companyId ? "No benchmarks for this company yet." : "Select a company to see its benchmarks."} />
             ) : (
               <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
                 {filteredBenchmarks.map((benchmark) => (
@@ -331,7 +353,7 @@ export default function Evals() {
                         <div className="flex items-center gap-1.5 px-2.5 h-8 rounded-lg text-xs font-medium
                           bg-gray-50 dark:bg-dark-bg border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300">
                           <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
-                          {benchmark.tasks.length} tasks
+                          {benchmark.tasks.length} {benchmark.tasks.length === 1 ? "task" : "tasks"}
                         </div>
                         <button
                           onClick={() => openRunSelector({ type: "benchmark", benchmark })}
@@ -352,9 +374,16 @@ export default function Evals() {
                           className="flex items-center gap-3 rounded-lg border border-gray-100 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-3"
                         >
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
-                              {task.operatorTaskName || "Task"}
-                            </p>
+                            <div className="flex items-center gap-2 mb-1">
+                              <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">
+                                {task.agentTaskName || "Task"}
+                              </p>
+                              {task.status && (
+                                <span className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold ${statusClass(task.status)}`}>
+                                  {task.status.replace(/_/g, " ")}
+                                </span>
+                              )}
+                            </div>
                             <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
                           </div>
                           <button
@@ -395,7 +424,7 @@ export default function Evals() {
                       {run.prompt || run.evalId}
                     </p>
                     <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                      {(run.operatorName || "Benchmark")} {run.operatorTaskName ? ` / ${run.operatorTaskName}` : ""}
+                      {(run.agentName || "Benchmark")} {run.agentTaskName ? ` / ${run.agentTaskName}` : ""}
                     </p>
                   </div>
 
@@ -449,9 +478,9 @@ export default function Evals() {
             </div>
             <div className="space-y-2">
               <button
-                onClick={() => setSelectedOperatorId("")}
+                onClick={() => setSelectedAgentId("")}
                 className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
-                  selectedOperatorId === ""
+                  selectedAgentId === ""
                     ? "border-primary bg-primary/5 text-gray-900 dark:text-white"
                     : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"
                 }`}
@@ -459,18 +488,18 @@ export default function Evals() {
                 <span className="block text-sm font-semibold">Autoppia Agent</span>
                 <span className="block text-xs text-gray-400 dark:text-gray-500">Default generalist agent</span>
               </button>
-              {operators.map((operator) => (
+              {agents.map((agent) => (
                 <button
-                  key={operator.operatorId}
-                  onClick={() => setSelectedOperatorId(operator.operatorId)}
+                  key={agent.agentId}
+                  onClick={() => setSelectedAgentId(agent.agentId)}
                   className={`w-full text-left rounded-xl border px-3 py-3 transition-colors ${
-                    selectedOperatorId === operator.operatorId
+                    selectedAgentId === agent.agentId
                       ? "border-primary bg-primary/5 text-gray-900 dark:text-white"
                       : "border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-dark-bg"
                   }`}
                 >
-                  <span className="block text-sm font-semibold">{operator.name}</span>
-                  <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{operator.websiteUrl || operator.runtimeType}</span>
+                  <span className="block text-sm font-semibold">{agent.name}</span>
+                  <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{agent.websiteUrl || agent.runtimeType}</span>
                 </button>
               ))}
             </div>
@@ -478,7 +507,7 @@ export default function Evals() {
               onClick={confirmRun}
               className="mt-5 w-full h-10 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow"
             >
-              Run with {selectedOperatorName}
+              Run with {selectedAgentName}
             </button>
           </div>
         </div>

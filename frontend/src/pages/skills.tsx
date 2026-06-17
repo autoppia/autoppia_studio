@@ -14,7 +14,7 @@ import { Skill } from "../utils/types";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
 import ConfirmModal from "../components/common/confirm-modal";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 function formatDate(iso: string) {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });

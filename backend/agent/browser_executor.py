@@ -5,7 +5,10 @@ import logging
 from pathlib import Path
 from typing import Callable, Optional
 
-from browserbase import Browserbase
+try:
+    from browserbase import Browserbase
+except ImportError:  # Browserbase is optional when running local browser/HTTP-only agents.
+    Browserbase = None  # type: ignore[assignment]
 from playwright.async_api import async_playwright, Page
 
 logger = logging.getLogger(__name__)
@@ -32,12 +35,14 @@ class BrowserExecutor:
     async def initialize(self, initial_url: str = None, storage_state_path: Path = None, context_id: str = "", browser_mode: str = ""):
         bb_api_key = os.getenv("BROWSERBASE_API_KEY", "")
         bb_project_id = os.getenv("BROWSERBASE_PROJECT_ID", "")
-        browser_mode = (browser_mode or os.getenv("AUTOMATA_BROWSER_MODE", os.getenv("BROWSER_MODE", "auto"))).strip().lower()
+        browser_mode = (browser_mode or os.getenv("AUTOMATA_BROWSER_MODE", os.getenv("BROWSER_MODE", "local"))).strip().lower()
         local_context_storage_state = None
         if str(context_id or "").startswith("local:"):
             local_context_storage_state = Path(str(context_id)[len("local:") :]).expanduser()
             context_id = ""
         use_browserbase = browser_mode in {"auto", "browserbase"} and bool(bb_api_key and bb_project_id) and local_context_storage_state is None
+        if use_browserbase and Browserbase is None:
+            raise RuntimeError("Browserbase mode requires the optional 'browserbase' package to be installed.")
         local_headless = browser_mode not in {"local_headful", "headful", "headed"}
 
         self.playwright = await async_playwright().start()

@@ -2,11 +2,12 @@ import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { v4 as uuidv4 } from "uuid";
 import { resetChat, addTask } from "../redux/chatSlice";
-import { resetSocket, setSessionInfo, setContextId, setOperatorInfo } from "../redux/socketSlice";
+import { resetSocket, setSessionInfo, setContextId, setAgentInfo } from "../redux/socketSlice";
 import { initializeSocket } from "../utils/socket";
 import { checkBackendHealth } from "../utils/health";
 import { useToast } from "../components/common/toast";
 import { AppDispatch } from "../redux/store";
+import { getSessionBrowserMode } from "../utils/browser-mode";
 
 export default function useStartSession() {
   const dispatch = useDispatch<AppDispatch>();
@@ -20,7 +21,7 @@ export default function useStartSession() {
     contextId = "",
     extraNavState?: Record<string, any>,
     basePath = "/session",
-    operatorInfo?: { operatorId?: string; operatorName?: string },
+    agentInfo?: { agentId?: string; agentName?: string },
   ) => {
     const healthy = await checkBackendHealth();
     if (!healthy) {
@@ -35,7 +36,7 @@ export default function useStartSession() {
     const sessionId = uuidv4();
     dispatch(setSessionInfo({ sessionId, prompt, initialUrl }));
     if (contextId) dispatch(setContextId(contextId));
-    if (operatorInfo?.operatorId) dispatch(setOperatorInfo(operatorInfo));
+    if (agentInfo?.agentId) dispatch(setAgentInfo(agentInfo));
 
     const socket = initializeSocket(dispatch, false, initialUrl);
     const task = user.instructions
@@ -45,7 +46,8 @@ export default function useStartSession() {
       task,
       initial_url: initialUrl,
       context_id: contextId,
-      operator_id: operatorInfo?.operatorId || "",
+      agent_id: agentInfo?.agentId || "",
+      browser_mode: getSessionBrowserMode(),
     });
 
     navigate(`${basePath}/${sessionId}`, { state: { activeSessionId: sessionId, ...(extraNavState || {}) } });

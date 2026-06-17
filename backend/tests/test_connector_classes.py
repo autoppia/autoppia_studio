@@ -1,7 +1,7 @@
 import pytest
 
 from app.connectors.base import ConnectorConfig
-from app.connectors.implementations import TelegramConnector
+from app.connectors.implementations import BOPAConnector, TelegramConnector
 from app.connectors import registry
 from app.services import agent_runtime
 
@@ -16,6 +16,9 @@ class _FakeCursor:
     async def __aiter__(self):
         for doc in self.docs:
             yield doc
+
+    async def to_list(self, length=None):
+        return self.docs[:length] if length else self.docs
 
 
 class _FakeConnectorsCollection:
@@ -54,6 +57,35 @@ async def test_telegram_connector_send_message(monkeypatch):
     assert result.output == {"messageId": 42, "chatId": "123"}
     assert calls[0][0] == "POST"
     assert "botbot-secret/sendMessage" in calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_bopa_connector_latest_bulletin_pdf(monkeypatch):
+    monkeypatch.setattr(
+        "app.connectors.implementations.latest_bopa_pdf",
+        lambda: {
+            "pdfUrl": "https://bopadocuments.blob.core.windows.net/bopa-documents/sumaris/038/038058.pdf",
+            "numBOPA": "Núm. 58 any 2026",
+        },
+    )
+    connector = BOPAConnector(
+        ConnectorConfig(
+            connector_id="bopa-1",
+            company_id="company-1",
+            email="user@example.com",
+            name="BOPA",
+            type="bopa",
+            status="connected",
+            config={},
+        )
+    )
+
+    result = await connector.execute("bopa.latest_bulletin_pdf", {})
+
+    assert result.success is True
+    assert result.tool == "bopa.latest_bulletin_pdf"
+    assert result.output["numBOPA"] == "Núm. 58 any 2026"
+    assert result.output["pdfUrl"].endswith("/038/038058.pdf")
 
 
 @pytest.mark.asyncio
@@ -122,13 +154,21 @@ async def test_connector_registry_resolves_deep_secret_refs(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_agent_runtime_requests_approval_before_write_tool():
+async def test_agent_runtime_requests_approval_before_write_tool(monkeypatch):
     data = {
         "tool_calls": [{"name": "telegram.send_message", "arguments": {"message": "Hello"}}],
         "done": False,
         "state_out": {},
     }
     agent_config = {"agentId": "op-1", "companyId": "company-1"}
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeConnectorsCollection([
+        {
+            "toolId": "tool-1",
+            "companyId": "company-1",
+            "name": "telegram.send_message",
+            "runtimeRequirements": ["network"],
+        }
+    ]))
 
     result = await agent_runtime._execute_connector_tool_calls(agent_config, data, {"state_in": {}})
 

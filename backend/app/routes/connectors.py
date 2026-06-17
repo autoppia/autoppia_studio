@@ -4,10 +4,12 @@ import smtplib
 from typing import Any
 
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import companies_collection, connectors_collection
+from app.repositories import ConnectorRepository
+from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.credentials import create_credential_record, resolve_secret_refs
 
 router = APIRouter()
@@ -82,6 +84,17 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "tools": [
             {"name": "web.fetch", "description": "Fetch a public page.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
             {"name": "browser.navigate", "description": "Open a website in browser runtime.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"url": {"type": "string"}}}},
+        ],
+    },
+    "bopa": {
+        "name": "BOPA Toolkit",
+        "authFields": [],
+        "configFields": ["baseUrl"],
+        "runtimeRequirements": ["network"],
+        "tools": [
+            _tool("bopa.latest_bulletin_pdf", "Resolve the latest official BOPA bulletin PDF using the public BOPA API."),
+            _tool("bopa.latest_bulletin", "Fetch metadata for the latest official BOPA bulletin."),
+            _tool("bopa.list_bulletins", "List BOPA bulletins for the current publication month."),
         ],
     },
     "knowledge": {
@@ -194,6 +207,11 @@ class ConnectorCreateRequest(BaseModel):
     config: dict[str, Any] = Field(default_factory=dict)
     provider: str = ""
     generationStatus: str = ""
+    surface: str = ""
+    authRequired: bool | None = None
+    discoveryStatus: str = ""
+    discoveryMode: str = ""
+    runtimeRequirements: list[str] = Field(default_factory=list)
 
 
 class ConnectorUpdateRequest(BaseModel):
@@ -205,6 +223,11 @@ class ConnectorUpdateRequest(BaseModel):
     config: dict[str, Any] | None = None
     provider: str | None = None
     generationStatus: str | None = None
+    surface: str | None = None
+    authRequired: bool | None = None
+    discoveryStatus: str | None = None
+    discoveryMode: str | None = None
+    runtimeRequirements: list[str] | None = None
 
 
 def _now() -> str:
@@ -221,6 +244,13 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
     toolkit_name = f"{connector.get('name', 'Custom')} Generated API Toolkit" if custom_api else defaults["name"]
     tools = defaults["tools"]
     runtime_requirements = list(defaults["runtimeRequirements"])
+    auth_fields = list(defaults["authFields"])
+    config_fields = list(defaults["configFields"])
+    if connector_type == "web" and provider == "custom":
+        toolkit_name = f"{connector.get('name', 'Custom Web')} Web Toolkit"
+        runtime_requirements = list(connector.get("runtimeRequirements") or ["browser", "network"])
+        auth_fields = list(defaults["authFields"]) if connector.get("authRequired") else []
+        config_fields = ["baseUrl", "startUrl", "loginUrl"] if connector.get("authRequired") else ["baseUrl", "startUrl"]
     if custom_api:
         runtime_requirements = ["api_docs_or_openapi", "api_credentials_optional", "network"]
         tools = [
@@ -237,8 +267,8 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
         "category": connector.get("category", "software"),
         "status": connector.get("status", "not_connected"),
         "runtimeRequirements": runtime_requirements,
-        "authFields": defaults["authFields"],
-        "configFields": defaults["configFields"],
+        "authFields": auth_fields,
+        "configFields": config_fields,
         "tools": tools,
     }
 
@@ -331,6 +361,11 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "status": doc.get("status", "not_connected"),
         "provider": doc.get("provider", "custom" if doc.get("type") == "api" else "official"),
         "generationStatus": doc.get("generationStatus", "needs_docs" if doc.get("type") == "api" and doc.get("provider") == "custom" else "autoppia_supported"),
+        "surface": doc.get("surface", ""),
+        "authRequired": bool(doc.get("authRequired", False)),
+        "discoveryStatus": doc.get("discoveryStatus", ""),
+        "discoveryMode": doc.get("discoveryMode", ""),
+        "runtimeRequirements": doc.get("runtimeRequirements", []),
         "config": _public_config(doc.get("config", {}), doc.get("credentialRefs", {})),
         "credentialFields": {key: {"configured": bool(value)} for key, value in (doc.get("credentialRefs", {}) or {}).items()},
         "lastTestAt": doc.get("lastTestAt"),
@@ -343,24 +378,37 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     return connector
 
 
-async def _ensure_company(company_id: str) -> None:
-    if not company_id or not await companies_collection.find_one({"companyId": company_id}, {"_id": 1}):
+async def _ensure_company(company_id: str, scope: RequestScope | None = None) -> None:
+    scope = coerce_request_scope(scope)
+    query: dict[str, Any] = {"companyId": company_id}
+    if scope and scope.email:
+        query["email"] = scope.email
+    if not company_id or not await companies_collection.find_one(query, {"_id": 1}):
         raise HTTPException(status_code=404, detail="Company not found")
 
 
+def _repo(scope: RequestScope) -> ConnectorRepository:
+    scope = coerce_request_scope(scope)
+    return ConnectorRepository(connectors_collection, scope)
+
+
 @router.get("/connectors")
-async def list_connectors(email: str, companyId: str = ""):
+async def list_connectors(email: str, companyId: str = "", scope: RequestScope = Depends(get_request_scope)):
+    scope = coerce_request_scope(scope)
+    email = scope.require_email(email)
     if not companyId:
         company = await companies_collection.find_one({"email": email}, {"_id": 0, "companyId": 1}, sort=[("createdAt", 1)])
         companyId = str((company or {}).get("companyId") or "")
-    await _ensure_company(companyId)
+    await _ensure_company(companyId, scope)
     cursor = connectors_collection.find({"email": email, "companyId": companyId}, {"_id": 0}).sort("createdAt", 1)
     return {"connectors": [_serialize(doc) async for doc in cursor]}
 
 
 @router.post("/connectors")
-async def create_connector(body: ConnectorCreateRequest):
-    await _ensure_company(body.companyId)
+async def create_connector(body: ConnectorCreateRequest, scope: RequestScope = Depends(get_request_scope)):
+    scope = coerce_request_scope(scope)
+    email = scope.require_email(body.email)
+    await _ensure_company(body.companyId, scope)
     now = _now()
     connector_id = str(uuid.uuid4())
     connector_type = body.type.strip().lower() or "api"
@@ -370,7 +418,7 @@ async def create_connector(body: ConnectorCreateRequest):
     connector_name = body.name.strip() or "Untitled Connector"
     config, credential_refs = await _extract_connector_credentials(
         existing=None,
-        email=body.email,
+        email=email,
         company_id=body.companyId,
         connector_id=connector_id,
         connector_name=connector_name,
@@ -379,7 +427,7 @@ async def create_connector(body: ConnectorCreateRequest):
     )
     doc = {
         "connectorId": connector_id,
-        "email": body.email,
+        "email": email,
         "companyId": body.companyId,
         "name": connector_name,
         "type": connector_type,
@@ -390,6 +438,11 @@ async def create_connector(body: ConnectorCreateRequest):
         "credentialRefs": credential_refs,
         "provider": provider,
         "generationStatus": body.generationStatus or ("needs_docs" if provider == "custom" and connector_type == "api" else "needs_start_url" if provider == "custom" and connector_type == "web" else "autoppia_supported"),
+        "surface": body.surface or ("webapp" if connector_type == "web" else "api" if connector_type == "api" else ""),
+        "authRequired": bool(body.authRequired) if body.authRequired is not None else False,
+        "discoveryStatus": body.discoveryStatus or ("pending" if provider == "custom" else "ready"),
+        "discoveryMode": body.discoveryMode or "task_scoped",
+        "runtimeRequirements": body.runtimeRequirements or (["browser", "network"] if connector_type == "web" else ["network"] if connector_type == "api" else []),
         "createdAt": now,
         "updatedAt": now,
     }
@@ -398,11 +451,10 @@ async def create_connector(body: ConnectorCreateRequest):
 
 
 @router.put("/connectors/{connector_id}")
-async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
+async def update_connector(connector_id: str, body: ConnectorUpdateRequest, scope: RequestScope = Depends(get_request_scope)):
     now = _now()
-    existing = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Connector not found")
+    repo = _repo(scope)
+    existing = await repo.by_id(connector_id)
 
     update: dict[str, Any] = {"updatedAt": now}
     if body.name is not None:
@@ -419,6 +471,16 @@ async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
         update["provider"] = body.provider
     if body.generationStatus is not None:
         update["generationStatus"] = body.generationStatus
+    if body.surface is not None:
+        update["surface"] = body.surface
+    if body.authRequired is not None:
+        update["authRequired"] = body.authRequired
+    if body.discoveryStatus is not None:
+        update["discoveryStatus"] = body.discoveryStatus
+    if body.discoveryMode is not None:
+        update["discoveryMode"] = body.discoveryMode
+    if body.runtimeRequirements is not None:
+        update["runtimeRequirements"] = body.runtimeRequirements
     if body.config is not None:
         connector_name = update.get("name", existing.get("name", "Connector"))
         connector_type = str(update.get("type", existing.get("type", "api")) or "api").lower()
@@ -442,30 +504,29 @@ async def update_connector(connector_id: str, body: ConnectorUpdateRequest):
     next_provider = str(update.get("provider", existing.get("provider", "custom" if next_type == "api" else "official")) or "").lower()
     if next_provider == "custom" and next_type not in {"api", "web"}:
         raise HTTPException(status_code=400, detail="Custom connectors are currently supported only for APIs and Web apps.")
-    result = await connectors_collection.update_one({"connectorId": connector_id}, {"$set": update})
-    doc = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
+    doc = await repo.update_owned_one({"connectorId": connector_id}, {"$set": update}, not_found="Connector not found")
     return {"success": True, "connector": _serialize(doc or {"connectorId": connector_id, **update})}
 
 
 @router.delete("/connectors/{connector_id}")
-async def delete_connector(connector_id: str):
-    result = await connectors_collection.delete_one({"connectorId": connector_id})
-    if result.deleted_count == 0:
+async def delete_connector(connector_id: str, scope: RequestScope = Depends(get_request_scope)):
+    deleted = await _repo(scope).delete_owned_one({"connectorId": connector_id}, not_found="Connector not found")
+    if deleted == 0:
         raise HTTPException(status_code=404, detail="Connector not found")
     return {"success": True}
 
 
 @router.post("/connectors/{connector_id}/test")
-async def test_connector(connector_id: str):
-    doc = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Connector not found")
+async def test_connector(connector_id: str, scope: RequestScope = Depends(get_request_scope)):
+    doc = await _repo(scope).by_id(connector_id)
 
     connector_type = str(doc.get("type") or "api").lower()
     defaults = CONNECTOR_TOOLKIT_DEFAULTS.get(connector_type, CONNECTOR_TOOLKIT_DEFAULTS["api"])
     config = {**(doc.get("config") or {})}
     config.update(await resolve_secret_refs(doc.get("credentialRefs") or {}))
     required_auth = defaults.get("authFields") or []
+    if connector_type == "web" and not doc.get("authRequired"):
+        required_auth = []
     missing = [field for field in required_auth if not str(config.get(field) or "").strip()]
     provider = doc.get("provider", "custom" if connector_type == "api" else "official")
     docs_configured = bool(str(config.get("openApiUrl") or config.get("docsUrl") or "").strip())

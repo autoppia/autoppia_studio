@@ -109,8 +109,28 @@ class _FakeToolsCollection:
                 "sideEffects": "writes",
                 "riskLevel": "medium",
                 "executionType": "api_call",
+                "runtimeRequirements": ["network"],
             }
         ])
+
+
+class _FakeTrajectoriesCollection:
+    def __init__(self, docs):
+        self.docs = docs
+
+    async def find_one(self, query, projection=None):
+        trajectory_id_query = query.get("trajectoryId")
+        allowed = None
+        if isinstance(trajectory_id_query, dict):
+            allowed = set(trajectory_id_query.get("$in") or [])
+        for doc in self.docs:
+            if allowed is not None and doc.get("trajectoryId") not in allowed:
+                continue
+            status_query = query.get("status")
+            if isinstance(status_query, dict) and doc.get("status") not in status_query.get("$in", []):
+                continue
+            return dict(doc)
+        return None
 
 
 @pytest.mark.asyncio
@@ -164,6 +184,268 @@ async def test_agent_step_injects_agent_config_and_records_runtime_events(monkey
     assert posted["json"]["context"]["agentConfig"]["agentId"] == "agent-1"
     assert result["state_out"]["memory"] == {"seen": 1, "last": "ok"}
     assert [event["event_type"] for event in events] == ["agent.step.request", "agent.step.result"]
+
+
+@pytest.mark.asyncio
+async def test_agent_step_normalizes_browser_search_to_site_navigation(monkeypatch):
+    class _AmazonAgentsCollection(_FakeAgentsCollection):
+        async def find_one(self, query, projection=None):
+            doc = await super().find_one(query, projection)
+            if doc:
+                doc = {**doc, "websiteUrl": "https://www.amazon.com"}
+            return doc
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "tool_calls": [{"name": "browser.search", "arguments": {"query": "ratón rojo", "engine": "duckduckgo"}}],
+                "reasoning": "Generalist fallback; no matching skill was selected.",
+                "done": False,
+                "state_out": {},
+            }
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, json):
+            return _Response()
+
+    async def fake_record_runtime_event(**kwargs):
+        return None
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _AmazonAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime.agent_step_result(
+        "agent-1",
+        {"prompt": "busca un ratón rojo", "url": "https://www.amazon.com/dp/test", "step_index": 20, "state_in": {}},
+    )
+
+    assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://www.amazon.com/s?k=rat%C3%B3n+rojo"}}]
+    assert result["executionMode"] == "generalist"
+
+
+@pytest.mark.asyncio
+async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
+    class _NoNetworkAgentsCollection(_FakeAgentsCollection):
+        async def find_one(self, query, projection=None):
+            doc = await super().find_one(query, projection)
+            if doc:
+                doc["runtimeCapabilities"] = {"browser": False, "network": False, "apiCalls": False}
+                doc["runtimeSpec"] = {"browserEnabled": False, "tools": {"browser": False, "connectors": False, "skills": True}}
+            return doc
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _NoNetworkAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+
+    contract = await agent_runtime.runtime_contract_payload(await agent_runtime.load_agent_config("agent-1"))
+
+    unavailable = {item["name"]: item for item in contract["unavailableToolCalls"]}
+    assert "browser.navigate" in unavailable
+    assert "telegram.send_message" in unavailable
+    assert unavailable["telegram.send_message"]["runtimeAvailability"]["unavailable"] == ["network"]
+
+
+@pytest.mark.asyncio
+async def test_skill_replay_executes_connector_tool_and_returns_result(monkeypatch):
+    class _BopaCapabilitiesCollection:
+        def find(self, query, projection=None):
+            return _FakeListCursor([
+                {
+                    "capabilityId": "skill-bopa",
+                    "capabilityKind": "skill",
+                    "agentId": "agent-1",
+                    "companyId": "company-1",
+                    "name": "Descargar PDF último boletín",
+                    "toolName": "skill.descargar_pdf_ultimo_boletin",
+                    "description": "Descargar PDF último boletín BOPA",
+                    "runtime": "trajectory_replay_with_recovery",
+                    "trajectoryIds": ["traj-bopa"],
+                    "runtimeRequirements": ["network"],
+                }
+            ])
+
+    class _BopaToolsCollection:
+        def find(self, query, projection=None):
+            return _FakeListCursor([
+                {
+                    "toolId": "tool-bopa",
+                    "companyId": "company-1",
+                    "connectorId": "conn-bopa",
+                    "name": "bopa.latest_bulletin_pdf",
+                    "description": "Latest BOPA PDF",
+                    "sideEffects": "reads",
+                    "riskLevel": "low",
+                    "executionType": "api_call",
+                    "runtimeRequirements": ["network"],
+                }
+            ])
+
+    async def fake_execute_connector_tool(company_id, tool_name, arguments):
+        return {
+            "tool": tool_name,
+            "success": True,
+            "output": {
+                "pdfUrl": "https://bopadocuments.blob.core.windows.net/bopa-documents/sumaris/038/038058.pdf",
+                "numBOPA": "Núm. 58 any 2026",
+                "publishedAt": "2026-06-04T22:00:00+00:00",
+            },
+        }
+
+    async def fake_record_runtime_event(**kwargs):
+        return None
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _BopaCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _BopaToolsCollection())
+    monkeypatch.setattr(agent_runtime, "trajectories_collection", _FakeTrajectoriesCollection([
+        {
+            "trajectoryId": "traj-bopa",
+            "status": "approved",
+            "trajectory": [{"name": "bopa.latest_bulletin_pdf", "arguments": {}}],
+        }
+    ]))
+    monkeypatch.setattr(agent_runtime, "execute_connector_tool", fake_execute_connector_tool)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime.agent_step_result(
+        "agent-1",
+        {"prompt": "Descargar PDF último boletín BOPA", "state_in": {}, "step_index": 0},
+    )
+
+    assert result["done"] is True
+    assert result["tool_calls"] == []
+    assert result["tool_results"][0]["tool"] == "bopa.latest_bulletin_pdf"
+    assert result["tool_results"][0]["output"]["pdfUrl"].endswith("/038/038058.pdf")
+    assert "Núm. 58 any 2026" in result["content"]
+
+
+@pytest.mark.asyncio
+async def test_agent_step_ignores_mismatched_external_runtime_without_skill_match(monkeypatch):
+    class _AmazonAgentsCollection(_FakeAgentsCollection):
+        async def find_one(self, query, projection=None):
+            doc = await super().find_one(query, projection)
+            if doc:
+                doc = {**doc, "websiteUrl": "https://www.amazon.com"}
+            return doc
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "tool_calls": [{"name": "browser.click", "arguments": {"selector": {"type": "cssSelector", "value": "#movie"}}}],
+                "reasoning": "CUSTOM OPERATOR INSTRUCTIONS: You are operating the Autocinema website.",
+                "done": False,
+                "state_out": {},
+            }
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, json):
+            return _Response()
+
+    async def fake_record_runtime_event(**kwargs):
+        return None
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _AmazonAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime.agent_step_result(
+        "agent-1",
+        {"prompt": "busca un ratón rojo", "url": "https://www.amazon.com/dp/test", "step_index": 20, "state_in": {}},
+    )
+
+    assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://www.amazon.com/s?k=rat%C3%B3n+rojo"}}]
+    assert "mismatched external runtime" in result["reasoning"]
+
+
+@pytest.mark.asyncio
+async def test_agent_step_blocks_browser_tools_when_browser_disabled(monkeypatch):
+    class _NoBrowserAgentsCollection(_FakeAgentsCollection):
+        async def find_one(self, query, projection=None):
+            doc = await super().find_one(query, projection)
+            if doc:
+                doc = {
+                    **doc,
+                    "runtimeCapabilities": {"browser": False, "humanApprovalForWrites": True},
+                    "runtimeSpec": {
+                        "browserEnabled": False,
+                        "browserMode": "headless",
+                        "maxCreditsPerRun": 1.5,
+                        "tools": {"browser": False, "connectors": True, "skills": True, "knowledge": False},
+                    },
+                }
+            return doc
+
+    class _Response:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {
+                "tool_calls": [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}],
+                "reasoning": "Use browser.",
+                "done": False,
+                "state_out": {"x": 1},
+            }
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def post(self, url, json):
+            return _Response()
+
+    async def fake_record_runtime_event(**kwargs):
+        return None
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _NoBrowserAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _Client)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime.agent_step_result(
+        "agent-1",
+        {"prompt": "hello", "step_index": 2, "state_in": {"memory": {"seen": 1}}},
+    )
+
+    assert result["tool_calls"] == []
+    assert result["done"] is True
+    assert "Browser access is disabled" in result["content"]
 
 
 @pytest.mark.asyncio
@@ -227,6 +509,37 @@ async def test_agent_step_keeps_matched_skill_state_local(monkeypatch):
     assert result["done"] is True
     assert result["tool_calls"] == []
     assert "no approved executable trajectory" in result["content"]
+
+
+@pytest.mark.asyncio
+async def test_agent_step_can_match_skill_on_resume_with_empty_state(monkeypatch):
+    class _FailingClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            raise AssertionError("matched skills should not call the external runtime when resume state is empty")
+
+    async def fake_record_runtime_event(**kwargs):
+        return None
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _FailingClient)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime.agent_step_result(
+        "agent-1",
+        {
+            "prompt": "Use test skill now",
+            "step_index": 3,
+            "state_in": {},
+        },
+    )
+
+    assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}]
+    assert result["state_out"]["matchedSkillId"] == "skill-1"
 
 
 @pytest.mark.asyncio

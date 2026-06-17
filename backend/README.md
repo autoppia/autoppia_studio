@@ -25,9 +25,9 @@ Main modules:
 - `app/routes/agent_creation.py`: agent creation pipeline state machine: connector validation, harvesting, review, skill conversion and benchmark readiness.
 - `app/models/agent_config.py`: versioned `AgentConfig` and `/step` request/response contracts.
 - `app/services/agent_runtime.py`: injects `AgentConfig` into `/step`, exposes skills as callable tools, executes connector tools, and records runtime events.
-- `app/services/agent_harvesters.py`: pluggable agent harvester registry; use `AUTOMATA_AGENT_HARVESTER` to switch implementation.
+- `app/services/agent_harvesters.py`: pluggable agent harvester registry; defaults to the decoupled `../autoppia_harvester` service via `AUTOMATA_AGENT_HARVESTER=autoppia_harvester`; set `AUTOMATA_AUTOPPIA_HARVESTER_ENDPOINT` for its `/find_trayectory` endpoint base URL.
 - `scripts/run_harvester_worker.py`: durable worker loop for queued agent harvester runs when `AUTOMATA_HARVESTER_INLINE=false`.
-- `app/harvester/claude_cli.py`: Claude Code based Automata Harvester adapter. It runs in an isolated workspace, asks Claude to discover replayable trajectories, parses structured JSON, redacts secrets, and stores candidates for human review.
+- `app/harvester/claude_cli.py`: legacy in-repo Claude Code harvester adapter. It remains available with `AUTOMATA_AGENT_HARVESTER=claude_cli` for local compatibility.
 - `app/routes/evals.py`: benchmark tasks and benchmark/eval runs.
 - `app/routes/api/agents.py`: API-key protected agent runtime proxy.
 - `app/sio_app.py`: interactive browser/session Socket.IO runtime.

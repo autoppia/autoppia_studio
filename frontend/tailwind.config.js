@@ -6,22 +6,22 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#C65A2E",
+        primary: "#E97C3C",
         secondary: "#FBFBFB",
         "dark-bg": "#0E0C16",
         "dark-surface": "#1A1825",
         "dark-border": "#2A2838",
       },
       backgroundImage: {
-        "gradient-primary": "linear-gradient(135deg, #B84F24, #7A3324)",
+        "gradient-primary": "linear-gradient(135deg, #F08C4A, #D2622C)",
         "gradient-secondary": "linear-gradient(135deg, #CB587E, #145CC2)",
         "gradient-glass": "linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))",
       },
       boxShadow: {
         "soft": "0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)",
         "soft-lg": "0 10px 40px -10px rgba(0, 0, 0, 0.1)",
-        "glow": "0 0 20px rgba(184, 79, 36, 0.14)",
-        "glow-lg": "0 0 40px rgba(184, 79, 36, 0.18)",
+        "glow": "0 0 20px rgba(233, 124, 60, 0.16)",
+        "glow-lg": "0 0 40px rgba(233, 124, 60, 0.20)",
         "inner-soft": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.04)",
       },
       borderRadius: {

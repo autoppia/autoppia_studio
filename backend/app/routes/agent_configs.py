@@ -3,7 +3,7 @@ import os
 from datetime import datetime, timezone
 from typing import Any, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import (
@@ -14,6 +14,9 @@ from app.database import (
     trajectories_collection,
 )
 from app.routes.agent_creation import ensure_agent_creation_job
+from app.repositories import AgentConfigRepository
+from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
+from app.services.agent_runtime import agent_step_result
 
 router = APIRouter()
 
@@ -57,14 +60,70 @@ class AgentConfigCreateRequest(BaseModel):
     apiAuthHeaderValue: str = ""
     successCriteria: str = ""
     tasks: List[AgentTask] = Field(default_factory=list)
+    browserEnabled: bool = True
+    browserMode: str = "visible"
+    maxCreditsPerRun: float = 5.0
+
+
+class AgentRuntimeSettingsRequest(BaseModel):
+    browserEnabled: bool = True
+    browserMode: str = "visible"
+    maxCreditsPerRun: float = 5.0
+
+
+class AgentRunTaskRequest(BaseModel):
+    email: str
+    companyId: str = ""
+    prompt: str
+    target: str = "selected"
+    agentId: str = ""
+    browserEnabled: bool | None = None
+    browserMode: str = "visible"
+    maxCreditsPerRun: float = 5.0
 
 
 class AgentBootstrapRequest(BaseModel):
     email: str
 
 
+def _repo(scope: RequestScope) -> AgentConfigRepository:
+    scope = coerce_request_scope(scope)
+    return AgentConfigRepository(agents_collection, scope)
+
+
+def _runtime_spec(
+    *,
+    browser_enabled: bool = True,
+    browser_mode: str = "visible",
+    max_credits_per_run: float = 5.0,
+    existing_tools: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    mode = browser_mode if browser_mode in {"visible", "headless"} else "visible"
+    credits = max(0.0, float(max_credits_per_run or 0.0))
+    tools = {
+        "browser": browser_enabled,
+        "connectors": True,
+        "skills": True,
+        "knowledge": False,
+        **(existing_tools or {}),
+    }
+    tools["browser"] = browser_enabled
+    return {
+        "browserEnabled": browser_enabled,
+        "browserMode": mode,
+        "maxCreditsPerRun": credits,
+        "tools": tools,
+    }
+
+
 def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
     agent_id = doc.get("agentId", "")
+    runtime_capabilities = doc.get("runtimeCapabilities", {"browser": True, "apiCalls": True, "knowledge": False, "python": False})
+    runtime_spec = doc.get("runtimeSpec") or _runtime_spec(
+        browser_enabled=bool(runtime_capabilities.get("browser", True)),
+        browser_mode=str(doc.get("browserMode") or "visible"),
+        max_credits_per_run=float(doc.get("maxCreditsPerRun") or 5.0),
+    )
     return {
         "agentId": agent_id,
         "agentConfigId": agent_id,
@@ -77,7 +136,8 @@ def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
         "trainingStatus": doc.get("trainingStatus", "not_started"),
         "harvester": doc.get("harvester", "Automata Agent"),
         "companyId": doc.get("companyId", ""),
-        "runtimeCapabilities": doc.get("runtimeCapabilities", {"browser": True, "apiCalls": True, "knowledge": False, "python": False}),
+        "runtimeCapabilities": runtime_capabilities,
+        "runtimeSpec": runtime_spec,
         "apiSpecUrl": doc.get("apiSpecUrl", ""),
         "apiAuthConfigured": bool(doc.get("apiAuth", {}).get("headerValueConfigured")),
         "tasks": doc.get("tasks", []),
@@ -86,6 +146,25 @@ def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
+
+
+async def _agent_docs_for_run(body: AgentRunTaskRequest) -> list[dict[str, Any]]:
+    if body.target == "selected":
+        if not body.agentId:
+            raise HTTPException(status_code=400, detail="agentId is required for selected target")
+        doc = await agents_collection.find_one({"agentId": body.agentId, "email": body.email}, {"_id": 0})
+        if not doc:
+            raise HTTPException(status_code=404, detail="Agent not found")
+        return [doc]
+
+    query: dict[str, Any] = {"email": body.email}
+    if body.companyId:
+        query["companyId"] = body.companyId
+    cursor = agents_collection.find(query, {"_id": 0}).sort("createdAt", -1)
+    docs = [doc async for doc in cursor]
+    if not docs:
+        raise HTTPException(status_code=404, detail="No agents found")
+    return docs[:12]
 
 
 async def _ensure_agent_evals(
@@ -210,8 +289,10 @@ async def _ensure_autocinema_assets(*, email: str, agent_id: str) -> dict[str, A
 
 
 @router.get("/agents")
-async def get_agents(email: str, companyId: str = ""):
+async def get_agents(email: str, companyId: str = "", scope: RequestScope = Depends(get_request_scope)):
     try:
+        scope = coerce_request_scope(scope)
+        email = scope.require_email(email)
         query: dict[str, Any] = {"email": email}
         if companyId:
             query["companyId"] = companyId
@@ -225,11 +306,9 @@ async def get_agents(email: str, companyId: str = ""):
 
 
 @router.get("/agents/{agent_id}")
-async def get_agent(agent_id: str):
+async def get_agent(agent_id: str, scope: RequestScope = Depends(get_request_scope)):
     try:
-        doc = await agents_collection.find_one({"agentId": agent_id})
-        if not doc:
-            raise HTTPException(status_code=404, detail="Agent not found")
+        doc = await _repo(scope).by_id(agent_id)
         agent = _serialize_agent_config(doc)
         return {"agent": agent}
     except HTTPException:
@@ -239,14 +318,16 @@ async def get_agent(agent_id: str):
 
 
 @router.post("/agents")
-async def create_agent(body: AgentConfigCreateRequest):
+async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Depends(get_request_scope)):
     try:
+        scope = coerce_request_scope(scope)
+        email = scope.require_email(body.email)
         now = datetime.now(timezone.utc)
         agent_id = str(uuid.uuid4())
         runtime_endpoint = f"{DEFAULT_RUNTIME_PROXY_BASE}/runtime/agents/{agent_id}/step" if DEFAULT_AGENT_RUNTIME_ENDPOINT else ""
         doc = {
             "agentId": agent_id,
-            "email": body.email,
+            "email": email,
             "companyId": body.companyId,
             "name": body.name,
             "websiteUrl": body.websiteUrl,
@@ -257,12 +338,17 @@ async def create_agent(body: AgentConfigCreateRequest):
             "trainingStatus": "needs_trajectories",
             "harvester": "Automata Agent",
             "runtimeCapabilities": {
-                "browser": True,
+                "browser": body.browserEnabled,
                 "apiCalls": True,
                 "knowledge": False,
                 "python": False,
                 "humanApprovalForWrites": True,
             },
+            "runtimeSpec": _runtime_spec(
+                browser_enabled=body.browserEnabled,
+                browser_mode=body.browserMode,
+                max_credits_per_run=body.maxCreditsPerRun,
+            ),
             "tasks": [task.model_dump() for task in body.tasks],
             "trajectories": [],
             "successCriteria": body.successCriteria,
@@ -286,7 +372,7 @@ async def create_agent(body: AgentConfigCreateRequest):
             {
                 "webId": web_id,
                 "agentId": agent_id,
-                "email": body.email,
+                "email": email,
                 "name": body.name,
                 "baseUrl": body.websiteUrl,
                 "authRequired": bool(body.authUsername or body.authPassword),
@@ -302,7 +388,7 @@ async def create_agent(body: AgentConfigCreateRequest):
                 {
                     "trajectoryId": trajectory_id,
                     "agentId": agent_id,
-                    "email": body.email,
+                    "email": email,
                     "webId": web_id,
                     "taskName": task.name,
                     "prompt": task.prompt,
@@ -316,7 +402,7 @@ async def create_agent(body: AgentConfigCreateRequest):
                 }
             )
         eval_ids = await _ensure_agent_evals(
-            email=body.email,
+            email=email,
             agent_id=agent_id,
             agent_name=body.name,
             website_url=body.websiteUrl,
@@ -327,9 +413,106 @@ async def create_agent(body: AgentConfigCreateRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@router.post("/agents/bootstrap/autocinema")
-async def bootstrap_autocinema_agent(body: AgentBootstrapRequest):
+@router.patch("/agents/{agent_id}/runtime-settings")
+async def update_agent_runtime_settings(agent_id: str, body: AgentRuntimeSettingsRequest, scope: RequestScope = Depends(get_request_scope)):
     try:
+        repo = _repo(scope)
+        existing = await repo.by_id(agent_id)
+        runtime_spec = _runtime_spec(
+            browser_enabled=body.browserEnabled,
+            browser_mode=body.browserMode,
+            max_credits_per_run=body.maxCreditsPerRun,
+            existing_tools=(existing.get("runtimeSpec") or {}).get("tools") if isinstance(existing.get("runtimeSpec"), dict) else None,
+        )
+        capabilities = {
+            **(existing.get("runtimeCapabilities") if isinstance(existing.get("runtimeCapabilities"), dict) else {}),
+            "browser": body.browserEnabled,
+        }
+        await repo.update_owned_one(
+            {"agentId": agent_id},
+            {
+                "$set": {
+                    "runtimeSpec": runtime_spec,
+                    "runtimeCapabilities": capabilities,
+                    "updatedAt": datetime.now(timezone.utc),
+                }
+            },
+        )
+        refreshed = await agents_collection.find_one({"agentId": agent_id})
+        return {"success": True, "agent": _serialize_agent_config(refreshed or existing)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agents/run-task")
+async def run_agent_task(body: AgentRunTaskRequest, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        scope = coerce_request_scope(scope)
+        body.email = scope.require_email(body.email)
+        prompt = body.prompt.strip()
+        if not prompt:
+            raise HTTPException(status_code=400, detail="prompt is required")
+
+        docs = await _agent_docs_for_run(body)
+        runtime_overrides: dict[str, Any] = {
+            "browserMode": body.browserMode if body.browserMode in {"visible", "headless"} else "visible",
+            "maxCreditsPerRun": max(0.0, float(body.maxCreditsPerRun or 0.0)),
+        }
+        if body.browserEnabled is not None:
+            runtime_overrides["browserEnabled"] = body.browserEnabled
+
+        results = []
+        for doc in docs:
+            agent_id = str(doc.get("agentId") or "")
+            try:
+                result = await agent_step_result(
+                    agent_id,
+                    {
+                        "prompt": prompt,
+                        "task": prompt,
+                        "url": str(doc.get("websiteUrl") or ""),
+                        "step_index": 0,
+                        "state_in": {},
+                        "context": {"runtimeOverrides": runtime_overrides},
+                    },
+                )
+                results.append(
+                    {
+                        "agentId": agent_id,
+                        "agentName": doc.get("name", ""),
+                        "status": "ok",
+                        "result": result,
+                    }
+                )
+            except Exception as exc:
+                results.append(
+                    {
+                        "agentId": agent_id,
+                        "agentName": doc.get("name", ""),
+                        "status": "failed",
+                        "error": str(getattr(exc, "detail", exc)),
+                    }
+                )
+
+        return {
+            "success": True,
+            "target": body.target,
+            "count": len(results),
+            "results": results,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/agents/bootstrap/autocinema")
+async def bootstrap_autocinema_agent(body: AgentBootstrapRequest, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        scope = coerce_request_scope(scope)
+        body.email = scope.require_email(body.email)
         existing = await agents_collection.find_one(
             {"email": body.email, "name": "Autocinema"}
         )

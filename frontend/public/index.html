@@ -26,9 +26,20 @@
     -->
     <link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
-      document.documentElement.classList.add('dark'); // Set dark mode as default
+      // Apply the saved theme before render to avoid a flash. Default to dark.
+      (function () {
+        try {
+          if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.classList.remove('dark');
+          } else {
+            document.documentElement.classList.add('dark');
+          }
+        } catch (e) {
+          document.documentElement.classList.add('dark');
+        }
+      })();
     </script>
-    <title>Automata Operator</title>
+    <title>Autoppia Studio</title>
   </head>
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>

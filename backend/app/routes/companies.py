@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.database import companies_collection
@@ -15,6 +15,8 @@ from app.database import (
     agents_collection,
     trajectories_collection,
 )
+from app.repositories import CompanyRepository
+from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 
 router = APIRouter()
 
@@ -72,9 +74,16 @@ async def _ensure_default_company(email: str) -> dict[str, Any]:
     return doc
 
 
+def _repo(scope: RequestScope) -> CompanyRepository:
+    scope = coerce_request_scope(scope)
+    return CompanyRepository(companies_collection, scope)
+
+
 @router.get("/companies")
-async def list_companies(email: str):
+async def list_companies(email: str, scope: RequestScope = Depends(get_request_scope)):
     try:
+        scope = coerce_request_scope(scope)
+        email = scope.require_email(email)
         await _ensure_default_company(email)
         cursor = companies_collection.find({"email": email}, {"_id": 0}).sort("createdAt", 1)
         return {"companies": [_serialize(doc) async for doc in cursor]}
@@ -83,12 +92,14 @@ async def list_companies(email: str):
 
 
 @router.post("/companies")
-async def create_company(body: CompanyCreateRequest):
+async def create_company(body: CompanyCreateRequest, scope: RequestScope = Depends(get_request_scope)):
     try:
+        scope = coerce_request_scope(scope)
+        email = scope.require_email(body.email)
         now = _now()
         doc = {
             "companyId": str(uuid.uuid4()),
-            "email": body.email,
+            "email": email,
             "name": body.name.strip() or "Untitled Company",
             "description": body.description.strip(),
             "industry": body.industry.strip(),
@@ -103,8 +114,10 @@ async def create_company(body: CompanyCreateRequest):
 
 
 @router.put("/companies/{company_id}")
-async def update_company(company_id: str, body: CompanyUpdateRequest):
+async def update_company(company_id: str, body: CompanyUpdateRequest, scope: RequestScope = Depends(get_request_scope)):
     try:
+        repo = _repo(scope)
+        await repo.by_id(company_id)
         now = _now()
         update = {
             "name": body.name.strip() or "Untitled Company",
@@ -112,10 +125,7 @@ async def update_company(company_id: str, body: CompanyUpdateRequest):
             "industry": body.industry.strip(),
             "updatedAt": now,
         }
-        result = await companies_collection.update_one({"companyId": company_id}, {"$set": update})
-        if result.matched_count == 0:
-            raise HTTPException(status_code=404, detail="Company not found")
-        doc = await companies_collection.find_one({"companyId": company_id}, {"_id": 0})
+        doc = await repo.update_owned_one({"companyId": company_id}, {"$set": update}, not_found="Company not found")
         return {"success": True, "company": _serialize(doc or {"companyId": company_id, **update})}
     except HTTPException:
         raise
@@ -124,11 +134,9 @@ async def update_company(company_id: str, body: CompanyUpdateRequest):
 
 
 @router.delete("/companies/{company_id}")
-async def delete_company(company_id: str):
+async def delete_company(company_id: str, scope: RequestScope = Depends(get_request_scope)):
     try:
-        company = await companies_collection.find_one({"companyId": company_id}, {"_id": 0})
-        if not company:
-            raise HTTPException(status_code=404, detail="Company not found")
+        company = await _repo(scope).by_id(company_id)
         agent_docs = await agents_collection.find(
             {"companyId": company_id},
             {"_id": 0, "agentId": 1},

@@ -1,6 +1,7 @@
 import pytest
 
 from app.routes import connectors as connectors_route
+from app.request_scope import RequestScope
 
 
 class _Result:
@@ -92,9 +93,10 @@ def test_official_connector_toolkits_are_available(connector_type, expected_tool
 @pytest.mark.asyncio
 async def test_custom_api_test_requires_docs(monkeypatch):
     collection = _FakeConnectorsCollection(
-        {
-            "connectorId": "conn-1",
-            "name": "Cloudflare",
+            {
+                "connectorId": "conn-1",
+                "email": "user@example.com",
+                "name": "Cloudflare",
             "type": "api",
             "provider": "custom",
             "status": "needs_auth",
@@ -103,7 +105,7 @@ async def test_custom_api_test_requires_docs(monkeypatch):
     )
     monkeypatch.setattr(connectors_route, "connectors_collection", collection)
 
-    result = await connectors_route.test_connector("conn-1")
+    result = await connectors_route.test_connector("conn-1", RequestScope(email="user@example.com", token_email="user@example.com"))
 
     assert result["success"] is False
     assert result["connector"]["status"] == "needs_auth"
@@ -113,9 +115,10 @@ async def test_custom_api_test_requires_docs(monkeypatch):
 @pytest.mark.asyncio
 async def test_custom_api_test_passes_with_docs_and_auth(monkeypatch):
     collection = _FakeConnectorsCollection(
-        {
-            "connectorId": "conn-1",
-            "name": "Cloudflare",
+            {
+                "connectorId": "conn-1",
+                "email": "user@example.com",
+                "name": "Cloudflare",
             "type": "api",
             "provider": "custom",
             "status": "needs_auth",
@@ -129,7 +132,7 @@ async def test_custom_api_test_passes_with_docs_and_auth(monkeypatch):
     )
     monkeypatch.setattr(connectors_route, "connectors_collection", collection)
 
-    result = await connectors_route.test_connector("conn-1")
+    result = await connectors_route.test_connector("conn-1", RequestScope(email="user@example.com", token_email="user@example.com"))
 
     assert result["success"] is True
     assert result["connector"]["status"] == "connected"

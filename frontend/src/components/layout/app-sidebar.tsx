@@ -7,15 +7,14 @@ import {
   faPenToSquare,
   faClock,
   faUser,
-  faChevronLeft,
   faCircleHalfStroke,
   faRightFromBracket,
   faGear,
-  faWandMagicSparkles,
   faClipboardCheck,
+  faClipboardList,
   faRobot,
   faCircleNodes,
-  faChartLine,
+  faDiagramProject,
   faFileLines,
   faLock,
   faTrash,
@@ -32,10 +31,10 @@ import { useToast } from "../common/toast";
 
 import { HistoryItem } from "../../utils/types";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 const COLLAPSED_WIDTH = 56;
-const EXPANDED_WIDTH = 280;
+const EXPANDED_WIDTH = 232;
 
 export interface AppSidebarHandle {
   addHistoryItem: (item: HistoryItem) => void;
@@ -115,20 +114,20 @@ function ChangePasswordModal({ email, onClose }: { email: string; onClose: () =>
     }
   };
 
-  const inputClass = `w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 dark:border-dark-border
+  const inputClass = `w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 dark:border-zinc-800/80
     bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
     placeholder-gray-400 dark:placeholder-gray-500 outline-none
-    focus:border-[#FF7E5F] focus:ring-1 focus:ring-[#FF7E5F]/30 transition-all`;
+    focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all`;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border p-6">
+      <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-zinc-900/70 rounded-2xl shadow-xl border border-gray-200 dark:border-zinc-800/80 p-6">
         <div className="flex items-center justify-between mb-5">
           <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Change Password</h3>
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             <FontAwesomeIcon icon={faXmark} className="text-sm" />
           </button>
@@ -141,7 +140,7 @@ function ChangePasswordModal({ email, onClose }: { email: string; onClose: () =>
             { label: "Confirm New Password", value: confirmPassword, setValue: setConfirmPassword, show: showConfirm, setShow: setShowConfirm, placeholder: "Repeat new password", autoFocus: false },
           ].map(({ label, value, setValue, show, setShow, placeholder, autoFocus }) => (
             <div key={label}>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5">{label}</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">{label}</label>
               <div className="relative">
                 <input
                   type={show ? "text" : "password"}
@@ -256,7 +255,12 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
   };
 
   const darkThemeHandler = () => {
-    document.documentElement.classList.toggle("dark");
+    const isDark = document.documentElement.classList.toggle("dark");
+    try {
+      localStorage.setItem("theme", isDark ? "dark" : "light");
+    } catch {
+      /* ignore storage errors */
+    }
   };
 
   const getRelativeDate = (dateString: string | Date) => {
@@ -270,12 +274,12 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
 
   const isOnHome = location.pathname === "/";
   const isOnSettings = location.pathname === "/settings";
-  const isOnSkills = location.pathname.startsWith("/skills") || location.pathname.startsWith("/trajectories");
   const isOnEvals = location.pathname.startsWith("/evals");
-  const isOnOperators = location.pathname.startsWith("/operators") || location.pathname.startsWith("/agents");
+  const isOnAgents = location.pathname.startsWith("/agents");
+  const isOnWork = location.pathname.startsWith("/work");
   const isOnConnectors = location.pathname.startsWith("/connectors");
+  const isOnCapabilities = location.pathname.startsWith("/capabilities");
   const isOnKnowledge = location.pathname.startsWith("/knowledge");
-  const isOnAnalytics = location.pathname.startsWith("/analytics");
 
   return (
     <>
@@ -296,43 +300,38 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
         {/* Top section */}
         <div className="flex flex-col flex-shrink-0">
           {/* Logo / toggle */}
-          <div className={`flex items-center h-14 px-2 ${expanded ? "justify-between" : "justify-center"}`}>
+          <div className={`flex items-center h-14 ${expanded ? "px-3" : "px-2 justify-center"}`}>
             {expanded ? (
-              <>
-                <div
-                  className="flex items-center gap-2 ml-1 cursor-pointer"
-                  onClick={toggleExpanded}
-                >
-                  <img
-                    src="/assets/images/logos/main.webp"
-                    alt="Autoppia"
-                    className="w-7 h-7 rounded-full"
-                  />
-                  <img
-                    src="/assets/images/logos/automata_dark.webp"
-                    alt="Automata"
-                    className="h-[14px] dark:block hidden"
-                  />
-                  <img
-                    src="/assets/images/logos/automata.webp"
-                    alt="Automata"
-                    className="h-[14px] dark:hidden block"
-                  />
-                </div>
-                <button
-                  onClick={toggleExpanded}
-                  className="flex items-center justify-center w-8 h-8 rounded-lg
-                    text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
-                    transition-colors duration-200"
-                >
-                  <FontAwesomeIcon icon={faChevronLeft} className="text-xs" />
-                </button>
-              </>
+              // Autoppia Studio wordmark (from studio refactor). Click to collapse.
+              <div
+                className="flex items-center gap-2 cursor-pointer"
+                onClick={toggleExpanded}
+                title="Autoppia Studio — click to collapse"
+              >
+                {/* Dark: the white Autoppia Studio wordmark from the refactor reads well on dark. */}
+                <img
+                  src="/assets/images/logos/autoppia-studio.webp"
+                  alt="Autoppia Studio"
+                  className="hidden h-10 w-auto object-contain dark:block"
+                />
+                {/* Light: the white wordmark is invisible/muddy, so use the colored icon + dark text. */}
+                <img
+                  src="/assets/images/logos/main.webp"
+                  alt="Autoppia"
+                  className="block h-8 w-8 flex-shrink-0 rounded-full dark:hidden"
+                />
+                <span className="block text-[15px] font-semibold tracking-tight text-gray-900 dark:hidden">
+                  Autoppia
+                </span>
+                <span className="flex-shrink-0 self-center rounded-md bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-primary">
+                  Studio
+                </span>
+              </div>
             ) : (
               <button
                 onClick={toggleExpanded}
                 className="flex items-center justify-center w-9 h-9 rounded-lg
-                  hover:bg-gray-100 dark:hover:bg-dark-surface
+                  hover:bg-gray-100 dark:hover:bg-white/5
                   transition-colors duration-200"
               >
                 <img
@@ -349,9 +348,9 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             <button
               onClick={handleNewSession}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface
+                text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}
-                ${isOnHome ? "bg-gray-100 dark:bg-dark-surface" : ""}`}
+                ${isOnHome ? "bg-gray-100 dark:bg-zinc-900/70" : ""}`}
               title="New session"
             >
               <FontAwesomeIcon icon={faPenToSquare} className="text-sm" />
@@ -364,10 +363,10 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             <button
               onClick={() => navigate("/connectors")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
+                hover:bg-gray-100 dark:hover:bg-white/5
                 ${isOnConnectors
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
               title="Connectors"
             >
@@ -376,15 +375,32 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Skills button */}
+          {/* Capabilities button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/capabilities")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnCapabilities
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Capabilities"
+            >
+              <FontAwesomeIcon icon={faDiagramProject} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Capabilities</span>}
+            </button>
+          </div>
+
+          {/* Knowledge button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
               onClick={() => navigate("/knowledge")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
+                hover:bg-gray-100 dark:hover:bg-white/5
                 ${isOnKnowledge
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
               title="Knowledge"
             >
@@ -393,32 +409,15 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Skills button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/skills")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
-                ${isOnSkills
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Skills"
-            >
-              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Skills</span>}
-            </button>
-          </div>
-
           {/* Agents button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
               onClick={() => navigate("/agents")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
-                ${isOnOperators
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
+                hover:bg-gray-100 dark:hover:bg-white/5
+                  ${isOnAgents
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
               title="Agents"
             >
@@ -430,12 +429,29 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           {/* Benchmarks button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
+              onClick={() => navigate("/work")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnWork
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Work"
+            >
+              <FontAwesomeIcon icon={faClipboardList} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Work</span>}
+            </button>
+          </div>
+
+          {/* Benchmarks button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
               onClick={() => navigate("/evals")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
+                hover:bg-gray-100 dark:hover:bg-white/5
                 ${isOnEvals
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
               title="Benchmarks"
             >
@@ -444,32 +460,15 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Analytics button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/analytics")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
-                ${isOnAnalytics
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Analytics"
-            >
-              <FontAwesomeIcon icon={faChartLine} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Analytics</span>}
-            </button>
-          </div>
-
           {/* Settings button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
               onClick={() => navigate("/settings")}
               className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
+                hover:bg-gray-100 dark:hover:bg-white/5
                 ${isOnSettings
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-dark-surface"
-                  : "text-gray-700 dark:text-gray-300"}
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
                 ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
               title="Settings"
             >
@@ -481,7 +480,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           {/* History label (expanded only) */}
           {expanded && (
             <div className="px-4 pt-3 pb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
                 History
               </span>
             </div>
@@ -501,8 +500,8 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                     transition-colors duration-200 group
                     ${isAnimating ? "animate-slide-up" : ""}
                     ${isActive
-                      ? "bg-gray-100 dark:bg-dark-surface text-gray-900 dark:text-white"
-                      : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-dark-surface/50"
+                      ? "bg-gray-100 dark:bg-zinc-900/70 text-gray-900 dark:text-white"
+                      : "text-gray-600 dark:text-zinc-400 hover:bg-gray-50 dark:hover:bg-zinc-900/60"
                     }`}
                   onClick={() => item.sessionId && navigate(`/session/${item.sessionId}`)}
                 >
@@ -532,7 +531,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             <button
               onClick={() => { updateExpanded(true); if (!historiesLoaded) loadHistories(); }}
               className="flex items-center justify-center w-9 h-9 rounded-lg
-                text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+                text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
                 transition-colors duration-200"
               title="History"
             >
@@ -542,12 +541,12 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
         )}
 
         {/* Bottom section */}
-        <div className={`flex flex-col flex-shrink-0 border-t border-gray-200 dark:border-dark-border
+        <div className={`flex flex-col flex-shrink-0 border-t border-gray-200 dark:border-zinc-800/80
           ${expanded ? "px-2 py-2 gap-0.5" : "px-2 py-2 items-center gap-1"}`}>
           <button
             onClick={handleGoHome}
             className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
               ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
             title="Autoppia Home"
           >
@@ -557,7 +556,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           <button
             onClick={darkThemeHandler}
             className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
               ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
             title="Toggle theme"
           >
@@ -568,7 +567,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
           <button
             onClick={() => dispatch(logout())}
             className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-              text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-surface
+              text-gray-500 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5
               ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}`}
             title="Sign out"
           >
@@ -580,16 +579,16 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             <button
               onClick={() => setProfilePanelOpen((v) => !v)}
               className={`flex items-center gap-2 rounded-lg transition-colors duration-200
-                hover:bg-gray-100 dark:hover:bg-dark-surface
+                hover:bg-gray-100 dark:hover:bg-white/5
                 ${expanded ? "px-3 py-2" : "w-9 h-9 justify-center"}
-                ${profilePanelOpen ? "bg-gray-100 dark:bg-dark-surface" : ""}`}
+                ${profilePanelOpen ? "bg-gray-100 dark:bg-zinc-900/70" : ""}`}
               title="My profile"
             >
               <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
                 <FontAwesomeIcon icon={faUser} className="text-[10px]" />
               </div>
               {expanded && (
-                <span className="text-xs text-gray-600 dark:text-gray-400 truncate">
+                <span className="text-xs text-gray-600 dark:text-zinc-400 truncate">
                   {user.email.split("@")[0]}
                 </span>
               )}
@@ -603,7 +602,7 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
         <>
           <div className="fixed inset-0 z-40" onClick={() => setProfilePanelOpen(false)} />
           <div
-            className="fixed z-50 w-64 bg-white dark:bg-dark-surface rounded-2xl shadow-xl border border-gray-200 dark:border-dark-border p-4"
+            className="fixed z-50 w-64 bg-white dark:bg-zinc-900/70 rounded-2xl shadow-xl border border-gray-200 dark:border-zinc-800/80 p-4"
             style={{ bottom: 16, left: (expanded ? EXPANDED_WIDTH : COLLAPSED_WIDTH) + 8 }}
           >
             <div className="flex items-center justify-between mb-3">
@@ -615,35 +614,35 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                   <p className="text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">
                     {user.email.split("@")[0]}
                   </p>
-                  <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate">{user.email}</p>
+                  <p className="text-[10px] text-gray-500 dark:text-zinc-400 truncate">{user.email}</p>
                 </div>
               </div>
               <button
                 onClick={() => setProfilePanelOpen(false)}
                 className="w-6 h-6 flex items-center justify-center rounded-md text-gray-400
-                  hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors flex-shrink-0"
+                  hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex-shrink-0"
               >
                 <FontAwesomeIcon icon={faXmark} className="text-xs" />
               </button>
             </div>
 
-            <div className="h-px bg-gray-100 dark:bg-dark-border mb-3" />
+            <div className="h-px bg-gray-100 dark:bg-zinc-800/80 mb-3" />
 
-            <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-dark-bg mb-3">
+            <div className="px-3 py-2.5 rounded-xl bg-gray-50 dark:bg-zinc-950/60 mb-3">
               <div className="flex items-center gap-1.5 mb-0.5">
                 <FontAwesomeIcon icon={faWallet} className="text-[10px] text-gray-400" />
-                <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">
+                <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-400 uppercase tracking-wide">
                   Available Credit
                 </span>
               </div>
               <p className="text-lg font-bold text-gray-800 dark:text-gray-100">$0.00</p>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500">Free Beta</p>
+              <p className="text-[10px] text-gray-400 dark:text-zinc-500">Free Beta</p>
             </div>
 
             <button
               onClick={() => { setProfilePanelOpen(false); setChangePasswordOpen(true); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
-                text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors mb-1"
+                text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors mb-1"
             >
               <FontAwesomeIcon icon={faLock} className="text-xs" />
               Change Password

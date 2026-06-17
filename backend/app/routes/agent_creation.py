@@ -14,6 +14,7 @@ from app.database import (
     trajectories_collection,
 )
 from app.services.agent_harvesters import get_agent_harvester, list_agent_harvesters
+from app.services.capability_discovery import list_capability_discoverers
 from app.services.skills import approve_trajectory_as_skill
 from app.services.trajectory_judges import build_trajectory_judge_context, get_trajectory_judge, list_trajectory_judges
 
@@ -316,6 +317,11 @@ async def get_agent_creation_job(agent_id: str):
 @router.get("/agent-harvesters")
 async def list_available_agent_harvesters():
     return {"harvesters": list_agent_harvesters()}
+
+
+@router.get("/capability-discoverers")
+async def list_available_capability_discoverers():
+    return {"discoverers": list_capability_discoverers()}
 
 
 @router.get("/trajectory-judges")

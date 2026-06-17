@@ -6,10 +6,12 @@ from datetime import datetime, timezone
 from typing import Any
 
 from cryptography.fernet import Fernet
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import credentials_collection
+from app.repositories import CredentialRepository
+from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 
 router = APIRouter()
 
@@ -132,9 +134,15 @@ async def resolve_secret_refs(secret_refs: dict[str, str]) -> dict[str, str]:
     return resolved
 
 
+def _repo(scope: RequestScope) -> CredentialRepository:
+    scope = coerce_request_scope(scope)
+    return CredentialRepository(credentials_collection, scope)
+
+
 @router.get("/credentials")
-async def list_credentials(email: str, companyId: str = ""):
-    query: dict[str, Any] = {"email": email}
+async def list_credentials(email: str, companyId: str = "", scope: RequestScope = Depends(get_request_scope)):
+    scope = coerce_request_scope(scope)
+    query: dict[str, Any] = {"email": scope.require_email(email)}
     if companyId:
         query["companyId"] = companyId
     cursor = credentials_collection.find(query, {"_id": 0}).sort("createdAt", -1)
@@ -142,9 +150,11 @@ async def list_credentials(email: str, companyId: str = ""):
 
 
 @router.post("/credentials")
-async def create_credential(body: CredentialCreateRequest):
+async def create_credential(body: CredentialCreateRequest, scope: RequestScope = Depends(get_request_scope)):
+    scope = coerce_request_scope(scope)
+    email = scope.require_email(body.email)
     doc = await create_credential_record(
-        email=body.email,
+        email=email,
         company_id=body.companyId,
         name=body.name,
         value=body.value,
@@ -156,10 +166,9 @@ async def create_credential(body: CredentialCreateRequest):
 
 
 @router.patch("/credentials/{credential_id}")
-async def update_credential(credential_id: str, body: CredentialUpdateRequest):
-    existing = await credentials_collection.find_one({"credentialId": credential_id}, {"_id": 0})
-    if not existing:
-        raise HTTPException(status_code=404, detail="Credential not found")
+async def update_credential(credential_id: str, body: CredentialUpdateRequest, scope: RequestScope = Depends(get_request_scope)):
+    repo = _repo(scope)
+    existing = await repo.by_id(credential_id)
     update: dict[str, Any] = {"updatedAt": _now()}
     if body.name is not None:
         update["name"] = body.name.strip() or existing.get("name", "Credential")
@@ -167,14 +176,13 @@ async def update_credential(credential_id: str, body: CredentialUpdateRequest):
         update["encryptedValue"] = encrypt_secret(body.value)
     if body.metadata is not None:
         update["metadata"] = body.metadata
-    await credentials_collection.update_one({"credentialId": credential_id}, {"$set": update})
-    doc = await credentials_collection.find_one({"credentialId": credential_id}, {"_id": 0})
+    doc = await repo.update_owned_one({"credentialId": credential_id}, {"$set": update}, not_found="Credential not found")
     return {"success": True, "credential": _serialize(doc or {**existing, **update})}
 
 
 @router.delete("/credentials/{credential_id}")
-async def delete_credential(credential_id: str):
-    result = await credentials_collection.delete_one({"credentialId": credential_id})
-    if result.deleted_count == 0:
+async def delete_credential(credential_id: str, scope: RequestScope = Depends(get_request_scope)):
+    deleted = await _repo(scope).delete_owned_one({"credentialId": credential_id}, not_found="Credential not found")
+    if deleted == 0:
         raise HTTPException(status_code=404, detail="Credential not found")
     return {"success": True}

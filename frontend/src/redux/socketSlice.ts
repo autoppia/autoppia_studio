@@ -18,9 +18,10 @@ interface SocketState {
     liveUrl: string;
     lastUrl: string;
     actionHistory: any[];
+    runtimeState: Record<string, any>;
     contextId: string;
-    operatorId: string;
-    operatorName: string;
+    agentId: string;
+    agentName: string;
     tabs: BrowserTab[];
     activeTabIndex: number;
 }
@@ -34,9 +35,10 @@ const initialState: SocketState = {
     liveUrl: '',
     lastUrl: '',
     actionHistory: [],
+    runtimeState: {},
     contextId: '',
-    operatorId: '',
-    operatorName: '',
+    agentId: '',
+    agentName: '',
     tabs: [],
     activeTabIndex: 0,
 };
@@ -54,9 +56,10 @@ const socketSlice = createSlice({
             state.liveUrl = '';
             state.lastUrl = '';
             state.actionHistory = [];
+            state.runtimeState = {};
             state.contextId = '';
-            state.operatorId = '';
-            state.operatorName = '';
+            state.agentId = '';
+            state.agentName = '';
             state.tabs = [];
             state.activeTabIndex = 0;
         },
@@ -83,12 +86,15 @@ const socketSlice = createSlice({
         setActionHistory: (state, action) => {
             state.actionHistory = action.payload;
         },
+        setRuntimeState: (state, action) => {
+            state.runtimeState = action.payload || {};
+        },
         setContextId: (state, action) => {
             state.contextId = action.payload;
         },
-        setOperatorInfo: (state, action) => {
-            state.operatorId = action.payload.operatorId || '';
-            state.operatorName = action.payload.operatorName || '';
+        setAgentInfo: (state, action) => {
+            state.agentId = action.payload.agentId || '';
+            state.agentName = action.payload.agentName || '';
         },
         setTabs: (state, action) => {
             state.tabs = action.payload;
@@ -126,5 +132,5 @@ export const disconnectBrowser = () => (dispatch: AppDispatch, getState: () => R
     dispatch(clearBrowserState());
 };
 
-export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setContextId, setOperatorInfo, setTabs, setActiveTabIndex } = socketSlice.actions;
+export const { clearSocketState, clearBrowserState, setSessionId, setSessionInfo, setSocket, setSocketId, setLiveUrl, setLastUrl, setActionHistory, setRuntimeState, setContextId, setAgentInfo, setTabs, setActiveTabIndex } = socketSlice.actions;
 export default socketSlice.reducer;

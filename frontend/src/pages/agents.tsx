@@ -15,10 +15,11 @@ import {
   faListCheck,
   faRoute,
 } from "@fortawesome/free-solid-svg-icons";
-import { Operator, OperatorTask } from "../utils/types";
+import { AgentConfig, AgentTask } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import { useToast } from "../components/common/toast";
 
-const apiUrl = process.env.REACT_APP_API_URL;
+const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
 
 interface TaskDraft {
   name: string;
@@ -29,24 +30,28 @@ interface TaskDraft {
 const emptyTask = (): TaskDraft => ({ name: "", prompt: "", successCriteria: "" });
 
 /** Small colored pill used for status / type metadata. */
-function StatusBadge({ label, tone }: { label: string; tone: "green" | "amber" | "gray" | "blue" }) {
-  const tones: Record<string, string> = {
+type BadgeTone = "green" | "amber" | "gray" | "blue" | "red";
+
+function StatusBadge({ label, tone }: { label: string; tone: BadgeTone }) {
+  const tones: Record<BadgeTone, string> = {
     green: "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/20",
     amber: "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20",
     blue: "bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-500/20",
+    red: "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/20",
     gray: "bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border",
   };
   return (
-    <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${tones[tone]}`}>
+    <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border capitalize ${tones[tone]}`}>
       {label}
     </span>
   );
 }
 
-function statusTone(status: string): "green" | "amber" | "gray" | "blue" {
+function statusTone(status: string): BadgeTone {
   const s = status.toLowerCase();
-  if (s === "ready" || s === "verified") return "green";
-  if (s === "draft" || s === "not_started" || s === "needs_trajectories") return "amber";
+  if (["ready", "verified", "active", "trained", "connected", "healthy", "live"].includes(s)) return "green";
+  if (["draft", "not_started", "needs_trajectories", "training", "paused", "in_progress", "pending_review"].includes(s)) return "amber";
+  if (["error", "failed", "disconnected", "stopped"].includes(s)) return "red";
   if (s === "pending") return "gray";
   return "blue";
 }
@@ -55,11 +60,12 @@ function prettify(value: string) {
   return value.replace(/_/g, " ");
 }
 
-export default function Operators() {
+export default function Agents() {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
+  const { showToast } = useToast();
 
-  const [operators, setOperators] = useState<Operator[]>([]);
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -80,7 +86,7 @@ export default function Operators() {
 
   useEffect(() => {
     if (!user.email) return;
-    fetchOperators();
+    fetchAgents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.email, companyId]);
 
@@ -93,17 +99,18 @@ export default function Operators() {
     return () => window.removeEventListener("automata-company-changed", handler);
   }, []);
 
-  const fetchOperators = async () => {
+  const fetchAgents = async () => {
     setLoading(true);
     try {
       const params = new URLSearchParams({ email: user.email });
       if (companyId) params.set("companyId", companyId);
-      const res = await fetch(`${apiUrl}/operators?${params.toString()}`);
+      const res = await fetch(`${apiUrl}/agents?${params.toString()}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
-      setOperators(data.operators || []);
+      setAgents(data.agents || []);
     } catch (err) {
-      console.error("Failed to fetch operators:", err);
+      console.error("Failed to fetch agents:", err);
+      showToast("Could not load agents.", "error");
     } finally {
       setLoading(false);
     }
@@ -141,14 +148,14 @@ export default function Operators() {
     if (!canSubmit) return;
     setSubmitting(true);
     try {
-      const cleanTasks: OperatorTask[] = tasks
+      const cleanTasks: AgentTask[] = tasks
         .filter((t) => t.name.trim() || t.prompt.trim())
         .map((t) => ({
           name: t.name.trim(),
           prompt: t.prompt.trim(),
           successCriteria: t.successCriteria.trim(),
         }));
-      const res = await fetch(`${apiUrl}/operators`, {
+      const res = await fetch(`${apiUrl}/agents`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -167,9 +174,11 @@ export default function Operators() {
       });
       if (!res.ok) throw new Error(await res.text());
       closeModal();
-      await fetchOperators();
+      await fetchAgents();
+      showToast("Agent created.", "success");
     } catch (err) {
-      console.error("Failed to create operator:", err);
+      console.error("Failed to create agent:", err);
+      showToast(err instanceof Error && err.message ? err.message.slice(0, 180) : "Could not create agent.", "error");
     } finally {
       setSubmitting(false);
     }
@@ -179,21 +188,23 @@ export default function Operators() {
     if (bootstrapping) return;
     setBootstrapping(true);
     try {
-      const res = await fetch(`${apiUrl}/operators/bootstrap/autocinema`, {
+      const res = await fetch(`${apiUrl}/agents/bootstrap/autocinema`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: user.email }),
       });
       if (!res.ok) throw new Error(await res.text());
-      await fetchOperators();
+      await fetchAgents();
+      showToast("Autocinema demo agent ready.", "success");
     } catch (err) {
-      console.error("Failed to bootstrap Autocinema operator:", err);
+      console.error("Failed to bootstrap Autocinema agent:", err);
+      showToast(err instanceof Error && err.message ? err.message.slice(0, 180) : "Could not bootstrap demo agent.", "error");
     } finally {
       setBootstrapping(false);
     }
   };
 
-  const filtered = operators.filter(
+  const filtered = agents.filter(
     (o) =>
       o.name.toLowerCase().includes(search.toLowerCase()) ||
       o.websiteUrl.toLowerCase().includes(search.toLowerCase())
@@ -274,13 +285,23 @@ export default function Operators() {
               <p className="text-gray-500 dark:text-gray-400 text-sm">
                 {search ? "No agents found." : "No agents yet. Create one or bootstrap the Autocinema demo."}
               </p>
+              {!search && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="mt-4 inline-flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium
+                    bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg transition-all duration-200"
+                >
+                  <FontAwesomeIcon icon={faPlus} className="text-xs" />
+                  Create Agent
+                </button>
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {filtered.map((op) => (
                 <div
-                  key={op.operatorId}
-                  onClick={() => navigate(`/agents/${op.operatorId}`)}
+                  key={op.agentId}
+                  onClick={() => navigate(`/agents/${op.agentId}`)}
                   className="group relative flex flex-col bg-white dark:bg-dark-surface rounded-xl
                     border border-gray-200 dark:border-dark-border shadow-soft
                     hover:shadow-soft-lg hover:border-gray-300 dark:hover:border-gray-600
@@ -327,11 +348,11 @@ export default function Operators() {
                   <div className="mt-auto flex items-center gap-4 pt-3 border-t border-gray-100 dark:border-dark-border">
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                       <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
-                      <span>{op.tasks?.length || 0} tasks</span>
+                      <span>{op.tasks?.length || 0} {(op.tasks?.length || 0) === 1 ? "task" : "tasks"}</span>
                     </div>
                     <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
                       <FontAwesomeIcon icon={faRoute} className="text-[10px]" />
-                      <span>{op.trajectories?.length || 0} trajectories</span>
+                      <span>{op.trajectories?.length || 0} {(op.trajectories?.length || 0) === 1 ? "trajectory" : "trajectories"}</span>
                     </div>
                   </div>
                 </div>
