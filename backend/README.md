@@ -1,7 +1,7 @@
-Automata Cloud Backend
-======================
+Autoppia Studio Backend
+=======================
 
-FastAPI + Socket.IO backend for Automata Cloud.
+FastAPI + Socket.IO backend for Autoppia Studio.
 
 Run locally:
 

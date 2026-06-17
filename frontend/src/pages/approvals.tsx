@@ -8,7 +8,6 @@ import {
   faClock,
   faCode,
   faCube,
-  faRotate,
   faSpinner,
   faTriangleExclamation,
   faXmark,
@@ -56,6 +55,21 @@ function JsonBlock({ value }: { value: any }) {
   );
 }
 
+function shortId(value?: string) {
+  if (!value) return "";
+  return value.length > 14 ? `${value.slice(0, 8)}...${value.slice(-4)}` : value;
+}
+
+function InfoPill({ label, value }: { label: string; value?: string }) {
+  if (!value) return null;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+      <span className="font-medium text-gray-700 dark:text-gray-200">{label}</span>
+      <span className="font-mono">{shortId(value)}</span>
+    </span>
+  );
+}
+
 function ApprovalCard({
   approval,
   busy,
@@ -67,9 +81,16 @@ function ApprovalCard({
   onApprove: () => void;
   onReject: () => void;
 }) {
-  const actionName = approval.proposedAction?.name || "proposed action";
+  const actionName = approval.toolName || approval.proposedAction?.name || "proposed action";
   const args = approval.proposedAction?.arguments || {};
+  const diff = approval.proposedAction?.diff || approval.metadata?.diff || approval.metadata?.argumentDiff;
   const entity = approval.entityRef?.entity || approval.entityRef?.name || "";
+  const entityId = approval.entityRef?.id || approval.entityRef?.entityId || approval.entityRef?.externalId || "";
+  const workItemId = approval.workItemId || approval.metadata?.workItemId || "";
+  const sessionId = approval.sessionId || approval.metadata?.sessionId || "";
+  const runId = approval.runId || approval.metadata?.runId || "";
+  const sourceKind = approval.sourceKind || approval.metadata?.sourceKind || (workItemId ? "work" : sessionId ? "session" : "runtime");
+  const auditTrail = approval.auditTrail || [];
   const pending = approval.status === "pending";
 
   return (
@@ -86,6 +107,9 @@ function ApprovalCard({
             </div>
           </div>
           {approval.message && <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">{approval.message}</p>}
+          <p className="mt-2 text-[11px] text-gray-400">
+            Source: {sourceKind === "work" ? "Work item / asynchronous run" : sourceKind === "session" ? "Runtime session" : "Runtime approval gate"}
+          </p>
         </div>
         <span className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border ${statusTone(approval.status)}`}>{approval.status}</span>
       </div>
@@ -101,12 +125,55 @@ function ApprovalCard({
             {entity}
           </span>
         )}
-        {approval.agentId && <span className="text-gray-400">agent {approval.agentId}</span>}
+        {entityId && (
+          <span className="px-2 py-0.5 rounded-md border bg-primary/10 text-primary border-primary/30">
+            ref {shortId(String(entityId))}
+          </span>
+        )}
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        <InfoPill label="work" value={workItemId} />
+        <InfoPill label="session" value={sessionId} />
+        <InfoPill label="run" value={runId} />
+        <InfoPill label="agent" value={approval.agentId} />
+        <InfoPill label="key" value={approval.approvalKey} />
       </div>
 
       <div className="mt-3">
+        <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Proposed arguments</p>
         <JsonBlock value={args} />
       </div>
+
+      {diff && (
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Proposed diff</p>
+          <JsonBlock value={diff} />
+        </div>
+      )}
+
+      {Object.keys(approval.entityRef || {}).length > 0 && (
+        <div className="mt-3">
+          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Entity refs</p>
+          <JsonBlock value={approval.entityRef} />
+        </div>
+      )}
+
+      {auditTrail.length > 0 && (
+        <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Audit trail</p>
+          <div className="space-y-1.5">
+            {auditTrail.map((event, index) => (
+              <div key={`${event.event || "event"}-${index}`} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[11px] text-gray-500 dark:text-gray-400">
+                <span className="font-semibold capitalize text-gray-700 dark:text-gray-200">{event.event || "event"}</span>
+                {event.at && <span>{formatDate(event.at)}</span>}
+                {event.by && <span>by {event.by}</span>}
+                {event.reason && <span>Reason: {event.reason}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {(approval.decidedBy || approval.decisionReason) && (
         <div className="mt-3 text-[11px] text-gray-400">
@@ -230,18 +297,14 @@ export default function Approvals(): React.ReactElement {
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-amber-500 text-white flex items-center justify-center">
+            <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
               <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
             </span>
             <div>
               <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Approvals</h1>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Review connector writes before execution</p>
+              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Review asynchronous work approvals before execution</p>
             </div>
           </div>
-          <button onClick={loadApprovals} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors">
-            <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-            Refresh
-          </button>
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-6">
@@ -296,7 +359,7 @@ export default function Approvals(): React.ReactElement {
                     <FontAwesomeIcon icon={faClipboardCheck} className="text-xl" />
                   </span>
                   <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">No approvals found</p>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">There are no {tab === "all" ? "" : tab} approvals for this company.</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">There are no {tab === "all" ? "" : tab} asynchronous approvals for this company.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">

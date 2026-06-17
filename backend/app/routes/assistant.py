@@ -3,11 +3,42 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from app.assistant.context import build_assistant_context
-from app.assistant.schemas import AssistantConversationCreateRequest, AssistantMessageRequest
+from app.assistant.schemas import AssistantConversationCreateRequest, AssistantMessageRequest, AssistantSettingsRequest
 from app.assistant.service import AutomataAssistantService
 from app.request_scope import RequestScope, get_request_scope
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+
+@router.get("/settings")
+async def get_assistant_settings(
+    email: str,
+    companyId: str = "",
+    scope: RequestScope = Depends(get_request_scope),
+):
+    context = await build_assistant_context(
+        scope=scope,
+        email=email,
+        mode="studio_global",
+        company_id=companyId,
+    )
+    service = AutomataAssistantService(context)
+    return {"settings": await service.assistant_settings()}
+
+
+@router.patch("/settings")
+async def update_assistant_settings(
+    body: AssistantSettingsRequest,
+    scope: RequestScope = Depends(get_request_scope),
+):
+    context = await build_assistant_context(
+        scope=scope,
+        email=body.email,
+        mode="studio_global",
+        company_id=body.companyId,
+    )
+    service = AutomataAssistantService(context)
+    return {"success": True, "settings": await service.update_assistant_settings(model=body.model)}
 
 
 @router.get("/conversations")

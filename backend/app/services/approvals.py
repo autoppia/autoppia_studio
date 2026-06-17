@@ -25,16 +25,45 @@ def stable_approval_key(name: str, index: int, arguments: dict[str, Any]) -> str
 
 
 def serialize_approval(doc: dict[str, Any]) -> dict[str, Any]:
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    proposed_action = doc.get("proposedAction") if isinstance(doc.get("proposedAction"), dict) else {}
+    tool_name = str(proposed_action.get("name") or metadata.get("toolName") or "")
+    work_item_id = str(metadata.get("workItemId") or "")
+    session_id = str(metadata.get("sessionId") or "")
+    source_kind = str(metadata.get("sourceKind") or ("work" if work_item_id else "session" if session_id else "runtime"))
+    audit_trail = doc.get("auditTrail") if isinstance(doc.get("auditTrail"), list) else []
+    if not audit_trail:
+        audit_trail = [
+            {
+                "event": "requested",
+                "at": doc.get("createdAt", ""),
+                "by": doc.get("email", ""),
+                "reason": "",
+            }
+        ]
+        if doc.get("decidedAt") or doc.get("decidedBy"):
+            audit_trail.append(
+                {
+                    "event": doc.get("status", ""),
+                    "at": doc.get("decidedAt", "") or doc.get("updatedAt", ""),
+                    "by": doc.get("decidedBy", ""),
+                    "reason": doc.get("decisionReason", ""),
+                }
+            )
     return {
         "approvalId": doc.get("approvalId", ""),
         "companyId": doc.get("companyId", ""),
         "email": doc.get("email", ""),
         "agentId": doc.get("agentId", ""),
         "runId": doc.get("runId", ""),
+        "workItemId": work_item_id,
+        "sessionId": session_id,
+        "sourceKind": source_kind,
         "approvalKey": doc.get("approvalKey", ""),
+        "toolName": tool_name,
         "title": doc.get("title", ""),
         "message": doc.get("message", ""),
-        "proposedAction": doc.get("proposedAction") if isinstance(doc.get("proposedAction"), dict) else {},
+        "proposedAction": proposed_action,
         "entityRef": doc.get("entityRef") if isinstance(doc.get("entityRef"), dict) else {},
         "status": doc.get("status", "pending"),
         "decidedBy": doc.get("decidedBy", ""),
@@ -43,7 +72,8 @@ def serialize_approval(doc: dict[str, Any]) -> dict[str, Any]:
         "updatedAt": doc.get("updatedAt", ""),
         "expiresAt": doc.get("expiresAt", ""),
         "decidedAt": doc.get("decidedAt", ""),
-        "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
+        "metadata": metadata,
+        "auditTrail": audit_trail,
     }
 
 
@@ -88,6 +118,14 @@ async def create_pending_approval(
         "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=max(1, expires_in_hours))).isoformat(),
         "decidedAt": "",
         "metadata": metadata or {},
+        "auditTrail": [
+            {
+                "event": "requested",
+                "at": now,
+                "by": email,
+                "reason": "",
+            }
+        ],
     }
     await approvals_collection.insert_one(doc)
 
@@ -138,8 +176,21 @@ async def resolve_approval(
         "decidedAt": now,
         "updatedAt": now,
     }
+    audit_event = {
+        "event": status,
+        "at": now,
+        "by": decided_by,
+        "reason": reason.strip(),
+    }
     await approvals_collection.update_one({"approvalId": approval_id}, {"$set": updates})
-    resolved = {**existing, **updates}
+    await approvals_collection.update_one(
+        {"approvalId": approval_id},
+        {
+            "$push": {"auditTrail": audit_event}
+        },
+    )
+    existing_audit_trail = existing.get("auditTrail") if isinstance(existing.get("auditTrail"), list) else []
+    resolved = {**existing, **updates, "auditTrail": [*existing_audit_trail, audit_event]}
     await record_runtime_event(
         agent_id=str(existing.get("agentId") or ""),
         company_id=str(existing.get("companyId") or ""),

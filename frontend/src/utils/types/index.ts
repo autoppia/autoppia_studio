@@ -565,7 +565,11 @@ export interface ApprovalRequest {
   email: string;
   agentId?: string;
   runId?: string;
+  workItemId?: string;
+  sessionId?: string;
+  sourceKind?: string;
   approvalKey: string;
+  toolName?: string;
   title: string;
   message?: string;
   proposedAction: {
@@ -582,6 +586,12 @@ export interface ApprovalRequest {
   expiresAt?: string;
   decidedAt?: string;
   metadata?: Record<string, any>;
+  auditTrail?: Array<{
+    event?: string;
+    at?: string;
+    by?: string;
+    reason?: string;
+  }>;
 }
 
 export interface CompanyTool {

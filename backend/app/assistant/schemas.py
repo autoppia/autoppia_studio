@@ -33,6 +33,12 @@ class AssistantMessageRequest(BaseModel):
     visibleState: dict[str, Any] = Field(default_factory=dict)
 
 
+class AssistantSettingsRequest(BaseModel):
+    email: str
+    companyId: str = ""
+    model: str
+
+
 class AssistantMessage(BaseModel):
     role: str
     content: str = ""
@@ -41,4 +47,3 @@ class AssistantMessage(BaseModel):
     status: str = "completed"
     createdAt: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
-

@@ -15,7 +15,6 @@ import {
   faGlobe,
   faKey,
   faPlus,
-  faRotate,
   faSearch,
   faSpinner,
   faTrash,
@@ -595,10 +594,6 @@ export default function Connectors(): React.ReactElement {
                 )}
               </>
             )}
-            <button onClick={loadConnectors} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface">
-              <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-              Refresh
-            </button>
           </div>
         </div>
 

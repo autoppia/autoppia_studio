@@ -6,7 +6,6 @@ import {
   faArrowLeft,
   faCheck,
   faCircleNodes,
-  faClipboardCheck,
   faCode,
   faGlobe,
   faListCheck,
@@ -14,7 +13,6 @@ import {
   faPlay,
   faPlus,
   faRobot,
-  faRotateRight,
   faRoute,
   faSliders,
   faSpinner,
@@ -384,13 +382,6 @@ export default function AgentDetail() {
     }
   };
 
-  const openRunTask = () => {
-    setRunPrompt(agent?.tasks?.[0]?.prompt || "");
-    setRunTarget("selected");
-    setRunResults([]);
-    setShowRunTask(true);
-  };
-
   const runAdHocTask = async () => {
     const prompt = runPrompt.trim();
     if (!prompt || runningId) return;
@@ -514,9 +505,6 @@ export default function AgentDetail() {
     { key: "overview", label: "Overview", icon: faRobot },
     { key: "webs", label: "Webs", icon: faGlobe },
     { key: "skills", label: "Skills", icon: faCode },
-    { key: "runtime", label: "Runtime", icon: faSliders },
-    { key: "benchmarks", label: "Benchmarks", icon: faClipboardCheck },
-    { key: "runs", label: "Runs", icon: faCircleNodes },
     { key: "connect", label: "Connect", icon: faPlug },
   ];
 
@@ -581,9 +569,7 @@ print(response.json()["result"])`;
       return {
         tone: "blue" as const,
         title: "Harvester is running",
-        description: "Training traces are being collected in the background. Refresh this page to see the latest status.",
-        action: "Refresh",
-        onClick: loadData,
+        description: "Training traces are being collected in the background. The latest status loads automatically when you open this page.",
       };
     }
     if (creationJob.status === "awaiting_review" || harvestedCount > 0) {
@@ -639,23 +625,8 @@ print(response.json()["result"])`;
               <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{agent.websiteUrl}</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={openRunTask}
-              disabled={runningId !== ""}
-              className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm font-medium border border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-surface hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60"
-            >
-              <FontAwesomeIcon icon={faPlay} className="text-xs" />
-              Run Task
-            </button>
-            <button
-              onClick={runBenchmark}
-              disabled={runningId !== "" || benchmark.tasks.length === 0}
-              className="flex items-center gap-2 h-9 px-3 rounded-xl text-sm font-medium bg-gradient-primary text-white shadow-glow disabled:opacity-60 disabled:cursor-not-allowed"
-            >
-              <FontAwesomeIcon icon={runningId === agentId ? faSpinner : faPlay} className={`text-xs ${runningId === agentId ? "animate-spin" : ""}`} />
-              Run Benchmark
-            </button>
+          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
+            Configure the agent here. Run tasks and benchmarks from Sessions and Benchmarks.
           </div>
         </div>
 
@@ -720,14 +691,16 @@ print(response.json()["result"])`;
                     </div>
                     <p className="text-xs leading-5 text-gray-600 dark:text-gray-300">{setupGuidance.description}</p>
                   </div>
-                  <button
-                    onClick={setupGuidance.onClick}
-                    disabled={saving || runningId !== ""}
-                    className="h-10 px-4 rounded-xl bg-gradient-primary text-white text-sm font-semibold shadow-glow disabled:opacity-60 flex items-center justify-center gap-2 flex-shrink-0"
-                  >
-                    {(saving || runningId === agentId) && <FontAwesomeIcon icon={faSpinner} className="text-xs animate-spin" />}
-                    {setupGuidance.action}
-                  </button>
+                  {"action" in setupGuidance && setupGuidance.action && "onClick" in setupGuidance && setupGuidance.onClick && (
+                    <button
+                      onClick={setupGuidance.onClick}
+                      disabled={saving || runningId !== ""}
+                      className="h-10 px-4 rounded-xl bg-gradient-primary text-white text-sm font-semibold shadow-glow disabled:opacity-60 flex items-center justify-center gap-2 flex-shrink-0"
+                    >
+                      {(saving || runningId === agentId) && <FontAwesomeIcon icon={faSpinner} className="text-xs animate-spin" />}
+                      {setupGuidance.action}
+                    </button>
+                  )}
                 </div>
               )}
 
@@ -1039,14 +1012,6 @@ print(response.json()["result"])`;
                       Step requests, step results, and connector calls recorded by this agent.
                     </p>
                   </div>
-                  <button
-                    onClick={loadRuntimeEvents}
-                    disabled={eventsLoading}
-                    className="h-9 px-3 rounded-xl border border-gray-200 dark:border-dark-border text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60 flex items-center justify-center gap-2"
-                  >
-                    <FontAwesomeIcon icon={eventsLoading ? faSpinner : faRotateRight} className={`text-xs ${eventsLoading ? "animate-spin" : ""}`} />
-                    Refresh
-                  </button>
                 </div>
 
                 {eventsError && (

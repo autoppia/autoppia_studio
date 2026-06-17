@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle, FormEvent } from "react";
+import { useState, useCallback, useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate, useLocation } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -14,25 +14,30 @@ import {
   faCube,
   faDiagramProject,
   faFileLines,
-  faLock,
-  faTrash,
   faXmark,
-  faEye,
-  faEyeSlash,
   faWallet,
-  faSpinner,
+  faGem,
 } from "@fortawesome/free-solid-svg-icons";
-
-import ConfirmModal from "../common/confirm-modal";
-import { useToast } from "../common/toast";
 
 import { HistoryItem } from "../../utils/types";
 import { getApiUrl } from "../../utils/api-url";
+import { getStoredPlan, planById, PLAN_CHANGED_EVENT } from "../../utils/plan";
 
 const apiUrl = getApiUrl();
 
 const COLLAPSED_WIDTH = 56;
 const EXPANDED_WIDTH = 232;
+
+const SIDEBAR_EXPANDED_KEY = "automata.sidebar.expanded";
+
+export function getStoredSidebarExpanded(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.localStorage.getItem(SIDEBAR_EXPANDED_KEY) === "true";
+  } catch {
+    return false;
+  }
+}
 
 export interface AppSidebarHandle {
   addHistoryItem: (item: HistoryItem) => void;
@@ -68,120 +73,13 @@ function TypewriterText({ text, speed = 30, onComplete }: { text: string; speed?
   return <>{displayed}<span className="animate-pulse">|</span></>;
 }
 
-function ChangePasswordModal({ email, onClose }: { email: string; onClose: () => void }) {
-  const { showToast } = useToast();
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!currentPassword || !newPassword || !confirmPassword || submitting) return;
-
-    if (newPassword.length < 6) {
-      showToast("New password must be at least 6 characters", "error");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      showToast("Passwords do not match", "error");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const res = await fetch(`${apiUrl}/auth/change-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, current_password: currentPassword, new_password: newPassword }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast(data?.detail || "Failed to change password", "error");
-        return;
-      }
-      showToast("Password changed successfully", "success");
-      onClose();
-    } catch {
-      showToast("Unable to reach the server. Please try again later.", "error");
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const inputClass = `w-full px-4 py-2.5 pr-10 rounded-xl border border-gray-200 dark:border-zinc-800/80
-    bg-gray-50 dark:bg-dark-bg text-sm text-gray-800 dark:text-gray-100
-    placeholder-gray-400 dark:placeholder-gray-500 outline-none
-    focus:border-primary focus:ring-1 focus:ring-primary/30 transition-all`;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative w-full max-w-sm mx-4 bg-white dark:bg-zinc-900/70 rounded-2xl shadow-xl border border-gray-200 dark:border-zinc-800/80 p-6">
-        <div className="flex items-center justify-between mb-5">
-          <h3 className="text-base font-semibold text-gray-800 dark:text-gray-100">Change Password</h3>
-          <button
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <FontAwesomeIcon icon={faXmark} className="text-sm" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {[
-            { label: "Current Password", value: currentPassword, setValue: setCurrentPassword, show: showCurrent, setShow: setShowCurrent, placeholder: "Enter current password", autoFocus: true },
-            { label: "New Password", value: newPassword, setValue: setNewPassword, show: showNew, setShow: setShowNew, placeholder: "At least 6 characters", autoFocus: false },
-            { label: "Confirm New Password", value: confirmPassword, setValue: setConfirmPassword, show: showConfirm, setShow: setShowConfirm, placeholder: "Repeat new password", autoFocus: false },
-          ].map(({ label, value, setValue, show, setShow, placeholder, autoFocus }) => (
-            <div key={label}>
-              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1.5">{label}</label>
-              <div className="relative">
-                <input
-                  type={show ? "text" : "password"}
-                  value={value}
-                  onChange={(e) => setValue(e.target.value)}
-                  placeholder={placeholder}
-                  autoFocus={autoFocus}
-                  className={inputClass}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShow((v: boolean) => !v)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
-                >
-                  <FontAwesomeIcon icon={show ? faEyeSlash : faEye} className="text-sm" />
-                </button>
-              </div>
-            </div>
-          ))}
-
-          <button
-            type="submit"
-            disabled={!currentPassword || !newPassword || !confirmPassword || submitting}
-            className="w-full h-10 rounded-xl text-sm font-medium text-white bg-gradient-primary
-              disabled:opacity-50 disabled:cursor-not-allowed transition-opacity"
-          >
-            {submitting ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Change Password"}
-          </button>
-        </form>
-      </div>
-    </div>
-  );
-}
-
 const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSidebar({ onExpandChange }, ref) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(getStoredSidebarExpanded);
   const [histories, setHistories] = useState<HistoryItem[]>([]);
   const [historiesLoaded, setHistoriesLoaded] = useState(false);
   const [animatingId, setAnimatingId] = useState<string | null>(null);
   const [profilePanelOpen, setProfilePanelOpen] = useState(false);
-  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
-  const [confirmDeleteChats, setConfirmDeleteChats] = useState(false);
-  const { showToast } = useToast();
+  const [planId, setPlanId] = useState(getStoredPlan);
 
   useImperativeHandle(ref, () => ({
     addHistoryItem: (item: HistoryItem) => {
@@ -204,6 +102,11 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
   const updateExpanded = (next: boolean) => {
     setExpanded(next);
     onExpandChange?.(next);
+    try {
+      window.localStorage.setItem(SIDEBAR_EXPANDED_KEY, String(next));
+    } catch {
+      // ignore storage failures (private mode, quota, etc.)
+    }
   };
 
   const toggleExpanded = () => {
@@ -226,22 +129,29 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
     }
   };
 
-  const handleDeleteAllChats = async () => {
-    setConfirmDeleteChats(false);
-    try {
-      const res = await fetch(`${apiUrl}/sessions/all?email=${user.email}`, { method: "DELETE" });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        showToast(data?.detail || "Failed to delete chats", "error");
-        return;
-      }
+  // When the sidebar starts expanded (restored from a prior session), load
+  // histories on mount since toggleExpanded won't fire to trigger the fetch.
+  useEffect(() => {
+    if (expanded && !historiesLoaded && user.email) {
+      loadHistories();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.email]);
+
+  // Keep the displayed plan and chat list in sync with actions taken in Settings.
+  useEffect(() => {
+    const onPlanChanged = () => setPlanId(getStoredPlan());
+    const onChatsCleared = () => {
       setHistories([]);
       setHistoriesLoaded(false);
-      showToast("All chats deleted", "success");
-    } catch {
-      showToast("Unable to reach the server. Please try again later.", "error");
-    }
-  };
+    };
+    window.addEventListener(PLAN_CHANGED_EVENT, onPlanChanged);
+    window.addEventListener("automata-chats-cleared", onChatsCleared);
+    return () => {
+      window.removeEventListener(PLAN_CHANGED_EVENT, onPlanChanged);
+      window.removeEventListener("automata-chats-cleared", onChatsCleared);
+    };
+  }, []);
 
   const handleNewSession = () => {
     navigate("/");
@@ -395,23 +305,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Approvals button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/approvals")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnApprovals
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Approvals"
-            >
-              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Approvals</span>}
-            </button>
-          </div>
-
           {/* Knowledge button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
@@ -446,7 +339,34 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Benchmarks button */}
+          {/* Operations category */}
+          <div className="mx-2 my-2 border-t border-gray-200 dark:border-zinc-800/80" />
+          {expanded && (
+            <div className="px-4 pb-1">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
+                Operations
+              </span>
+            </div>
+          )}
+
+          {/* Approvals button */}
+          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/approvals")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnApprovals
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Approvals"
+            >
+              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Approvals</span>}
+            </button>
+          </div>
+
+          {/* Work button */}
           <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
             <button
               onClick={() => navigate("/work")}
@@ -477,23 +397,6 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             >
               <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
               {expanded && <span className="text-sm font-medium">Benchmarks</span>}
-            </button>
-          </div>
-
-          {/* Settings button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/settings")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnSettings
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Settings"
-            >
-              <FontAwesomeIcon icon={faGear} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Settings</span>}
             </button>
           </div>
 
@@ -563,6 +466,23 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
         {/* Bottom section */}
         <div className={`flex flex-col flex-shrink-0 border-t border-gray-200 dark:border-zinc-800/80
           ${expanded ? "px-2 py-2 gap-0.5" : "px-2 py-2 items-center gap-1"}`}>
+          {/* Settings button — above profile */}
+          <div className={`mb-1 ${expanded ? "" : "flex justify-center"}`}>
+            <button
+              onClick={() => navigate("/settings")}
+              className={`flex items-center gap-2 rounded-lg transition-all duration-200
+                hover:bg-gray-100 dark:hover:bg-white/5
+                ${isOnSettings
+                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                  : "text-gray-700 dark:text-zinc-300"}
+                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
+              title="Settings"
+            >
+              <FontAwesomeIcon icon={faGear} className="text-sm" />
+              {expanded && <span className="text-sm font-medium">Settings</span>}
+            </button>
+          </div>
+
           {/* User avatar — opens profile panel */}
           {user.isAuthenticated && (
             <button
@@ -573,8 +493,13 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                 ${profilePanelOpen ? "bg-gray-100 dark:bg-zinc-900/70" : ""}`}
               title="My profile"
             >
-              <div className="flex items-center justify-center w-7 h-7 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
+              <div className="relative flex items-center justify-center w-7 h-7 rounded-full bg-gradient-primary text-white text-xs flex-shrink-0">
                 <FontAwesomeIcon icon={faUser} className="text-[10px]" />
+                {planId !== "free" && (
+                  <span className="absolute -top-1.5 -left-1.5 px-1 py-px rounded-full bg-amber-400 text-[7px] font-bold uppercase leading-none text-gray-900 shadow-sm ring-1 ring-white dark:ring-zinc-900">
+                    {planById(planId).name}
+                  </span>
+                )}
               </div>
               {expanded && (
                 <span className="text-xs text-gray-600 dark:text-zinc-400 truncate">
@@ -604,6 +529,10 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
                     {user.email.split("@")[0]}
                   </p>
                   <p className="text-[10px] text-gray-500 dark:text-zinc-400 truncate">{user.email}</p>
+                  <p className="flex items-center gap-1 text-[10px] font-medium text-primary mt-0.5">
+                    <FontAwesomeIcon icon={faGem} className="text-[9px]" />
+                    {planById(planId).name} plan
+                  </p>
                 </div>
               </div>
               <button
@@ -629,38 +558,24 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </div>
 
             <button
-              onClick={() => { setProfilePanelOpen(false); setChangePasswordOpen(true); }}
+              onClick={() => { setProfilePanelOpen(false); navigate("/settings?tab=plan"); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
                 text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors mb-1"
             >
-              <FontAwesomeIcon icon={faLock} className="text-xs" />
-              Change Password
+              <FontAwesomeIcon icon={faGem} className="text-xs" />
+              Manage Plan
             </button>
 
             <button
-              onClick={() => { setProfilePanelOpen(false); setConfirmDeleteChats(true); }}
+              onClick={() => { setProfilePanelOpen(false); navigate("/settings?tab=account"); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm
-                text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
             >
-              <FontAwesomeIcon icon={faTrash} className="text-xs" />
-              Delete All Chats
+              <FontAwesomeIcon icon={faGear} className="text-xs" />
+              Settings
             </button>
           </div>
         </>
-      )}
-
-      {changePasswordOpen && (
-        <ChangePasswordModal email={user.email} onClose={() => setChangePasswordOpen(false)} />
-      )}
-
-      {confirmDeleteChats && (
-        <ConfirmModal
-          title="Delete All Chats"
-          message="Are you sure you want to delete all your chat history? This action cannot be undone."
-          confirmLabel="Delete All"
-          onConfirm={handleDeleteAllChats}
-          onCancel={() => setConfirmDeleteChats(false)}
-        />
       )}
     </>
   );

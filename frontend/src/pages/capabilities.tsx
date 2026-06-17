@@ -6,16 +6,18 @@ import {
   faArrowRight,
   faArrowRightLong,
   faBuilding,
-  faCube,
   faCheck,
+  faChevronDown,
   faCircleNodes,
   faClipboardCheck,
+  faCube,
   faClockRotateLeft,
+  faFlask,
+  faPlus,
   faRobot,
   faRoute,
   faShieldHalved,
   faSpinner,
-  faRotate,
   faTractor,
   faTriangleExclamation,
   faWandMagicSparkles,
@@ -36,8 +38,7 @@ import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
 
-type TabKey = "capabilities" | "runs";
-type CapabilityTabKey = "tools" | "trajectories" | "skills";
+type ViewKey = "tools" | "trajectories" | "skills" | "runs";
 type ApprovalMode = "always" | "auto" | "never";
 type CapabilityDetail =
   | { kind: "tool"; item: CompanyTool }
@@ -314,6 +315,7 @@ function CapabilityDetailModal({
   const [selectedApproval, setSelectedApproval] = useState<ApprovalMode>(approvalMode(configurableApprovalItem || undefined));
   const title = isTool ? detail.item.name : detail.item.name || (isTrajectory ? detail.item.trajectoryId : detail.item.skillId);
   const icon = isTool ? faWrench : isTrajectory ? faRoute : faWandMagicSparkles;
+  const kindLabel = isTool ? "Atomic action" : isTrajectory ? "Concrete attempt" : "Reusable procedure";
   const linkedTrajectory = isSkill ? (detail.item.trajectoryIds || []).map((id) => trajectoriesById.get(id)).find(Boolean) : null;
   const calls = isTrajectory ? trajectoryToolCallList(detail.item) : linkedTrajectory ? trajectoryToolCallList(linkedTrajectory) : [];
   const requirements = isTool || isTrajectory || isSkill ? detail.item.runtimeRequirements : [];
@@ -395,7 +397,7 @@ function CapabilityDetailModal({
             </span>
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{title}</p>
-              <p className="text-[11px] text-gray-400 dark:text-gray-500">{detail.kind}</p>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500">{kindLabel}</p>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border">
@@ -493,7 +495,7 @@ function CapabilityDetailModal({
               <section>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Tool info</p>
                 <div className="space-y-2 text-xs text-gray-600 dark:text-gray-300">
-                  <p><span className="text-gray-400">Connector:</span> {detail.item.connectorName || connectorsById.get(detail.item.connectorId)?.name || "Unknown"}</p>
+                  <p><span className="text-gray-400">Connector:</span> {connectorsById.get(detail.item.connectorId)?.name || detail.item.connectorName || "Unknown"}</p>
                   <p><span className="text-gray-400">Execution:</span> {detail.item.executionType || "api_call"}</p>
                   <p><span className="text-gray-400">Surface:</span> {detail.item.surface || "api"}</p>
                   <p><span className="text-gray-400">Side effects:</span> {detail.item.sideEffects}</p>
@@ -610,14 +612,15 @@ export default function Capabilities(): React.ReactElement {
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<TabKey>("capabilities");
-  const [capabilityTab, setCapabilityTab] = useState<CapabilityTabKey>("tools");
+  const [view, setView] = useState<ViewKey>("tools");
+  const [expandedToolConnectorKeys, setExpandedToolConnectorKeys] = useState<Set<string>>(new Set());
   const [promoteTarget, setPromoteTarget] = useState<CompanyTrajectory | null>(null);
   const [detail, setDetail] = useState<CapabilityDetail>(null);
   const [promoting, setPromoting] = useState(false);
 
-  // Generate capabilities panel state.
-  const [showGenerate, setShowGenerate] = useState(false);
+  // Create Capability wizard state. `createPath` tracks which of the four paths is expanded.
+  const [showCreate, setShowCreate] = useState(false);
+  const [createPath, setCreatePath] = useState<"menu" | "task">("menu");
   const [generateConnectorId, setGenerateConnectorId] = useState("");
   const [generateBenchmarkId, setGenerateBenchmarkId] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -727,7 +730,7 @@ export default function Capabilities(): React.ReactElement {
       if (!res.ok) throw new Error(await res.text());
       setPromoteTarget(null);
       await loadCapabilities();
-      setTab("capabilities");
+      setView("skills");
     } catch (err) {
       console.error("Failed to promote trajectory:", err);
     } finally {
@@ -770,7 +773,7 @@ export default function Capabilities(): React.ReactElement {
         );
       }
       await loadCapabilities();
-      setTab("capabilities");
+      setView("trajectories");
     } catch (err: any) {
       console.error("Failed to generate capabilities:", err);
       setGenerateError(err?.message || "Could not generate capabilities for this connector.");
@@ -779,20 +782,53 @@ export default function Capabilities(): React.ReactElement {
     }
   };
 
+  const connectorsById = useMemo(() => new Map(connectors.map((connector) => [connector.connectorId, connector])), [connectors]);
   const toolsByConnector = useMemo(() => {
-    const groups = new Map<string, { connectorName: string; tools: CompanyTool[] }>();
+    const groups = new Map<string, { connectorKey: string; connectorName: string; tools: CompanyTool[] }>();
     for (const tool of tools) {
       const key = tool.connectorId || tool.connectorName || "unknown";
-      if (!groups.has(key)) groups.set(key, { connectorName: tool.connectorName || "Unknown connector", tools: [] });
+      const connectorName = connectorsById.get(tool.connectorId)?.name || tool.connectorName || "Unknown connector";
+      if (!groups.has(key)) groups.set(key, { connectorKey: key, connectorName, tools: [] });
       groups.get(key)!.tools.push(tool);
     }
-    return Array.from(groups.values());
-  }, [tools]);
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        tools: [...group.tools].sort((a, b) => a.name.localeCompare(b.name)),
+      }))
+      .sort((a, b) => a.connectorName.localeCompare(b.connectorName));
+  }, [connectorsById, tools]);
+
+  const toggleToolConnector = (connectorKey: string) => {
+    setExpandedToolConnectorKeys((current) => {
+      const next = new Set(current);
+      if (next.has(connectorKey)) next.delete(connectorKey);
+      else next.add(connectorKey);
+      return next;
+    });
+  };
+
+  const expandAllToolConnectors = () => {
+    setExpandedToolConnectorKeys(new Set(toolsByConnector.map((group) => group.connectorKey)));
+  };
+
+  const collapseAllToolConnectors = () => {
+    setExpandedToolConnectorKeys(new Set());
+  };
+
   const toolsCount = tools.length;
   const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools]);
   const trajectoriesById = useMemo(() => new Map(trajectories.map((trajectory) => [trajectory.trajectoryId, trajectory])), [trajectories]);
-  const connectorsById = useMemo(() => new Map(connectors.map((connector) => [connector.connectorId, connector])), [connectors]);
   const skillTrajectoryIds = useMemo(() => new Set(skills.flatMap((skill) => skill.trajectoryIds || [])), [skills]);
+  // Skill candidates are not a separate artifact. They are trajectories that
+  // passed judging and have not yet been promoted into a reusable skill.
+  const skillCandidates = useMemo(
+    () => trajectories.filter((trajectory) => {
+      const status = (trajectory.status || "").toLowerCase();
+      return status === "harvested" && trajectoryJudgeLabel(trajectory) === "pass" && !skillTrajectoryIds.has(trajectory.trajectoryId);
+    }),
+    [skillTrajectoryIds, trajectories],
+  );
   const sortedTrajectories = useMemo(
     () => [...trajectories].sort((a, b) => {
       const aApproved = skillTrajectoryIds.has(a.trajectoryId) || (a.status || "").toLowerCase() === "approved";
@@ -803,15 +839,16 @@ export default function Capabilities(): React.ReactElement {
     [skillTrajectoryIds, trajectories],
   );
 
-  const tabs: Array<{ key: TabKey; label: string; icon: typeof faWrench; count: number }> = [
-    { key: "capabilities", label: "Capabilities", icon: faWandMagicSparkles, count: toolsCount + trajectories.length + skills.length },
-    { key: "runs", label: "Generation Runs", icon: faClockRotateLeft, count: runs.length },
+  // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
+  // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
+  // they are inputs to harvesting, not capabilities.
+  const pipelineSteps: Array<{ key: ViewKey; label: string; icon: typeof faWrench; count: number; blurb: string }> = [
+    { key: "tools", label: "Tools", icon: faWrench, count: toolsCount, blurb: "Atomic actions from connectors" },
+    { key: "trajectories", label: "Trajectories", icon: faRoute, count: trajectories.length, blurb: "Concrete attempts with tool calls" },
+    { key: "skills", label: "Skills", icon: faWandMagicSparkles, count: skills.length, blurb: "Reusable, versioned procedures" },
+    { key: "runs", label: "Runs", icon: faTractor, count: runs.length, blurb: "Harvester run history" },
   ];
-  const capabilityTabs: Array<{ key: CapabilityTabKey; label: string; icon: typeof faWrench; count: number }> = [
-    { key: "tools", label: "Tools", icon: faWrench, count: toolsCount },
-    { key: "trajectories", label: "Attempts", icon: faRoute, count: trajectories.length },
-    { key: "skills", label: "Skills", icon: faWandMagicSparkles, count: skills.length },
-  ];
+  const openCreate = () => { setGenerateError(""); setGenerateMessage(""); setCreatePath("menu"); setShowCreate(true); };
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -826,27 +863,23 @@ export default function Capabilities(): React.ReactElement {
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Capabilities</h1>
+                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Capability Studio</h1>
                 <CapabilitiesBuildInfo counts={{ customTools: toolsCount, trajectories: trajectories.length, skills: skills.length }} />
               </div>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Tools, attempts and skills your agents can reuse</p>
+              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Turn tools into trajectories, and trajectories into reusable skills</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {companyId && (
               <button
-                onClick={() => { setGenerateError(""); setGenerateMessage(""); setShowGenerate(true); }}
+                onClick={openCreate}
                 className="h-8 px-3 rounded-lg bg-gradient-primary text-white text-xs font-semibold inline-flex items-center gap-2 shadow-glow"
-                title="Generate capabilities"
+                title="Create a new capability"
               >
-                <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
-                Generate
+                <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
+                Create Capability
               </button>
             )}
-            <button onClick={loadCapabilities} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors">
-              <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-              Refresh
-            </button>
           </div>
         </div>
 
@@ -861,28 +894,87 @@ export default function Capabilities(): React.ReactElement {
             </div>
           ) : (
             <>
-              {/* Generate capabilities modal — opened from the header "Generate" button */}
-              {showGenerate && (
+              {/* Create Capability wizard — opened from the header "Create Capability" button */}
+              {showCreate && (
               <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
-                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowGenerate(false)} />
-                <div className="relative w-full max-w-2xl rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl p-5">
-                <div className="flex items-start justify-between gap-3 mb-4">
+                <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowCreate(false)} />
+                <div className="relative w-full max-w-5xl max-h-[86vh] overflow-auto rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl p-6">
+                <div className="flex items-start justify-between gap-4 mb-5">
                   <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="w-8 h-8 rounded-lg bg-gradient-primary text-white flex items-center justify-center flex-shrink-0">
-                      <FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />
+                    <span className="w-9 h-9 rounded-lg bg-gradient-primary text-white flex items-center justify-center flex-shrink-0">
+                      <FontAwesomeIcon icon={createPath === "task" ? faTractor : faPlus} className="text-xs" />
                     </span>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Generate capabilities</p>
-                      <p className="text-[11px] leading-4 text-gray-400 dark:text-gray-500">
-                        Custom connectors generate task-scoped tools, trajectories and skills from benchmarks. Official connectors already include their default tools.
+                      <p className="text-base font-semibold text-gray-900 dark:text-white">{createPath === "task" ? "Learn from a task" : "Create Capability"}</p>
+                      <p className="text-xs leading-5 text-gray-500 dark:text-gray-400 max-w-2xl">
+                        {createPath === "task"
+                          ? "Run a harvester against a custom connector and a benchmark. It produces trajectories — concrete evidence — that you can later distill into skills."
+                          : "Pick how you want to add a reusable capability. Skills come from proven trajectories or are authored directly."}
                       </p>
                     </div>
                   </div>
-                  <button onClick={() => setShowGenerate(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border flex-shrink-0">
+                  <button onClick={() => setShowCreate(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border flex-shrink-0">
                     <FontAwesomeIcon icon={faXmark} className="text-sm" />
                   </button>
                 </div>
 
+                {createPath === "menu" && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" /></span>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Create skill manually</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed flex-1">Author a skill from scratch with your own instructions and when-to-use notes. Coming soon.</p>
+                      <button disabled className="mt-3 h-9 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-400 dark:text-gray-500 cursor-not-allowed inline-flex items-center justify-center gap-2">
+                        Coming soon
+                      </button>
+                    </div>
+
+                    <button onClick={() => setCreatePath("task")} className="text-left rounded-xl border border-primary/30 bg-primary/5 p-4 flex flex-col hover:border-primary/50 transition-colors">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faTractor} className="text-xs" /></span>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Learn from a task</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed flex-1">Run a harvester against a connector and benchmark to generate trajectories you can promote into skills.</p>
+                      <span className="mt-3 h-9 px-3 rounded-lg bg-gradient-primary text-white text-xs font-semibold inline-flex items-center justify-center gap-2">
+                        <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+                        Run Harvester
+                      </span>
+                    </button>
+
+                    <button onClick={() => { setShowCreate(false); setView("trajectories"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faFlask} className="text-xs" /></span>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Create skill from trajectory</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed flex-1">Pick a passing trajectory and distill it into a reusable skill.</p>
+                      <span className="mt-3 h-9 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center justify-center gap-2">
+                        <FontAwesomeIcon icon={faFlask} className="text-[10px]" />
+                        View promotable trajectories ({skillCandidates.length})
+                      </span>
+                    </button>
+
+                    <button onClick={() => { setShowCreate(false); setView("skills"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" /></span>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Improve existing skill</p>
+                      </div>
+                      <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed flex-1">Open your published skills to refine instructions, risk policy or add source trajectories.</p>
+                      <span className="mt-3 h-9 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center justify-center gap-2">
+                        <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
+                        Go to Skills ({skills.length})
+                      </span>
+                    </button>
+                  </div>
+                )}
+
+                {createPath === "task" && (
+                <div>
+                <button onClick={() => setCreatePath("menu")} className="mb-4 text-xs font-medium text-gray-500 dark:text-gray-400 inline-flex items-center gap-1.5 hover:text-primary">
+                  <FontAwesomeIcon icon={faArrowRight} className="text-[9px] rotate-180" />
+                  Back to options
+                </button>
                 {customConnectors.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-4 py-6 text-center">
                     <p className="text-sm text-gray-500 dark:text-gray-400 mb-3">
@@ -895,7 +987,7 @@ export default function Capabilities(): React.ReactElement {
                   </div>
                 ) : (
                   <>
-                    <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_auto] gap-3">
+                    <div className="grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] gap-4">
                       <label className="block">
                         <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Connector</span>
                         <SelectDropdown
@@ -965,26 +1057,38 @@ export default function Capabilities(): React.ReactElement {
                   </>
                 )}
                 </div>
+                )}
+                </div>
               </div>
               )}
 
-              {/* Tabs */}
-              <div className="flex items-center gap-1.5 mb-5 overflow-x-auto scrollbar-thin">
-                {tabs.map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setTab(item.key)}
-                    className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-colors border ${
-                      tab === item.key
-                        ? "bg-gradient-primary text-white border-transparent shadow-glow"
-                        : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-100 dark:hover:bg-dark-border"
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={item.icon} className="text-[11px]" />
-                    {item.label}
-                    <span className={`px-1.5 rounded-md text-[10px] ${tab === item.key ? "bg-white/20" : "bg-gray-100 dark:bg-dark-border"}`}>{item.count}</span>
-                  </button>
-                ))}
+              {/* Pipeline band — explains the model and acts as the primary navigation */}
+              <div className="mb-5">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                  {pipelineSteps.map((step, index) => (
+                    <button
+                      key={step.key}
+                      onClick={() => setView(step.key)}
+                      className={`relative text-left rounded-xl border p-3 transition-all duration-200 ${
+                        view === step.key
+                          ? "border-primary/40 bg-primary/5 shadow-sm"
+                          : "border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface hover:border-primary/30"
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${view === step.key ? "bg-gradient-primary text-white" : "bg-primary/10 text-primary"}`}>
+                          <FontAwesomeIcon icon={step.icon} className="text-[11px]" />
+                        </span>
+                        <span className={`text-sm font-semibold tabular-nums ${view === step.key ? "text-primary" : "text-gray-700 dark:text-gray-200"}`}>{step.count}</span>
+                      </div>
+                      <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">{step.label}</p>
+                      <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-2 min-h-[1.75rem]">{step.blurb}</p>
+                      {index < pipelineSteps.length - 1 && (
+                        <FontAwesomeIcon icon={faArrowRight} className="hidden lg:block absolute -right-[7px] top-1/2 -translate-y-1/2 z-10 text-[9px] text-gray-300 dark:text-gray-600" />
+                      )}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {loading ? (
@@ -993,105 +1097,122 @@ export default function Capabilities(): React.ReactElement {
                 </div>
               ) : (
                 <>
-                  {tab === "capabilities" && toolsCount === 0 && trajectories.length === 0 && skills.length === 0 && (
-                      <EmptyState
-                        icon={faWrench}
-                        title="No capabilities yet"
-                        body="Use Generate capabilities above for custom connectors. Official connectors already include default tools outside this harvester flow."
-                        action={customConnectors.length === 0 ? <button onClick={() => navigate("/connectors")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faCircleNodes} className="text-xs" />Go to Connectors</button> : undefined}
-                      />
-                  )}
-
-                  {tab === "capabilities" && (toolsCount > 0 || trajectories.length > 0 || skills.length > 0) && (
-                    <div className="flex items-center gap-1.5 mb-5 overflow-x-auto scrollbar-thin">
-                      {capabilityTabs.map((item) => (
-                        <button
-                          key={item.key}
-                          onClick={() => setCapabilityTab(item.key)}
-                          className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-colors border ${
-                            capabilityTab === item.key
-                              ? "bg-white dark:bg-dark-surface text-primary border-primary/30 shadow-sm"
-                              : "bg-white/70 dark:bg-dark-surface/70 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-white dark:hover:bg-dark-surface"
-                          }`}
-                        >
-                          <FontAwesomeIcon icon={item.icon} className="text-[11px]" />
-                          {item.label}
-                          <span className={`px-1.5 rounded-md text-[10px] ${capabilityTab === item.key ? "bg-primary/10 text-primary" : "bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400"}`}>{item.count}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
                   {/* Tools */}
-                  {tab === "capabilities" && capabilityTab === "tools" && toolsCount > 0 && (
+                  {view === "tools" && toolsCount > 0 && (
                       <div className="space-y-5">
-                        <div>
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Connector Tools</p>
-                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            Official, generated, harvested and manually customized tools available to this company's agents.
-                          </p>
-                        </div>
-                        {toolsByConnector.map((group) => (
-                          <div key={group.connectorName}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <FontAwesomeIcon icon={faCircleNodes} className="text-primary text-xs" />
-                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{group.connectorName}</p>
-                              <span className="text-xs text-gray-400">{group.tools.length} {group.tools.length === 1 ? "tool" : "tools"}</span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                              {group.tools.map((tool) => (
-                                <button
-                                  key={tool.toolId}
-                                  onClick={() => setDetail({ kind: "tool", item: tool })}
-                                  className="text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5"
-                                >
-                                  <div className="flex items-start justify-between gap-2">
-                                    <span className="font-mono text-xs text-gray-800 dark:text-gray-100 break-all">{tool.name}</span>
-                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(tool.status)}`}>{tool.status}</span>
-                                  </div>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{tool.description || "No description."}</p>
-                                  <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
-                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sideEffectTone(tool.sideEffects)}`}>{tool.sideEffects}</span>
-                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${riskTone(tool.riskLevel)}`}>
-                                      <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{tool.riskLevel} risk
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
-                                      {approvalLabel(approvalMode(tool))}
-                                    </span>
-                                    {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
-                                    {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}
-                                    {tool.discoveryRelevance?.score !== undefined && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">rel {tool.discoveryRelevance.score}</span>}
-                                  </div>
-                                  {((tool.inputEntities || []).length > 0 || tool.outputEntity) && (
-                                    <div className="mt-2">
-                                      <EntityChips inputEntities={tool.inputEntities} outputEntity={tool.outputEntity} />
-                                    </div>
-                                  )}
-                                </button>
-                              ))}
-                            </div>
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                          <div>
+                            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Connector Tools</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                              Tools are atomic actions exposed by connectors. Connectors stay collapsed so large workspaces remain scannable.
+                            </p>
                           </div>
-                        ))}
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-xs font-medium text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
+                              {toolsByConnector.length} connectors
+                            </span>
+                            <button onClick={expandAllToolConnectors} className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border">
+                              Expand all
+                            </button>
+                            <button onClick={collapseAllToolConnectors} className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border">
+                              Collapse all
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="space-y-3">
+                          {toolsByConnector.map((group) => {
+                            const expanded = expandedToolConnectorKeys.has(group.connectorKey);
+                            const writeCount = group.tools.filter((tool) => ["writes", "deletes"].includes((tool.sideEffects || "").toLowerCase())).length;
+                            const typedCount = group.tools.filter((tool) => (tool.inputEntities || []).length > 0 || Boolean(tool.outputEntity)).length;
+                            const highRiskCount = group.tools.filter((tool) => (tool.riskLevel || "").toLowerCase() === "high").length;
+                            return (
+                              <div key={group.connectorKey} className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
+                                <button
+                                  onClick={() => toggleToolConnector(group.connectorKey)}
+                                  className="flex w-full items-center justify-between gap-4 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:hover:bg-dark-border/40"
+                                >
+                                  <div className="flex min-w-0 items-center gap-3">
+                                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                                      <FontAwesomeIcon icon={faCircleNodes} className="text-xs" />
+                                    </span>
+                                    <div className="min-w-0">
+                                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{group.connectorName}</p>
+                                      <p className="mt-0.5 text-[11px] text-gray-400">{group.tools.length} {group.tools.length === 1 ? "tool" : "tools"}</p>
+                                    </div>
+                                  </div>
+                                  <div className="flex flex-shrink-0 items-center gap-2">
+                                    {writeCount > 0 && <span className="hidden rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-400 sm:inline-flex">{writeCount} writes</span>}
+                                    {typedCount > 0 && <span className="hidden rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary sm:inline-flex">{typedCount} typed</span>}
+                                    {highRiskCount > 0 && <span className="hidden rounded-md border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-medium text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400 sm:inline-flex">{highRiskCount} high risk</span>}
+                                    <FontAwesomeIcon icon={faChevronDown} className={`text-xs text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                                  </div>
+                                </button>
+
+                                {expanded && (
+                                  <div className="border-t border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg/60">
+                                    <div className="flex flex-col gap-3">
+                                      {group.tools.map((tool) => (
+                                        <button
+                                          key={tool.toolId}
+                                          onClick={() => setDetail({ kind: "tool", item: tool })}
+                                          className="text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5"
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <span className="font-mono text-xs text-gray-800 dark:text-gray-100 break-all">{tool.name}</span>
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(tool.status)}`}>{tool.status}</span>
+                                          </div>
+                                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{tool.description || "No description."}</p>
+                                          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sideEffectTone(tool.sideEffects)}`}>{tool.sideEffects}</span>
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${riskTone(tool.riskLevel)}`}>
+                                              <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{tool.riskLevel} risk
+                                            </span>
+                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
+                                              {approvalLabel(approvalMode(tool))}
+                                            </span>
+                                            {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
+                                            {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}
+                                            {tool.discoveryRelevance?.score !== undefined && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">rel {tool.discoveryRelevance.score}</span>}
+                                          </div>
+                                          {((tool.inputEntities || []).length > 0 || tool.outputEntity) && (
+                                            <div className="mt-2">
+                                              <EntityChips inputEntities={tool.inputEntities} outputEntity={tool.outputEntity} />
+                                            </div>
+                                          )}
+                                        </button>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
                   )}
-                  {tab === "capabilities" && capabilityTab === "tools" && toolsCount === 0 && (trajectories.length > 0 || skills.length > 0) && (
+                  {view === "tools" && toolsCount === 0 && (
                     <EmptyState
                       icon={faWrench}
                       title="No tools yet"
-                      body="Publish connector tools or run a harvester to create tools for this company."
+                      body="Tools are atomic actions from connectors. Publish official connector tools or run a harvester to create them for this company."
+                      action={<button onClick={() => navigate("/connectors")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faCircleNodes} className="text-xs" />Go to Connectors</button>}
                     />
                   )}
 
                   {/* Trajectories */}
-                  {tab === "capabilities" && capabilityTab === "trajectories" && trajectories.length > 0 && (
+                  {view === "trajectories" && trajectories.length > 0 && (
                       <div>
                         <div className="mb-3">
-                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Harvest Attempts</p>
+                          <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Trajectories</p>
                           <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                            A task can have multiple harvested attempts. Only attempts that pass the judge become approved trajectories and skills.
+                            A trajectory is concrete evidence from a harvester run: task attempt, tool calls, observations and judge result. Passing unpromoted trajectories can be promoted into skills.
                           </p>
+                          {skillCandidates.length > 0 && (
+                            <p className="mt-1 text-xs text-primary">{skillCandidates.length} promotable {skillCandidates.length === 1 ? "trajectory" : "trajectories"} available.</p>
+                          )}
                         </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-3">
                         {sortedTrajectories.map((trajectory) => {
                           const status = (trajectory.status || "").toLowerCase();
                           const judgeLabel = trajectoryJudgeLabel(trajectory);
@@ -1158,19 +1279,20 @@ export default function Capabilities(): React.ReactElement {
                       </div>
                       </div>
                   )}
-                  {tab === "capabilities" && capabilityTab === "trajectories" && trajectories.length === 0 && (toolsCount > 0 || skills.length > 0) && (
+                  {view === "trajectories" && trajectories.length === 0 && (
                     <EmptyState
                       icon={faRoute}
                       title="No trajectories yet"
-                      body="Run a harvester from a web app or custom API against a benchmark to create task trajectories."
+                      body="Run a harvester against a task benchmark to create concrete trajectories with tool calls and observations."
+                      action={<button onClick={openCreate} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faPlus} className="text-xs" />Create Capability</button>}
                     />
                   )}
 
                   {/* Skills */}
-                  {tab === "capabilities" && capabilityTab === "skills" && skills.length > 0 && (
+                  {view === "skills" && skills.length > 0 && (
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Skills</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+                      <div className="flex flex-col gap-3">
                         {skills.map((skill) => {
                           const originLabel = skillOriginLabel(skill);
                           return (
@@ -1229,24 +1351,25 @@ export default function Capabilities(): React.ReactElement {
                       </div>
                       </div>
                   )}
-                  {tab === "capabilities" && capabilityTab === "skills" && skills.length === 0 && (toolsCount > 0 || trajectories.length > 0) && (
+                  {view === "skills" && skills.length === 0 && (
                     <EmptyState
                       icon={faWandMagicSparkles}
                       title="No skills yet"
-                      body="Promote a reliable trajectory to a skill, or run a task-scoped harvester that packages skills automatically."
+                      body="Promote a reliable Skill Candidate, or author a reusable skill manually once that flow is enabled."
+                      action={<button onClick={() => setView("trajectories")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faRoute} className="text-xs" />View Trajectories</button>}
                     />
                   )}
 
-                  {/* Generation runs */}
-                  {tab === "runs" && (
+                  {/* Harvester runs */}
+                  {view === "runs" && (
                     runs.length === 0 ? (
                       <EmptyState
                         icon={faClockRotateLeft}
-                        title="No generation runs yet"
+                        title="No harvester runs yet"
                         body={trajectories.length > 0
-                          ? "There are harvested attempts, but no UI generation run record. This can happen when a benchmark was seeded or harvested from a script. Future harvests launched from this page will appear here."
-                          : "Custom API and web connectors create generation runs when a harvester is executed against a benchmark from this page."}
-                        action={<button onClick={() => setTab("capabilities")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" />Generate capabilities</button>}
+                          ? "There are trajectories, but no UI harvester run record. This can happen when a benchmark was seeded or harvested from a script."
+                          : "Runs appear here when a harvester executes a benchmark and produces trajectories."}
+                        action={<button onClick={openCreate} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faTractor} className="text-xs" />Run Harvester</button>}
                       />
                     ) : (
                       <div className="space-y-3">

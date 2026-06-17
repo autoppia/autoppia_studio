@@ -1,7 +1,7 @@
 [project]
-name = "backend"
+name = "autoppia-studio-backend"
 version = "0.1.0"
-description = "Automata cloud API backend"
+description = "Autoppia Studio API backend"
 requires-python = ">=3.11"
 dependencies = [
     "browser-use>=0.5.6",

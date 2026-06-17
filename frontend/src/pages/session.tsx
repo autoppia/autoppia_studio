@@ -13,7 +13,6 @@ import {
   faGlobe,
   faDiagramProject,
   faShapes,
-  faRotate,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 
@@ -705,14 +704,6 @@ function Session(): React.ReactElement {
         </div>
         <div className="flex flex-shrink-0 items-center gap-2">
           <button
-            onClick={loadDocuments}
-            disabled={documentsLoading}
-            className="flex h-8 items-center gap-2 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
-          >
-            <FontAwesomeIcon icon={documentsLoading ? faSpinner : faRotate} className={`text-[10px] ${documentsLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-          <button
             onClick={() => documentInputRef.current?.click()}
             disabled={documentsUploading || !(reduxSessionId || sessionId)}
             className="flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white transition-opacity disabled:opacity-60"
@@ -883,14 +874,6 @@ function Session(): React.ReactElement {
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Session artifacts</p>
               <p className="mt-0.5 text-xs text-gray-400">Outputs created by this agent run.</p>
             </div>
-            <button
-              onClick={loadArtifacts}
-              disabled={documentsLoading}
-              className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
-              title="Refresh artifacts"
-            >
-              <FontAwesomeIcon icon={documentsLoading ? faSpinner : faRotate} className={`text-[10px] ${documentsLoading ? "animate-spin" : ""}`} />
-            </button>
           </div>
         </div>
         <div className="flex-1 overflow-auto p-2">

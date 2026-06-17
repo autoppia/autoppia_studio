@@ -14,7 +14,6 @@ import {
   faFileWord,
   faPen,
   faPlus,
-  faRotate,
   faSave,
   faShapes,
   faSpinner,
@@ -356,10 +355,6 @@ export default function Artifacts(): React.ReactElement {
             <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Artifacts</h1>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={loadArtifacts} className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface">
-              <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-              Refresh
-            </button>
             <button onClick={createNew} className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface">
               <FontAwesomeIcon icon={faPlus} className="mr-2 text-[10px]" />
               New

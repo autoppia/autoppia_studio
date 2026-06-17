@@ -183,8 +183,18 @@ export default function Analytics() {
                           Breakdown by Source
                         </p>
                         <p className="text-sm text-gray-400 dark:text-gray-500">
-                          {credits.breakdown_by_source.length ? "Usage sources loaded" : "No usage in this range"}
+                          {credits.breakdown_by_source.length ? `${credits.breakdown_by_source.length} usage source${credits.breakdown_by_source.length === 1 ? "" : "s"} loaded` : "No usage in this range"}
                         </p>
+                        {credits.breakdown_by_source.length > 0 && (
+                          <div className="mt-3 space-y-2">
+                            {credits.breakdown_by_source.slice(0, 5).map((item) => (
+                              <div key={item.source} className="flex items-center justify-between gap-3 text-xs">
+                                <span className="truncate text-gray-500 dark:text-gray-400">{item.source}</span>
+                                <span className="font-semibold text-gray-800 dark:text-gray-100">${item.usage.toFixed(4)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -193,7 +203,11 @@ export default function Analytics() {
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-4">
                         Usage Over Time
                       </p>
-                      <ChartPlaceholder icon={faChartLine} label="No usage in this range" />
+                      {credits.usage_over_time.length > 0 && credits.total_usage > 0 ? (
+                        <UsageBarChart points={credits.usage_over_time} range={range} />
+                      ) : (
+                        <ChartPlaceholder icon={faChartLine} label="No usage in this range" />
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -350,6 +364,45 @@ function SessionsBarChart({ points, range }: { points: OverTimePoint[]; range: R
         })}
       </div>
       <div className="flex gap-[2px] px-1 pt-2 text-[9px] text-gray-400 dark:text-gray-500">
+        {points.map((p, idx) => (
+          <div key={`${p.bucket}-label`} className="flex-1 text-center truncate">
+            {showLabel(idx) ? formatBucket(p.bucket, range) : ""}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function UsageBarChart({ points, range }: { points: { bucket: string; usage: number }[]; range: RangeKey }) {
+  const max = Math.max(0.0001, ...points.map((p) => p.usage || 0));
+  const showLabel = (idx: number) => {
+    if (range === "24h") return idx % 4 === 0;
+    if (range === "7d") return true;
+    if (range === "30d") return idx % 5 === 0;
+    return idx % 15 === 0;
+  };
+
+  return (
+    <div className="h-64 flex flex-col">
+      <div className="flex-1 flex items-end gap-[3px] px-1">
+        {points.map((p) => {
+          const height = ((p.usage || 0) / max) * 100;
+          return (
+            <div
+              key={p.bucket}
+              className="flex-1 flex items-end min-w-0 group relative"
+              title={`${p.bucket}: $${(p.usage || 0).toFixed(4)}`}
+            >
+              <div
+                className="w-full bg-gradient-primary rounded-t-sm transition-all duration-200"
+                style={{ height: `${Math.max(height, p.usage > 0 ? 2 : 0)}%` }}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-[3px] px-1 pt-2 text-[9px] text-gray-400 dark:text-gray-500">
         {points.map((p, idx) => (
           <div key={`${p.bucket}-label`} className="flex-1 text-center truncate">
             {showLabel(idx) ? formatBucket(p.bucket, range) : ""}

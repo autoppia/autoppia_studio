@@ -28,6 +28,16 @@ def _query_scope(email: str, company_id: str = "", status: str = "") -> dict[str
     return query
 
 
+def _exclude_runtime_session_approvals(query: dict[str, Any]) -> dict[str, Any]:
+    return {
+        **query,
+        "$or": [
+            {"metadata.sourceKind": {"$in": ["work", "async", "scheduled"]}},
+            {"metadata.workItemId": {"$exists": True, "$nin": ["", None]}},
+        ],
+    }
+
+
 async def _owned_approval(approval_id: str, scope: RequestScope) -> dict[str, Any]:
     query: dict[str, Any] = {"approvalId": approval_id}
     if scope.email:
@@ -43,12 +53,15 @@ async def list_approvals(
     email: str = "",
     companyId: str = "",
     status: str = "pending",
+    includeRuntime: bool = False,
     scope: RequestScope = Depends(get_request_scope),
 ):
     scope = coerce_request_scope(scope)
     scoped_email = scope.require_email(email)
     clean_status = status if status in {"pending", "approved", "rejected", "expired", ""} else "pending"
     query = _query_scope(scoped_email, companyId, clean_status)
+    if not includeRuntime:
+        query = _exclude_runtime_session_approvals(query)
     docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)
     return {"approvals": [serialize_approval(doc) for doc in docs]}
 

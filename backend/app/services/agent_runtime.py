@@ -693,6 +693,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
             payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
             run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
             work_item_id = str(payload_context.get("workItemId") or "")
+            session_id = str(payload.get("sessionId") or payload.get("session_id") or payload_context.get("sessionId") or "")
             approval = await create_pending_approval(
                 email=str(agent_config.get("email") or ""),
                 company_id=company_id,
@@ -707,7 +708,9 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                     "toolId": str((tool_doc or {}).get("toolId") or ""),
                     "connectorId": str((tool_doc or {}).get("connectorId") or ""),
                     "workItemId": work_item_id,
+                    "sessionId": session_id,
                     "runId": run_id,
+                    "sourceKind": "work" if work_item_id else "session" if session_id else "runtime",
                 },
             )
             return {
@@ -924,6 +927,7 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
             payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
             run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
             work_item_id = str(payload_context.get("workItemId") or "")
+            session_id = str(payload.get("sessionId") or payload.get("session_id") or payload_context.get("sessionId") or "")
             approval = await create_pending_approval(
                 email=str(agent_config.get("email") or ""),
                 company_id=str(agent_config.get("companyId") or ""),
@@ -939,7 +943,9 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
                     "trajectoryId": trajectory_id,
                     "actionIndex": index + 1,
                     "workItemId": work_item_id,
+                    "sessionId": session_id,
                     "runId": run_id,
+                    "sourceKind": "work" if work_item_id else "session" if session_id else "runtime",
                     "statePatch": state_patch,
                 },
             )
@@ -982,6 +988,7 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
             payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
             run_id = str(payload.get("run_id") or payload.get("runId") or payload_context.get("runId") or "")
             work_item_id = str(payload_context.get("workItemId") or "")
+            session_id = str(payload.get("sessionId") or payload.get("session_id") or payload_context.get("sessionId") or "")
             approval = await create_pending_approval(
                 email=str(agent_config.get("email") or ""),
                 company_id=str(agent_config.get("companyId") or ""),
@@ -997,7 +1004,9 @@ async def _web_skill_response(agent_config: dict[str, Any], skill: dict[str, Any
                     "trajectoryId": trajectory_id,
                     "actionIndex": index,
                     "workItemId": work_item_id,
+                    "sessionId": session_id,
                     "runId": run_id,
+                    "sourceKind": "work" if work_item_id else "session" if session_id else "runtime",
                     "statePatch": state_patch,
                 },
             )

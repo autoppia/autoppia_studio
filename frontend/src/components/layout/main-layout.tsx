@@ -1,13 +1,13 @@
 import { useRef, useState, useCallback } from "react";
 import { Outlet } from "react-router-dom";
-import AppSidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH } from "./app-sidebar";
+import AppSidebar, { COLLAPSED_WIDTH, EXPANDED_WIDTH, getStoredSidebarExpanded } from "./app-sidebar";
 import TopBar from "./top-bar";
 import AutomataAssistant from "../assistant/automata-assistant";
 import type { AppSidebarHandle } from "./app-sidebar";
 import type { HistoryItem } from "../../utils/types";
 
 export default function MainLayout() {
-  const [sidebarExpanded, setSidebarExpanded] = useState(false);
+  const [sidebarExpanded, setSidebarExpanded] = useState(getStoredSidebarExpanded);
   const sidebarRef = useRef<AppSidebarHandle>(null);
 
   const addHistoryItem = useCallback((item: HistoryItem) => {

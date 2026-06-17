@@ -25,14 +25,21 @@ import {
   faChartLine,
   faShieldHalved,
   faCode,
+  faGem,
+  faLock,
+  faUser,
+  faComments,
 } from "@fortawesome/free-solid-svg-icons";
 import BrowserTabs from "../components/session/browser-tabs";
 import ConfirmModal from "../components/common/confirm-modal";
+import ChangePasswordModal from "../components/common/change-password-modal";
+import { useToast } from "../components/common/toast";
 import Credentials from "./credentials";
 import Analytics from "./analytics";
 import type { BrowserTab } from "../redux/socketSlice";
 import type { Company } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
+import { PLANS, getStoredPlan, setStoredPlan, planById, type PlanId } from "../utils/plan";
 
 const apiUrl = getApiUrl();
 
@@ -66,6 +73,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     label: "Account",
     items: [
+      { id: "account", label: "Account", icon: faUser },
       { id: "profiles", label: "Browser Profiles", icon: faUserCircle },
       { id: "credentials", label: "Credentials", icon: faShieldHalved },
       { id: "analytics", label: "Analytics", icon: faChartLine },
@@ -81,6 +89,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     label: "Billing",
     items: [
+      { id: "plan", label: "Plan", icon: faGem },
       { id: "credit", label: "Credit", icon: faCreditCard },
       { id: "invoices", label: "Invoices", icon: faReceipt },
     ],
@@ -872,6 +881,18 @@ function APIKeysTab() {
     }
   };
 
+  const pythonSnippet = `import os
+import requests
+
+response = requests.post(
+    "${apiUrl.replace(/\/$/, "")}/api/v1/agents/YOUR_AGENT_ID/step",
+    headers={"x-api-key": os.environ["AUTOMATA_API_KEY"]},
+    json={"task": "Summarize the current workspace"},
+    timeout=60,
+)
+response.raise_for_status()
+print(response.json())`;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-48 text-gray-400 dark:text-gray-500">
@@ -902,6 +923,27 @@ function APIKeysTab() {
         onCreate={handleCreate}
         creating={creating}
       />
+
+      <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div>
+            <p className="text-sm font-semibold text-gray-800 dark:text-gray-100">Python quickstart</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Store the key in <code className="font-mono">AUTOMATA_API_KEY</code>; never hardcode it in client-side code.
+            </p>
+          </div>
+          <button
+            onClick={() => handleCopy(pythonSnippet)}
+            className="h-8 px-3 rounded-lg text-xs font-medium border border-gray-200 dark:border-dark-border text-gray-600 dark:text-gray-300 bg-white dark:bg-dark-surface hover:bg-gray-100 dark:hover:bg-dark-border"
+          >
+            <FontAwesomeIcon icon={faCopy} className="mr-1.5 text-[10px]" />
+            Copy
+          </button>
+        </div>
+        <pre className="max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3 text-[11px] leading-5 text-gray-700 dark:text-gray-200">
+          {pythonSnippet}
+        </pre>
+      </div>
 
       {/* Newly created key banner */}
       {newlyCreatedKey && (
@@ -1706,10 +1748,226 @@ function EmbedTab() {
   );
 }
 
+// ── Account Tab ─────────────────────────────────────────────────────
+
+function AccountTab() {
+  const user = useSelector((state: any) => state.user);
+  const { showToast } = useToast();
+  const [, setSearchParams] = useSearchParams();
+  const [planId, setPlanId] = useState<PlanId>(getStoredPlan);
+  const [changePasswordOpen, setChangePasswordOpen] = useState(false);
+  const [confirmDeleteChats, setConfirmDeleteChats] = useState(false);
+  const [deletingChats, setDeletingChats] = useState(false);
+
+  const plan = planById(planId);
+
+  useEffect(() => {
+    const onPlanChanged = () => setPlanId(getStoredPlan());
+    window.addEventListener("automata-plan-changed", onPlanChanged);
+    return () => window.removeEventListener("automata-plan-changed", onPlanChanged);
+  }, []);
+
+  const handleDeleteAllChats = async () => {
+    setConfirmDeleteChats(false);
+    setDeletingChats(true);
+    try {
+      const res = await fetch(`${apiUrl}/sessions/all?email=${user.email}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        showToast(data?.detail || "Failed to delete chats", "error");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent("automata-chats-cleared"));
+      showToast("All chats deleted", "success");
+    } catch {
+      showToast("Unable to reach the server. Please try again later.", "error");
+    } finally {
+      setDeletingChats(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Identity */}
+      <div className="flex items-center gap-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-5 py-4">
+        <div className="flex items-center justify-center w-11 h-11 rounded-full bg-gradient-primary text-white flex-shrink-0">
+          <FontAwesomeIcon icon={faUser} className="text-sm" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 truncate">{user.email?.split("@")[0]}</p>
+          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{user.email}</p>
+        </div>
+      </div>
+
+      {/* Current plan */}
+      <div className="flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-5 py-4">
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-wide text-gray-400">
+            <FontAwesomeIcon icon={faGem} className="text-[10px] text-primary" />
+            Current plan
+          </div>
+          <p className="text-base font-semibold text-gray-800 dark:text-gray-100 mt-0.5">
+            {plan.name} <span className="text-sm font-normal text-gray-400">· {plan.price}{plan.priceSuffix}</span>
+          </p>
+        </div>
+        <button
+          onClick={() => setSearchParams({ tab: "plan" })}
+          className="flex-shrink-0 h-9 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg transition-all"
+        >
+          Manage plan
+        </button>
+      </div>
+
+      {/* Security */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Security</h3>
+        <button
+          onClick={() => setChangePasswordOpen(true)}
+          className="w-full flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-5 py-4 hover:border-gray-300 dark:hover:border-gray-600 transition-colors"
+        >
+          <span className="flex items-center gap-3">
+            <FontAwesomeIcon icon={faLock} className="text-gray-400 text-sm" />
+            <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Change password</span>
+          </span>
+          <span className="text-xs text-gray-400">Update</span>
+        </button>
+      </div>
+
+      {/* Danger zone */}
+      <div>
+        <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-200 mb-3">Chat history</h3>
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/5 px-5 py-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <FontAwesomeIcon icon={faComments} className="text-red-400 text-sm flex-shrink-0" />
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Delete all chats</p>
+              <p className="text-xs text-gray-400 dark:text-gray-500">Permanently removes your chat history. This cannot be undone.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setConfirmDeleteChats(true)}
+            disabled={deletingChats}
+            className="flex-shrink-0 h-9 px-4 rounded-xl text-sm font-semibold text-red-600 bg-red-50 dark:bg-red-500/10 hover:bg-red-100 dark:hover:bg-red-500/20 transition-colors disabled:opacity-50"
+          >
+            {deletingChats ? <FontAwesomeIcon icon={faSpinner} className="animate-spin" /> : "Delete all"}
+          </button>
+        </div>
+      </div>
+
+      {changePasswordOpen && (
+        <ChangePasswordModal email={user.email} onClose={() => setChangePasswordOpen(false)} />
+      )}
+      {confirmDeleteChats && (
+        <ConfirmModal
+          title="Delete All Chats"
+          message="Are you sure you want to delete all your chat history? This action cannot be undone."
+          confirmLabel="Delete All"
+          onConfirm={handleDeleteAllChats}
+          onCancel={() => setConfirmDeleteChats(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Plan Tab ────────────────────────────────────────────────────────
+
+function PlanTab() {
+  const { showToast } = useToast();
+  const [planId, setPlanId] = useState<PlanId>(getStoredPlan);
+
+  const handleSelect = (next: PlanId) => {
+    if (next === planId) return;
+    setStoredPlan(next);
+    setPlanId(next);
+    if (next === "free") {
+      showToast("Switched to the Free plan.", "success");
+    } else {
+      showToast(`${planById(next).name} selected — card payments are coming soon.`, "success");
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Choose the plan that fits how much you automate. Upgrade or downgrade anytime.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {PLANS.map((plan) => {
+          const isCurrent = plan.id === planId;
+          return (
+            <div
+              key={plan.id}
+              className={`relative flex flex-col rounded-2xl border p-5 transition-all ${
+                plan.highlight
+                  ? "border-primary/60 ring-1 ring-primary/20 shadow-soft"
+                  : "border-gray-200 dark:border-dark-border"
+              } bg-white dark:bg-dark-surface`}
+            >
+              {plan.highlight && (
+                <span className="absolute -top-2.5 left-5 px-2 py-0.5 rounded-full text-[10px] font-semibold text-white bg-gradient-primary shadow-glow">
+                  Most popular
+                </span>
+              )}
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faGem} className={`text-sm ${plan.highlight ? "text-primary" : "text-gray-400"}`} />
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">{plan.name}</h3>
+              </div>
+              <div className="mt-2 flex items-baseline gap-1">
+                <span className="text-3xl font-bold text-gray-900 dark:text-white">{plan.price}</span>
+                <span className="text-sm text-gray-400">{plan.priceSuffix}</span>
+              </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 leading-relaxed">{plan.tagline}</p>
+
+              <ul className="mt-4 space-y-2 flex-1">
+                {plan.features.map((feature) => (
+                  <li key={feature} className="flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+                    <FontAwesomeIcon icon={faCheck} className="text-green-500 text-[11px] mt-1 flex-shrink-0" />
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <button
+                onClick={() => handleSelect(plan.id)}
+                disabled={isCurrent}
+                className={`mt-5 h-10 rounded-xl text-sm font-semibold transition-all ${
+                  isCurrent
+                    ? "border border-gray-200 dark:border-dark-border text-gray-400 cursor-default"
+                    : plan.highlight
+                    ? "text-white bg-gradient-primary shadow-glow hover:shadow-glow-lg"
+                    : "border border-gray-200 dark:border-dark-border text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-dark-bg"
+                }`}
+              >
+                {isCurrent ? "Current plan" : plan.id === "free" ? "Switch to Free" : `Upgrade to ${plan.name}`}
+              </button>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex items-start gap-3">
+        <FontAwesomeIcon icon={faCreditCard} className="text-gray-400 mt-0.5 text-sm flex-shrink-0" />
+        <div>
+          <p className="text-sm font-medium text-gray-700 dark:text-gray-300">Card payments coming soon</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed">
+            Selecting a paid plan saves your choice. We'll prompt for payment once billing goes live.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Tab Content Router ──────────────────────────────────────────────
 
 function TabContent({ tab }: { tab: TabId }) {
   switch (tab) {
+    case "account":
+      return <AccountTab />;
+    case "plan":
+      return <PlanTab />;
     case "profiles":
       return <ProfilesTab />;
     case "api-keys":

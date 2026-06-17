@@ -131,6 +131,14 @@ async def execute_job(job: dict) -> dict:
             harvester_name=str(payload.get("harvesterName") or "autoppia_harvester"),
         )
         return {"ok": True}
+    if job_type == "assistant_memory_rebuild":
+        from app.assistant.memory import rebuild_assistant_memory
+
+        return await rebuild_assistant_memory(
+            email=str(payload.get("email") or ""),
+            company_id=str(payload.get("companyId") or ""),
+            limit=int(payload.get("limit") or 200),
+        )
     raise RuntimeError(f"Unknown job type: {job_type}")
 
 

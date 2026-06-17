@@ -8,7 +8,6 @@ import {
   faFilePdf,
   faFileWord,
   faPlus,
-  faRotate,
   faSpinner,
   faTrash,
   faTriangleExclamation,
@@ -224,13 +223,9 @@ export default function Knowledge(): React.ReactElement {
             </InfoIcon>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={loadDocuments} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors">
-              <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-              Refresh
-            </button>
             <button onClick={createVectorDatabase} disabled={!companyId} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors disabled:opacity-60">
               <FontAwesomeIcon icon={faDatabase} className="mr-2 text-[10px]" />
-              New DB
+              New vector store
             </button>
             <button onClick={() => fileInputRef.current?.click()} disabled={uploading || !companyId || !selectedVectorDatabaseId} className="h-8 px-3 rounded-lg bg-gradient-primary text-white text-xs font-semibold disabled:opacity-60 transition-opacity">
               <FontAwesomeIcon icon={uploading ? faSpinner : faPlus} className={`mr-2 text-[10px] ${uploading ? "animate-spin" : ""}`} />
@@ -241,7 +236,14 @@ export default function Knowledge(): React.ReactElement {
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-6">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+            <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
+              <div className="flex items-center gap-1.5 mb-1">
+                <FontAwesomeIcon icon={faDatabase} className="text-[10px] text-gray-400" />
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector stores</p>
+              </div>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{vectorDatabases.length}</p>
+            </div>
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
               <div className="flex items-center gap-1.5 mb-1">
                 <FontAwesomeIcon icon={faFileLines} className="text-[10px] text-gray-400" />
@@ -268,6 +270,17 @@ export default function Knowledge(): React.ReactElement {
           </div>
 
           {vectorDatabases.length > 0 && (
+            <div className="mb-2">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faDatabase} className="text-primary text-xs" />
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Vector stores</h2>
+              </div>
+              <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
+                A vector store is the searchable index that holds your documents. Select one to view and upload documents into it.
+              </p>
+            </div>
+          )}
+          {vectorDatabases.length > 0 && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-5">
               {vectorDatabases.map((db) => {
                 const active = db.vectorDatabaseId === selectedVectorDatabase?.vectorDatabaseId;
@@ -287,9 +300,15 @@ export default function Knowledge(): React.ReactElement {
                           <FontAwesomeIcon icon={faDatabase} className="text-primary text-xs" />
                           <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{db.name}</p>
                         </div>
-                        <p className="mt-1 text-[11px] text-gray-400 truncate">
-                          {db.provider} / {db.collectionName}
-                        </p>
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
+                            <span className="font-medium text-gray-600 dark:text-gray-300">{db.provider}</span>
+                            <span className="text-gray-400"> / {db.collectionName}</span>
+                          </p>
+                          <p className="text-[11px] text-gray-400 truncate">
+                            Embeddings: {db.embeddingProvider || "hash"} · {db.embeddingModel || "hash-256"}
+                          </p>
+                        </div>
                       </div>
                       <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${active ? "bg-primary/10 text-primary border-primary/20" : "bg-gray-50 dark:bg-dark-bg text-gray-400 border-gray-200 dark:border-dark-border"}`}>
                         {active ? "Selected" : "Select"}
@@ -379,7 +398,15 @@ export default function Knowledge(): React.ReactElement {
               </button>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+            <>
+              <div className="flex items-center gap-2 mb-2">
+                <FontAwesomeIcon icon={faFileLines} className="text-primary text-xs" />
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Documents</h2>
+                <span className="text-[11px] text-gray-400 dark:text-gray-500">
+                  in {selectedVectorDatabase?.name || "this vector store"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {visibleDocuments.map((document) => {
                 const meta = fileMeta(document.filename, document.contentType);
                 return (
@@ -424,7 +451,8 @@ export default function Knowledge(): React.ReactElement {
                   </div>
                 );
               })}
-            </div>
+              </div>
+            </>
           )}
         </div>
       </div>

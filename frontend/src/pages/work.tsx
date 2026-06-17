@@ -7,6 +7,7 @@ import {
   faCalendarDays,
   faCircleNodes,
   faClipboardList,
+  faHouse,
   faMagnifyingGlass,
   faPlus,
   faRobot,
@@ -362,14 +363,6 @@ export default function Work() {
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <button
-              onClick={loadData}
-              disabled={loading}
-              className="h-9 px-3 rounded-xl border border-gray-200 dark:border-dark-border text-sm font-medium text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-surface hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60 whitespace-nowrap"
-            >
-              <FontAwesomeIcon icon={loading ? faSpinner : faClipboardList} className={`sm:mr-2 text-xs ${loading ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
-            <button
               onClick={() => setShowCreate(true)}
               className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow whitespace-nowrap"
             >
@@ -389,8 +382,9 @@ export default function Work() {
                     setActiveBoardId(board.boardId);
                     localStorage.setItem("automata_work_board_id", board.boardId);
                   }}
-                  className={`h-9 px-3 rounded-xl text-sm font-medium border transition-colors ${activeBoardId === board.boardId ? "bg-gradient-primary text-white border-transparent shadow-glow" : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-border"}`}
+                  className={`h-9 px-3 rounded-xl text-sm font-medium border transition-colors inline-flex items-center gap-2 ${activeBoardId === board.boardId ? "bg-gradient-primary text-white border-transparent shadow-glow" : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-50 dark:hover:bg-dark-border"}`}
                 >
+                  {board.name === "Default" && <FontAwesomeIcon icon={faHouse} className="text-[11px]" />}
                   {board.name}
                 </button>
               ))}

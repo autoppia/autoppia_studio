@@ -1,15 +1,15 @@
-# Automata Cloud Agent Notes
+# Autoppia Studio Agent Notes
 
 This file is for Codex sessions working in this repo:
-`/home/usuario1/daryxx/autoppia/operator/autoppia_automata_cloud`.
+`/home/usuario1/daryxx/autoppia/autoppia_studio`.
 
 There is also a parent `../AGENTS.md` with broader Autoppia guidance. Prefer this
-local file when instructions conflict because it describes the current Automata
-Cloud architecture and recent refactors.
+local file when instructions conflict because it describes the current Autoppia
+Studio architecture and recent refactors.
 
 ## Product Context
 
-Automata Cloud is the studio/backend for configuring agents, connectors, tools,
+Autoppia Studio is the studio/backend for configuring agents, connectors, tools,
 benchmarks, task harvesting, trajectory judging, and skill creation.
 
 The runtime naming preferred by the user is:

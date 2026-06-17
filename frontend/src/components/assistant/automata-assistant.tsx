@@ -22,6 +22,7 @@ import {
   faChevronRight,
   faUpRightFromSquare,
   faBrain,
+  faGear,
 } from "@fortawesome/free-solid-svg-icons";
 import { faCircleCheck } from "@fortawesome/free-regular-svg-icons";
 import { getApiUrl } from "../../utils/api-url";
@@ -68,6 +69,11 @@ interface AssistantConversationSummary {
   messageCount: number;
   updatedAt?: string;
   createdAt?: string;
+}
+
+interface AssistantModelOption {
+  value: string;
+  label: string;
 }
 
 /** Conservatively infer the assistant mode from the current Studio route. */
@@ -158,6 +164,52 @@ const TOOL_META: Record<string, { label: string; icon: any }> = {
   "studio.list_capabilities": { label: "Capabilities", icon: faWandMagicSparkles },
   "studio.list_agents": { label: "Agents", icon: faRobot },
   "studio.list_work_items": { label: "Work items", icon: faListCheck },
+  "studio_create_work_item": { label: "Create work item", icon: faListCheck },
+  "studio_update_work_item": { label: "Update work item", icon: faListCheck },
+  "studio_run_work_item": { label: "Run work item", icon: faListCheck },
+  "studio_delete_work_item": { label: "Delete work item", icon: faListCheck },
+  "studio_rejudge_work_item": { label: "Rejudge work item", icon: faListCheck },
+  "studio_list_work_boards": { label: "Work boards", icon: faListCheck },
+  "studio_create_work_board": { label: "Create work board", icon: faListCheck },
+  "studio_list_work_items": { label: "Work items", icon: faListCheck },
+  "studio_create_connector": { label: "Create connector", icon: faPlug },
+  "studio_update_connector": { label: "Update connector", icon: faPlug },
+  "studio_test_connector": { label: "Test connector", icon: faPlug },
+  "studio_delete_connector": { label: "Delete connector", icon: faPlug },
+  "studio_publish_connector_tools": { label: "Publish tools", icon: faWandMagicSparkles },
+  "studio_list_credentials": { label: "Credentials", icon: faToolbox },
+  "studio_create_credential": { label: "Create credential", icon: faToolbox },
+  "studio_update_credential": { label: "Update credential", icon: faToolbox },
+  "studio_delete_credential": { label: "Delete credential", icon: faToolbox },
+  "studio_list_api_keys": { label: "API keys", icon: faToolbox },
+  "studio_create_api_key": { label: "Create API key", icon: faToolbox },
+  "studio_rename_api_key": { label: "Rename API key", icon: faToolbox },
+  "studio_delete_api_key": { label: "Delete API key", icon: faToolbox },
+  "studio_list_browser_profiles": { label: "Browser profiles", icon: faToolbox },
+  "studio_create_browser_profile": { label: "Create profile", icon: faToolbox },
+  "studio_rename_browser_profile": { label: "Rename profile", icon: faToolbox },
+  "studio_delete_browser_profile": { label: "Delete profile", icon: faToolbox },
+  "studio_create_agent": { label: "Create agent", icon: faRobot },
+  "studio_update_agent_runtime_settings": { label: "Agent settings", icon: faRobot },
+  "studio_run_agent_task": { label: "Run agent", icon: faRobot },
+  "studio_approve_approval": { label: "Approve", icon: faListCheck },
+  "studio_reject_approval": { label: "Reject", icon: faListCheck },
+  "studio_create_vector_database": { label: "Create vector DB", icon: faLayerGroup },
+  "studio_save_knowledge_document_from_url": { label: "Save knowledge", icon: faLayerGroup },
+  "studio_delete_knowledge_document": { label: "Delete knowledge", icon: faLayerGroup },
+  "studio_update_tool_approval": { label: "Tool approval", icon: faWandMagicSparkles },
+  "studio_update_skill_approval": { label: "Skill approval", icon: faWandMagicSparkles },
+  "studio_test_tool": { label: "Test tool", icon: faToolbox },
+  "studio_promote_trajectory_to_skill": { label: "Promote skill", icon: faWandMagicSparkles },
+  "studio_get_account_info": { label: "Account", icon: faToolbox },
+  "studio_update_account_instructions": { label: "Account instructions", icon: faToolbox },
+  "studio_get_analytics_summary": { label: "Analytics", icon: faLayerGroup },
+  "studio_list_usage_events": { label: "Usage events", icon: faLayerGroup },
+  "studio_get_billing_plan_status": { label: "Plan status", icon: faLayerGroup },
+  "studio_list_assistant_conversations": { label: "Conversations", icon: faLayerGroup },
+  "studio_get_assistant_memory": { label: "Memory", icon: faLayerGroup },
+  "studio_rebuild_assistant_memory": { label: "Rebuild memory", icon: faLayerGroup },
+  "studio_delete_assistant_conversations": { label: "Delete chats", icon: faLayerGroup },
   "studio.snapshot": { label: "Workspace", icon: faLayerGroup },
 };
 
@@ -342,8 +394,15 @@ export default function AutomataAssistant() {
   const [error, setError] = useState<string | null>(null);
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<AssistantConversationSummary[]>([]);
+  const [assistantModel, setAssistantModel] = useState("gpt-5-mini");
+  const [assistantModels, setAssistantModels] = useState<AssistantModelOption[]>([
+    { value: "gpt-5-mini", label: "GPT-5 mini" },
+    { value: "gpt-5.4", label: "GPT-5.4" },
+  ]);
+  const [modelSaving, setModelSaving] = useState(false);
 
   const conversationIdRef = useRef<string>("");
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -371,6 +430,66 @@ export default function AutomataAssistant() {
     [email, mode, location.pathname]
   );
 
+  const activeCompanyId = useCallback(() => localStorage.getItem("automata_company_id") || "", []);
+
+  const loadAssistantSettings = useCallback(async () => {
+    if (!email) return;
+    try {
+      const params = new URLSearchParams({
+        email,
+        companyId: activeCompanyId(),
+      });
+      const res = await fetch(`${API_URL}/assistant/settings?${params.toString()}`);
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      const settings = data.settings || {};
+      if (settings.model) setAssistantModel(settings.model);
+      if (Array.isArray(settings.models) && settings.models.length) setAssistantModels(settings.models);
+    } catch (err) {
+      console.error("Failed to load Automata model settings:", err);
+    }
+  }, [activeCompanyId, email]);
+
+  const updateAssistantModel = useCallback(async (model: string) => {
+    if (!email || modelSaving || model === assistantModel) return;
+    const previous = assistantModel;
+    setAssistantModel(model);
+    setModelSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`${API_URL}/assistant/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, companyId: activeCompanyId(), model }),
+      });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const data = await res.json();
+      const settings = data.settings || {};
+      if (settings.model) setAssistantModel(settings.model);
+      if (Array.isArray(settings.models) && settings.models.length) setAssistantModels(settings.models);
+    } catch (err) {
+      console.error("Failed to update Automata model:", err);
+      setAssistantModel(previous);
+      setError("Couldn't update Automata model.");
+    } finally {
+      setModelSaving(false);
+    }
+  }, [activeCompanyId, assistantModel, email, modelSaving]);
+
+  useEffect(() => {
+    void loadAssistantSettings();
+  }, [loadAssistantSettings]);
+
+  useEffect(() => {
+    const handler = () => {
+      conversationIdRef.current = "";
+      setMessages([]);
+      void loadAssistantSettings();
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, [loadAssistantSettings]);
+
   const historyParams = useCallback(() => {
     const params = new URLSearchParams({
       email: email || "",
@@ -396,6 +515,11 @@ export default function AutomataAssistant() {
       setHistoryLoading(false);
     }
   }, [email, historyParams]);
+
+  // Full window shows the history as a persistent sidebar — keep it populated.
+  useEffect(() => {
+    if (open && expanded) void loadHistory();
+  }, [open, expanded, loadHistory]);
 
   /** Lazily create the backend conversation; returns its id (or "" on failure). */
   const ensureConversation = useCallback(async (): Promise<string> => {
@@ -427,9 +551,10 @@ export default function AutomataAssistant() {
 
   const handleOpen = useCallback(() => {
     setOpen(true);
+    void loadAssistantSettings();
     void loadHistory();
     void ensureConversation();
-  }, [ensureConversation, loadHistory]);
+  }, [ensureConversation, loadAssistantSettings, loadHistory]);
 
   const newConversation = useCallback(() => {
     conversationIdRef.current = "";
@@ -575,6 +700,34 @@ export default function AutomataAssistant() {
     );
   }
 
+  const historyListEl =
+    history.length === 0 && !historyLoading ? (
+      <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border px-3 py-3 text-xs text-gray-400">
+        No previous Automata chats in this company.
+      </div>
+    ) : (
+      history.map((item) => {
+        const active = item.conversationId === conversationIdRef.current;
+        return (
+          <button
+            key={item.conversationId}
+            onClick={() => void loadConversation(item.conversationId)}
+            className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
+              active
+                ? "border-primary/40 bg-primary/5"
+                : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface hover:border-primary/30"
+            }`}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{item.title}</span>
+              <span className="text-[10px] text-gray-400 flex-shrink-0">{shortDate(item.updatedAt || item.createdAt)}</span>
+            </div>
+            <div className="mt-0.5 text-[11px] text-gray-400 truncate">{item.lastMessage || `${item.messageCount} messages`}</div>
+          </button>
+        );
+      })
+    );
+
   return (
     <div
       className={`fixed z-[120]
@@ -584,7 +737,7 @@ export default function AutomataAssistant() {
         animate-slide-up transition-all duration-200
         ${expanded
           ? "inset-0 w-screen h-screen max-h-screen rounded-none"
-          : "bottom-3 right-3 left-3 sm:left-auto max-h-[calc(100vh-1.5rem)] rounded-2xl sm:w-[400px] h-[70vh] sm:h-[560px]"}`}
+          : "bottom-3 right-3 left-3 sm:left-auto max-h-[calc(100vh-1.5rem)] rounded-2xl sm:w-[480px] h-[80vh] sm:h-[672px]"}`}
     >
       {/* Header */}
       <div
@@ -609,14 +762,31 @@ export default function AutomataAssistant() {
         </div>
         <button
           onClick={() => {
-            setHistoryOpen((v) => !v);
-            void loadHistory();
+            setSettingsOpen((v) => !v);
+            setHistoryOpen(false);
           }}
-          title="Conversation history"
-          className="flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+          title="Settings"
+          className={`flex w-8 h-8 rounded-lg items-center justify-center transition-colors ${
+            settingsOpen
+              ? "text-primary bg-primary/10"
+              : "text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5"
+          }`}
         >
-          <FontAwesomeIcon icon={faClock} className="text-xs" />
+          <FontAwesomeIcon icon={faGear} className={`text-xs ${modelSaving ? "animate-pulse text-primary" : ""}`} />
         </button>
+        {!expanded && (
+          <button
+            onClick={() => {
+              setHistoryOpen((v) => !v);
+              setSettingsOpen(false);
+              void loadHistory();
+            }}
+            title="Conversation history"
+            className="flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+          >
+            <FontAwesomeIcon icon={faClock} className="text-xs" />
+          </button>
+        )}
         <button
           onClick={newConversation}
           title="New conversation"
@@ -640,58 +810,89 @@ export default function AutomataAssistant() {
         </button>
       </div>
 
-      {historyOpen && (
+      {settingsOpen && (
         <div className="flex-shrink-0 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg">
           <div className={`${expanded ? "px-5 sm:px-8" : "px-4"} py-3`}>
-            <div className="flex items-center justify-between gap-3 mb-2">
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Recent chats</span>
-              <button
-                onClick={() => void loadHistory()}
-                disabled={historyLoading}
-                className="text-[11px] text-gray-400 hover:text-primary disabled:opacity-50"
-              >
-                {historyLoading ? "Loading..." : "Refresh"}
-              </button>
+            <div className="flex items-center justify-between gap-3 mb-2.5">
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Settings</span>
+              {modelSaving && <span className="text-[10px] text-primary animate-pulse">Saving…</span>}
             </div>
-            <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1.5">
-              {history.length === 0 && !historyLoading ? (
-                <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border px-3 py-3 text-xs text-gray-400">
-                  No previous Automata chats in this company.
-                </div>
-              ) : (
-                history.map((item) => {
-                  const active = item.conversationId === conversationIdRef.current;
-                  return (
-                    <button
-                      key={item.conversationId}
-                      onClick={() => void loadConversation(item.conversationId)}
-                      className={`w-full text-left rounded-lg border px-3 py-2 transition-colors ${
-                        active
-                          ? "border-primary/40 bg-primary/5"
-                          : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface hover:border-primary/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-xs font-medium text-gray-800 dark:text-gray-100 truncate">{item.title}</span>
-                        <span className="text-[10px] text-gray-400 flex-shrink-0">{shortDate(item.updatedAt || item.createdAt)}</span>
-                      </div>
-                      <div className="mt-0.5 text-[11px] text-gray-400 truncate">{item.lastMessage || `${item.messageCount} messages`}</div>
-                    </button>
-                  );
-                })
-              )}
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+              <FontAwesomeIcon icon={faBrain} className="text-[10px]" />
+              Model
+            </div>
+            <div className="grid gap-1.5 sm:grid-cols-2">
+              {assistantModels.map((model) => {
+                const active = model.value === assistantModel;
+                return (
+                  <button
+                    key={model.value}
+                    onClick={() => void updateAssistantModel(model.value)}
+                    disabled={modelSaving}
+                    title={model.label}
+                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-60 ${
+                      active
+                        ? "border-primary/50 bg-primary/5 dark:bg-primary/10"
+                        : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface hover:border-primary/30 hover:bg-gray-100 dark:hover:bg-white/5"
+                    }`}
+                  >
+                    <span className={`text-xs font-medium truncate ${active ? "text-primary" : "text-gray-700 dark:text-gray-200"}`}>
+                      {model.label}
+                    </span>
+                    {active && <FontAwesomeIcon icon={faCircleCheck} className="text-[11px] text-primary flex-shrink-0" />}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
       )}
 
+      {!expanded && historyOpen && (
+        <div className="flex-shrink-0 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg">
+          <div className="px-4 py-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Recent chats</span>
+              {historyLoading && <span className="text-[11px] text-gray-400">Loading...</span>}
+            </div>
+            <div className="max-h-48 overflow-y-auto scrollbar-thin space-y-1.5">
+              {historyListEl}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`flex-1 min-h-0 flex ${expanded ? "flex-row" : "flex-col"}`}>
+        {/* Full-window history sidebar (Claude-style) */}
+        {expanded && (
+          <aside className="hidden sm:flex flex-col w-72 flex-shrink-0 border-r border-gray-200 dark:border-dark-border bg-gray-50/60 dark:bg-dark-surface/40">
+            <div className="p-3">
+              <button
+                onClick={newConversation}
+                className="w-full flex items-center justify-center gap-2 h-9 rounded-lg bg-gradient-primary text-white text-xs font-semibold shadow-glow hover:shadow-glow-lg transition-all"
+              >
+                <FontAwesomeIcon icon={faPenToSquare} className="text-[11px]" />
+                New chat
+              </button>
+            </div>
+            <div className="px-3 pb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Recent chats</span>
+              {historyLoading && <span className="text-[10px] text-gray-400">…</span>}
+            </div>
+            <div className="flex-1 overflow-y-auto scrollbar-thin px-2 pb-3 space-y-1.5">
+              {historyListEl}
+            </div>
+          </aside>
+        )}
+
+        {/* Conversation column */}
+        <div className="flex-1 min-w-0 flex flex-col">
       {/* Messages */}
       <div
         ref={scrollRef}
-        className={`flex-1 overflow-y-auto scrollbar-thin py-4 space-y-3 ${
-          expanded ? "px-5 sm:px-8" : "px-4"
-        }`}
+        className="flex-1 overflow-y-auto scrollbar-thin"
       >
+        <div className={`mx-auto w-full py-4 space-y-3 ${expanded ? "max-w-3xl px-4 sm:px-6" : "px-4"}`}>
         {!hasConversation && (
           <div className="h-full flex flex-col items-center justify-center text-center px-2">
             <img
@@ -765,11 +966,11 @@ export default function AutomataAssistant() {
             );
           }
 
-          // Assistant text: markdown + link previews + response-time chip.
+          // Assistant text: plain (bubble-less) markdown, link previews + timing.
           const links = extractLinks(m.content);
           return (
             <div key={i} className="flex flex-col items-start gap-1.5">
-              <div className="max-w-[85%] rounded-2xl rounded-bl-md px-3 py-2 text-sm leading-relaxed break-words bg-gray-100 dark:bg-dark-surface text-gray-800 dark:text-gray-100">
+              <div className="w-full text-sm leading-relaxed break-words text-gray-800 dark:text-gray-100">
                 <div className="assistant-markdown space-y-2">
                   <ReactMarkdown remarkPlugins={[remarkGfm]} components={MD_COMPONENTS}>
                     {m.content}
@@ -777,7 +978,7 @@ export default function AutomataAssistant() {
                 </div>
               </div>
               {links.length > 0 && (
-                <div className="w-full max-w-[90%] space-y-1.5">
+                <div className="w-full space-y-1.5">
                   {links.slice(0, 3).map((u) => (
                     <LinkPreview key={u} url={u} />
                   ))}
@@ -794,18 +995,16 @@ export default function AutomataAssistant() {
         })}
 
         {(sending || starting) && (
-          <div className="flex justify-start">
-            <div className="flex items-center gap-2.5 rounded-2xl rounded-bl-md bg-gray-100 dark:bg-dark-surface px-3 py-2">
-              <img src="/assets/images/logos/main.webp" alt="" className="w-4 h-4" />
-              <span className="flex gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.3s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.15s]" />
-                <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" />
-              </span>
-              <span className="text-[10px] text-gray-400 dark:text-gray-500">
-                <ElapsedTimer />
-              </span>
-            </div>
+          <div className="flex items-center gap-2.5 py-1">
+            <img src="/assets/images/logos/main.webp" alt="" className="w-4 h-4" />
+            <span className="flex gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.3s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce [animation-delay:-0.15s]" />
+              <span className="w-1.5 h-1.5 rounded-full bg-gray-400 dark:bg-gray-500 animate-bounce" />
+            </span>
+            <span className="text-[10px] text-gray-400 dark:text-gray-500">
+              <ElapsedTimer />
+            </span>
           </div>
         )}
 
@@ -814,37 +1013,40 @@ export default function AutomataAssistant() {
             {error}
           </div>
         )}
+        </div>
       </div>
 
       {/* Input */}
       <form
         onSubmit={onSubmit}
-        className={`flex-shrink-0 border-t border-gray-200 dark:border-dark-border ${
-          expanded ? "px-5 sm:px-8 py-3" : "p-3"
-        }`}
+        className="flex-shrink-0 border-t border-gray-200 dark:border-dark-border"
       >
-        <div className="flex items-end gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface px-2.5 py-1.5 focus-within:border-primary/50 transition-colors">
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={onKeyDown}
-            rows={1}
-            placeholder="Ask Automata..."
-            className="flex-1 resize-none bg-transparent outline-none text-sm text-gray-900 dark:text-white placeholder:text-gray-400 max-h-28 py-1"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || sending}
-            aria-label="Send"
-            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
-              bg-gradient-primary text-white disabled:opacity-40 disabled:cursor-not-allowed
-              hover:shadow-glow transition-all"
-          >
-            <FontAwesomeIcon icon={faPaperPlane} className="text-xs" />
-          </button>
+        <div className={`mx-auto w-full ${expanded ? "max-w-3xl px-4 sm:px-6 py-3" : "p-3"}`}>
+          <div className="flex items-end gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface px-2.5 py-1.5 focus-within:border-primary/50 transition-colors">
+            <textarea
+              ref={inputRef}
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={onKeyDown}
+              rows={1}
+              placeholder="Ask Automata..."
+              className="flex-1 resize-none bg-transparent outline-none text-sm text-gray-900 dark:text-white placeholder:text-gray-400 max-h-28 py-1"
+            />
+            <button
+              type="submit"
+              disabled={!input.trim() || sending}
+              aria-label="Send"
+              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+                bg-gradient-primary text-white disabled:opacity-40 disabled:cursor-not-allowed
+                hover:shadow-glow transition-all"
+            >
+              <FontAwesomeIcon icon={faPaperPlane} className="text-xs" />
+            </button>
+          </div>
         </div>
       </form>
+        </div>
+      </div>
     </div>
   );
 }

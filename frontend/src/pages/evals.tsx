@@ -13,6 +13,8 @@ import {
   faListCheck,
   faClockRotateLeft,
   faPlus,
+  faArrowLeft,
+  faArrowRight,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, EvalRun } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
@@ -37,6 +39,19 @@ interface PendingRun {
   type: "task" | "benchmark";
   evalItem?: EvalItem;
   benchmark?: Benchmark;
+}
+
+interface RunGroup {
+  groupId: string;
+  standalone: boolean;
+  benchmarkId: string;
+  benchmarkName: string;
+  agentName: string;
+  createdAt?: string;
+  runs: EvalRun[];
+  pass: number;
+  fail: number;
+  pending: number;
 }
 
 function formatDate(iso?: string) {
@@ -96,6 +111,7 @@ export default function Evals() {
   const [addingTask, setAddingTask] = useState(false);
   const [newTask, setNewTask] = useState({ name: "", prompt: "", successCriteria: "", initialUrl: "", judgeType: "manual" });
   const [judgingRunId, setJudgingRunId] = useState<string | null>(null);
+  const [selectedRunGroupId, setSelectedRunGroupId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user.email) return;
@@ -191,14 +207,49 @@ export default function Evals() {
     );
   });
 
-  const filteredRuns = runs.filter((run) => {
+  // Group individual task runs into the benchmark run that produced them. Runs
+  // created outside a benchmark (single-task runs) become their own group.
+  const runGroups = useMemo<RunGroup[]>(() => {
+    const map = new Map<string, RunGroup>();
+    for (const run of runs) {
+      const groupId = run.benchmarkRunId || `single:${run.runId}`;
+      let group = map.get(groupId);
+      if (!group) {
+        group = {
+          groupId,
+          standalone: !run.benchmarkRunId,
+          benchmarkId: run.benchmarkId || "",
+          benchmarkName: run.benchmarkName || run.agentName || "Benchmark",
+          agentName: run.agentName || "Generalist Agent",
+          createdAt: run.createdAt,
+          runs: [],
+          pass: 0,
+          fail: 0,
+          pending: 0,
+        };
+        map.set(groupId, group);
+      }
+      group.runs.push(run);
+      if (run.label === "pass") group.pass += 1;
+      else if (run.label === "fail") group.fail += 1;
+      else group.pending += 1;
+      if (run.createdAt && (!group.createdAt || run.createdAt > group.createdAt)) {
+        group.createdAt = run.createdAt;
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  }, [runs]);
+
+  const filteredRunGroups = runGroups.filter((group) => {
     const q = search.toLowerCase();
     return (
-      (run.agentName || "").toLowerCase().includes(q) ||
-      (run.prompt || "").toLowerCase().includes(q) ||
-      (run.label || "").toLowerCase().includes(q)
+      group.benchmarkName.toLowerCase().includes(q) ||
+      group.agentName.toLowerCase().includes(q) ||
+      group.runs.some((run) => (run.prompt || "").toLowerCase().includes(q))
     );
   });
+
+  const selectedRunGroup = runGroups.find((group) => group.groupId === selectedRunGroupId) || null;
 
   const openRunSelector = (next: PendingRun) => {
     setPendingRun(next);
@@ -386,6 +437,80 @@ export default function Evals() {
   const failCount = runs.filter((run) => run.label === "fail").length;
   const pendingCount = runs.filter((run) => run.label === "pending").length;
 
+  const renderRunRow = (run: EvalRun) => (
+    <div
+      key={run.runId}
+      className="flex items-center gap-4 bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4"
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2 mb-1">
+          <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${labelClass(run.label)}`}>
+            {run.label}
+          </span>
+          <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${judgeClass(run.judgeType)}`}>
+            {(run.judgeType || "manual") === "llm" ? "LLMJudge" : "Manual"}
+          </span>
+          {run.manualOverride && (
+            <span className="px-2 py-0.5 rounded-md border text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
+              override
+            </span>
+          )}
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {formatDate(run.createdAt)}
+          </span>
+        </div>
+        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+          {run.agentTaskName || run.prompt || run.evalId}
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+          {run.prompt || run.evalId}
+        </p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-shrink-0">
+        {(run.judgeType || "manual") === "llm" && (
+          <button
+            onClick={() => runLlmJudge(run)}
+            disabled={judgingRunId === run.runId}
+            className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+              bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300
+              border border-purple-200 dark:border-purple-500/30 hover:bg-purple-100 dark:hover:bg-purple-500/20 disabled:opacity-60 transition-colors"
+          >
+            <FontAwesomeIcon icon={judgingRunId === run.runId ? faSpinner : faClipboardCheck} className={`text-[10px] ${judgingRunId === run.runId ? "animate-spin" : ""}`} />
+            LLM Judge
+          </button>
+        )}
+        <button
+          onClick={() => navigate(`/evals/${run.evalId}/run/${run.sessionId || run.runId}`, { state: { evalMode: true, evalId: run.evalId, runId: run.runId } })}
+          className="px-3 h-8 rounded-lg text-xs font-medium border border-gray-200 dark:border-dark-border
+            text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
+        >
+          View
+        </button>
+        <button
+          onClick={() => updateRunLabel(run, "pass")}
+          disabled={savingRunId === run.runId}
+          className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+            bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400
+            border border-green-200 dark:border-green-500/30 hover:bg-green-100 dark:hover:bg-green-500/20 disabled:opacity-60 transition-colors"
+        >
+          <FontAwesomeIcon icon={faCheck} className="text-[10px]" />
+          Pass
+        </button>
+        <button
+          onClick={() => updateRunLabel(run, "fail")}
+          disabled={savingRunId === run.runId}
+          className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
+            bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400
+            border border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/20 disabled:opacity-60 transition-colors"
+        >
+          <FontAwesomeIcon icon={faXmark} className="text-[10px]" />
+          Fail
+        </button>
+      </div>
+    </div>
+  );
+
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
@@ -568,82 +693,68 @@ export default function Evals() {
                 ))}
               </div>
             )
-          ) : filteredRuns.length === 0 ? (
-            <EmptyState text="No runs yet. Run a benchmark task, then confirm pass or fail here." />
-          ) : (
+          ) : selectedRunGroup ? (
             <div className="flex flex-col gap-3">
-              {filteredRuns.map((run) => (
-                <div
-                  key={run.runId}
-                  className="flex items-center gap-4 bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4"
-                >
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${labelClass(run.label)}`}>
-                        {run.label}
-                      </span>
-                      <span className={`px-2 py-0.5 rounded-md border text-[11px] font-semibold ${judgeClass(run.judgeType)}`}>
-                        {(run.judgeType || "manual") === "llm" ? "LLMJudge" : "Manual"}
-                      </span>
-                      {run.manualOverride && (
-                        <span className="px-2 py-0.5 rounded-md border text-[11px] font-semibold bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
-                          override
-                        </span>
-                      )}
-                      <span className="text-xs text-gray-400 dark:text-gray-500">
-                        {formatDate(run.createdAt)}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {run.prompt || run.evalId}
-                    </p>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
-                      {(run.agentName || "Benchmark")} {run.agentTaskName ? ` / ${run.agentTaskName}` : ""}
+              <button
+                onClick={() => setSelectedRunGroupId(null)}
+                className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors w-fit"
+              >
+                <FontAwesomeIcon icon={faArrowLeft} className="text-xs" />
+                Back to runs
+              </button>
+
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <h2 className="text-base font-semibold text-gray-900 dark:text-white truncate">{selectedRunGroup.benchmarkName}</h2>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+                      {selectedRunGroup.agentName} · {formatDate(selectedRunGroup.createdAt)} · {selectedRunGroup.runs.length} {selectedRunGroup.runs.length === 1 ? "task" : "tasks"}
                     </p>
                   </div>
-
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {(run.judgeType || "manual") === "llm" && (
-                      <button
-                        onClick={() => runLlmJudge(run)}
-                        disabled={judgingRunId === run.runId}
-                        className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                          bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-300
-                          border border-purple-200 dark:border-purple-500/30 hover:bg-purple-100 dark:hover:bg-purple-500/20 disabled:opacity-60 transition-colors"
-                      >
-                        <FontAwesomeIcon icon={judgingRunId === run.runId ? faSpinner : faClipboardCheck} className={`text-[10px] ${judgingRunId === run.runId ? "animate-spin" : ""}`} />
-                        LLM Judge
-                      </button>
-                    )}
-                    <button
-                      onClick={() => navigate(`/evals/${run.evalId}/run/${run.sessionId || run.runId}`, { state: { evalMode: true, evalId: run.evalId, runId: run.runId } })}
-                      className="px-3 h-8 rounded-lg text-xs font-medium border border-gray-200 dark:border-dark-border
-                        text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border transition-colors"
-                    >
-                      View
-                    </button>
-                    <button
-                      onClick={() => updateRunLabel(run, "pass")}
-                      disabled={savingRunId === run.runId}
-                      className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                        bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400
-                        border border-green-200 dark:border-green-500/30 hover:bg-green-100 dark:hover:bg-green-500/20 disabled:opacity-60 transition-colors"
-                    >
-                      <FontAwesomeIcon icon={faCheck} className="text-[10px]" />
-                      Pass
-                    </button>
-                    <button
-                      onClick={() => updateRunLabel(run, "fail")}
-                      disabled={savingRunId === run.runId}
-                      className="flex items-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                        bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400
-                        border border-red-200 dark:border-red-500/30 hover:bg-red-100 dark:hover:bg-red-500/20 disabled:opacity-60 transition-colors"
-                    >
-                      <FontAwesomeIcon icon={faXmark} className="text-[10px]" />
-                      Fail
-                    </button>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-[11px] font-semibold">
+                    <span className="px-2 py-1 rounded-md bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400">{selectedRunGroup.pass} pass</span>
+                    <span className="px-2 py-1 rounded-md bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400">{selectedRunGroup.fail} fail</span>
+                    <span className="px-2 py-1 rounded-md bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">{selectedRunGroup.pending} pending</span>
                   </div>
                 </div>
+              </div>
+
+              <p className="text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-wide mt-1">Task results</p>
+              {selectedRunGroup.runs.map((run) => renderRunRow(run))}
+            </div>
+          ) : filteredRunGroups.length === 0 ? (
+            <EmptyState text="No runs yet. Run a benchmark, then review its task results here." />
+          ) : (
+            <div className="flex flex-col gap-3">
+              {filteredRunGroups.map((group) => (
+                <button
+                  key={group.groupId}
+                  onClick={() => setSelectedRunGroupId(group.groupId)}
+                  className="flex items-center gap-4 text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4 hover:border-primary/40 transition-colors"
+                >
+                  <span className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+                    <FontAwesomeIcon icon={group.standalone ? faPlay : faClipboardCheck} className="text-sm" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{group.benchmarkName}</p>
+                      {group.standalone && (
+                        <span className="px-2 py-0.5 rounded-md border text-[10px] font-semibold bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
+                          single task
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 truncate mt-0.5">
+                      {group.agentName} · {formatDate(group.createdAt)} · {group.runs.length} {group.runs.length === 1 ? "task" : "tasks"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0 text-[11px] font-semibold">
+                    <span className="px-2 py-1 rounded-md bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400">{group.pass}</span>
+                    <span className="px-2 py-1 rounded-md bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400">{group.fail}</span>
+                    <span className="px-2 py-1 rounded-md bg-yellow-50 dark:bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">{group.pending}</span>
+                    <FontAwesomeIcon icon={faArrowRight} className="text-gray-300 dark:text-gray-600 ml-1" />
+                  </div>
+                </button>
               ))}
             </div>
           )}

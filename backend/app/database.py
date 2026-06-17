@@ -24,6 +24,7 @@ knowledge_documents_collection = db["knowledge_documents"]
 vector_databases_collection = db["vector_databases"]
 onboarding_sessions_collection = db["onboarding_sessions"]
 assistant_conversations_collection = db["assistant_conversations"]
+assistant_memories_collection = db["assistant_memories"]
 evals_collection = db["evals"]
 eval_runs_collection = db["eval_runs"]
 benchmarks_collection = db["benchmarks"]
@@ -91,6 +92,10 @@ async def ensure_indexes():
     await assistant_conversations_collection.create_index("email")
     await assistant_conversations_collection.create_index("companyId")
     await assistant_conversations_collection.create_index("conversationId", unique=True)
+    await assistant_memories_collection.create_index("email")
+    await assistant_memories_collection.create_index("companyId")
+    await assistant_memories_collection.create_index("memoryId", unique=True)
+    await assistant_memories_collection.create_index([("email", 1), ("companyId", 1)], unique=True)
     await evals_collection.create_index("email")
     await evals_collection.create_index("evalId", unique=True)
     await evals_collection.create_index("agentId")

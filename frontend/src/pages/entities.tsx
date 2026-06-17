@@ -4,13 +4,17 @@ import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRightLong,
   faBuilding,
+  faChevronDown,
+  faCircleInfo,
+  faCode,
   faCube,
   faDiagramProject,
   faKey,
   faList,
+  faMagnifyingGlass,
   faPenToSquare,
+  faPlugCircleBolt,
   faPlus,
-  faRotate,
   faShareNodes,
   faSpinner,
   faTrash,
@@ -297,73 +301,236 @@ function EntityCard({
   entity,
   onEdit,
   onDelete,
+  onDetails,
 }: {
   entity: EntityModel;
   onEdit: () => void;
   onDelete: () => void;
+  onDetails: () => void;
 }) {
   const fields = entity.fields || [];
   const relationships = entity.relationships || [];
   return (
-    <div className="group flex flex-col bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 hover:border-primary/40 hover:shadow-soft transition-all duration-200">
+    <div className="group flex flex-col text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-3.5 hover:border-primary/40 hover:shadow-soft transition-all duration-200">
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 min-w-0">
-          <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
-            <FontAwesomeIcon icon={faCube} className="text-xs" />
+          <span className="w-7 h-7 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+            <FontAwesomeIcon icon={faCube} className="text-[11px]" />
           </span>
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{entity.name}</p>
-            <p className="text-[10px] text-gray-400">{formatDate(entity.createdAt)}</p>
-          </div>
+          <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{entity.name}</p>
         </div>
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={onEdit} className="w-8 h-8 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 flex items-center justify-center" title="Edit entity">
-            <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
+        <div className="flex items-center gap-0.5 flex-shrink-0 opacity-60 group-hover:opacity-100 transition-opacity">
+          <button onClick={onEdit} className="w-7 h-7 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 flex items-center justify-center" title="Edit entity" aria-label="Edit entity">
+            <FontAwesomeIcon icon={faPenToSquare} className="text-[11px]" />
           </button>
-          <button onClick={onDelete} className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center" title="Delete entity">
-            <FontAwesomeIcon icon={faTrash} className="text-xs" />
+          <button onClick={onDelete} className="w-7 h-7 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center" title="Delete entity" aria-label="Delete entity">
+            <FontAwesomeIcon icon={faTrash} className="text-[11px]" />
           </button>
         </div>
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{entity.description || "No description."}</p>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 line-clamp-1">{entity.description || "No description."}</p>
 
-      <div className="flex flex-wrap items-center gap-1.5 mt-3">
+      <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
         <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
           <FontAwesomeIcon icon={faList} className="mr-1 text-[9px]" />{fields.length} {fields.length === 1 ? "field" : "fields"}
         </span>
         <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
-          <FontAwesomeIcon icon={faShareNodes} className="mr-1 text-[9px]" />{relationships.length} {relationships.length === 1 ? "relationship" : "relationships"}
+          <FontAwesomeIcon icon={faShareNodes} className="mr-1 text-[9px]" />{relationships.length} {relationships.length === 1 ? "rel" : "rels"}
         </span>
         <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sourceTone(entity.source)}`}>{(entity.source || "manual").replace(/_/g, " ")}</span>
       </div>
 
       {fields.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
-          {fields.slice(0, 6).map((field) => (
-            <span key={field.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border" title={field.description || field.type}>
-              {(field.role === "identifier") && <FontAwesomeIcon icon={faKey} className="text-[8px] text-amber-500" />}
-              {field.name}
-              {field.type && <span className="text-gray-400">:{field.type}</span>}
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+          {fields.slice(0, 3).map((field) => (
+            <span key={field.name} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-mono border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border max-w-full" title={field.description || field.type}>
+              {(field.role === "identifier") && <FontAwesomeIcon icon={faKey} className="text-[8px] text-amber-500 flex-shrink-0" />}
+              <span className="truncate">{field.name}{field.type && <span className="text-gray-400">:{field.type}</span>}</span>
             </span>
           ))}
-          {fields.length > 6 && <span className="text-[10px] text-gray-400">+{fields.length - 6} more</span>}
+          {fields.length > 3 && (
+            <span className="text-[10px] text-gray-400">+{fields.length - 3} more</span>
+          )}
         </div>
       )}
 
-      {relationships.length > 0 && (
-        <div className="mt-3 space-y-1">
-          {relationships.map((rel, index) => (
-            <div key={`${rel.name}-${index}`} className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-gray-400">
-              <span className="font-medium text-gray-600 dark:text-gray-300">{rel.name || rel.kind || "rel"}</span>
-              <span className="px-1.5 py-0.5 rounded text-[9px] bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400">{rel.kind || "references"}</span>
-              <FontAwesomeIcon icon={faArrowRightLong} className="text-[9px] text-gray-300 dark:text-gray-600" />
-              <span className="font-medium text-primary truncate">{rel.target}</span>
-              {rel.via && <span className="text-gray-400 truncate">via {rel.via}</span>}
+      <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-dark-border flex items-center justify-between">
+        <span className="text-[10px] text-gray-400">{formatDate(entity.createdAt)}</span>
+        <button
+          onClick={onDetails}
+          className="inline-flex items-center gap-1 text-[11px] font-medium text-primary hover:gap-1.5 transition-all"
+          aria-label={`View ${entity.name} details`}
+        >
+          <FontAwesomeIcon icon={faCircleInfo} className="text-[10px]" />
+          Details
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DetailRow({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 text-xs">
+      <span className="w-28 flex-shrink-0 text-gray-400 dark:text-gray-500">{label}</span>
+      <span className="flex-1 min-w-0 text-gray-700 dark:text-gray-200 break-words">{children}</span>
+    </div>
+  );
+}
+
+function EntityDetailModal({
+  entity,
+  onEdit,
+  onDelete,
+  onClose,
+}: {
+  entity: EntityModel;
+  onEdit: () => void;
+  onDelete: () => void;
+  onClose: () => void;
+}) {
+  const fields = entity.fields || [];
+  const relationships = entity.relationships || [];
+  const [rawOpen, setRawOpen] = useState(false);
+  const metadataEntries = Object.entries(entity.metadata || {});
+
+  return (
+    <div className="fixed inset-0 z-[135] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-2xl max-h-[88vh] overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-200 dark:border-dark-border flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+              <FontAwesomeIcon icon={faCube} className="text-sm" />
+            </span>
+            <div className="min-w-0">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white truncate">{entity.name}</h3>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sourceTone(entity.source)}`}>{(entity.source || "manual").replace(/_/g, " ")}</span>
+                <span className="text-[11px] text-gray-400">{fields.length} {fields.length === 1 ? "field" : "fields"} · {relationships.length} {relationships.length === 1 ? "rel" : "rels"}</span>
+              </div>
             </div>
-          ))}
+          </div>
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <button onClick={onEdit} className="w-8 h-8 rounded-lg text-gray-400 hover:text-primary hover:bg-primary/10 flex items-center justify-center" title="Edit entity" aria-label="Edit entity">
+              <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
+            </button>
+            <button onClick={onDelete} className="w-8 h-8 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 flex items-center justify-center" title="Delete entity" aria-label="Delete entity">
+              <FontAwesomeIcon icon={faTrash} className="text-xs" />
+            </button>
+            <button onClick={onClose} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 dark:hover:bg-dark-border" aria-label="Close">
+              <FontAwesomeIcon icon={faXmark} className="text-sm" />
+            </button>
+          </div>
         </div>
-      )}
+
+        <div className="overflow-auto p-5 space-y-5">
+          {/* Description */}
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">Description</p>
+            <p className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">{entity.description || "No description."}</p>
+          </div>
+
+          {/* Metadata / source */}
+          <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50/60 dark:bg-dark-bg/60 p-3.5 space-y-2">
+            <DetailRow label="Source">{(entity.source || "manual").replace(/_/g, " ")}</DetailRow>
+            {entity.sourceConnectorId && (
+              <DetailRow label="Connector">
+                <span className="inline-flex items-center gap-1.5 font-mono text-[11px]">
+                  <FontAwesomeIcon icon={faPlugCircleBolt} className="text-[10px] text-gray-400" />
+                  {entity.sourceConnectorId}
+                </span>
+              </DetailRow>
+            )}
+            <DetailRow label="Created">{formatDate(entity.createdAt)}</DetailRow>
+            <DetailRow label="Updated">{formatDate(entity.updatedAt)}</DetailRow>
+            {metadataEntries.map(([key, value]) => (
+              <DetailRow key={key} label={key}>
+                <span className="font-mono text-[11px]">{typeof value === "string" ? value : JSON.stringify(value)}</span>
+              </DetailRow>
+            ))}
+          </div>
+
+          {/* Fields */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <FontAwesomeIcon icon={faList} className="text-[11px] text-gray-400" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Fields ({fields.length})</p>
+            </div>
+            {fields.length === 0 ? (
+              <p className="text-xs text-gray-400">No fields defined.</p>
+            ) : (
+              <div className="rounded-xl border border-gray-200 dark:border-dark-border overflow-hidden divide-y divide-gray-100 dark:divide-dark-border">
+                {fields.map((field) => (
+                  <div key={field.name} className="px-3.5 py-2.5 flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {field.role === "identifier" && <FontAwesomeIcon icon={faKey} className="text-[10px] text-amber-500" />}
+                        <span className="text-xs font-mono font-medium text-gray-900 dark:text-white break-all">{field.name}</span>
+                        {field.required && <span className="text-[9px] font-semibold text-red-500 uppercase">required</span>}
+                      </div>
+                      {field.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{field.description}</p>}
+                      {(field.target || field.ref) && (
+                        <p className="text-[11px] text-gray-400 mt-0.5">
+                          → <span className="text-primary font-medium">{field.target || field.ref}</span>
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                      {field.type && <span className="px-2 py-0.5 rounded-md text-[10px] font-mono border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border">{field.type}</span>}
+                      {field.role && <span className="text-[10px] text-gray-400">{field.role}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Relationships */}
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <FontAwesomeIcon icon={faShareNodes} className="text-[11px] text-gray-400" />
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Relationships ({relationships.length})</p>
+            </div>
+            {relationships.length === 0 ? (
+              <p className="text-xs text-gray-400">No relationships defined.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {relationships.map((rel, index) => (
+                  <div key={`${rel.name}-${index}`} className="rounded-lg border border-gray-200 dark:border-dark-border px-3 py-2">
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <span className="font-medium text-gray-700 dark:text-gray-200">{rel.name || "relationship"}</span>
+                      <span className="px-1.5 py-0.5 rounded text-[10px] bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400">{rel.kind || "references"}</span>
+                      <FontAwesomeIcon icon={faArrowRightLong} className="text-gray-300 dark:text-gray-600" />
+                      <span className="px-2 py-0.5 rounded-md font-medium border bg-primary/10 text-primary border-primary/30">{rel.target}</span>
+                      {rel.via && <span className="text-gray-400">via {rel.via}</span>}
+                    </div>
+                    {rel.description && <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{rel.description}</p>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Raw JSON */}
+          <div>
+            <button
+              onClick={() => setRawOpen((v) => !v)}
+              className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+            >
+              <FontAwesomeIcon icon={faCode} className="text-[11px]" />
+              Raw JSON
+              <FontAwesomeIcon icon={faChevronDown} className={`text-[9px] transition-transform ${rawOpen ? "rotate-180" : ""}`} />
+            </button>
+            {rawOpen && (
+              <pre className="mt-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-[11px] font-mono leading-5 text-gray-700 dark:text-gray-300 overflow-auto max-h-72">
+                {JSON.stringify(entity, null, 2)}
+              </pre>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -441,10 +608,12 @@ export default function Entities(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<EntitiesTab>("list");
+  const [search, setSearch] = useState("");
   const [formOpen, setFormOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<EntityModel | null>(null);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<EntityModel | null>(null);
+  const [detailTarget, setDetailTarget] = useState<EntityModel | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateUrl, setGenerateUrl] = useState("");
   const [generatePreview, setGeneratePreview] = useState<EntityModel[]>([]);
@@ -585,6 +754,13 @@ export default function Entities(): React.ReactElement {
 
   const totalFields = useMemo(() => entities.reduce((acc, e) => acc + (e.fields?.length || 0), 0), [entities]);
   const totalRelationships = useMemo(() => entities.reduce((acc, e) => acc + (e.relationships?.length || 0), 0), [entities]);
+  const filteredEntities = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return entities;
+    return entities.filter(
+      (e) => e.name.toLowerCase().includes(q) || (e.description || "").toLowerCase().includes(q),
+    );
+  }, [entities, search]);
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -612,10 +788,6 @@ export default function Entities(): React.ReactElement {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={loadEntities} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors">
-              <FontAwesomeIcon icon={faRotate} className="mr-2 text-[10px]" />
-              Refresh
-            </button>
             {companyId && (
               <>
                 <button onClick={() => setGenerateOpen(true)} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface inline-flex items-center gap-2 transition-colors">
@@ -707,11 +879,40 @@ export default function Entities(): React.ReactElement {
                   </button>
                 </div>
               ) : tab === "list" ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-                  {entities.map((entity) => (
-                    <EntityCard key={entity.entityId} entity={entity} onEdit={() => openEdit(entity)} onDelete={() => setDeleteTarget(entity)} />
-                  ))}
-                </div>
+                <>
+                  <div className="flex items-center gap-2 px-3 h-10 mb-4 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border focus-within:border-primary/50 transition-colors">
+                    <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
+                    <input
+                      type="text"
+                      value={search}
+                      onChange={(e) => setSearch(e.target.value)}
+                      placeholder="Search entities by name or description..."
+                      className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+                    />
+                    {search && (
+                      <button onClick={() => setSearch("")} className="text-gray-400 hover:text-gray-600">
+                        <FontAwesomeIcon icon={faXmark} className="text-xs" />
+                      </button>
+                    )}
+                  </div>
+                  {filteredEntities.length === 0 ? (
+                    <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-10 text-center">
+                      <p className="text-sm text-gray-500 dark:text-gray-400">No entities match “{search}”.</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {filteredEntities.map((entity) => (
+                        <EntityCard
+                          key={entity.entityId}
+                          entity={entity}
+                          onEdit={() => openEdit(entity)}
+                          onDelete={() => setDeleteTarget(entity)}
+                          onDetails={() => setDetailTarget(entity)}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </>
               ) : (
                 <EntityGraphView entities={entities} />
               )}
@@ -719,6 +920,15 @@ export default function Entities(): React.ReactElement {
           )}
         </div>
       </div>
+
+      {detailTarget && (
+        <EntityDetailModal
+          entity={detailTarget}
+          onEdit={() => { openEdit(detailTarget); setDetailTarget(null); }}
+          onDelete={() => { setDeleteTarget(detailTarget); setDetailTarget(null); }}
+          onClose={() => setDetailTarget(null)}
+        />
+      )}
 
       {formOpen && (
         <EntityFormModal

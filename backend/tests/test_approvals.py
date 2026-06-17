@@ -79,10 +79,17 @@ async def test_create_list_and_approve_approval(monkeypatch):
         message="Confirm send.",
         proposed_action={"name": "telegram.send_message", "arguments": {"message": "Hello"}},
     )
+    default_listed = await approvals_route.list_approvals(
+        email="user@example.com",
+        companyId="company-1",
+        status="pending",
+        scope=RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
     listed = await approvals_route.list_approvals(
         email="user@example.com",
         companyId="company-1",
         status="pending",
+        includeRuntime=True,
         scope=RequestScope(email="user@example.com", token_email="user@example.com"),
     )
     approved = await approvals_route.approve_approval(
@@ -91,8 +98,13 @@ async def test_create_list_and_approve_approval(monkeypatch):
         RequestScope(email="user@example.com", token_email="user@example.com"),
     )
 
+    assert default_listed["approvals"] == []
     assert listed["approvals"][0]["approvalId"] == created["approvalId"]
+    assert listed["approvals"][0]["toolName"] == "telegram.send_message"
+    assert listed["approvals"][0]["sourceKind"] == "runtime"
+    assert listed["approvals"][0]["auditTrail"][0]["event"] == "requested"
     assert approved["approval"]["status"] == "approved"
+    assert approved["approval"]["auditTrail"][-1]["event"] == "approved"
     assert approved["statePatch"] == {"approvedConnectorToolCalls": ["telegram.send_message:0:abc"]}
 
 
