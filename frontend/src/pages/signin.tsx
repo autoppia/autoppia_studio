@@ -10,6 +10,10 @@ import { useToast } from "../components/common/toast";
 import GoogleSignInButton from "../components/common/google-sign-in-button";
 
 const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const demoEmail = process.env.REACT_APP_DEMO_EMAIL || "demo@autoppia.com";
+const demoPassword = process.env.REACT_APP_DEMO_PASSWORD || "Passw0rd!";
+const showDemoCredentialsButton =
+  process.env.NODE_ENV === "development" || process.env.REACT_APP_SHOW_DEMO_CREDENTIALS === "true";
 
 export default function SignIn() {
   const [email, setEmail] = useState("");
@@ -19,6 +23,11 @@ export default function SignIn() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { showToast } = useToast();
+
+  const fillDemoCredentials = () => {
+    setEmail(demoEmail);
+    setPassword(demoPassword);
+  };
 
   // If the user landed here because their session expired mid-use, say so.
   useEffect(() => {
@@ -114,6 +123,16 @@ export default function SignIn() {
                   focus:border-gray-300 dark:focus:border-gray-600 focus:shadow-soft outline-none transition-all duration-300"
               />
             </div>
+
+            {showDemoCredentialsButton && (
+              <button
+                type="button"
+                onClick={fillDemoCredentials}
+                className="w-full py-2.5 rounded-xl border border-dashed border-primary/40 bg-primary/5 text-primary text-sm font-medium hover:bg-primary/10 transition-colors"
+              >
+                Fill demo credentials
+              </button>
+            )}
 
             <button
               type="submit"
