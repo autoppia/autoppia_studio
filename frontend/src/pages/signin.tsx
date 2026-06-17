@@ -17,6 +17,16 @@ const isLocalHost = ["localhost", "127.0.0.1", "0.0.0.0"].includes(window.locati
 const showDemoCredentialsButton =
   isLocalHost || process.env.NODE_ENV === "development" || process.env.REACT_APP_SHOW_DEMO_CREDENTIALS === "true";
 
+function resetUserScopedStorage(email: string) {
+  const previous = localStorage.getItem("automata_last_email") || "";
+  if (previous !== email) {
+    localStorage.removeItem("automata_company_id");
+    localStorage.removeItem("automata_onboarding_company_id");
+    localStorage.removeItem("automata_work_board_id");
+  }
+  if (email) localStorage.setItem("automata_last_email", email);
+}
+
 export default function SignIn() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,6 +74,7 @@ export default function SignIn() {
 
       const data = await res.json();
       Cookies.set("access_token", data.token, { expires: 7 });
+      resetUserScopedStorage(data.user.email);
       dispatch(setUser({ email: data.user.email, instructions: data.user.instructions }));
       navigate("/", { replace: true });
     } catch {

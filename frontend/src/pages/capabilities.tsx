@@ -30,8 +30,9 @@ import {
 } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SelectDropdown from "../components/common/select-dropdown";
+import { getApiUrl } from "../utils/api-url";
 
-const apiUrl = (process.env.REACT_APP_API_URL || "http://127.0.0.1:8080");
+const apiUrl = getApiUrl();
 
 type TabKey = "capabilities" | "runs";
 type CapabilityTabKey = "tools" | "trajectories" | "skills";

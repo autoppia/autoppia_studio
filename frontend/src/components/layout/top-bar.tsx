@@ -18,6 +18,9 @@ import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
+import { getApiUrl } from "../../utils/api-url";
+
+const apiUrl = getApiUrl();
 
 export default function TopBar() {
   const navigate = useNavigate();
@@ -38,7 +41,7 @@ export default function TopBar() {
 
   const loadCompanies = () => {
     if (!user.email) return;
-    fetch(`${(process.env.REACT_APP_API_URL || "http://127.0.0.1:8080")}/companies?email=${encodeURIComponent(user.email)}`)
+    fetch(`${apiUrl}/companies?email=${encodeURIComponent(user.email)}`)
       .then((res) => (res.ok ? res.json() : Promise.reject(res)))
       .then((data) => {
         const next = data.companies || [];
@@ -99,7 +102,7 @@ export default function TopBar() {
     setSaving(true);
     try {
       const isEdit = modalMode === "edit" && selectedCompany;
-      const res = await fetch(`${(process.env.REACT_APP_API_URL || "http://127.0.0.1:8080")}/companies${isEdit ? `/${selectedCompany.companyId}` : ""}`, {
+      const res = await fetch(`${apiUrl}/companies${isEdit ? `/${selectedCompany.companyId}` : ""}`, {
         method: isEdit ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -144,8 +147,8 @@ export default function TopBar() {
       try {
         const params = new URLSearchParams({ email: user.email, companyId: selectedCompany.companyId });
         const [agentsRes, connectorsRes] = await Promise.all([
-          fetch(`${(process.env.REACT_APP_API_URL || "http://127.0.0.1:8080")}/agents?${params.toString()}`),
-          fetch(`${(process.env.REACT_APP_API_URL || "http://127.0.0.1:8080")}/connectors?${params.toString()}`),
+          fetch(`${apiUrl}/agents?${params.toString()}`),
+          fetch(`${apiUrl}/connectors?${params.toString()}`),
         ]);
         if (cancelled) return;
         const agentsData = agentsRes.ok ? await agentsRes.json() : { agents: [] };
@@ -168,7 +171,7 @@ export default function TopBar() {
     if (!selectedCompany || saving) return;
     setSaving(true);
     try {
-      const res = await fetch(`${(process.env.REACT_APP_API_URL || "http://127.0.0.1:8080")}/companies/${selectedCompany.companyId}`, { method: "DELETE" });
+      const res = await fetch(`${apiUrl}/companies/${selectedCompany.companyId}`, { method: "DELETE" });
       if (!res.ok) throw new Error(await apiErrorMessage(res, "Could not delete company. Please try again.", "this company"));
       localStorage.removeItem("automata_company_id");
       setCompanyId("");

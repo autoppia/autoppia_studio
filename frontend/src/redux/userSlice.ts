@@ -24,6 +24,10 @@ const userSlice = createSlice({
         },
         logout: (state) => {
             Cookies.remove("access_token");
+            localStorage.removeItem("automata_company_id");
+            localStorage.removeItem("automata_onboarding_company_id");
+            localStorage.removeItem("automata_work_board_id");
+            localStorage.removeItem("automata_last_email");
             state.isAuthenticated = false;
             state.email = "";
             state.instructions = "";

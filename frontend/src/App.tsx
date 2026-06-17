@@ -30,6 +30,16 @@ import { getApiUrl } from "./utils/api-url";
 const apiUrl = getApiUrl();
 installAuthFetch(apiUrl);
 
+function resetUserScopedStorage(email: string) {
+  const previous = localStorage.getItem("automata_last_email") || "";
+  if (previous !== email) {
+    localStorage.removeItem("automata_company_id");
+    localStorage.removeItem("automata_onboarding_company_id");
+    localStorage.removeItem("automata_work_board_id");
+  }
+  if (email) localStorage.setItem("automata_last_email", email);
+}
+
 function App() {
   const dispatch = useDispatch();
   const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
@@ -55,6 +65,7 @@ function App() {
         }
 
         const email = decodedToken.email;
+        resetUserScopedStorage(email);
         const response = await fetch(`${apiUrl}/user?email=${email}`);
         if (response.ok) {
           const data = await response.json();
