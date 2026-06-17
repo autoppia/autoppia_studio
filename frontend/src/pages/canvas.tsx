@@ -184,7 +184,7 @@ export default function Canvas(): React.ReactElement {
             <RuntimeCanvas
               agents={nodes}
               title="Company Router"
-              subtitle={agents.length > 0 ? "Routes work to the agents configured for this company" : "No agents configured for this company"}
+              subtitle={agents.length > 0 ? "Company agent network" : "No agents yet"}
               hubLabel="Router"
               minHeight="100%"
               interactive

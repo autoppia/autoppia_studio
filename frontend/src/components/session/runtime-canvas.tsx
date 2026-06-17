@@ -76,13 +76,14 @@ const ACTIVITY_ICON: Record<RuntimeActivity, IconDefinition> = {
   done: faFlagCheckered,
 };
 
-const STATE_META: Record<RuntimeRunState, { label: string; dot: string; text: string; border: string; glow: string }> = {
+const STATE_META: Record<RuntimeRunState, { label: string; dot: string; text: string; border: string; glow: string; accent: string }> = {
   idle: {
     label: "Idle",
     dot: "bg-zinc-500",
     text: "text-zinc-400",
     border: "border-zinc-700/70",
     glow: "rgba(113,113,122,0.10)",
+    accent: "linear-gradient(180deg,rgba(148,163,184,0.65),rgba(148,163,184,0.10))",
   },
   running: {
     label: "Running",
@@ -90,20 +91,23 @@ const STATE_META: Record<RuntimeRunState, { label: string; dot: string; text: st
     text: "text-sky-200",
     border: "border-sky-300/45",
     glow: "rgba(125,211,252,0.24)",
+    accent: "linear-gradient(180deg,#7dd3fc,rgba(125,211,252,0.20))",
   },
   done: {
-    label: "Done",
+    label: "Ready",
     dot: "bg-emerald-400",
     text: "text-emerald-200",
     border: "border-emerald-400/35",
     glow: "rgba(52,211,153,0.18)",
+    accent: "linear-gradient(180deg,#34d399,rgba(52,211,153,0.20))",
   },
   failed: {
-    label: "Failed",
+    label: "Attention",
     dot: "bg-red-400",
     text: "text-red-200",
     border: "border-red-400/40",
     glow: "rgba(248,113,113,0.20)",
+    accent: "linear-gradient(180deg,#f87171,rgba(248,113,113,0.20))",
   },
 };
 
@@ -228,8 +232,8 @@ function AgentAvatar({ node, dot }: { node: PositionedAgent; dot: string }) {
 
   return (
     <div
-      className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl border border-sky-300/20"
-      style={{ backgroundColor: showImage ? "#0c0a14" : "rgba(125,211,252,0.10)" }}
+      className="relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-white/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.12),0_6px_16px_rgba(0,0,0,0.4)]"
+      style={{ background: showImage ? "#0c0a14" : "linear-gradient(150deg,rgba(125,211,252,0.20),rgba(167,139,250,0.12))" }}
     >
       {showImage ? (
         <img
@@ -240,7 +244,7 @@ function AgentAvatar({ node, dot }: { node: PositionedAgent; dot: string }) {
           onError={() => setFailed(true)}
         />
       ) : (
-        <FontAwesomeIcon icon={faRobot} className="relative z-10 text-base text-white/90" />
+        <FontAwesomeIcon icon={faRobot} className="relative z-10 text-lg text-white/95" />
       )}
       <span className={`absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-[#0c0a14] ${dot}`} />
     </div>
@@ -265,7 +269,7 @@ function AgentNode({
 
   return (
     <div
-      className={`pointer-events-auto absolute w-[240px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
+      className={`group pointer-events-auto absolute w-[268px] -translate-x-1/2 -translate-y-1/2 ${interactive ? "cursor-grab active:cursor-grabbing" : ""}`}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
       onPointerDown={(event) => onPointerDown?.(event, node)}
       onClick={() => onClick?.(node)}
@@ -273,19 +277,25 @@ function AgentNode({
       {active && (
         <>
           <div
-            className="absolute -inset-5 rounded-[30px] blur-2xl"
+            className="absolute -inset-6 rounded-[34px] blur-2xl"
             style={{ background: `radial-gradient(ellipse at 50% 50%, ${meta.glow}, transparent 72%)` }}
           />
-          <div className="absolute right-4 top-3 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/35 text-sky-100 animate-pulse">
+          <div className="absolute right-3.5 top-3.5 z-20 flex h-6 w-6 items-center justify-center rounded-full border border-white/10 bg-black/40 text-sky-100 animate-pulse">
             <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
           </div>
         </>
       )}
 
       <div
-        className={`group relative overflow-hidden rounded-2xl border ${meta.border} bg-[linear-gradient(150deg,rgba(255,255,255,0.06),rgba(18,16,26,0.97)_60%)] p-3.5 shadow-[0_20px_48px_rgba(0,0,0,0.42)] backdrop-blur-md transition-all duration-300`}
-        style={{ boxShadow: active ? `0 0 26px ${meta.glow}, 0 18px 44px rgba(0,0,0,0.5)` : undefined }}
+        className={`relative overflow-hidden rounded-[20px] border ${meta.border} bg-[linear-gradient(155deg,rgba(255,255,255,0.07),rgba(20,18,28,0.96)_55%,rgba(11,10,18,0.98))] p-4 shadow-[0_22px_52px_rgba(0,0,0,0.45)] backdrop-blur-xl transition-all duration-300 group-hover:-translate-y-0.5 group-hover:border-white/25 group-hover:shadow-[0_30px_64px_rgba(0,0,0,0.55)]`}
+        style={{ boxShadow: active ? `0 0 30px ${meta.glow}, 0 22px 52px rgba(0,0,0,0.5)` : undefined }}
       >
+        {/* subtle inner top highlight */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/25 to-transparent" />
+
+        {/* left status accent bar */}
+        <div className="absolute left-0 top-0 h-full w-[3px]" style={{ background: meta.accent }} />
+
         {/* top accent line */}
         <div
           className={`absolute left-0 right-0 top-0 h-[3px] ${active ? "animate-pulse" : ""}`}
@@ -294,30 +304,32 @@ function AgentNode({
               ? "linear-gradient(90deg,transparent,#7dd3fc,transparent)"
               : node.state === "done"
                 ? "linear-gradient(90deg,transparent,rgba(52,211,153,0.55),transparent)"
-                : "linear-gradient(90deg,transparent,rgba(148,163,184,0.30),transparent)",
+                : node.state === "failed"
+                  ? "linear-gradient(90deg,transparent,rgba(248,113,113,0.45),transparent)"
+                  : "linear-gradient(90deg,transparent,rgba(148,163,184,0.28),transparent)",
           }}
         />
 
-        <div className="mb-3 flex items-center gap-3">
+        <div className="flex items-start gap-3">
           <AgentAvatar node={node} dot={meta.dot} />
-          <div className="min-w-0 flex-1">
-            <p className="truncate text-[13px] font-semibold leading-tight text-white">{node.name}</p>
-            <div className="mt-1 flex items-center gap-1.5">
+          <div className="min-w-0 flex-1 pt-0.5">
+            <p className="truncate text-[14px] font-semibold leading-tight text-white">{node.name}</p>
+            <div className="mt-1.5 inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/[0.04] px-2 py-0.5">
               <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
-              <span className={`text-[10px] font-semibold ${meta.text}`}>{meta.label}</span>
+              <span className={`text-[10px] font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
             </div>
           </div>
-          <ActivityChip activity={node.activity} />
         </div>
 
         {/* capability badges */}
-        <div className="mb-2.5 flex flex-wrap items-center gap-1">
+        <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+          <ActivityChip activity={node.activity} />
           <CapabilityBadge icon={faGlobe} label="Browser" on={browserOn} />
           <CapabilityBadge icon={faWandMagicSparkles} label="Skill" on={activity === "skill"} />
           <CapabilityBadge icon={faWrench} label="Tools" on={activity === "tool" || activity === "browser"} />
         </div>
 
-        <p className="truncate rounded-lg border border-zinc-800/70 bg-zinc-950/45 px-2.5 py-1.5 text-[10px] leading-tight text-zinc-400">
+        <p className="mt-3 truncate rounded-xl border border-white/5 bg-black/30 px-3 py-2 text-[10.5px] leading-tight text-zinc-400">
           {node.detail || (browserOn ? "Waiting for activity" : "Browser off")}
         </p>
       </div>
@@ -446,7 +458,7 @@ function AddAgentMenu({ children }: { children?: ReactNode }) {
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
-        className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-sky-300/30 bg-sky-300 text-black shadow-[0_0_28px_rgba(125,211,252,0.35)] transition-transform hover:scale-105 ${open ? "rotate-45" : ""}`}
+        className={`flex h-12 w-12 items-center justify-center rounded-2xl border border-white/70 bg-white text-zinc-900 shadow-[0_10px_30px_rgba(0,0,0,0.5),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-black/5 transition-all hover:scale-105 hover:bg-zinc-50 ${open ? "rotate-45" : ""}`}
         title="Add agent"
       >
         <FontAwesomeIcon icon={faPlus} className="text-sm" />
@@ -720,16 +732,45 @@ export default function RuntimeCanvas({
       style={{ minHeight }}
       data-testid="runtime-canvas"
     >
-      {/* Shared app backdrop — same treatment as the other sections (dark-bg image in dark mode). */}
+      {/* Premium layered backdrop — darker canvas with depth (radial glows + masked grid + vignette). */}
+      <div className="absolute inset-0 bg-gradient-to-b from-gray-50 to-gray-100 dark:from-[#0b0913] dark:to-[#060509]" />
       <div className="absolute inset-0 hidden dark:block">
-        <img src="/assets/images/bg/dark-bg.webp" alt="" className="h-full w-full object-cover opacity-90" />
+        <img src="/assets/images/bg/dark-bg.webp" alt="" className="h-full w-full object-cover opacity-60" />
       </div>
+      {/* Layered radial/linear glows for depth */}
       <div
-        className="absolute inset-0 opacity-[0.10] dark:opacity-[0.14]"
+        className="absolute inset-0"
         style={{
-          backgroundImage: "linear-gradient(rgba(148,163,184,0.20) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.20) 1px, transparent 1px)",
-          backgroundSize: "44px 44px",
+          background:
+            "radial-gradient(1100px 560px at 50% -6%, rgba(96,165,250,0.10), transparent 60%), radial-gradient(720px 520px at 12% 92%, rgba(167,139,250,0.10), transparent 58%), radial-gradient(720px 520px at 88% 88%, rgba(34,211,238,0.07), transparent 58%)",
         }}
+      />
+      {/* Grid with depth — fades toward the edges via a radial mask. */}
+      <div
+        className="absolute inset-0 opacity-[0.12] dark:opacity-[0.20]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(148,163,184,0.22) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.22) 1px, transparent 1px)",
+          backgroundSize: "46px 46px",
+          maskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 35%, transparent 92%)",
+          WebkitMaskImage: "radial-gradient(ellipse 80% 70% at 50% 38%, black 35%, transparent 92%)",
+        }}
+      />
+      {/* Coarse grid for layered depth */}
+      <div
+        className="absolute inset-0 hidden opacity-[0.10] dark:block"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(148,163,184,0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,0.14) 1px, transparent 1px)",
+          backgroundSize: "184px 184px",
+          maskImage: "radial-gradient(ellipse 85% 75% at 50% 38%, black 30%, transparent 95%)",
+          WebkitMaskImage: "radial-gradient(ellipse 85% 75% at 50% 38%, black 30%, transparent 95%)",
+        }}
+      />
+      {/* Edge vignette */}
+      <div
+        className="pointer-events-none absolute inset-0 hidden dark:block"
+        style={{ background: "radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)" }}
       />
 
       {/* Pan surface — sits behind the scaled content; dragging it pans the viewport. */}
@@ -752,9 +793,11 @@ export default function RuntimeCanvas({
 
         {positionedAgents.length === 0 ? (
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="rounded-3xl border border-white/10 bg-black/55 px-6 py-5 text-center shadow-2xl backdrop-blur-md">
-              <p className="text-sm font-semibold text-zinc-200">No agents to show</p>
-              <p className="mt-1 text-xs text-zinc-500">Start a session to bind an AgentRuntime.</p>
+            <div className="flex flex-col items-center rounded-3xl border border-white/10 bg-black/45 px-7 py-6 text-center shadow-2xl backdrop-blur-md">
+              <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-300">
+                <FontAwesomeIcon icon={faRobot} className="text-base" />
+              </div>
+              <p className="text-sm font-semibold text-zinc-200">No agents on the canvas</p>
             </div>
           </div>
         ) : (
