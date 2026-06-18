@@ -12,6 +12,7 @@ import {
   faSpinner,
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
+import SectionTitle from "../components/layout/section-title";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -116,7 +117,7 @@ export default function Analytics() {
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
           <div className="flex items-center gap-3">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Analytics</h1>
+            <SectionTitle icon={faChartLine} title="Analytics" subtitle="Usage and performance" />
             <span className="text-xs text-gray-500 dark:text-gray-400">
               {sessions ? `${sessions.total} sessions` : "—"}
             </span>

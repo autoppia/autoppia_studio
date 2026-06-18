@@ -13,6 +13,10 @@ import {
   faPlus,
   faTrash,
   faXmark,
+  faUser,
+  faGear,
+  faIdCard,
+  faChartLine,
 } from "@fortawesome/free-solid-svg-icons";
 import { logout } from "../../redux/userSlice";
 import { Company } from "../../utils/types";
@@ -21,6 +25,7 @@ import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
+import PrimaryNav from "./primary-nav";
 import { getApiUrl } from "../../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -35,6 +40,7 @@ export default function TopBar() {
   const [companyName, setCompanyName] = useState("");
   const [companyDescription, setCompanyDescription] = useState("");
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
   const [onboardingCompanyId, setOnboardingCompanyId] = useState(localStorage.getItem("automata_onboarding_company_id") || "");
@@ -202,11 +208,27 @@ export default function TopBar() {
 
   return (
     <header
-      className="flex items-center justify-end h-12 px-4 flex-shrink-0 gap-2
+      className="relative flex items-center h-12 px-4 flex-shrink-0 gap-2
         border-b border-gray-200 dark:border-dark-border
         bg-white dark:bg-dark-bg"
     >
-      <div className="mr-auto flex items-center gap-2 min-w-0">
+      <button
+        onClick={() => navigate("/canvas")}
+        className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl px-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+        title="Autoppia Studio — Canvas"
+      >
+        <img src="/assets/images/logos/main.webp" alt="Autoppia" className="h-6 w-6 object-contain" />
+        <span className="hidden items-center gap-1.5 sm:flex">
+          <span className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">Autoppia</span>
+          <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-primary">
+            Studio
+          </span>
+        </span>
+      </button>
+
+      <div className="mx-1 hidden h-6 w-px bg-gray-200 dark:bg-zinc-800/80 sm:block" />
+
+      <div className="flex items-center gap-2 min-w-0">
         <div className="relative">
           <button
             onClick={() => setCompanyMenuOpen((open) => !open)}
@@ -265,43 +287,99 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Activity status + notifications */}
-      <ActivityCenter />
+      {/* Spacer pushes the right-side actions to the edge. */}
+      <div className="min-w-0 flex-1" />
 
-      {/* API Key shortcut */}
+      {/* Primary navigation — centered to the header (viewport), not the free space. */}
+      <div className="pointer-events-none absolute left-1/2 top-0 flex h-12 -translate-x-1/2 items-center">
+        <div className="pointer-events-auto">
+          <PrimaryNav />
+        </div>
+      </div>
+
+      {/* New session call-to-action */}
       <button
-        onClick={() => navigate("/settings?tab=api-keys")}
-        className="flex items-center gap-1.5 h-8 px-2.5 rounded-lg
-          border border-gray-200 dark:border-zinc-800/80
-          text-xs font-medium text-gray-600 dark:text-zinc-300
-          hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-        title="API Keys"
+        onClick={() => navigate("/home")}
+        className="flex h-8 items-center gap-2 rounded-lg border border-white/80 bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
+        title="New session"
       >
-        <FontAwesomeIcon icon={faKey} className="text-[10px]" />
-        <span className="hidden md:inline">API Key</span>
+        <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
+        <span className="hidden sm:inline">New session</span>
       </button>
 
-      <button
-        onClick={darkThemeHandler}
-        className="flex h-8 w-8 items-center justify-center rounded-lg
-          border border-gray-200 dark:border-zinc-800/80
-          text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-        title="Toggle theme"
-        aria-label="Toggle theme"
-      >
-        <FontAwesomeIcon icon={faCircleHalfStroke} className="text-xs" />
-      </button>
+      {/* Notifications */}
+      <ActivityCenter showActivity={false} />
 
-      <button
-        onClick={() => dispatch(logout())}
-        className="flex h-8 w-8 items-center justify-center rounded-lg
-          border border-gray-200 dark:border-zinc-800/80
-          text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-        title="Sign out"
-        aria-label="Sign out"
-      >
-        <FontAwesomeIcon icon={faRightFromBracket} className="text-xs" />
-      </button>
+      {/* User menu */}
+      <div className="relative">
+        <button
+          onClick={() => setUserMenuOpen((open) => !open)}
+          className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-primary text-xs font-semibold text-white shadow-sm ring-1 ring-black/5 transition-transform hover:scale-105"
+          title={user.email || "Account"}
+          aria-label="Account menu"
+        >
+          {user.email ? user.email.charAt(0).toUpperCase() : <FontAwesomeIcon icon={faUser} className="text-[11px]" />}
+        </button>
+        {userMenuOpen && (
+          <>
+            <div className="fixed inset-0 z-[80]" onClick={() => setUserMenuOpen(false)} />
+            <div className="absolute right-0 top-11 z-[90] w-60 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/40 p-1.5">
+              <div className="flex items-center gap-2.5 px-2.5 py-2">
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-primary text-xs font-semibold text-white">
+                  {user.email ? user.email.charAt(0).toUpperCase() : <FontAwesomeIcon icon={faUser} className="text-[11px]" />}
+                </span>
+                <div className="min-w-0">
+                  <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{user.email || "Account"}</p>
+                </div>
+              </div>
+              <div className="my-1 h-px bg-gray-100 dark:bg-zinc-800/80" />
+              <button
+                onClick={darkThemeHandler}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faCircleHalfStroke} className="w-4 text-[12px] text-gray-400" />
+                Toggle theme
+              </button>
+              <button
+                onClick={() => { setUserMenuOpen(false); navigate("/settings?tab=api-keys"); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faKey} className="w-4 text-[12px] text-gray-400" />
+                API Keys
+              </button>
+              <button
+                onClick={() => { setUserMenuOpen(false); navigate("/settings"); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faGear} className="w-4 text-[12px] text-gray-400" />
+                Settings
+              </button>
+              <button
+                onClick={() => { setUserMenuOpen(false); navigate("/credentials"); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faIdCard} className="w-4 text-[12px] text-gray-400" />
+                Credentials
+              </button>
+              <button
+                onClick={() => { setUserMenuOpen(false); navigate("/analytics"); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faChartLine} className="w-4 text-[12px] text-gray-400" />
+                Analytics
+              </button>
+              <div className="my-1 h-px bg-gray-100 dark:bg-zinc-800/80" />
+              <button
+                onClick={() => { setUserMenuOpen(false); dispatch(logout()); }}
+                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10"
+              >
+                <FontAwesomeIcon icon={faRightFromBracket} className="w-4 text-[12px]" />
+                Sign out
+              </button>
+            </div>
+          </>
+        )}
+      </div>
 
       {confirmDeleteCompany && selectedCompany && (
         <ConfirmModal

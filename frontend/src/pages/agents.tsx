@@ -17,6 +17,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, AgentTask } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import { useToast } from "../components/common/toast";
 import { getApiUrl } from "../utils/api-url";
 
@@ -226,12 +227,16 @@ export default function Agents() {
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
           bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Agents</h1>
-            <InfoIcon title="Agents">
-              <p>An Agent is a company-specific AI worker. Automata builds it from instructions, reusable connectors, toolkits, knowledge, and approved skills.</p>
-            </InfoIcon>
-          </div>
+          <SectionTitle
+            icon={faRobot}
+            title="Agents"
+            subtitle="Company-specific AI workers"
+            info={
+              <InfoIcon title="Agents">
+                <p>An Agent is a company-specific AI worker. Automata builds it from instructions, reusable connectors, toolkits, knowledge, and approved skills.</p>
+              </InfoIcon>
+            }
+          />
         </div>
 
         {/* Content */}

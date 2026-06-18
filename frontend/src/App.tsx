@@ -19,7 +19,6 @@ import Entities from "./pages/entities";
 import Approvals from "./pages/approvals";
 import Credentials from "./pages/credentials";
 import Knowledge from "./pages/knowledge";
-import Artifacts from "./pages/artifacts";
 import Analytics from "./pages/analytics";
 import Work from "./pages/work";
 import SignIn from "./pages/signin";
@@ -132,7 +131,9 @@ function App() {
             <>
               {/* Protected routes */}
               <Route element={<MainLayout />}>
-                <Route path="/" element={<Home />} />
+                {/* Canvas is the home / center of the app */}
+                <Route path="/" element={<Navigate to="/canvas" replace />} />
+                <Route path="/home" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/canvas" element={<Canvas />} />
@@ -154,7 +155,6 @@ function App() {
                 <Route path="/approvals" element={<Approvals />} />
                 <Route path="/credentials" element={<Credentials />} />
                 <Route path="/knowledge" element={<Knowledge />} />
-                <Route path="/artifacts" element={<Artifacts />} />
                 <Route path="/analytics" element={<Analytics />} />
               </Route>
               {/* Redirect auth pages to home if already logged in */}

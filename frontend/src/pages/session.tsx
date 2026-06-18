@@ -11,7 +11,6 @@ import {
   faExpand,
   faFileLines,
   faGlobe,
-  faDiagramProject,
   faShapes,
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
@@ -178,8 +177,8 @@ function Session(): React.ReactElement {
   );
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notFound, setNotFound] = useState(false);
-  // Canvas vs Browser are mutually-exclusive tabs — only one is visible at a time.
-  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents" | "artifacts">("canvas");
+  // Runtime tabs — only one is visible at a time.
+  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents" | "artifacts">("browser");
   const manualViewRef = useRef(false);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [sessionDocuments, setSessionDocuments] = useState<SessionDocument[]>([]);
@@ -641,8 +640,6 @@ function Session(): React.ReactElement {
     if (manualViewRef.current) return;
     if (browserActive) {
       setActiveView("browser");
-    } else if (!hasBrowserContent) {
-      setActiveView("canvas");
     }
   }, [browserActive, hasBrowserContent]);
 
@@ -1005,7 +1002,6 @@ function Session(): React.ReactElement {
           {/* Tab switcher — Canvas and Browser are mutually exclusive */}
           <div className="mb-3 flex items-center gap-1 flex-shrink-0 w-fit rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/60 p-1 backdrop-blur-sm">
             {([
-              { key: "canvas", label: "Canvas", icon: faDiagramProject },
               { key: "browser", label: "Browser", icon: faGlobe },
               { key: "artifacts", label: "Artifacts", icon: faShapes },
               { key: "documents", label: "Documents", icon: faFileLines },

@@ -47,7 +47,7 @@ type PanelKey = "none" | "activity" | "notifications";
 
 type StatTile = { label: string; value: number; color: string };
 
-export default function ActivityCenter() {
+export default function ActivityCenter({ showActivity = true }: { showActivity?: boolean }) {
   const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
@@ -266,6 +266,7 @@ export default function ActivityCenter() {
   return (
     <div ref={containerRef} className="flex items-center gap-2">
       {/* Activity status */}
+      {showActivity && (
       <div className="relative">
         <button
           onClick={() => setPanel((prev) => (prev === "activity" ? "none" : "activity"))}
@@ -278,7 +279,7 @@ export default function ActivityCenter() {
         </button>
 
         {panel === "activity" && (
-          <div className="absolute right-0 top-10 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white dark:bg-zinc-950/95 shadow-xl dark:shadow-black/40 backdrop-blur-sm">
+          <div className="absolute right-0 top-10 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/40 backdrop-blur-sm">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100 dark:border-zinc-800/80">
               <span className="text-sm font-semibold text-gray-900 dark:text-white">Activity</span>
               <button onClick={() => handleAction("/work")} className="text-xs font-medium text-primary hover:underline">
@@ -326,6 +327,7 @@ export default function ActivityCenter() {
           </div>
         )}
       </div>
+      )}
 
       {/* Notifications bell */}
       <div className="relative">
@@ -343,7 +345,7 @@ export default function ActivityCenter() {
         </button>
 
         {panel === "notifications" && (
-          <div className="absolute right-0 top-10 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white dark:bg-zinc-950/95 shadow-xl dark:shadow-black/40 backdrop-blur-sm">
+          <div className="absolute right-0 top-10 z-[90] w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/40 backdrop-blur-sm">
             <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-zinc-800/80">
               <span className="text-sm font-semibold text-gray-900 dark:text-white shrink-0">
                 Notifications{unreadCount > 0 ? <span className="ml-1.5 text-xs font-medium text-gray-400">{unreadCount} new</span> : null}

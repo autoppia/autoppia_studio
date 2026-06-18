@@ -17,9 +17,11 @@ import {
   faBuilding,
   faDatabase,
   faMagnifyingGlass,
+  faBook,
 } from "@fortawesome/free-solid-svg-icons";
 import { KnowledgeDocument, VectorDatabase, VectorIndex } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -80,6 +82,9 @@ export default function Knowledge(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
+  const [showCreateDb, setShowCreateDb] = useState(false);
+  const [newDbName, setNewDbName] = useState("");
+  const [creatingDb, setCreatingDb] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const loadDocuments = useCallback(async () => {
@@ -171,9 +176,15 @@ export default function Knowledge(): React.ReactElement {
     }
   };
 
-  const createVectorDatabase = async () => {
-    const name = window.prompt("Vector database name", "New Knowledge DB")?.trim();
-    if (!name || !user.email || !companyId) return;
+  const openCreateVectorDatabase = () => {
+    setNewDbName("");
+    setShowCreateDb(true);
+  };
+
+  const submitCreateVectorDatabase = async () => {
+    const name = newDbName.trim();
+    if (!name || !user.email || !companyId || creatingDb) return;
+    setCreatingDb(true);
     setError("");
     try {
       const res = await fetch(`${apiUrl}/knowledge/vector-databases`, {
@@ -185,9 +196,12 @@ export default function Knowledge(): React.ReactElement {
       const data = await res.json();
       await loadDocuments();
       if (data.vectorDatabase?.vectorDatabaseId) setSelectedVectorDatabaseId(data.vectorDatabase.vectorDatabaseId);
+      setShowCreateDb(false);
     } catch (err: any) {
       console.error("Failed to create vector database:", err);
       setError(err?.message || "Could not create vector database.");
+    } finally {
+      setCreatingDb(false);
     }
   };
 
@@ -212,18 +226,22 @@ export default function Knowledge(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
+          <SectionTitle
+            icon={faBook}
+            title="Knowledge"
+            subtitle="Documents your agents rely on"
+            info={
+              <InfoIcon title="Knowledge">
+                <div className="space-y-3">
+                  <p>Knowledge documents belong to the selected company and power its <strong>Knowledge connector</strong>.</p>
+                  <p>Upload the manuals, policies, price lists and internal notes your agents should rely on. Agents read them through knowledge tools.</p>
+                  <p className="text-gray-400">Uploads are extracted, chunked, embedded and indexed into the configured vector store. Agents query them through <strong>knowledge.search</strong>.</p>
+                </div>
+              </InfoIcon>
+            }
+          />
           <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Knowledge</h1>
-            <InfoIcon title="Knowledge">
-              <div className="space-y-3">
-                <p>Knowledge documents belong to the selected company and power its <strong>Knowledge connector</strong>.</p>
-                <p>Upload the manuals, policies, price lists and internal notes your agents should rely on. Agents read them through knowledge tools.</p>
-                <p className="text-gray-400">Uploads are extracted, chunked, embedded and indexed into the configured vector store. Agents query them through <strong>knowledge.search</strong>.</p>
-              </div>
-            </InfoIcon>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={createVectorDatabase} disabled={!companyId} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors disabled:opacity-60">
+            <button onClick={openCreateVectorDatabase} disabled={!companyId} className="h-8 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors disabled:opacity-60">
               <FontAwesomeIcon icon={faDatabase} className="mr-2 text-[10px]" />
               New vector store
             </button>
@@ -456,6 +474,67 @@ export default function Knowledge(): React.ReactElement {
           )}
         </div>
       </div>
+
+      {showCreateDb && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center px-4">
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !creatingDb && setShowCreateDb(false)} />
+          <div className="relative w-full max-w-md rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/50 p-5">
+            <div className="mb-4 flex items-start justify-between">
+              <div className="flex items-center gap-2.5">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-white shadow-glow">
+                  <FontAwesomeIcon icon={faDatabase} className="text-sm" />
+                </span>
+                <div>
+                  <h3 className="text-base font-semibold leading-tight text-gray-900 dark:text-white">New vector store</h3>
+                  <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">A searchable index that holds your documents</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowCreateDb(false)}
+                disabled={creatingDb}
+                className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-white/5"
+              >
+                <FontAwesomeIcon icon={faXmark} className="text-sm" />
+              </button>
+            </div>
+
+            <label className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400">Name</label>
+            <input
+              autoFocus
+              value={newDbName}
+              onChange={(e) => setNewDbName(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submitCreateVectorDatabase(); }}
+              placeholder="e.g. Product manuals"
+              className="h-10 w-full rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-900 outline-none focus:border-primary/50 dark:border-zinc-800/80 dark:bg-zinc-950/70 dark:text-white"
+            />
+
+            <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-zinc-950/50">
+              <FontAwesomeIcon icon={faDatabase} className="text-[11px] text-gray-400" />
+              <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                Provider <span className="font-medium text-gray-700 dark:text-gray-300">Local</span> — documents are embedded and indexed here.
+              </span>
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setShowCreateDb(false)}
+                disabled={creatingDb}
+                className="h-9 rounded-xl border border-gray-200 px-4 text-sm font-medium text-gray-600 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={submitCreateVectorDatabase}
+                disabled={creatingDb || !newDbName.trim()}
+                className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-white shadow-glow disabled:opacity-60"
+              >
+                {creatingDb ? <FontAwesomeIcon icon={faSpinner} className="animate-spin text-xs" /> : <FontAwesomeIcon icon={faPlus} className="text-[10px]" />}
+                Create
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

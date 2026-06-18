@@ -857,7 +857,7 @@ export default function Capabilities(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
               <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
             </span>
@@ -1064,7 +1064,7 @@ export default function Capabilities(): React.ReactElement {
 
               {/* Pipeline band — explains the model and acts as the primary navigation */}
               <div className="mb-5">
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {pipelineSteps.map((step, index) => (
                     <button
                       key={step.key}

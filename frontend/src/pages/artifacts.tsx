@@ -22,6 +22,7 @@ import {
   faTriangleExclamation,
 } from "@fortawesome/free-solid-svg-icons";
 import { Artifact } from "../utils/types";
+import SectionTitle from "../components/layout/section-title";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -350,10 +351,7 @@ export default function Artifacts(): React.ReactElement {
       </div>
       <div className="relative flex h-full w-full flex-col">
         <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white/80 px-6 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80">
-          <div className="flex items-center gap-2">
-            <FontAwesomeIcon icon={faShapes} className="text-primary" />
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Artifacts</h1>
-          </div>
+          <SectionTitle icon={faShapes} title="Artifacts" subtitle="Generated files and outputs" />
           <div className="flex items-center gap-2">
             <button onClick={createNew} className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface">
               <FontAwesomeIcon icon={faPlus} className="mr-2 text-[10px]" />

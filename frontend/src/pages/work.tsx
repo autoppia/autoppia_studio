@@ -16,8 +16,10 @@ import {
   faTrash,
   faTriangleExclamation,
   faXmark,
+  faBriefcase,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, WorkBoard, WorkItem, WorkRunTarget, WorkStatus } from "../utils/types";
+import SectionTitle from "../components/layout/section-title";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
 import { getApiUrl } from "../utils/api-url";
@@ -357,10 +359,11 @@ export default function Work() {
 
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between gap-3 h-14 px-4 sm:px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100 truncate">{boards.find((board) => board.boardId === activeBoardId)?.name || "Work Board"}</h1>
-            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">Assign work to one agent or race all agents, then review the report.</p>
-          </div>
+          <SectionTitle
+            icon={faBriefcase}
+            title={boards.find((board) => board.boardId === activeBoardId)?.name || "Work Board"}
+            subtitle="Assign work to one agent or race all agents, then review the report."
+          />
           <div className="flex items-center gap-2 shrink-0">
             <button
               onClick={() => setShowCreate(true)}

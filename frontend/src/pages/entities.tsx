@@ -769,7 +769,7 @@ export default function Entities(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-center gap-2.5">
+          <div className="flex items-center gap-3">
             <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
               <FontAwesomeIcon icon={faCube} className="text-sm" />
             </span>

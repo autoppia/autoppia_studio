@@ -21,9 +21,11 @@ import {
   faWandMagicSparkles,
   faWrench,
   faXmark,
+  faPlug,
 } from "@fortawesome/free-solid-svg-icons";
 import { Connector } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import SelectDropdown from "../components/common/select-dropdown";
 import ConfirmModal from "../components/common/confirm-modal";
 import { useToast } from "../components/common/toast";
@@ -555,16 +557,20 @@ export default function Connectors(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Connectors</h1>
-            <InfoIcon title="Connectors and Toolkits">
-              <div className="space-y-3">
-                <p><strong>Connector</strong> belongs to the Company and can be reused by multiple agents.</p>
-                <p><strong>Toolkit</strong> is generated from the connector and is what agents actually call: Gmail tools, Holded tools, browser tools, API tools, or knowledge search.</p>
-                <p>Configure auth, test the connector, then agents in this company can use its toolkit.</p>
-              </div>
-            </InfoIcon>
-          </div>
+          <SectionTitle
+            icon={faPlug}
+            title="Connectors"
+            subtitle="Integrations your agents can call"
+            info={
+              <InfoIcon title="Connectors and Toolkits">
+                <div className="space-y-3">
+                  <p><strong>Connector</strong> belongs to the Company and can be reused by multiple agents.</p>
+                  <p><strong>Toolkit</strong> is generated from the connector and is what agents actually call: Gmail tools, Holded tools, browser tools, API tools, or knowledge search.</p>
+                  <p>Configure auth, test the connector, then agents in this company can use its toolkit.</p>
+                </div>
+              </InfoIcon>
+            }
+          />
           <div className="flex items-center gap-2">
             {companyId && (
               <button
