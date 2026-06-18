@@ -14,12 +14,14 @@ import {
   faCircleCheck,
   faListCheck,
   faRoute,
+  faArrowUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, AgentTask } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SectionTitle from "../components/layout/section-title";
 import { useToast } from "../components/common/toast";
 import { getApiUrl } from "../utils/api-url";
+import { agentHostLabel, agentImageUrl } from "../utils/agent-image";
 
 const apiUrl = getApiUrl();
 
@@ -46,6 +48,39 @@ function StatusBadge({ label, tone }: { label: string; tone: BadgeTone }) {
     <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border capitalize ${tones[tone]}`}>
       {label}
     </span>
+  );
+}
+
+function AgentAvatar({ agent, size = "md" }: { agent: AgentConfig; size?: "md" | "lg" }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = agentImageUrl(agent);
+  const initials = agent.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+  const sizeClass = size === "lg" ? "h-14 w-14" : "h-11 w-11";
+  const iconClass = size === "lg" ? "text-lg" : "text-base";
+
+  return (
+    <div className={`relative ${sizeClass} flex-shrink-0 rounded-2xl p-[1px] bg-gradient-to-br from-primary/80 via-sky-400/70 to-violet-400/70 shadow-soft`}>
+      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-2xl bg-white dark:bg-[#101018]">
+        {!failed && imageUrl ? (
+          <img
+            src={imageUrl}
+            alt=""
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+            draggable={false}
+          />
+        ) : initials ? (
+          <span className="text-sm font-semibold text-gray-700 dark:text-gray-100">{initials}</span>
+        ) : (
+          <FontAwesomeIcon icon={faRobot} className={`text-primary ${iconClass}`} />
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -303,60 +338,65 @@ export default function Agents() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 2xl:grid-cols-3 gap-4">
               {filtered.map((op) => (
                 <div
                   key={op.agentId}
                   onClick={() => navigate(`/agents/${op.agentId}`)}
-                  className="group relative flex flex-col bg-white dark:bg-dark-surface rounded-xl
+                  className="group relative flex min-h-[210px] flex-col overflow-hidden bg-white dark:bg-dark-surface rounded-xl
                     border border-gray-200 dark:border-dark-border shadow-soft
                     hover:shadow-soft-lg hover:border-gray-300 dark:hover:border-gray-600
-                    transition-all duration-200 p-5 cursor-pointer"
+                    transition-all duration-200 cursor-pointer"
                 >
-                  {/* Icon */}
-                  <div className="flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-primary shadow-glow mb-4 flex-shrink-0">
-                    <FontAwesomeIcon icon={faRobot} className="text-white text-base" />
+                  <div className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-br from-primary/10 via-sky-400/5 to-transparent dark:from-primary/15 dark:via-sky-400/10" />
+
+                  <div className="relative flex items-start gap-4 p-5 pb-4">
+                    <AgentAvatar agent={op} size="lg" />
+
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <h3 className="truncate text-base font-semibold leading-6 text-gray-900 dark:text-white">{op.name}</h3>
+                          <p className="truncate text-xs text-gray-500 dark:text-gray-400">{agentHostLabel(op.websiteUrl)}</p>
+                        </div>
+                        <span className="mt-1 inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full bg-primary shadow-[0_0_0_4px_rgba(233,124,60,0.14)]" />
+                      </div>
+
+                      {op.websiteUrl && (
+                        <a
+                          href={op.websiteUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="mt-3 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-gray-200 bg-white/70 px-2.5 py-1.5 text-xs text-gray-600
+                            hover:border-primary/40 hover:text-primary dark:border-dark-border dark:bg-dark-bg/60 dark:text-gray-300 dark:hover:border-primary/40"
+                        >
+                          <FontAwesomeIcon icon={faGlobe} className="text-[10px] flex-shrink-0" />
+                          <span className="truncate font-mono">{op.websiteUrl}</span>
+                          <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[9px] flex-shrink-0 opacity-60" />
+                        </a>
+                      )}
+                    </div>
                   </div>
 
-                  {/* Title */}
-                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-1">{op.name}</h3>
-
-                  {/* Website */}
-                  {op.websiteUrl && (
-                    <a
-                      href={op.websiteUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400 hover:text-primary
-                        truncate font-mono mb-3"
-                    >
-                      <FontAwesomeIcon icon={faGlobe} className="text-[10px] flex-shrink-0" />
-                      <span className="truncate">{op.websiteUrl}</span>
-                    </a>
-                  )}
-
-                  {/* Status badges */}
-                  <div className="flex flex-wrap gap-1.5 mb-3">
+                  <div className="relative flex flex-wrap gap-1.5 px-5 pb-4">
                     <StatusBadge label={prettify(op.status)} tone={statusTone(op.status)} />
                     <StatusBadge label={prettify(op.runtimeType)} tone="blue" />
                     <StatusBadge label={prettify(op.trainingStatus)} tone={statusTone(op.trainingStatus)} />
                   </div>
 
-                  {/* Runtime endpoint */}
                   {op.runtimeEndpoint && (
-                    <p className="text-[11px] text-gray-400 dark:text-gray-500 font-mono truncate mb-3" title={op.runtimeEndpoint}>
+                    <p className="mx-5 mb-4 truncate rounded-lg bg-gray-50 px-2.5 py-2 text-[11px] text-gray-500 dark:bg-dark-bg/70 dark:text-gray-400 font-mono" title={op.runtimeEndpoint}>
                       {op.runtimeEndpoint}
                     </p>
                   )}
 
-                  {/* Counts */}
-                  <div className="mt-auto flex items-center gap-4 pt-3 border-t border-gray-100 dark:border-dark-border">
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                  <div className="relative mt-auto grid grid-cols-2 border-t border-gray-100 dark:border-dark-border">
+                    <div className="flex items-center gap-2 px-5 py-3 text-xs text-gray-500 dark:text-gray-400">
                       <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
                       <span>{op.tasks?.length || 0} {(op.tasks?.length || 0) === 1 ? "task" : "tasks"}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-2 border-l border-gray-100 px-5 py-3 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
                       <FontAwesomeIcon icon={faRoute} className="text-[10px]" />
                       <span>{op.trajectories?.length || 0} {(op.trajectories?.length || 0) === 1 ? "trajectory" : "trajectories"}</span>
                     </div>

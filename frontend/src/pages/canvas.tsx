@@ -6,6 +6,7 @@ import { faSpinner } from "@fortawesome/free-solid-svg-icons";
 import FlowCanvas, { FlowAgent, FlowRunState } from "../components/canvas/flow-canvas";
 import { AgentConfig, Company } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
+import { agentHostLabel, agentImageUrl } from "../utils/agent-image";
 
 const apiUrl = getApiUrl();
 
@@ -20,29 +21,8 @@ function agentState(agent: AgentConfig): FlowRunState {
 function agentDetail(agent: AgentConfig): string {
   const taskCount = agent.tasks?.length || 0;
   const runtime = agent.runtimeType || "runtime";
-  let target = "company scope";
-  try {
-    target = agent.websiteUrl ? new URL(agent.websiteUrl).hostname.replace(/^www\./, "") : target;
-  } catch {
-    target = agent.websiteUrl || target;
-  }
+  const target = agentHostLabel(agent.websiteUrl);
   return `${taskCount} task${taskCount === 1 ? "" : "s"} · ${runtime} · ${target}`;
-}
-
-const CELERIS_FAVICON = "https://celeris.ad/favicon.svg";
-
-function faviconUrl(websiteUrl?: string): string {
-  // Agents with their own site use that site's favicon; otherwise the Celeris brand mark.
-  if (websiteUrl) {
-    try {
-      const normalized = websiteUrl.startsWith("http") ? websiteUrl : `https://${websiteUrl}`;
-      const host = new URL(normalized).hostname;
-      return `https://www.google.com/s2/favicons?sz=128&domain=${host}`;
-    } catch {
-      /* fall through to the brand mark */
-    }
-  }
-  return CELERIS_FAVICON;
 }
 
 function toFlowAgent(agent: AgentConfig): FlowAgent {
@@ -52,7 +32,7 @@ function toFlowAgent(agent: AgentConfig): FlowAgent {
     state: agentState(agent),
     detail: agentDetail(agent),
     browserEnabled: agent.runtimeSpec?.browserEnabled ?? agent.runtimeCapabilities?.browser ?? Boolean(agent.websiteUrl),
-    imageUrl: faviconUrl(agent.websiteUrl),
+    imageUrl: agentImageUrl(agent),
   };
 }
 
