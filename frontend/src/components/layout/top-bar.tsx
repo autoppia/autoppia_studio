@@ -15,8 +15,6 @@ import {
   faXmark,
   faUser,
   faGear,
-  faIdCard,
-  faChartLine,
 } from "@fortawesome/free-solid-svg-icons";
 import { logout } from "../../redux/userSlice";
 import { Company } from "../../utils/types";
@@ -353,20 +351,6 @@ export default function TopBar() {
               >
                 <FontAwesomeIcon icon={faGear} className="w-4 text-[12px] text-gray-400" />
                 Settings
-              </button>
-              <button
-                onClick={() => { setUserMenuOpen(false); navigate("/credentials"); }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
-              >
-                <FontAwesomeIcon icon={faIdCard} className="w-4 text-[12px] text-gray-400" />
-                Credentials
-              </button>
-              <button
-                onClick={() => { setUserMenuOpen(false); navigate("/analytics"); }}
-                className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 dark:text-zinc-200 dark:hover:bg-white/5"
-              >
-                <FontAwesomeIcon icon={faChartLine} className="w-4 text-[12px] text-gray-400" />
-                Analytics
               </button>
               <div className="my-1 h-px bg-gray-100 dark:bg-zinc-800/80" />
               <button
