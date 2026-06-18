@@ -40,13 +40,27 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: "studio",
     label: "Studio",
+    icon: faPlug,
+    items: [
+      { label: "Connectors", path: "/connectors", icon: faPlug },
+      { label: "Knowledge", path: "/knowledge", icon: faBook },
+      { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles },
+      { label: "Entities", path: "/entities", icon: faCubes },
+    ],
+  },
+  {
+    key: "other",
+    label: "Other",
     icon: faRobot,
     items: [
       { label: "Agents", path: "/agents", icon: faRobot },
-      { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles },
-      { label: "Connectors", path: "/connectors", icon: faPlug },
-      { label: "Knowledge", path: "/knowledge", icon: faBook },
-      { label: "Entities", path: "/entities", icon: faCubes },
+    ],
+  },
+  {
+    key: "eval",
+    label: "Eval",
+    icon: faClipboardCheck,
+    items: [
       { label: "Benchmarks", path: "/evals", icon: faClipboardCheck },
     ],
   },
