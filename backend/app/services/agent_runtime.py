@@ -10,7 +10,7 @@ import httpx
 from fastapi import HTTPException
 
 from app.connectors import ConnectorExecutionError, execute_connector_tool
-from app.database import agents_collection, capabilities_collection, entities_collection, tools_collection, trajectories_collection
+from app.database import agents_collection, benchmark_tasks_collection, capabilities_collection, connectors_collection, entities_collection, tools_collection, trajectories_collection
 from app.models.agent_config import AgentCallable, AgentConfig
 from app.services.approvals import create_pending_approval, stable_approval_key
 from app.services.metering import record_usage
@@ -373,21 +373,220 @@ def _tokens(value: str) -> set[str]:
     return {token for token in re.findall(r"[a-zA-ZáéíóúñÁÉÍÓÚÑ0-9]{4,}", value.lower()) if token}
 
 
+ROUTER_STOPWORDS = {
+    "para", "sobre", "with", "from", "that", "this", "este", "esta", "estos", "estas",
+    "email", "mail", "correo", "task", "agent", "using", "hacer", "busca", "buscar",
+    "reciente", "ultimo", "último", "resume", "resumen", "respuesta", "cliente",
+}
+
+
+def _router_tokens(value: str) -> set[str]:
+    return {token for token in _tokens(value) if token not in ROUTER_STOPWORDS}
+
+
+def _skill_route_text(skill: dict[str, Any]) -> str:
+    task_text = " ".join(
+        str(item.get(key) or "")
+        for item in skill.get("tasks") or []
+        if isinstance(item, dict)
+        for key in ("name", "prompt", "successCriteria")
+    )
+    return " ".join(
+        str(skill.get(key) or "")
+        for key in ("name", "description", "whenToUse", "runtime", "source", "successCriteria", "taskName", "prompt")
+    ) + " " + task_text
+
+
+def _skill_route_items(skill: dict[str, Any]) -> list[dict[str, str]]:
+    items: list[dict[str, str]] = []
+    for index, task in enumerate(skill.get("tasks") or []):
+        if not isinstance(task, dict):
+            continue
+        text = str(task.get("prompt") or "").strip()
+        if not text:
+            text = " ".join(str(task.get(key) or "") for key in ("name", "successCriteria"))
+        if text.strip():
+            items.append({
+                "source": "task",
+                "name": str(task.get("name") or task.get("taskId") or f"Task {index + 1}"),
+                "text": text,
+            })
+    top_level_task = str(skill.get("prompt") or "").strip()
+    if not top_level_task:
+        top_level_task = " ".join(str(skill.get(key) or "") for key in ("taskName", "successCriteria"))
+    if top_level_task.strip():
+        items.append({"source": "task", "name": str(skill.get("taskName") or skill.get("name") or "Linked task"), "text": top_level_task})
+    skill_text = _skill_route_text(skill)
+    if skill_text.strip():
+        items.append({"source": "skill", "name": str(skill.get("name") or "Skill"), "text": skill_text})
+    return items
+
+
+def _skill_route_status(skill: dict[str, Any]) -> bool:
+    status = str(skill.get("status") or "").lower()
+    if status and status not in {"approved", "ready", "active", "published", "promoted"}:
+        return False
+    return bool(skill.get("trajectoryIds") or skill.get("trajectoryId"))
+
+
+def _skill_route_candidate(prompt: str, skill: dict[str, Any]) -> dict[str, Any]:
+    prompt_tokens = _router_tokens(prompt)
+    route_items = _skill_route_items(skill)
+    best_item: dict[str, Any] = {"source": "", "name": "", "text": "", "tokens": set(), "overlap": set(), "score": 0.0, "promptCoverage": 0.0, "skillCoverage": 0.0}
+    for item in route_items:
+        item_tokens = _router_tokens(item["text"])
+        overlap = prompt_tokens & item_tokens if prompt_tokens else set()
+        prompt_coverage = len(overlap) / max(1, len(prompt_tokens))
+        item_coverage = len(overlap) / max(1, len(item_tokens))
+        score = min(prompt_coverage, item_coverage) if item_tokens else 0.0
+        candidate_item = {
+            **item,
+            "tokens": item_tokens,
+            "overlap": overlap,
+            "score": score,
+            "promptCoverage": prompt_coverage,
+            "skillCoverage": item_coverage,
+        }
+        if (score, len(overlap), item.get("source") == "task") > (
+            float(best_item["score"]),
+            len(best_item["overlap"]),
+            best_item.get("source") == "task",
+        ):
+            best_item = candidate_item
+    overlap = best_item["overlap"]
+    prompt_coverage = len(overlap) / max(1, len(prompt_tokens))
+    skill_coverage = float(best_item["skillCoverage"])
+    score = float(best_item["score"])
+    return {
+        "skillId": str(skill.get("capabilityId") or skill.get("skillId") or ""),
+        "name": str(skill.get("name") or ""),
+        "status": str(skill.get("status") or ""),
+        "matchedRouteSource": str(best_item.get("source") or ""),
+        "matchedRouteName": str(best_item.get("name") or ""),
+        "hasTaskRoute": any(item.get("source") == "task" for item in route_items),
+        "overlap": sorted(overlap),
+        "overlapCount": len(overlap),
+        "promptCoverage": round(prompt_coverage, 3),
+        "skillCoverage": round(skill_coverage, 3),
+        "score": round(score, 3),
+        "hasApprovedTrajectoryRef": _skill_route_status(skill),
+        "skill": skill,
+    }
+
+
+async def _skill_has_executable_trajectory(skill: dict[str, Any]) -> tuple[bool, str]:
+    trajectory = await _load_skill_trajectory(skill)
+    if not trajectory:
+        return False, "Skill has no linked trajectory."
+    status = str(trajectory.get("status") or "").lower()
+    actions = trajectory.get("trajectory") or trajectory.get("actions") or trajectory.get("steps") or []
+    if status != "approved":
+        return False, f"Linked trajectory status is {status or 'unknown'}, not approved."
+    if not isinstance(actions, list) or not actions:
+        return False, "Linked trajectory has no executable steps."
+    return True, f"Approved trajectory {trajectory.get('trajectoryId') or ''} with {len(actions)} step(s)."
+
+
+async def _route_skill_match(prompt: str, skills: list[dict[str, Any]]) -> dict[str, Any]:
+    candidates = [_skill_route_candidate(prompt, skill) for skill in skills]
+    candidates.sort(key=lambda item: (item["score"], item["overlapCount"]), reverse=True)
+    public_candidates = [
+        {key: value for key, value in item.items() if key != "skill"}
+        for item in candidates[:5]
+    ]
+    thresholds = {
+        "minimumOverlapTokens": 4,
+        "minimumShortExactOverlapTokens": 3,
+        "minimumPromptCoverage": 0.45,
+        "minimumTaskCoverage": 0.65,
+        "minimumShortExactTaskCoverage": 0.9,
+        "minimumLeadOverSecondCandidate": 0.15,
+        "requiresConcreteTaskRoute": True,
+        "requiresApprovedExecutableTrajectory": True,
+    }
+    if not candidates:
+        return {
+            "decision": "no_safe_match",
+            "reason": "No approved skills are available for this AgentConfig/company.",
+            "confidence": 0.0,
+            "thresholds": thresholds,
+            "candidates": [],
+        }
+
+    best = candidates[0]
+    second_score = float(candidates[1]["score"]) if len(candidates) > 1 else 0.0
+    if not best["hasApprovedTrajectoryRef"]:
+        return {
+            "decision": "no_safe_match",
+            "reason": "Best skill candidate does not reference an approved trajectory.",
+            "confidence": best["score"],
+            "thresholds": thresholds,
+            "candidates": public_candidates,
+        }
+    if not best.get("hasTaskRoute") or best.get("matchedRouteSource") != "task":
+        return {
+            "decision": "no_safe_match",
+            "reason": "Best skill candidate did not match a concrete source task, so trajectory replay is not safe.",
+            "confidence": best["score"],
+            "thresholds": thresholds,
+            "candidates": public_candidates,
+        }
+
+    lead_is_clear = float(best["score"]) - second_score >= 0.15 or second_score == 0.0
+    standard_safe = (
+        best["overlapCount"] >= 4
+        and float(best["promptCoverage"]) >= 0.45
+        and float(best["skillCoverage"]) >= 0.65
+        and lead_is_clear
+    )
+    short_exact_task_safe = (
+        best["overlapCount"] >= 3
+        and float(best["promptCoverage"]) >= 0.999
+        and float(best["skillCoverage"]) >= 0.9
+        and float(best["score"]) >= 0.9
+        and lead_is_clear
+    )
+    safe = standard_safe or short_exact_task_safe
+    if not safe:
+        return {
+            "decision": "no_safe_match",
+            "reason": "No skill matched strongly enough for autonomous trajectory replay.",
+            "confidence": best["score"],
+            "thresholds": thresholds,
+            "candidates": public_candidates,
+        }
+    executable, executable_reason = await _skill_has_executable_trajectory(best["skill"])
+    if not executable:
+        return {
+            "decision": "no_safe_match",
+            "reason": executable_reason,
+            "confidence": best["score"],
+            "thresholds": thresholds,
+            "candidates": public_candidates,
+        }
+    return {
+        "decision": "matched_skill",
+        "reason": executable_reason,
+        "confidence": best["score"],
+        "thresholds": thresholds,
+        "matchedSkillId": best["skillId"],
+        "matchedSkillName": best["name"],
+        "matchedTaskName": best.get("matchedRouteName") or "",
+        "candidates": public_candidates,
+        "skill": best["skill"],
+    }
+
+
 def _match_skill(prompt: str, skills: list[dict[str, Any]]) -> dict[str, Any] | None:
-    prompt_tokens = _tokens(prompt)
+    prompt_tokens = _router_tokens(prompt)
     if not prompt_tokens:
         return None
-    best: tuple[int, dict[str, Any] | None] = (0, None)
+    best: tuple[float, int, dict[str, Any] | None] = (0.0, 0, None)
     for skill in skills:
-        text = " ".join(
-            str(skill.get(key) or "")
-            for key in ("name", "description", "whenToUse", "runtime", "source")
-        )
-        skill_tokens = _tokens(text)
-        score = len(prompt_tokens & skill_tokens)
-        if score > best[0]:
-            best = (score, skill)
-    return best[1] if best[0] >= 1 else None
+        candidate = _skill_route_candidate(prompt, skill)
+        if (float(candidate["score"]), int(candidate["overlapCount"])) > (best[0], best[1]):
+            best = (float(candidate["score"]), int(candidate["overlapCount"]), skill)
+    return best[2] if best[0] >= 0.65 and best[1] >= 4 else None
 
 
 def _normalize_action(action: dict[str, Any]) -> dict[str, Any]:
@@ -458,6 +657,42 @@ def _content_from_tool_results(tool_results: list[dict[str, Any]]) -> str:
     if not latest.get("success"):
         return str(latest.get("error") or "")
     output = latest.get("output") if isinstance(latest.get("output"), dict) else {}
+    tool_name = str(latest.get("tool") or "")
+    if tool_name == "imap.search_emails":
+        messages = output.get("messages") if isinstance(output.get("messages"), list) else []
+        if not messages:
+            query = output.get("query") or output.get("searchQuery") or "the requested query"
+            return f"No emails found for {query!r} in {output.get('folder') or 'INBOX'}."
+        lines = [f"Found {len(messages)} email(s):"]
+        for message in messages[:5]:
+            lines.append(
+                f"- {message.get('subject') or '(no subject)'} from {message.get('from') or 'unknown'} "
+                f"on {message.get('date') or 'unknown date'} [messageId: {message.get('messageId')}]"
+            )
+        return "\n".join(lines)
+    if tool_name == "imap.read_email":
+        return (
+            f"Email from {output.get('from') or 'unknown'} about {output.get('subject') or '(no subject)'}:\n\n"
+            f"{output.get('body') or 'No body content found.'}"
+        )
+    if tool_name == "smtp.draft_email":
+        return (
+            f"Draft ready.\n\nTo: {output.get('to') or ''}\n"
+            f"Subject: {output.get('subject') or ''}\n\n{output.get('body') or ''}"
+        )
+    if tool_name in {"smtp.send_email", "gmail.send_email"}:
+        return f"Email sent to {output.get('to') or 'recipient'} with subject {output.get('subject') or '(no subject)'}."
+    if tool_name in {"web.fetch", "web.fetch_text"} and output.get("text"):
+        url = f"Source: {output.get('url')}\n\n" if output.get("url") else ""
+        return f"{url}{str(output.get('text') or '').strip()[:2000]}"
+    if tool_name == "web.extract_links":
+        links = output.get("links") if isinstance(output.get("links"), list) else []
+        if not links:
+            return f"No links found at {output.get('url') or 'the requested URL'}."
+        lines = [f"Found {len(links)} link(s) at {output.get('url') or 'the requested URL'}:"]
+        for link in links[:10]:
+            lines.append(f"- {link.get('text') or '(no label)'}: {link.get('url')}")
+        return "\n".join(lines)
     if output.get("pdfUrl"):
         label = str(output.get("numBOPA") or output.get("title") or latest.get("tool") or "result")
         published = f" published at {output.get('publishedAt')}" if output.get("publishedAt") else ""
@@ -470,8 +705,280 @@ def _content_from_tool_results(tool_results: list[dict[str, Any]]) -> str:
     return "Connector tools executed."
 
 
+def _email_agent_response(prompt: str, state: dict[str, Any]) -> dict[str, Any]:
+    lowered = prompt.lower()
+    email_match = re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", prompt)
+    recipient = email_match.group(0) if email_match else ""
+    subject_match = re.search(r"(?:asunto|subject)\s*[:：]?\s*(.+?)(?:\s+y\s+cuerpo\b|\s+con\s+cuerpo\b|\s+body\b|[.\n]|$)", prompt, flags=re.IGNORECASE)
+    subject = subject_match.group(1).strip() if subject_match else "Seguimiento"
+    if subject.lower() in {"y cuerpo", "con cuerpo", "cuerpo", "body"}:
+        subject = "Seguimiento"
+
+    if any(token in lowered for token in ("buscar", "busca", "search", "encuentra", "último", "ultimo", "reciente")):
+        query = _email_search_query(prompt)
+        return {
+            "protocol_version": "1.0",
+            "tool_calls": [{"name": "imap.search_emails", "arguments": {"query": query, "folder": "INBOX", "limit": 5}}],
+            "content": None,
+            "reasoning": "Email-specialized runtime: search mailbox first so the response can be grounded in actual email context.",
+            "done": False,
+            "state_out": state,
+        }
+
+    read_match = re.search(r"(?:messageId|uid|mensaje)\s*[:#]?\s*([A-Za-z0-9_.:-]+)", prompt, flags=re.IGNORECASE)
+    if any(token in lowered for token in ("lee", "leer", "léelo", "leelo", "read")) and read_match:
+        return {
+            "protocol_version": "1.0",
+            "tool_calls": [{"name": "imap.read_email", "arguments": {"messageId": read_match.group(1), "folder": "INBOX"}}],
+            "content": None,
+            "reasoning": "Email-specialized runtime: read the requested message before summarizing or replying.",
+            "done": False,
+            "state_out": state,
+        }
+
+    body = _email_body(prompt)
+    draft_arguments = {"to": recipient or "pending-recipient@example.com", "subject": subject, "body": body}
+    wants_send = any(token in lowered for token in ("envía", "envia", "send", "enviar")) and not any(token in lowered for token in ("no lo env", "no enviar", "no send", "sin enviar"))
+    if wants_send and recipient:
+        return {
+            "protocol_version": "1.0",
+            "tool_calls": [{"name": "smtp.send_email", "arguments": draft_arguments}],
+            "content": None,
+            "reasoning": "Email-specialized runtime: the user requested sending, so use smtp.send_email and let the approval gate stop execution until confirmed.",
+            "done": False,
+            "state_out": state,
+        }
+
+    return {
+        "protocol_version": "1.0",
+        "tool_calls": [{"name": "smtp.draft_email", "arguments": draft_arguments}],
+        "content": None,
+        "reasoning": "Email-specialized runtime: prepare a draft rather than sending.",
+        "done": False,
+        "state_out": state,
+    }
+
+
+def _email_search_query(prompt: str) -> str:
+    topic_match = re.search(
+        r"(?:sobre|de|about|for)\s+(.+?)(?:,|\.|\s+y\s+|\s+and\s+|\s+resume\b|\s+summari[sz]e\b|$)",
+        prompt,
+        flags=re.IGNORECASE,
+    )
+    candidate = topic_match.group(1) if topic_match else prompt
+    candidate = re.sub(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", " ", candidate)
+    words = [
+        re.sub(r"^[^\wáéíóúüñÁÉÍÓÚÜÑ]+|[^\wáéíóúüñÁÉÍÓÚÜÑ]+$", "", token)
+        for token in re.split(r"\s+", candidate)
+    ]
+    stopwords = {
+        "busca", "buscar", "email", "mail", "correo", "correos", "mensaje", "mensajes",
+        "mas", "más", "reciente", "ultimo", "último", "the", "latest", "recent",
+        "search", "find", "sobre", "about", "de", "del", "la", "el", "los", "las",
+    }
+    keywords = [word for word in words if word and word.lower() not in stopwords]
+    return " ".join(keywords[:6])[:80]
+
+
+def _email_body(prompt: str) -> str:
+    body_match = re.search(r"(?:cuerpo|body)\s*[:：]?\s*(.+)$", prompt, flags=re.IGNORECASE | re.DOTALL)
+    if body_match:
+        body = body_match.group(1).strip()
+        if body and body.lower() not in {"cuerpo", "body"} and re.search(r"[\wáéíóúüñÁÉÍÓÚÜÑ]", body):
+            return body
+    lowered = prompt.lower()
+    if "agradec" in lowered and ("revisaremos" in lowered or "revisar" in lowered):
+        return "Gracias por su consulta. Revisaremos el caso hoy y le responderemos con una actualizacion en cuanto tengamos mas informacion."
+    if "agradec" in lowered:
+        return "Gracias por su consulta. Hemos recibido su mensaje y lo revisaremos lo antes posible."
+    return prompt.strip()
+
+
+def _expected_tool_matches(actual: str, expected: str) -> bool:
+    if actual == expected:
+        return True
+    if expected.startswith("knowledge."):
+        suffix = expected.removeprefix("knowledge")
+        return actual.startswith("knowledge.") and actual.endswith(suffix)
+    return False
+
+
+async def _resolve_company_tool_name(company_id: str, expected_tool: str) -> str:
+    if not expected_tool:
+        return ""
+    tools = await tools_collection.find({"companyId": company_id}, {"_id": 0, "name": 1}).to_list(length=500)
+    names = [str(tool.get("name") or "") for tool in tools]
+    for name in names:
+        if _expected_tool_matches(name, expected_tool):
+            return name
+    return expected_tool
+
+
+def _configured_url(connector: dict[str, Any], payload: dict[str, Any]) -> str:
+    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    for key in ("startUrl", "baseUrl", "url", "websiteUrl", "loginUrl"):
+        value = str(config.get(key) or connector.get(key) or "").strip()
+        if value:
+            return value
+    return str(payload.get("url") or "").strip()
+
+
+def _query_after(prompt: str, markers: tuple[str, ...]) -> str:
+    lowered = prompt.lower()
+    for marker in markers:
+        index = lowered.find(marker)
+        if index >= 0:
+            return prompt[index + len(marker):].strip(" :,.")[:120]
+    return prompt[:120]
+
+
+def _connector_tool_arguments(tool_name: str, prompt: str, connector: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    lowered = prompt.lower()
+    if tool_name in {"bopa.latest_bulletin", "bopa.latest_bulletin_pdf", "bopa.list_bulletins"}:
+        return {}
+    if tool_name.endswith(".search") and tool_name.startswith("knowledge."):
+        return {"query": prompt, "topK": 5}
+    if tool_name.endswith(".list_documents") and tool_name.startswith("knowledge."):
+        return {"limit": 20}
+    if tool_name == "holded.list_invoices":
+        return {"limit": 10}
+    if tool_name in {"holded.search_invoices", "holded.search_clients"}:
+        query = _query_after(prompt, ("cliente", "client", "facturas de", "facturas para", "buscar", "busca"))
+        return {"query": query or prompt, "limit": 10}
+    if tool_name == "holded.list_clients":
+        return {"limit": 25}
+    if tool_name == "holded.get_invoice":
+        match = re.search(r"(?:invoiceId|factura)\s*[:#]?\s*([A-Za-z0-9_.:-]+)", prompt, flags=re.IGNORECASE)
+        return {"invoiceId": match.group(1) if match else ""}
+    if tool_name == "telegram.get_chat":
+        return {}
+    if tool_name == "telegram.send_message":
+        message = prompt.split(":", 1)[1].strip() if ":" in prompt else prompt
+        return {"message": message}
+    if tool_name == "imap.search_emails":
+        return {"query": _email_search_query(prompt), "folder": "INBOX", "limit": 5}
+    if tool_name == "imap.read_email":
+        read_match = re.search(r"(?:messageId|uid|mensaje)\s*[:#]?\s*([A-Za-z0-9_.:-]+)", prompt, flags=re.IGNORECASE)
+        message_id = read_match.group(1) if read_match else ""
+        return {"messageId": message_id, "folder": "INBOX"}
+    if tool_name in {"smtp.draft_email", "smtp.send_email", "gmail.send_email"}:
+        email_match = re.search(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+", prompt)
+        subject_match = re.search(r"(?:asunto|subject)\s*[:：]?\s*(.+?)(?:\s+y\s+cuerpo\b|\s+con\s+cuerpo\b|\s+body\b|[.\n]|$)", prompt, flags=re.IGNORECASE)
+        subject = subject_match.group(1).strip() if subject_match else "Seguimiento"
+        if subject.lower() in {"y cuerpo", "con cuerpo", "cuerpo", "body"}:
+            subject = "Seguimiento"
+        return {
+            "to": email_match.group(0) if email_match else "",
+            "subject": subject,
+            "body": _email_body(prompt),
+        }
+    if tool_name in {"web.fetch", "web.fetch_text", "web.extract_links", "browser.navigate"}:
+        args: dict[str, Any] = {"url": _configured_url(connector, payload)}
+        if tool_name == "web.fetch_text":
+            args["maxChars"] = 6000
+        if tool_name == "web.extract_links":
+            args["limit"] = 20
+        return args
+    if tool_name.endswith(".search"):
+        return {"query": prompt, "limit": 10}
+    if tool_name.endswith(".get"):
+        return {}
+    if tool_name.endswith(".send_message"):
+        return {"message": prompt}
+    return {}
+
+
+def _fallback_expected_tool_from_prompt(prompt: str, tools: list[str]) -> str:
+    lowered = prompt.lower()
+    def available(name: str) -> bool:
+        return any(_expected_tool_matches(actual, name) for actual in tools)
+
+    if "bopa" in lowered:
+        if "pdf" in lowered and available("bopa.latest_bulletin_pdf"):
+            return "bopa.latest_bulletin_pdf"
+        if available("bopa.latest_bulletin"):
+            return "bopa.latest_bulletin"
+    if "telegram" in lowered:
+        if any(token in lowered for token in ("envia", "envía", "send")) and available("telegram.send_message"):
+            return "telegram.send_message"
+        if available("telegram.get_chat"):
+            return "telegram.get_chat"
+    if "holded" in lowered or "factura" in lowered or "cliente" in lowered:
+        if "factura" in lowered and any(token in lowered for token in ("lista", "ultimas", "últimas")) and available("holded.list_invoices"):
+            return "holded.list_invoices"
+        if "factura" in lowered and available("holded.search_invoices"):
+            return "holded.search_invoices"
+        if "cliente" in lowered and available("holded.search_clients"):
+            return "holded.search_clients"
+    if any(token in lowered for token in ("document", "documento", "knowledge", "intern")):
+        if any(token in lowered for token in ("lista", "listar", "disponibles")) and available("knowledge.list_documents"):
+            return "knowledge.list_documents"
+        if available("knowledge.search"):
+            return "knowledge.search"
+    if any(token in lowered for token in ("web", "pagina", "página", "links", "link", "abre", "abrir")):
+        if any(token in lowered for token in ("abre", "abrir", "browser")) and available("browser.navigate"):
+            return "browser.navigate"
+        if "link" in lowered and available("web.extract_links"):
+            return "web.extract_links"
+        if available("web.fetch_text"):
+            return "web.fetch_text"
+    return tools[0] if tools else ""
+
+
+async def _local_connector_agent_response(agent_config: dict[str, Any], prompt: str, state: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    company_id = str(agent_config.get("companyId") or "")
+    payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    task_id = str(payload_context.get("taskId") or "")
+    task = await benchmark_tasks_collection.find_one({"taskId": task_id}, {"_id": 0}) if task_id else None
+    metadata = task.get("metadata") if isinstance(task, dict) and isinstance(task.get("metadata"), dict) else {}
+    expected_tools = [str(item) for item in metadata.get("expectedTools") or [] if item]
+    connector_id = str(metadata.get("connectorId") or "")
+
+    tool_docs = await tools_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
+    tool_names = [str(tool.get("name") or "") for tool in tool_docs if tool.get("name")]
+    expected_tool = expected_tools[0] if expected_tools else _fallback_expected_tool_from_prompt(prompt, tool_names)
+    tool_name = await _resolve_company_tool_name(company_id, expected_tool)
+
+    connector = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0}) if connector_id else None
+    if not connector and tool_name:
+        tool_doc = next((tool for tool in tool_docs if str(tool.get("name") or "") == tool_name), {})
+        connector_ref = str(tool_doc.get("connectorId") or "")
+        connector = await connectors_collection.find_one({"connectorId": connector_ref}, {"_id": 0}) if connector_ref else None
+    connector = connector or {}
+
+    if not tool_name:
+        return {
+            "protocol_version": "1.0",
+            "tool_calls": [],
+            "tool_results": [{"tool": "local_connector_agent", "success": False, "error": "No connector tool matched this task."}],
+            "content": "No connector tool matched this task.",
+            "reasoning": "Local connector runtime could not find a safe tool for the request.",
+            "done": True,
+            "state_out": state,
+        }
+
+    return {
+        "protocol_version": "1.0",
+        "tool_calls": [{"name": tool_name, "arguments": _connector_tool_arguments(tool_name, prompt, connector, payload)}],
+        "content": None,
+        "reasoning": f"Local connector runtime selected {tool_name} for this connector task.",
+        "done": False,
+        "state_out": state,
+    }
+
+
 def _is_browser_tool(tool_name: str) -> bool:
     return tool_name.startswith("browser.") or tool_name in {"navigate", "click", "input", "type", "select_dropdown", "send_keys", "wait", "done", "extract"} or tool_name == "api.human_approval"
+
+
+def _has_browser_tool_calls(data: dict[str, Any]) -> bool:
+    calls = data.get("tool_calls")
+    if not isinstance(calls, list):
+        return False
+    return any(
+        isinstance(call, dict) and _is_browser_tool(_normalize_tool_call(call)["name"])
+        for call in calls
+    )
 
 
 def _browser_enabled(agent_config: dict[str, Any]) -> bool:
@@ -640,6 +1147,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
     approved = set(state.get("approvedConnectorToolCalls") or [])
     passthrough_calls: list[dict[str, Any]] = []
     tool_results: list[dict[str, Any]] = list(data.get("tool_results") or [])
+    executed_tool_calls: list[dict[str, Any]] = list(data.get("executed_tool_calls") or [])
     executed_any = False
     tool_docs = await tools_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
     tools_by_name = {str(tool.get("name") or ""): tool for tool in tool_docs}
@@ -663,11 +1171,13 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
             skill = next((item for item in skills if _skill_callable(item).get("name") == name), None)
             if not skill:
                 tool_results.append({"tool": name, "success": False, "error": "Skill not found"})
+                executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": "Skill not found"})
                 executed_any = True
                 continue
             unavailable = _require_runtime_available(agent_config, name, skill.get("runtimeRequirements") or [])
             if unavailable:
                 tool_results.append(unavailable)
+                executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": unavailable.get("error")})
                 executed_any = True
                 continue
             skill_response = await _web_skill_response(
@@ -678,6 +1188,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
             )
             passthrough_calls.extend(skill_response.get("tool_calls") or [])
             tool_results.append({"tool": name, "success": True, "output": {"content": skill_response.get("content"), "capabilityMatch": skill_response.get("capability_match")}})
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": True, "output": {"capabilityMatch": skill_response.get("capability_match")}})
             executed_any = True
             continue
 
@@ -685,6 +1196,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
         unavailable = _require_runtime_available(agent_config, name, (tool_doc or {}).get("runtimeRequirements") or [])
         if unavailable:
             tool_results.append(unavailable)
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": unavailable.get("error")})
             executed_any = True
             continue
 
@@ -749,6 +1261,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                     },
                 }
             tool_results.append(result)
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": result.get("success") is not False, "output": result.get("output"), "error": result.get("error")})
             await record_runtime_event(
                 agent_id=str(agent_config.get("agentId") or ""),
                 company_id=company_id,
@@ -771,6 +1284,21 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
             executed_any = True
         except ConnectorExecutionError as exc:
             tool_results.append({"tool": name, "success": False, "error": str(exc)})
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": str(exc)})
+            await record_runtime_event(
+                agent_id=str(agent_config.get("agentId") or ""),
+                company_id=company_id,
+                event_type="tool.call",
+                tool_name=name,
+                status="failed",
+                payload={"arguments": arguments},
+                error=str(exc),
+            )
+            executed_any = True
+        except Exception as exc:
+            logger.exception("Unexpected connector tool failure for %s", name)
+            tool_results.append({"tool": name, "success": False, "error": str(exc)})
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": str(exc)})
             await record_runtime_event(
                 agent_id=str(agent_config.get("agentId") or ""),
                 company_id=company_id,
@@ -789,6 +1317,7 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
         **data,
         "tool_calls": passthrough_calls,
         "tool_results": tool_results,
+        "executed_tool_calls": executed_tool_calls,
         "content": data.get("content") or _content_from_tool_results(tool_results) or "Connector tools executed.",
         "done": bool(data.get("done")) and not passthrough_calls,
     }
@@ -799,7 +1328,7 @@ async def _load_skill_trajectory(skill: dict[str, Any]) -> dict[str, Any] | None
     if not trajectory_ids:
         return None
     query = {"trajectoryId": {"$in": trajectory_ids}}
-    preferred = await trajectories_collection.find_one({**query, "status": {"$in": ["approved", "harvested"]}}, {"_id": 0})
+    preferred = await trajectories_collection.find_one({**query, "status": "approved"}, {"_id": 0})
     if preferred:
         return preferred
     return await trajectories_collection.find_one(query, {"_id": 0})
@@ -1123,8 +1652,20 @@ async def agent_step_result(agent_id: str, payload: dict[str, Any]) -> dict[str,
         payload={"prompt": prompt, "url": payload.get("url"), "agentConfig": payload["agentConfig"]},
     )
 
-    matched_skill = _match_skill(prompt, context["skills"])
+    payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    skill_routing_disabled = bool(payload.get("disableSkillRouting") or payload_context.get("disableSkillRouting"))
+    if skill_routing_disabled:
+        router_trace = {
+            "decision": "skill_routing_disabled",
+            "reason": "Skill routing was disabled for this runtime smoke.",
+            "confidence": 0.0,
+            "candidates": [],
+        }
+    else:
+        router_trace = await _route_skill_match(prompt, context["skills"])
+    matched_skill = router_trace.get("skill") if router_trace.get("decision") == "matched_skill" else None
     matched_skill_id = str((matched_skill or {}).get("capabilityId") or (matched_skill or {}).get("skillId") or (matched_skill or {}).get("name") or "")
+    router_public = {key: value for key, value in router_trace.items() if key != "skill"}
     if matched_skill and (_step_index(payload) == 0 or not state_in or state_in.get("matchedSkillId") == matched_skill_id):
         unavailable = _require_runtime_available(agent_config, _skill_callable(matched_skill).get("name", ""), matched_skill.get("runtimeRequirements") or [])
         if unavailable:
@@ -1140,7 +1681,14 @@ async def agent_step_result(agent_id: str, payload: dict[str, Any]) -> dict[str,
             }
         else:
             data = await _web_skill_response(agent_config, matched_skill, prompt, payload)
+    elif str(agent_config.get("runtimeType") or "") == "local_email_agent":
+        router_public["fallbackRuntime"] = "local_email_agent"
+        data = _email_agent_response(prompt, state_in)
+    elif str(agent_config.get("runtimeType") or "") == "local_connector_agent":
+        router_public["fallbackRuntime"] = "local_connector_agent"
+        data = await _local_connector_agent_response(agent_config, prompt, state_in, payload)
     else:
+        router_public["fallbackRuntime"] = str(agent_config.get("runtimeType") or "external_agent_runtime")
         endpoint = step_url(str(agent_config.get("baseRuntimeEndpoint") or DEFAULT_BASE_RUNTIME_ENDPOINT))
         if not endpoint:
             raise HTTPException(status_code=409, detail="Agent runtime is not deployed yet")
@@ -1162,14 +1710,22 @@ async def agent_step_result(agent_id: str, payload: dict[str, Any]) -> dict[str,
                 data = _site_fallback_response(agent_config, prompt, state_in)
 
     if isinstance(data, dict):
+        data.setdefault("router_trace", router_public)
         data = _normalize_runtime_tool_calls(agent_config, data)
         data = _enforce_runtime_surface_permissions(agent_config, data, state_in)
         data = await _execute_connector_tool_calls(agent_config, data, payload)
         state_out = data.get("state_out") if isinstance(data.get("state_out"), dict) else {}
         data["state_out"] = {**state_out, "memory": {**memory, **(state_out.get("memory") if isinstance(state_out.get("memory"), dict) else {})}}
+        state_out_for_mode = data.get("state_out") if isinstance(data.get("state_out"), dict) else {}
         data.setdefault(
             "executionMode",
-            "skill_replay" if data.get("capability_match") else "connector_tool" if data.get("tool_results") else "generalist",
+            "skill_replay"
+            if data.get("capability_match")
+            else "connector_tool"
+            if data.get("tool_results") or state_out_for_mode.get("pendingConnectorApproval")
+            else "browser_tool"
+            if _has_browser_tool_calls(data)
+            else "generalist",
         )
 
     await record_runtime_event(

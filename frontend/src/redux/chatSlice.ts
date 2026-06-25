@@ -37,7 +37,9 @@ const chatSlice = createSlice({
     },
     // Called before each action executes — adds action with reasoning to the chat
     addAction: (state, action) => {
-      const { action: actionName, reasoning, previous_success, skill } = action.payload;
+      const { action: actionName, reasoning, previous_success, skill, router, tool, elapsedSeconds, emittedAt } = action.payload;
+      const metadata = skill || router || tool ? { skill, router, tool } : undefined;
+      const timing = elapsedSeconds !== undefined || emittedAt ? { elapsedSeconds, emittedAt } : undefined;
       const lastIndex = state.chats.length - 1;
       const lastChat = lastIndex >= 0 ? state.chats[lastIndex] : null;
 
@@ -53,7 +55,8 @@ const chatSlice = createSlice({
           thinking: reasoning || actionName || lastChat.thinking,
           reasoning: reasoning || lastChat.reasoning,
           actions: [...(lastChat.actions || []), actionName],
-          actionMetadata: [...(lastChat.actionMetadata || []), skill ? { skill } : undefined],
+          actionMetadata: [...(lastChat.actionMetadata || []), metadata],
+          actionTimings: [...(lastChat.actionTimings || []), timing],
           actionResults: [...prevResults, undefined], // current action is pending
         };
       } else {
@@ -64,7 +67,8 @@ const chatSlice = createSlice({
             thinking: reasoning || actionName || "Thinking...",
             state: "thinking",
             actions: [actionName],
-            actionMetadata: [skill ? { skill } : undefined],
+            actionMetadata: [metadata],
+            actionTimings: [timing],
             actionResults: [undefined], // pending
             screenshots: [],
             artifacts: [],

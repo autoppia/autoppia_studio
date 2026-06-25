@@ -283,7 +283,7 @@ export default function TaskSection(props: TaskSectionProps) {
               }}
               className="absolute right-0 z-20 mt-2 rounded-xl bg-white dark:bg-dark-surface shadow-soft-lg border border-gray-100 dark:border-dark-border overflow-hidden"
             >
-              <div className="p-1">
+              <div className="p-1 max-h-[min(360px,60vh)] overflow-y-auto scrollbar-thin">
                 <button
                   className="block w-full p-2.5 text-sm rounded-lg text-gray-700 dark:text-gray-200 hover:bg-gradient-primary hover:text-white text-left transition-colors duration-200"
                   onClick={() => {

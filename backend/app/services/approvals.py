@@ -91,10 +91,23 @@ async def create_pending_approval(
     metadata: dict[str, Any] | None = None,
     expires_in_hours: int = 168,
 ) -> dict[str, Any]:
-    existing = await approvals_collection.find_one(
-        {"companyId": company_id, "agentId": agent_id, "approvalKey": approval_key, "status": "pending"},
-        {"_id": 0},
-    )
+    metadata = metadata or {}
+    existing_query: dict[str, Any] = {
+        "companyId": company_id,
+        "agentId": agent_id,
+        "approvalKey": approval_key,
+        "status": "pending",
+    }
+    session_id = str(metadata.get("sessionId") or "")
+    work_item_id = str(metadata.get("workItemId") or "")
+    run_id = str(run_id or metadata.get("runId") or "")
+    if session_id:
+        existing_query["metadata.sessionId"] = session_id
+    elif work_item_id:
+        existing_query["metadata.workItemId"] = work_item_id
+    elif run_id:
+        existing_query["runId"] = run_id
+    existing = await approvals_collection.find_one(existing_query, {"_id": 0})
     if existing:
         return serialize_approval(existing)
 
@@ -117,7 +130,7 @@ async def create_pending_approval(
         "updatedAt": now,
         "expiresAt": (datetime.now(timezone.utc) + timedelta(hours=max(1, expires_in_hours))).isoformat(),
         "decidedAt": "",
-        "metadata": metadata or {},
+        "metadata": metadata,
         "auditTrail": [
             {
                 "event": "requested",

@@ -124,6 +124,8 @@ class _FakeCapabilitiesCollection:
                 "description": "Use test skill",
                 "runtime": "skill_tool",
                 "inputSchema": {"type": "object", "properties": {"instruction": {"type": "string"}}},
+                "trajectoryIds": ["traj-skill-1"],
+                "tasks": [{"name": "Test Skill", "prompt": "Execute approved test skill workflow safely"}],
             }
         ])
 
@@ -159,6 +161,8 @@ class _FakeTrajectoriesCollection:
                 continue
             status_query = query.get("status")
             if isinstance(status_query, dict) and doc.get("status") not in status_query.get("$in", []):
+                continue
+            if isinstance(status_query, str) and doc.get("status") != status_query:
                 continue
             return dict(doc)
         return None
@@ -266,7 +270,7 @@ async def test_agent_step_normalizes_browser_search_to_site_navigation(monkeypat
     )
 
     assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://www.amazon.com/s?k=rat%C3%B3n+rojo"}}]
-    assert result["executionMode"] == "generalist"
+    assert result["executionMode"] == "browser_tool"
 
 
 @pytest.mark.asyncio
@@ -307,6 +311,7 @@ async def test_skill_replay_executes_connector_tool_and_returns_result(monkeypat
                     "runtime": "trajectory_replay_with_recovery",
                     "trajectoryIds": ["traj-bopa"],
                     "runtimeRequirements": ["network"],
+                    "tasks": [{"name": "Download latest BOPA PDF", "prompt": "Descargar documento oficial boletín BOPA Andorra"}],
                 }
             ])
 
@@ -355,12 +360,15 @@ async def test_skill_replay_executes_connector_tool_and_returns_result(monkeypat
 
     result = await agent_runtime.agent_step_result(
         "agent-1",
-        {"prompt": "Descargar PDF último boletín BOPA", "state_in": {}, "step_index": 0},
+        {"prompt": "Descargar documento oficial boletín BOPA Andorra", "state_in": {}, "step_index": 0},
     )
 
     assert result["done"] is True
     assert result["tool_calls"] == []
     assert result["tool_results"][0]["tool"] == "bopa.latest_bulletin_pdf"
+    assert result["executed_tool_calls"][0]["name"] == "bopa.latest_bulletin_pdf"
+    assert result["executed_tool_calls"][0]["arguments"] == {}
+    assert result["executed_tool_calls"][0]["success"] is True
     assert result["tool_results"][0]["output"]["pdfUrl"].endswith("/038/038058.pdf")
     assert "Núm. 58 any 2026" in result["content"]
 
@@ -496,12 +504,19 @@ async def test_agent_step_matches_skill_before_external_runtime(monkeypatch):
     monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
     monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime, "trajectories_collection", _FakeTrajectoriesCollection([
+        {
+            "trajectoryId": "traj-skill-1",
+            "status": "approved",
+            "trajectory": [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}],
+        }
+    ]))
     monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _FailingClient)
     monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
 
     result = await agent_runtime.agent_step_result(
         "agent-1",
-        {"prompt": "Use test skill now", "step_index": 0},
+        {"prompt": "Execute approved test skill workflow safely", "step_index": 0},
     )
 
     assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}]
@@ -525,21 +540,27 @@ async def test_agent_step_keeps_matched_skill_state_local(monkeypatch):
     monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
     monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime, "trajectories_collection", _FakeTrajectoriesCollection([
+        {
+            "trajectoryId": "traj-skill-1",
+            "status": "approved",
+            "trajectory": [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}],
+        }
+    ]))
     monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _FailingClient)
     monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
 
     result = await agent_runtime.agent_step_result(
         "agent-1",
         {
-            "prompt": "Use test skill now",
+            "prompt": "Execute approved test skill workflow safely",
             "step_index": 1,
             "state_in": {"matchedSkillId": "skill-1"},
         },
     )
 
-    assert result["done"] is True
-    assert result["tool_calls"] == []
-    assert "no approved executable trajectory" in result["content"]
+    assert result["tool_calls"] == [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}]
+    assert result["state_out"]["matchedSkillId"] == "skill-1"
 
 
 @pytest.mark.asyncio
@@ -557,13 +578,20 @@ async def test_agent_step_can_match_skill_on_resume_with_empty_state(monkeypatch
     monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
     monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(agent_runtime, "trajectories_collection", _FakeTrajectoriesCollection([
+        {
+            "trajectoryId": "traj-skill-1",
+            "status": "approved",
+            "trajectory": [{"name": "browser.navigate", "arguments": {"url": "https://example.com"}}],
+        }
+    ]))
     monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _FailingClient)
     monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
 
     result = await agent_runtime.agent_step_result(
         "agent-1",
         {
-            "prompt": "Use test skill now",
+            "prompt": "Execute approved test skill workflow safely",
             "step_index": 3,
             "state_in": {},
         },

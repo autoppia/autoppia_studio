@@ -7,6 +7,10 @@ There is also a parent `../AGENTS.md` with broader Autoppia guidance. Prefer thi
 local file when instructions conflict because it describes the current Autoppia
 Studio architecture and recent refactors.
 
+As of 2026-06-19, no parent `../AGENTS.md` was present from this working
+directory. If a parent file is recreated later, still prefer this local file for
+Autoppia Studio-specific architecture, runtime, and production notes.
+
 ## Product Context
 
 Autoppia Studio is the studio/backend for configuring agents, connectors, tools,
@@ -42,6 +46,17 @@ claude code --dangerously-skip-permissions
 
 Still review and test the resulting changes. Codex should remain responsible for
 integration, backend correctness, tests, and making sure the final app works.
+
+Recent frontend state to preserve:
+
+- Main navigation groups Agents under the Studio section. Do not put Agents in a
+  separate or catch-all "Other" section.
+- Benchmarks and Runs are separate pages/sections, not tabs on one page:
+  `/evals` is Benchmarks and `/eval-runs` is Runs.
+- Section headers such as "Connectors / Integrations your agents can call" use
+  extra breathing room near borders. Keep the taller header spacing pattern
+  (`min-h-16`, wider horizontal padding, and vertical padding) unless replacing
+  it consistently across the app.
 
 ## Core Vocabulary
 
@@ -84,6 +99,33 @@ Legacy compatibility exists for old pending harvest rows in
 
 Secrets and auth data should not be printed. If `.env` must be inspected, filter
 or redact values.
+
+## Local Development Stack
+
+Current local deployment pattern used for this repo:
+
+- Frontend: `http://127.0.0.1:3000`
+- Backend API: `http://127.0.0.1:8080`
+- MCP service: `http://127.0.0.1:5000`
+- Mongo: Docker container `automata-mongo`
+- PM2 apps commonly used locally:
+  - `automata-cloud-backend`
+  - `automata-cloud-worker`
+  - `automata-cloud-frontend`
+  - `automata-mcp`
+
+Useful local commands:
+
+```bash
+pm2 status
+pm2 logs automata-cloud-backend --lines 200
+pm2 restart automata-cloud-backend automata-cloud-worker automata-cloud-frontend automata-mcp
+docker ps
+```
+
+When changing backend code, restart the relevant PM2 backend/worker apps before
+testing runtime behavior. When changing frontend code, run the package build or
+lint command first, then restart `automata-cloud-frontend` if PM2 serves it.
 
 ## Harvesters
 
@@ -228,6 +270,127 @@ expects.
 Skills should be visible in the UI/chat timeline when used, so users can
 distinguish "agent manually operated browser" from "agent called an approved
 skill".
+
+Connector runtime benchmark runbook:
+
+```text
+docs/connector_runtime_benchmarks.md
+```
+
+Use it when changing connector tools, runtime routing, skill replay, browser
+panels, artifacts, approvals, or `/evals` connector benchmark UI. It documents
+the live-without-skill and with-approved-skill audit matrix and the current
+Celeris connector coverage.
+
+## Email Agent
+
+There is a local email-oriented runtime path for email operations:
+
+- Runtime type: `local_email_agent`
+- Runtime endpoint shape:
+  `/runtime/agents/{agent_id}/step`
+- Current seeded/local agent:
+  - Name: `Email Operations Agent`
+  - Agent ID: `54378693-19bd-4608-8a12-6727c633dbe1`
+  - Owner: `demo@autoppia.com`
+  - Company: `Celeris`
+  - Company ID: `deae345c-8e98-42ec-a517-267b47f1488a`
+
+Email tools currently expected for common email use cases:
+
+- `imap.search_emails`: search inbox/messages.
+- `imap.read_email`: read a specific message.
+- `smtp.draft_email`: create a draft response.
+- `smtp.send_email`: send mail. This requires human approval.
+- Gmail schemas may also exist (`gmail.search_emails`, `gmail.read_email`,
+  `gmail.send_email`), but they require connector auth before they are usable.
+
+Useful runtime prompts for smoke testing the email agent:
+
+- "Busca el email mas reciente sobre nominas, resume la peticion del cliente,
+  clasificala y propon una respuesta sin enviarla."
+- "Redacta un email profesional para cliente@example.com agradeciendo su
+  consulta y diciendo que revisaremos el caso hoy. No lo envies; prepara asunto
+  y cuerpo."
+- "Envia un email para cliente@example.com con asunto Seguimiento y cuerpo
+  Confirmamos que revisaremos su consulta hoy."
+
+For email changes, verify both draft-only and send paths. The send path should
+create an approval request instead of silently sending without review.
+
+## Production: studio.autoppia.com
+
+Production details verified on 2026-06-19:
+
+- Public Studio SPA: `https://studio.autoppia.com`
+- Public API host: `https://api-studio.autoppia.com`
+- DNS/IP: `studio.autoppia.com` resolves to `161.97.163.78`
+- Server hostname observed over SSH: `vmi2911219`
+- App path on prod: `/opt/autoppia_studio`
+- Nginx config path on prod host: `/opt/autoppia-web/nginx.conf`
+- Nginx runs in Docker container `autoppia-web` from `nginx:alpine`.
+- Mongo runs in Docker container `autoppia-studio-mongo` and is bound to
+  `127.0.0.1:27017`.
+
+Local SSH config to use:
+
+```sshconfig
+Host contabol_autoppia_landing
+  HostName 161.97.163.78
+  User root
+  IdentityFile ~/.ssh/id_ed25519
+  IdentitiesOnly yes
+```
+
+Connect with:
+
+```bash
+ssh contabol_autoppia_landing
+cd /opt/autoppia_studio
+```
+
+Production process layout:
+
+- `autoppia-studio-backend`: PM2-managed FastAPI/uvicorn backend.
+  - CWD: `/opt/autoppia_studio/backend`
+  - Command shape: source `.env`, set `AUTOMATA_ENV=production`, then run
+    `.venv/bin/uvicorn main:app --host 127.0.0.1 --port 8100 --proxy-headers`
+- `autoppia-studio-worker`: PM2-managed worker.
+  - CWD: `/opt/autoppia_studio/backend`
+  - Command shape: source `.env`, set `AUTOMATA_ENV=production`, then run
+    `.venv/bin/python -m app.worker`
+- Frontend is not a PM2 app in `ecosystem.studio.config.js`. It is served as
+  static SPA files by the `autoppia-web` nginx container from
+  `/srv/autoppia-studio`.
+
+Nginx routing:
+
+- `https://studio.autoppia.com` serves the static SPA and falls back to
+  `index.html`.
+- `https://api-studio.autoppia.com` proxies to `http://127.0.0.1:8100`.
+- `/socket.io/` on `api-studio.autoppia.com` also proxies to
+  `http://127.0.0.1:8100` with websocket headers and long timeouts.
+- `https://studio.autoppia.com/health` currently returns the SPA HTML, not the
+  backend health endpoint. Use the API host for backend checks.
+
+Useful prod commands:
+
+```bash
+ssh contabol_autoppia_landing
+cd /opt/autoppia_studio
+pm2 status
+pm2 logs autoppia-studio-backend --lines 200
+pm2 logs autoppia-studio-worker --lines 200
+pm2 restart autoppia-studio-backend autoppia-studio-worker
+docker ps
+curl -I https://studio.autoppia.com
+curl -I https://api-studio.autoppia.com/health
+```
+
+Do not paste or commit production secrets. Prod backend environment lives in
+`/opt/autoppia_studio/backend/.env`; inspect only key names or redacted values.
+Known configured categories include Mongo, OpenAI, Google/Gmail OAuth, SMTP, and
+knowledge/vector-store settings.
 
 ## Verification
 

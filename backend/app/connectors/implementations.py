@@ -1,7 +1,12 @@
 from __future__ import annotations
 
+import email as email_parser
+import imaplib
 import smtplib
 import re
+import unicodedata
+from html import unescape
+from email.header import decode_header, make_header
 from email.mime.text import MIMEText
 from html.parser import HTMLParser
 from urllib.parse import urljoin
@@ -111,6 +116,8 @@ class TelegramConnector(HttpApiConnector):
 
 class SMTPConnector(BaseConnector):
     async def execute(self, tool_name: str, arguments: dict[str, Any]):
+        if tool_name in {"imap.search_emails", "imap.read_email"}:
+            return await self._execute_imap(tool_name, arguments)
         if tool_name not in {"smtp.draft_email", "smtp.send_email", "gmail.send_email"}:
             raise ConnectorExecutionError(f"SMTP does not implement {tool_name}")
         to_email = str(arguments.get("to") or arguments.get("to_email") or "").strip()
@@ -134,6 +141,112 @@ class SMTPConnector(BaseConnector):
             server.login(from_email, password)
             server.send_message(msg)
         return self.result(tool_name, {"to": to_email, "subject": subject})
+
+    async def _execute_imap(self, tool_name: str, arguments: dict[str, Any]):
+        host = self.config.require("imapServer", "imapHost")
+        port = int(self.config.get("imapPort", default="993"))
+        user = self.config.require("email", "userEmail", "defaultFrom")
+        password = self.config.require("password")
+        folder = str(arguments.get("folder") or "INBOX").strip() or "INBOX"
+        limit = max(1, min(25, int(arguments.get("limit") or 10)))
+
+        with imaplib.IMAP4_SSL(host, port) as mailbox:
+            mailbox.login(user, password)
+            status, _ = mailbox.select(folder, readonly=True)
+            if status != "OK":
+                raise ConnectorExecutionError(f"Could not open IMAP folder {folder}")
+
+            if tool_name == "imap.search_emails":
+                query = str(arguments.get("query") or "").strip()
+                imap_query = self._imap_search_text(query)
+                criteria: tuple[str, ...] = ("ALL",)
+                if imap_query:
+                    criteria = ("TEXT", self._imap_quote(imap_query))
+                try:
+                    status, data = mailbox.uid("search", None, *criteria)
+                    if status != "OK":
+                        raise ConnectorExecutionError("IMAP search failed")
+                except (imaplib.IMAP4.error, ConnectorExecutionError):
+                    if criteria == ("ALL",):
+                        raise
+                    status, data = mailbox.uid("search", None, "ALL")
+                    if status != "OK":
+                        raise ConnectorExecutionError("IMAP search failed")
+                    imap_query = ""
+                uids = (data[0] or b"").split()[-limit:]
+                messages = [self._fetch_imap_summary(mailbox, uid) for uid in reversed(uids)]
+                return self.result(tool_name, {"folder": folder, "query": query, "searchQuery": imap_query or "ALL", "messages": messages})
+
+            message_id = str(arguments.get("messageId") or arguments.get("uid") or "").strip()
+            if not message_id:
+                raise ConnectorExecutionError("imap.read_email requires messageId or uid")
+            summary = self._fetch_imap_summary(mailbox, message_id.encode())
+            body = self._fetch_imap_body(mailbox, message_id.encode())
+            return self.result(tool_name, {**summary, "body": body})
+
+    def _fetch_imap_summary(self, mailbox: imaplib.IMAP4_SSL, uid: bytes) -> dict[str, Any]:
+        status, data = mailbox.uid("fetch", uid, "(BODY.PEEK[HEADER.FIELDS (FROM TO SUBJECT DATE)] FLAGS)")
+        if status != "OK" or not data or not data[0]:
+            raise ConnectorExecutionError(f"Could not fetch IMAP message {uid.decode(errors='ignore')}")
+        raw = data[0][1] if isinstance(data[0], tuple) else b""
+        msg = email_parser.message_from_bytes(raw)
+        return {
+            "messageId": uid.decode(errors="ignore"),
+            "from": self._decode_header(msg.get("From", "")),
+            "to": self._decode_header(msg.get("To", "")),
+            "subject": self._decode_header(msg.get("Subject", "")),
+            "date": self._decode_header(msg.get("Date", "")),
+        }
+
+    def _fetch_imap_body(self, mailbox: imaplib.IMAP4_SSL, uid: bytes) -> str:
+        status, data = mailbox.uid("fetch", uid, "(BODY.PEEK[])")
+        if status != "OK" or not data or not data[0]:
+            raise ConnectorExecutionError(f"Could not read IMAP message {uid.decode(errors='ignore')}")
+        raw = data[0][1] if isinstance(data[0], tuple) else b""
+        msg = email_parser.message_from_bytes(raw)
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain" and "attachment" not in str(part.get("Content-Disposition") or "").lower():
+                    return self._clean_email_body(self._decode_payload(part.get_payload(decode=True), part.get_content_charset()))
+            for part in msg.walk():
+                if part.get_content_type() == "text/html":
+                    html = self._decode_payload(part.get_payload(decode=True), part.get_content_charset())
+                    return self._clean_email_body(html)
+            return ""
+        return self._clean_email_body(self._decode_payload(msg.get_payload(decode=True), msg.get_content_charset()))
+
+    @staticmethod
+    def _decode_payload(payload: bytes | None, charset: str | None) -> str:
+        if not payload:
+            return ""
+        return payload.decode(charset or "utf-8", errors="replace").strip()
+
+    @staticmethod
+    def _clean_email_body(value: str) -> str:
+        text = value or ""
+        if re.search(r"<(?:html|body|p|br|div|table|tr|td|a|strong|ul|li|h[1-6])\b", text, flags=re.IGNORECASE):
+            text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
+            text = re.sub(r"(?i)</\s*(p|div|tr|li|h[1-6])\s*>", "\n", text)
+            text = re.sub(r"<[^>]+>", " ", text)
+        text = unescape(text)
+        text = text.replace("\xa0", " ")
+        return re.sub(r"[ \t\r\f\v]+", " ", re.sub(r"\n{3,}", "\n\n", text)).strip()
+
+    @staticmethod
+    def _decode_header(value: str) -> str:
+        if not value:
+            return ""
+        return str(make_header(decode_header(value)))
+
+    @staticmethod
+    def _imap_search_text(value: str) -> str:
+        normalized = unicodedata.normalize("NFKD", value)
+        ascii_text = normalized.encode("ascii", "ignore").decode("ascii")
+        return re.sub(r"\s+", " ", ascii_text).strip()
+
+    @staticmethod
+    def _imap_quote(value: str) -> str:
+        return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
 
 
 class GmailConnector(SMTPConnector):

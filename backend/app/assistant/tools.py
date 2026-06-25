@@ -627,7 +627,8 @@ class AutomataAssistantTools:
         )
 
     async def list_assistant_conversations(self, limit: int = 20) -> list[dict[str, Any]]:
-        return await _to_list(assistant_conversations_collection.find(self._query(), {"_id": 0}).sort("updatedAt", -1), limit)
+        query = {"email": self.context.email, "companyId": self.context.company_id or ""}
+        return await _to_list(assistant_conversations_collection.find(query, {"_id": 0}).sort("updatedAt", -1), limit)
 
     async def get_assistant_memory(self) -> dict[str, Any]:
         doc = await assistant_memories_collection.find_one(

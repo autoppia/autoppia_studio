@@ -650,10 +650,11 @@ class AutomataAssistantService:
         return conversation_payload(doc)
 
     async def load_owned_conversation(self, conversation_id: str) -> dict[str, Any]:
-        doc = await assistant_conversations_collection.find_one({"conversationId": conversation_id, "email": self.context.email}, {"_id": 0})
+        query = {"conversationId": conversation_id, "email": self.context.email}
+        if self.context.company_id:
+            query["companyId"] = self.context.company_id
+        doc = await assistant_conversations_collection.find_one(query, {"_id": 0})
         if not doc:
-            raise HTTPException(status_code=404, detail="Assistant conversation not found")
-        if self.context.company_id and doc.get("companyId") and doc.get("companyId") != self.context.company_id:
             raise HTTPException(status_code=404, detail="Assistant conversation not found")
         return doc
 
@@ -661,9 +662,7 @@ class AutomataAssistantService:
         return conversation_payload(await self.load_owned_conversation(conversation_id))
 
     async def list_conversations(self, *, limit: int = 30) -> list[dict[str, Any]]:
-        query: dict[str, Any] = {"email": self.context.email}
-        if self.context.company_id:
-            query["companyId"] = self.context.company_id
+        query: dict[str, Any] = {"email": self.context.email, "companyId": self.context.company_id or ""}
         cursor = assistant_conversations_collection.find(query, {"_id": 0}).sort("updatedAt", -1).limit(max(1, min(limit, 100)))
         docs = await cursor.to_list(length=max(1, min(limit, 100)))
         return [conversation_summary(doc) for doc in docs]

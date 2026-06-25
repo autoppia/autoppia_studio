@@ -176,6 +176,105 @@ async def test_create_benchmark_and_task(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_connector_benchmark_catalog_endpoint():
+    result = await evals_route.list_connector_benchmark_catalog()
+
+    keys = {item["key"] for item in result["benchmarks"]}
+    assert {"email", "bopa", "web"} <= keys
+
+
+@pytest.mark.asyncio
+async def test_seed_connector_benchmark_endpoint(monkeypatch):
+    async def fake_seed_connector_benchmark(**kwargs):
+        assert kwargs["benchmark_key"] == "email"
+        assert kwargs["publish_tools"] is True
+        return {
+            "benchmark": {"benchmarkId": "bench-1"},
+            "agent": {"agentId": "agent-1"},
+            "tasks": [{"taskId": "task-1"}],
+        }
+
+    monkeypatch.setattr(evals_route, "seed_connector_benchmark", fake_seed_connector_benchmark)
+
+    result = await evals_route.seed_connector_benchmark_endpoint(
+        evals_route.ConnectorBenchmarkSeedRequest(
+            email="user@example.com",
+            companyId="co-1",
+            connectorId="smtp-1",
+            benchmarkKey="email",
+        )
+    )
+
+    assert result["success"] is True
+    assert result["benchmark"]["benchmarkId"] == "bench-1"
+
+
+@pytest.mark.asyncio
+async def test_connector_audit_matrix_endpoint(monkeypatch):
+    async def fake_audit_connector_benchmark_matrix(**kwargs):
+        assert kwargs["email"] == "user@example.com"
+        assert kwargs["company_id"] == "co-1"
+        assert kwargs["publish_tools"] is False
+        return {"summary": {"pass": 1, "blocked": 1, "missing": 0, "fail": 0, "total": 2}, "rows": []}
+
+    monkeypatch.setattr(evals_route, "audit_connector_benchmark_matrix", fake_audit_connector_benchmark_matrix)
+
+    result = await evals_route.audit_connector_benchmark_matrix_endpoint(
+        evals_route.ConnectorBenchmarkAuditRequest(
+            email="user@example.com",
+            companyId="co-1",
+            publishTools=False,
+        )
+    )
+
+    assert result["success"] is True
+    assert result["connectorAudit"]["summary"]["blocked"] == 1
+
+
+@pytest.mark.asyncio
+async def test_connector_runtime_smoke_endpoint(monkeypatch):
+    monkeypatch.setattr(evals_route, "benchmarks_collection", _FakeBenchmarksCollection([{"benchmarkId": "bench-1", "agentId": "agent-1"}]))
+
+    async def fake_run_connector_runtime_smoke(**kwargs):
+        assert kwargs["benchmark_id"] == "bench-1"
+        assert kwargs["agent_id"] == "agent-1"
+        assert kwargs["task_keys"] == ["search_recent_topic"]
+        return {"benchmarkId": "bench-1", "agentId": "agent-1", "total": 1, "passed": 1, "failed": 0, "results": []}
+
+    monkeypatch.setattr(evals_route, "run_connector_runtime_smoke", fake_run_connector_runtime_smoke)
+
+    result = await evals_route.run_connector_benchmark_smoke(
+        "bench-1",
+        evals_route.ConnectorBenchmarkSmokeRequest(taskKeys=["search_recent_topic"]),
+    )
+
+    assert result["success"] is True
+    assert result["runtimeSmoke"]["passed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_connector_harvest_and_smoke_endpoint(monkeypatch):
+    monkeypatch.setattr(evals_route, "benchmarks_collection", _FakeBenchmarksCollection([{"benchmarkId": "bench-1", "agentId": "agent-1"}]))
+
+    async def fake_harvest_and_smoke_connector_benchmark(**kwargs):
+        assert kwargs["benchmark_id"] == "bench-1"
+        assert kwargs["agent_id"] == "agent-1"
+        assert kwargs["task_keys"] == ["latest_pdf_artifact"]
+        assert kwargs["approve_skills"] is True
+        return {"success": True, "runtimeWithoutSkill": {"failed": 0}, "harvest": {"harvested": 1}, "runtimeWithSkill": {"failed": 0}}
+
+    monkeypatch.setattr(evals_route, "harvest_and_smoke_connector_benchmark", fake_harvest_and_smoke_connector_benchmark)
+
+    result = await evals_route.harvest_and_smoke_connector_benchmark_endpoint(
+        "bench-1",
+        evals_route.ConnectorBenchmarkSmokeRequest(taskKeys=["latest_pdf_artifact"], approveSkills=True),
+    )
+
+    assert result["success"] is True
+    assert result["report"]["harvest"]["harvested"] == 1
+
+
+@pytest.mark.asyncio
 async def test_llm_judge_task_run_and_manual_override(monkeypatch):
     evals = _FakeEvalsCollection([])
     runs = _FakeRunsCollection()

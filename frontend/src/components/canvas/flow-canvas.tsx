@@ -347,6 +347,8 @@ function buildLayout(agents: FlowAgent[], companyName: string): Node[] {
     position: saved[ROOT_ID] || { x: -ROOT_W / 2, y: rootY },
     data: {},
     draggable: true,
+    // Keep nodes above the signal edges so links never paint over the cards.
+    zIndex: 10,
   };
 
   const agentNodes: Node[] = agents.map((agent, idx) => {
@@ -357,6 +359,7 @@ function buildLayout(agents: FlowAgent[], companyName: string): Node[] {
       type: "agentNode",
       position: saved[agent.id] || { x: startX + col * gapX, y: rootY + 220 + row * gapY },
       data: { name: agent.name, state: agent.state, detail: agent.detail, browserEnabled: agent.browserEnabled, imageUrl: agent.imageUrl },
+      zIndex: 10,
     };
   });
 
@@ -418,6 +421,7 @@ function CanvasInner({ agents, companyName, onAgentClick }: FlowCanvasProps) {
           targetHandle: "input-top",
           type: "signal",
           data: { active, processing },
+          zIndex: 0,
         } as Edge;
       })
     );

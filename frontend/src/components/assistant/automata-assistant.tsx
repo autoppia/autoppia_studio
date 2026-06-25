@@ -23,6 +23,8 @@ import {
   faUpRightFromSquare,
   faBrain,
   faGear,
+  faBars,
+  faPlus,
 } from "@fortawesome/free-solid-svg-icons";
 import { faCircleCheck } from "@fortawesome/free-regular-svg-icons";
 import { getApiUrl } from "../../utils/api-url";
@@ -384,6 +386,7 @@ function shortDate(value?: string): string {
 export default function AutomataAssistant() {
   const location = useLocation();
   const email = useSelector((state: any) => state.user?.email as string | undefined);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
 
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -395,6 +398,7 @@ export default function AutomataAssistant() {
   const [lastDurationMs, setLastDurationMs] = useState<number | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [history, setHistory] = useState<AssistantConversationSummary[]>([]);
   const [assistantModel, setAssistantModel] = useState("gpt-5-mini");
@@ -423,14 +427,14 @@ export default function AutomataAssistant() {
     () => ({
       email: email || "",
       mode,
-      companyId: localStorage.getItem("automata_company_id") || "",
+      companyId,
       route: location.pathname,
       visibleState: { path: location.pathname },
     }),
-    [email, mode, location.pathname]
+    [email, mode, companyId, location.pathname]
   );
 
-  const activeCompanyId = useCallback(() => localStorage.getItem("automata_company_id") || "", []);
+  const activeCompanyId = useCallback(() => companyId, [companyId]);
 
   const loadAssistantSettings = useCallback(async () => {
     if (!email) return;
@@ -480,25 +484,15 @@ export default function AutomataAssistant() {
     void loadAssistantSettings();
   }, [loadAssistantSettings]);
 
-  useEffect(() => {
-    const handler = () => {
-      conversationIdRef.current = "";
-      setMessages([]);
-      void loadAssistantSettings();
-    };
-    window.addEventListener("automata-company-changed", handler);
-    return () => window.removeEventListener("automata-company-changed", handler);
-  }, [loadAssistantSettings]);
-
   const historyParams = useCallback(() => {
     const params = new URLSearchParams({
       email: email || "",
-      companyId: localStorage.getItem("automata_company_id") || "",
+      companyId,
       mode,
       limit: "30",
     });
     return params;
-  }, [email, mode]);
+  }, [email, mode, companyId]);
 
   const loadHistory = useCallback(async () => {
     if (!email) return;
@@ -515,6 +509,19 @@ export default function AutomataAssistant() {
       setHistoryLoading(false);
     }
   }, [email, historyParams]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const nextCompanyId = (event as CustomEvent).detail?.companyId ?? localStorage.getItem("automata_company_id") ?? "";
+      setCompanyId(nextCompanyId);
+      conversationIdRef.current = "";
+      setMessages([]);
+      setHistory([]);
+      setHistoryOpen(false);
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
 
   // Full window shows the history as a persistent sidebar — keep it populated.
   useEffect(() => {
@@ -746,6 +753,15 @@ export default function AutomataAssistant() {
         }`}
       >
         <div className="min-w-0 flex-1 flex items-center gap-2 pl-1">
+          {expanded && (
+            <button
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              title={sidebarCollapsed ? "Show chats" : "Hide chats"}
+              className="hidden sm:flex w-8 h-8 rounded-lg items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors mr-0.5"
+            >
+              <FontAwesomeIcon icon={faBars} className="text-xs" />
+            </button>
+          )}
           <img
             src="/assets/images/logos/automata.webp"
             alt="Automata"
@@ -811,17 +827,30 @@ export default function AutomataAssistant() {
       </div>
 
       {settingsOpen && (
-        <div className="flex-shrink-0 border-b border-gray-200 dark:border-dark-border bg-white dark:bg-dark-bg">
-          <div className={`${expanded ? "px-5 sm:px-8" : "px-4"} py-3`}>
-            <div className="flex items-center justify-between gap-3 mb-2.5">
-              <span className="text-xs font-semibold text-gray-800 dark:text-gray-100">Settings</span>
-              {modelSaving && <span className="text-[10px] text-primary animate-pulse">Saving…</span>}
+        <div className="fixed inset-0 z-[130] flex items-center justify-center px-4">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setSettingsOpen(false)}
+          />
+          <div className="relative w-full max-w-sm rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-2xl dark:shadow-black/60 p-5 animate-slide-up">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-base font-semibold text-gray-900 dark:text-white">Settings</span>
+                {modelSaving && <span className="text-[10px] text-primary animate-pulse">Saving…</span>}
+              </div>
+              <button
+                onClick={() => setSettingsOpen(false)}
+                title="Close"
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+              >
+                <FontAwesomeIcon icon={faXmark} className="text-sm" />
+              </button>
             </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-1.5">
+            <div className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400 mb-2">
               <FontAwesomeIcon icon={faBrain} className="text-[10px]" />
               Model
             </div>
-            <div className="grid gap-1.5 sm:grid-cols-2">
+            <div className="grid gap-2">
               {assistantModels.map((model) => {
                 const active = model.value === assistantModel;
                 return (
@@ -830,16 +859,16 @@ export default function AutomataAssistant() {
                     onClick={() => void updateAssistantModel(model.value)}
                     disabled={modelSaving}
                     title={model.label}
-                    className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-60 ${
+                    className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-60 ${
                       active
                         ? "border-primary/50 bg-primary/5 dark:bg-primary/10"
-                        : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface hover:border-primary/30 hover:bg-gray-100 dark:hover:bg-white/5"
+                        : "border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg hover:border-primary/30 hover:bg-gray-100 dark:hover:bg-white/5"
                     }`}
                   >
-                    <span className={`text-xs font-medium truncate ${active ? "text-primary" : "text-gray-700 dark:text-gray-200"}`}>
+                    <span className={`text-sm font-medium truncate ${active ? "text-primary" : "text-gray-700 dark:text-gray-200"}`}>
                       {model.label}
                     </span>
-                    {active && <FontAwesomeIcon icon={faCircleCheck} className="text-[11px] text-primary flex-shrink-0" />}
+                    {active && <FontAwesomeIcon icon={faCircleCheck} className="text-[12px] text-primary flex-shrink-0" />}
                   </button>
                 );
               })}
@@ -863,15 +892,17 @@ export default function AutomataAssistant() {
       )}
 
       <div className={`flex-1 min-h-0 flex ${expanded ? "flex-row" : "flex-col"}`}>
-        {/* Full-window history sidebar (Claude-style) */}
-        {expanded && (
+        {/* Full-window history sidebar (Claude-style, collapsible) */}
+        {expanded && !sidebarCollapsed && (
           <aside className="hidden sm:flex flex-col w-72 flex-shrink-0 border-r border-gray-200 dark:border-dark-border bg-gray-50/60 dark:bg-dark-surface/40">
             <div className="p-3">
               <button
                 onClick={newConversation}
-                className="w-full flex items-center justify-center gap-2 h-9 rounded-lg bg-gradient-primary text-white text-xs font-semibold shadow-glow hover:shadow-glow-lg transition-all"
+                className="w-full flex items-center justify-center gap-2 h-10 rounded-xl border text-sm font-semibold transition-all
+                  bg-white text-gray-900 border-gray-200 hover:bg-gray-50 shadow-sm
+                  dark:bg-white/10 dark:text-white dark:border-white/10 dark:hover:bg-white/[0.16]"
               >
-                <FontAwesomeIcon icon={faPenToSquare} className="text-[11px]" />
+                <FontAwesomeIcon icon={faPlus} className="text-[11px]" />
                 New chat
               </button>
             </div>
@@ -892,39 +923,31 @@ export default function AutomataAssistant() {
         ref={scrollRef}
         className="flex-1 overflow-y-auto scrollbar-thin"
       >
-        <div className={`mx-auto w-full py-4 space-y-3 ${expanded ? "max-w-3xl px-4 sm:px-6" : "px-4"}`}>
+        <div className={`mx-auto w-full ${!hasConversation ? "min-h-full flex flex-col justify-end" : "space-y-3"} py-4 ${expanded ? "max-w-3xl px-4 sm:px-6" : "px-4"}`}>
         {!hasConversation && (
-          <div className="h-full flex flex-col items-center justify-center text-center px-2">
-            <img
-              src="/assets/images/logos/automata.webp"
-              alt="Automata"
-              className="h-7 w-auto mb-3 dark:hidden"
-            />
-            <img
-              src="/assets/images/logos/automata_dark.webp"
-              alt="Automata"
-              className="h-7 w-auto mb-3 hidden dark:block"
-            />
-            <h3 className="text-base font-semibold text-gray-900 dark:text-white">Hey, I'm Automata</h3>
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 max-w-[260px]">
+          <div className="px-2 pb-1">
+            <h3 className={`font-semibold tracking-tight text-gray-900 dark:text-white ${expanded ? "text-3xl" : "text-2xl"}`}>
+              Hey, I'm Automata
+            </h3>
+            <p className={`text-gray-500 dark:text-gray-400 mt-1.5 max-w-md ${expanded ? "text-[15px]" : "text-sm"}`}>
               Your Studio helper. Ask me anything about onboarding or getting things done here.
             </p>
-            <div className="w-full max-w-md mt-5 space-y-2">
+            <div className="mt-5 flex flex-wrap gap-2">
               {SUGGESTIONS[mode].map((s) => (
                 <button
                   key={s}
                   onClick={() => void sendMessage(s)}
                   disabled={starting || sending}
-                  className="group w-full flex items-center justify-between gap-2 text-left px-3 py-2 rounded-xl
-                    border border-gray-200 dark:border-dark-border
-                    bg-gray-50 dark:bg-dark-surface
-                    hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-white/5
-                    text-xs text-gray-700 dark:text-gray-200 transition-colors disabled:opacity-50"
+                  className="group inline-flex items-center gap-2 rounded-full px-3.5 py-2 text-left text-[13px]
+                    border border-gray-200 dark:border-white/10
+                    bg-gray-50/80 dark:bg-white/5
+                    hover:border-primary/40 hover:bg-primary/5 dark:hover:bg-white/10
+                    text-gray-600 dark:text-gray-300 transition-colors disabled:opacity-50"
                 >
                   <span className="truncate">{s}</span>
                   <FontAwesomeIcon
                     icon={faArrowRight}
-                    className="text-[10px] text-gray-300 group-hover:text-primary transition-colors flex-shrink-0"
+                    className="text-[9px] text-gray-300 group-hover:text-primary transition-colors flex-shrink-0"
                   />
                 </button>
               ))}
@@ -1016,13 +1039,10 @@ export default function AutomataAssistant() {
         </div>
       </div>
 
-      {/* Input */}
-      <form
-        onSubmit={onSubmit}
-        className="flex-shrink-0 border-t border-gray-200 dark:border-dark-border"
-      >
-        <div className={`mx-auto w-full ${expanded ? "max-w-3xl px-4 sm:px-6 py-3" : "p-3"}`}>
-          <div className="flex items-end gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-surface px-2.5 py-1.5 focus-within:border-primary/50 transition-colors">
+      {/* Input — ChatGPT-style composer */}
+      <form onSubmit={onSubmit} className="flex-shrink-0">
+        <div className={`mx-auto w-full ${expanded ? "max-w-3xl px-4 sm:px-6 pb-4 pt-2" : "p-3"}`}>
+          <div className="flex items-end gap-2 rounded-[26px] border border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-dark-surface px-2 py-2 shadow-sm focus-within:border-primary/50 focus-within:shadow-md transition-all">
             <textarea
               ref={inputRef}
               value={input}
@@ -1030,19 +1050,24 @@ export default function AutomataAssistant() {
               onKeyDown={onKeyDown}
               rows={1}
               placeholder="Ask Automata..."
-              className="flex-1 resize-none bg-transparent outline-none text-sm text-gray-900 dark:text-white placeholder:text-gray-400 max-h-28 py-1"
+              className="flex-1 resize-none bg-transparent outline-none text-[15px] leading-6 text-gray-900 dark:text-white placeholder:text-gray-400 max-h-40 px-2.5 py-1.5"
             />
             <button
               type="submit"
               disabled={!input.trim() || sending}
               aria-label="Send"
-              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0
+              className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0
                 bg-gradient-primary text-white disabled:opacity-40 disabled:cursor-not-allowed
                 hover:shadow-glow transition-all"
             >
-              <FontAwesomeIcon icon={faPaperPlane} className="text-xs" />
+              <FontAwesomeIcon icon={faPaperPlane} className="text-sm" />
             </button>
           </div>
+          {expanded && (
+            <p className="mt-2 text-center text-[10px] text-gray-400 dark:text-gray-500">
+              Automata can make mistakes. Press Enter to send, Shift+Enter for a new line.
+            </p>
+          )}
         </div>
       </form>
         </div>

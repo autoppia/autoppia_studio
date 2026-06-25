@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faSpinner } from "@fortawesome/free-solid-svg-icons";
@@ -37,6 +38,7 @@ function toFlowAgent(agent: AgentConfig): FlowAgent {
 }
 
 export default function Canvas(): React.ReactElement {
+  const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [companyName, setCompanyName] = useState("");
@@ -131,7 +133,11 @@ export default function Canvas(): React.ReactElement {
         </div>
       ) : (
         <div className="relative h-full w-full">
-          <FlowCanvas agents={flowAgents} companyName={companyName} />
+          <FlowCanvas
+            agents={flowAgents}
+            companyName={companyName}
+            onAgentClick={(agentId) => navigate(`/agents/${agentId}`)}
+          />
         </div>
       )}
     </div>

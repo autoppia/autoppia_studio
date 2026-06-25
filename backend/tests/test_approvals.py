@@ -25,7 +25,13 @@ class _Cursor:
 
 def _matches(doc, query):
     for key, value in query.items():
-        if doc.get(key) != value:
+        current = doc
+        for part in key.split("."):
+            if not isinstance(current, dict):
+                current = None
+                break
+            current = current.get(part)
+        if current != value:
             return False
     return True
 
@@ -106,6 +112,100 @@ async def test_create_list_and_approve_approval(monkeypatch):
     assert approved["approval"]["status"] == "approved"
     assert approved["approval"]["auditTrail"][-1]["event"] == "approved"
     assert approved["statePatch"] == {"approvedConnectorToolCalls": ["telegram.send_message:0:abc"]}
+    assert approved["sessionResume"]["required"] is False
+
+
+@pytest.mark.asyncio
+async def test_pending_approval_idempotency_is_scoped_to_session(monkeypatch):
+    collection = _Collection()
+    monkeypatch.setattr(approvals, "approvals_collection", collection)
+
+    async def fake_create_notification(**kwargs):
+        return {"notificationId": "notification-1"}
+
+    async def fake_record_runtime_event(**kwargs):
+        return {}
+
+    monkeypatch.setattr(approvals, "create_notification", fake_create_notification)
+    monkeypatch.setattr(approvals, "record_runtime_event", fake_record_runtime_event)
+
+    first = await approvals.create_pending_approval(
+        email="user@example.com",
+        company_id="company-1",
+        agent_id="agent-1",
+        approval_key="smtp.send_email:0:abc",
+        title="Approve send",
+        message="Confirm send.",
+        proposed_action={"name": "smtp.send_email", "arguments": {"to": "client@example.com"}},
+        metadata={"sessionId": "session-1", "sourceKind": "session"},
+    )
+    same_session = await approvals.create_pending_approval(
+        email="user@example.com",
+        company_id="company-1",
+        agent_id="agent-1",
+        approval_key="smtp.send_email:0:abc",
+        title="Approve send",
+        message="Confirm send.",
+        proposed_action={"name": "smtp.send_email", "arguments": {"to": "client@example.com"}},
+        metadata={"sessionId": "session-1", "sourceKind": "session"},
+    )
+    second_session = await approvals.create_pending_approval(
+        email="user@example.com",
+        company_id="company-1",
+        agent_id="agent-1",
+        approval_key="smtp.send_email:0:abc",
+        title="Approve send",
+        message="Confirm send.",
+        proposed_action={"name": "smtp.send_email", "arguments": {"to": "client@example.com"}},
+        metadata={"sessionId": "session-2", "sourceKind": "session"},
+    )
+
+    assert same_session["approvalId"] == first["approvalId"]
+    assert second_session["approvalId"] != first["approvalId"]
+    assert len(collection.docs) == 2
+
+
+@pytest.mark.asyncio
+async def test_approving_session_approval_returns_resume_contract(monkeypatch):
+    collection = _Collection()
+    monkeypatch.setattr(approvals, "approvals_collection", collection)
+    monkeypatch.setattr(approvals_route, "approvals_collection", collection)
+
+    async def fake_create_notification(**kwargs):
+        return {}
+
+    async def fake_record_runtime_event(**kwargs):
+        return {}
+
+    monkeypatch.setattr(approvals, "create_notification", fake_create_notification)
+    monkeypatch.setattr(approvals, "record_runtime_event", fake_record_runtime_event)
+
+    created = await approvals.create_pending_approval(
+        email="user@example.com",
+        company_id="company-1",
+        agent_id="agent-1",
+        approval_key="smtp.send_email:0:abc",
+        title="Approve send",
+        message="Confirm send.",
+        proposed_action={"name": "smtp.send_email", "arguments": {"to": "client@example.com"}},
+        metadata={
+            "sessionId": "session-1",
+            "sourceKind": "session",
+            "statePatch": {"approvedConnectorToolCalls": ["smtp.send_email:0:abc"]},
+        },
+    )
+
+    approved = await approvals_route.approve_approval(
+        created["approvalId"],
+        ApprovalDecisionRequest(email="user@example.com"),
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+
+    assert approved["resume"] == {"started": False}
+    assert approved["sessionResume"]["required"] is True
+    assert approved["sessionResume"]["sessionId"] == "session-1"
+    assert approved["sessionResume"]["socketEvent"] == "continue-task"
+    assert approved["sessionResume"]["runtimeStatePatch"]["approvedConnectorToolCalls"] == ["smtp.send_email:0:abc"]
 
 
 @pytest.mark.asyncio

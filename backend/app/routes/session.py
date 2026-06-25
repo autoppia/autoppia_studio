@@ -102,6 +102,7 @@ async def _ensure_session_access(session_id: str, email: str) -> dict:
 class SessionSaveRequest(BaseModel):
     sessionId: str
     email: str
+    companyId: str = ""
     prompt: str
     initialUrl: str = ""
     chatHistory: List[Any] = Field(default_factory=list)
@@ -139,16 +140,20 @@ class SessionArtifactCreateRequest(BaseModel):
 
 
 @router.get("/sessions")
-async def get_sessions(email: str):
+async def get_sessions(email: str, companyId: str = ""):
     """Get user session history sorted by most recent."""
     try:
-        cursor = sessions_collection.find({"email": email}).sort("createdAt", -1)
+        query = {"email": email}
+        if companyId:
+            query["companyId"] = companyId
+        cursor = sessions_collection.find(query).sort("createdAt", -1)
         sessions = []
         async for doc in cursor:
             sessions.append(
                 {
                     "sessionId": doc.get("sessionId", ""),
                     "email": doc["email"],
+                    "companyId": doc.get("companyId", ""),
                     "prompt": doc["prompt"],
                     "initialUrl": doc.get("initialUrl", ""),
                     "createdAt": doc.get("createdAt"),
@@ -166,6 +171,7 @@ async def save_session(body: SessionSaveRequest):
         now = datetime.now(timezone.utc)
         update_fields = {
             "email": body.email,
+            "companyId": body.companyId,
             "prompt": body.prompt,
             "initialUrl": body.initialUrl,
             "chatHistory": body.chatHistory,
@@ -202,16 +208,21 @@ async def save_session(body: SessionSaveRequest):
 
 
 @router.get("/sessions/{session_id}")
-async def get_session(session_id: str):
+async def get_session(session_id: str, email: str = "", companyId: str = ""):
     """Get a single session by its ID, including chat history."""
     try:
         doc = await sessions_collection.find_one({"sessionId": session_id})
         if not doc:
             raise HTTPException(status_code=404, detail="Session not found")
+        if email and doc.get("email") and doc.get("email") != email:
+            raise HTTPException(status_code=403, detail="Session belongs to another user")
+        if companyId and doc.get("companyId", "") != companyId:
+            raise HTTPException(status_code=404, detail="Session not found")
         return {
             "session": {
                 "sessionId": doc.get("sessionId", ""),
                 "email": doc["email"],
+                "companyId": doc.get("companyId", ""),
                 "socketioPath": doc.get("socketioPath", ""),
                 "prompt": doc["prompt"],
                 "initialUrl": doc.get("initialUrl", ""),

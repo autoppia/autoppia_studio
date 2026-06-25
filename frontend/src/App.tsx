@@ -143,7 +143,8 @@ function App() {
                 <Route path="/skills/create" element={<Navigate to="/capabilities" replace />} />
                 <Route path="/skills/record" element={<Navigate to="/capabilities" replace />} />
                 <Route path="/skills/:skillId" element={<Navigate to="/capabilities" replace />} />
-                <Route path="/evals" element={<Evals />} />
+                <Route path="/evals" element={<Evals mode="benchmarks" />} />
+                <Route path="/eval-runs" element={<Evals mode="runs" />} />
                 <Route path="/evals/:evalId" element={<EvalDetail />} />
                 <Route path="/evals/:evalId/run/:id" element={<Session />} />
                 <Route path="/agents" element={<Agents />} />

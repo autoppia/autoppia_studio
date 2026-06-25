@@ -14,6 +14,7 @@ export default function MainLayout() {
   const user = useSelector((state: any) => state.user);
   const location = useLocation();
   const [histories, setHistories] = useState<HistoryItem[]>([]);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
 
   const addHistoryItem = useCallback((item: HistoryItem) => {
     setHistories((prev) => [item, ...prev.filter((h) => h.sessionId !== item.sessionId)]);
@@ -22,13 +23,15 @@ export default function MainLayout() {
   const loadHistories = useCallback(async () => {
     if (!user.email) return;
     try {
-      const res = await fetch(`${apiUrl}/sessions?email=${user.email}`);
+      const params = new URLSearchParams({ email: user.email });
+      if (companyId) params.set("companyId", companyId);
+      const res = await fetch(`${apiUrl}/sessions?${params.toString()}`);
       const data = await res.json();
       setHistories(data.sessions || []);
     } catch (err) {
       console.error("Failed to load sessions:", err);
     }
-  }, [user.email]);
+  }, [user.email, companyId]);
 
   useEffect(() => {
     loadHistories();
@@ -38,6 +41,14 @@ export default function MainLayout() {
     const onCleared = () => setHistories([]);
     window.addEventListener("automata-chats-cleared", onCleared);
     return () => window.removeEventListener("automata-chats-cleared", onCleared);
+  }, []);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      setCompanyId((event as CustomEvent).detail?.companyId ?? localStorage.getItem("automata_company_id") ?? "");
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
   }, []);
 
   const isChatSurface =

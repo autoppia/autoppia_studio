@@ -350,7 +350,7 @@ export default function Artifacts(): React.ReactElement {
         <img src="/assets/images/bg/dark-bg.webp" alt="" className="h-full w-full object-cover" />
       </div>
       <div className="relative flex h-full w-full flex-col">
-        <div className="flex h-14 flex-shrink-0 items-center justify-between border-b border-gray-200 bg-white/80 px-6 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80">
+        <div className="flex min-h-16 flex-shrink-0 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80">
           <SectionTitle icon={faShapes} title="Artifacts" subtitle="Generated files and outputs" />
           <div className="flex items-center gap-2">
             <button onClick={createNew} className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface">

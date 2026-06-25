@@ -21,7 +21,7 @@ export default function PrimaryNav() {
             }`
           : `flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
               isActive
-                ? "bg-primary/10 text-primary"
+                ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-gray-900"
                 : "text-gray-600 hover:bg-gray-100 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-200"
             }`;
         return (

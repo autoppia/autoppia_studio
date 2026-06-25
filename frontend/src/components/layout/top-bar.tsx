@@ -206,7 +206,7 @@ export default function TopBar() {
 
   return (
     <header
-      className="relative flex items-center h-12 px-4 flex-shrink-0 gap-2
+      className="relative flex items-center h-14 px-4 flex-shrink-0 gap-2
         border-b border-gray-200 dark:border-dark-border
         bg-white dark:bg-dark-bg"
     >
@@ -249,7 +249,7 @@ export default function TopBar() {
                   <button
                     key={company.companyId}
                     onClick={() => selectCompany(company.companyId)}
-                    className={`w-full rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-white/5 ${company.companyId === selectedCompany?.companyId ? "bg-primary/5 dark:bg-white/5" : ""}`}
+                    className="w-full rounded-lg px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-white/5"
                   >
                     <span className="block text-sm font-semibold text-gray-900 dark:text-white truncate">{company.name}</span>
                     <span className="block text-xs text-gray-400 dark:text-gray-500 truncate">{company.description || "No description"}</span>
@@ -289,7 +289,7 @@ export default function TopBar() {
       <div className="min-w-0 flex-1" />
 
       {/* Primary navigation — centered to the header (viewport), not the free space. */}
-      <div className="pointer-events-none absolute left-1/2 top-0 flex h-12 -translate-x-1/2 items-center">
+      <div className="pointer-events-none absolute left-1/2 top-0 flex h-14 -translate-x-1/2 items-center">
         <div className="pointer-events-auto">
           <PrimaryNav />
         </div>
@@ -407,27 +407,31 @@ export default function TopBar() {
       )}
 
       {showOnboarding && onboardingTargetCompany && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center px-4 py-6">
-          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
-          <div className="relative w-full max-w-6xl max-h-full overflow-auto scrollbar-thin rounded-2xl border border-gray-200 dark:border-dark-border bg-gray-100 dark:bg-dark-bg shadow-2xl dark:shadow-black/60 p-5">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
+          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
+          <div className="relative flex w-full max-w-6xl max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg shadow-2xl dark:shadow-black/60 animate-slide-up">
             <button
               onClick={() => setShowOnboarding(false)}
-              className="absolute right-4 top-4 z-10 h-8 px-3 rounded-lg bg-white dark:bg-zinc-900/80 border border-gray-200 dark:border-zinc-800/80 text-xs font-medium text-gray-500 hover:text-gray-900 dark:hover:text-white"
+              title="Close"
+              aria-label="Close onboarding"
+              className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-400 shadow-sm backdrop-blur-sm transition-colors hover:bg-white hover:text-gray-900 dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:hover:bg-zinc-800 dark:hover:text-white"
             >
-              Close
+              <FontAwesomeIcon icon={faXmark} className="text-sm" />
             </button>
-            <CelerisOnboarding
-              companyId={onboardingTargetCompany.companyId}
-              companyName={onboardingTargetCompany.name}
-              companyDescription={onboardingTargetCompany.description || ""}
-              onComplete={() => {
-                setShowOnboarding(false);
-                setOnboardingCompanyId("");
-                setPendingOnboardingCompany(null);
-                localStorage.removeItem("automata_onboarding_company_id");
-                loadCompanies();
-              }}
-            />
+            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
+              <CelerisOnboarding
+                companyId={onboardingTargetCompany.companyId}
+                companyName={onboardingTargetCompany.name}
+                companyDescription={onboardingTargetCompany.description || ""}
+                onComplete={() => {
+                  setShowOnboarding(false);
+                  setOnboardingCompanyId("");
+                  setPendingOnboardingCompany(null);
+                  localStorage.removeItem("automata_onboarding_company_id");
+                  loadCompanies();
+                }}
+              />
+            </div>
           </div>
         </div>
       )}

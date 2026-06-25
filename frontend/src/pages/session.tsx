@@ -92,6 +92,31 @@ function artifactRows(content: string) {
     .map((line) => line.split(",").map((cell) => cell.trim()));
 }
 
+function mergeApprovalRuntimeState(current: Record<string, any>, patch: Record<string, any>) {
+  const merged = { ...(current || {}), ...(patch || {}) };
+  const currentApproved = Array.isArray(current?.approvedConnectorToolCalls) ? current.approvedConnectorToolCalls : [];
+  const patchApproved = Array.isArray(patch?.approvedConnectorToolCalls) ? patch.approvedConnectorToolCalls : [];
+  if (currentApproved.length || patchApproved.length) {
+    merged.approvedConnectorToolCalls = Array.from(new Set([...currentApproved, ...patchApproved]));
+  }
+  return merged;
+}
+
+function takeApprovalRuntimePatch(sessionId?: string): Record<string, any> {
+  if (!sessionId) return {};
+  const key = `approval-session-resume:${sessionId}`;
+  const raw = sessionStorage.getItem(key);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    sessionStorage.removeItem(key);
+    return parsed?.runtimeStatePatch && typeof parsed.runtimeStatePatch === "object" ? parsed.runtimeStatePatch : {};
+  } catch {
+    sessionStorage.removeItem(key);
+    return {};
+  }
+}
+
 function ArtifactPreview({ artifact }: { artifact: SessionArtifact }) {
   const type = artifact.artifactType || artifact.kind || "text";
   const content = artifact.content || "";
@@ -178,7 +203,7 @@ function Session(): React.ReactElement {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [notFound, setNotFound] = useState(false);
   // Runtime tabs — only one is visible at a time.
-  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents" | "artifacts">("browser");
+  const [activeView, setActiveView] = useState<"canvas" | "browser" | "documents" | "artifacts">("artifacts");
   const manualViewRef = useRef(false);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [sessionDocuments, setSessionDocuments] = useState<SessionDocument[]>([]);
@@ -425,7 +450,10 @@ function Session(): React.ReactElement {
 
     const loadSession = async () => {
       try {
-        const res = await fetch(`${apiUrl}/sessions/${sessionId}`);
+        const params = new URLSearchParams();
+        if (user.email) params.set("email", user.email);
+        if (companyId) params.set("companyId", companyId);
+        const res = await fetch(`${apiUrl}/sessions/${sessionId}${params.toString() ? `?${params.toString()}` : ""}`);
         if (!res.ok) {
           if (res.status === 404) {
             setNotFound(true);
@@ -455,9 +483,8 @@ function Session(): React.ReactElement {
         if (session.actionHistory) {
           dispatch(setActionHistory(session.actionHistory));
         }
-        if (session.runtimeState) {
-          dispatch(setRuntimeState(session.runtimeState));
-        }
+        const approvalPatch = takeApprovalRuntimePatch(sessionId);
+        dispatch(setRuntimeState(mergeApprovalRuntimeState(session.runtimeState || {}, approvalPatch)));
         if (session.contextId) {
           dispatch(setContextId(session.contextId));
         }
@@ -489,6 +516,7 @@ function Session(): React.ReactElement {
         body: JSON.stringify({
           sessionId: sid,
           email: user.email || "",
+          companyId: companyId || "",
           prompt: sessionPrompt,
           initialUrl: initialUrl || "",
           chatHistory: chats,
@@ -508,6 +536,7 @@ function Session(): React.ReactElement {
         addHistoryItem({
           sessionId: sid,
           email: user.email || "",
+          companyId: companyId || "",
           prompt: sessionPrompt,
           initialUrl: initialUrl || "",
           createdAt: new Date(),
@@ -525,6 +554,7 @@ function Session(): React.ReactElement {
     actionHistory,
     runtimeState,
     user.email,
+    companyId,
     prompt,
     initialUrl,
     contextId,
@@ -608,6 +638,21 @@ function Session(): React.ReactElement {
               : "pending",
     })),
   );
+  const latestBrowserStep = [...assistantMessages].reverse().flatMap((message: ChatItem) => {
+    const actions = message.actions || [];
+    return [...actions].reverse().map((action, reverseIndex) => {
+      const index = actions.length - reverseIndex - 1;
+      return { action, metadata: message.actionMetadata?.[index] };
+    });
+  }).find((step) => activityForAction(step.action) === "browser");
+  const latestBrowserArgs = latestBrowserStep?.metadata?.tool?.arguments;
+  const latestBrowserUrl = typeof latestBrowserArgs?.url === "string" ? latestBrowserArgs.url : "";
+  // Browser is a runtime surface, not a default panel. Tool/API agents such as
+  // email agents should not show an empty browser just because a socket is live.
+  const hasBrowserContent = Boolean(liveUrl) || Boolean(displayedScreenshot);
+  const hasBrowserActions = runtimeTimeline.some((step) => step.activity === "browser");
+  const browserAvailable = Boolean(initialUrl || lastUrl || hasBrowserContent || hasBrowserActions);
+
   const runtimeAgents = [
     {
       id: agentId || "active-agent",
@@ -615,7 +660,7 @@ function Session(): React.ReactElement {
       state: runtimeRunState,
       activity: activityForAction(latestActions[latestActions.length - 1]),
       detail: latestActions.length > 0 ? prettyAction(latestActions[latestActions.length - 1]) : prompt || "Waiting for task",
-      browserEnabled: Boolean(liveUrl || displayedScreenshot),
+      browserEnabled: browserAvailable,
     },
   ];
   const runtimeCanvas = (
@@ -629,19 +674,26 @@ function Session(): React.ReactElement {
     />
   );
 
-  // Whether there is anything to show on the Browser tab.
-  const hasBrowserContent = Boolean(liveUrl) || Boolean(displayedScreenshot);
   // A run is live (socket connected and task not finished) — the browser is initializing or running.
-  const browserActive = Boolean(socketId) && !completed;
+  const browserActive = Boolean(socketId) && !completed && browserAvailable;
 
   // Auto-focus the Browser tab the moment a run starts (so the user sees it initialize),
   // unless they manually picked a tab. Fall back to Canvas when idle with nothing to show.
   useEffect(() => {
     if (manualViewRef.current) return;
-    if (browserActive) {
+    if (browserActive || hasBrowserContent) {
       setActiveView("browser");
+    } else if (activeView === "browser" && !browserAvailable) {
+      setActiveView("artifacts");
     }
-  }, [browserActive, hasBrowserContent]);
+  }, [activeView, browserActive, browserAvailable, hasBrowserContent]);
+
+  useEffect(() => {
+    if (activeView === "browser" && !browserAvailable) {
+      setActiveView("artifacts");
+      manualViewRef.current = false;
+    }
+  }, [activeView, browserAvailable]);
 
   // Reset the manual override once a run fully ends, so the next run can auto-focus the browser again.
   useEffect(() => {
@@ -969,7 +1021,7 @@ function Session(): React.ReactElement {
       {/* Top header bar — full width, h-14 matches sidebar logo row */}
       <div
         className="flex items-center justify-between w-full h-14 px-5 border-b border-gray-200 dark:border-zinc-800/80
-        bg-white/80 dark:bg-dark-bg/85 backdrop-blur-sm relative z-10 flex-shrink-0"
+        bg-transparent backdrop-blur-sm relative z-10 flex-shrink-0"
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-gray-800 dark:text-gray-100">
@@ -995,15 +1047,28 @@ function Session(): React.ReactElement {
         </div>
       </div>
 
-      {/* Content area — browser + chat sidebar */}
+      {/* Content area — chat sidebar + browser */}
       <div className="flex flex-1 min-h-0 relative">
+        {/* Chat sidebar — left side, right after the history rail */}
+        <ChatSidebar
+          open={showChatSidebar}
+          toggleSideBar={toggleChatSidebar}
+          skillMode={locationState?.skillMode}
+          skillName={locationState?.skillName}
+          skillGoal={locationState?.skillGoal}
+          skillInstructions={locationState?.skillInstructions}
+          evalMode={isEvalMode}
+          evalId={locationState?.evalId || evalIdFromParam}
+          runId={locationState?.runId}
+        />
+
         {/* Browser view area */}
         <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-4 h-full relative overflow-hidden">
           {/* Tab switcher — Canvas and Browser are mutually exclusive */}
           <div className="mb-3 flex items-center gap-1 flex-shrink-0 w-fit rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/60 p-1 backdrop-blur-sm">
             {([
-              { key: "browser", label: "Browser", icon: faGlobe },
               { key: "artifacts", label: "Artifacts", icon: faShapes },
+              ...(browserAvailable ? [{ key: "browser" as const, label: "Browser", icon: faGlobe }] : []),
               { key: "documents", label: "Documents", icon: faFileLines },
             ] as const).map((tab) => {
               const isActive = activeView === tab.key;
@@ -1082,6 +1147,25 @@ function Session(): React.ReactElement {
               <div className={browserContainerClass}>
                 <BrowserLoading minHeight="320px" />
               </div>
+            ) : latestBrowserStep ? (
+              <div className={browserContainerClass + " items-center justify-center"}>
+                <div className="w-full max-w-xl px-6 text-center">
+                  <span className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-500/25 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    <FontAwesomeIcon icon={faGlobe} />
+                  </span>
+                  <p className="text-sm font-semibold text-gray-700 dark:text-zinc-200">
+                    Browser action planned
+                  </p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-zinc-400">
+                    {prettyAction(latestBrowserStep.action)}
+                  </p>
+                  {latestBrowserUrl && (
+                    <div className="mt-3 overflow-hidden rounded-lg border border-gray-200 bg-white px-3 py-2 text-left font-mono text-[11px] text-gray-500 dark:border-zinc-800 dark:bg-black/20 dark:text-zinc-400">
+                      <span className="block truncate">{latestBrowserUrl}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
             ) : (
               <div className={browserContainerClass + " items-center justify-center"}>
                 <div className="text-center px-6">
@@ -1106,19 +1190,6 @@ function Session(): React.ReactElement {
             </div>
           )}
         </div>
-
-        {/* Chat sidebar — right side */}
-        <ChatSidebar
-          open={showChatSidebar}
-          toggleSideBar={toggleChatSidebar}
-          skillMode={locationState?.skillMode}
-          skillName={locationState?.skillName}
-          skillGoal={locationState?.skillGoal}
-          skillInstructions={locationState?.skillInstructions}
-          evalMode={isEvalMode}
-          evalId={locationState?.evalId || evalIdFromParam}
-          runId={locationState?.runId}
-        />
       </div>
 
       {/* Session not found modal */}

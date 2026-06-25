@@ -16,15 +16,6 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
   socket.on("connect", () => {
     console.log("Connected to the agent:", socket.id);
     dispatch(setSocketId(socket.id));
-    if (!isRestore) {
-      dispatch(
-        addAction({
-          action: "Initialize",
-          reasoning: "Initializing browser...",
-          previous_success: true,
-        })
-      );
-    }
   });
 
   socket.on("disconnect", (reason) => {
@@ -59,8 +50,8 @@ export const initializeSocket = (dispatch: AppDispatch, isRestore: boolean = fal
   });
 
   // Emitted before each action executes
-  socket.on("action", ({ reasoning, action, previous_success, skill }) => {
-    dispatch(addAction({ action, reasoning, previous_success, skill }));
+  socket.on("action", ({ reasoning, action, previous_success, skill, router, tool, elapsedSeconds, emittedAt }) => {
+    dispatch(addAction({ action, reasoning, previous_success, skill, router, tool, elapsedSeconds, emittedAt }));
   });
 
   socket.on("screenshot", ({ screenshot }) => {

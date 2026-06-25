@@ -104,6 +104,17 @@ async def test_smtp_connector_draft_email_does_not_send():
     assert result.output["from"] == "from@example.com"
 
 
+def test_smtp_connector_cleans_html_email_body():
+    html = "<html><body><p>Hola&nbsp;cliente</p><p><strong>Estado</strong>: listo<br>Gracias</p></body></html>"
+
+    cleaned = SMTPConnector._clean_email_body(html)
+
+    assert "<p>" not in cleaned
+    assert "Hola cliente" in cleaned
+    assert "Estado : listo" in cleaned
+    assert "Gracias" in cleaned
+
+
 @pytest.mark.asyncio
 async def test_holded_connector_lists_and_searches_invoices(monkeypatch):
     async def fake_request(self, method, url, **kwargs):

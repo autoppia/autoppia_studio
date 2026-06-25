@@ -4,6 +4,7 @@ import {
   faRobot,
   faWandMagicSparkles,
   faClipboardCheck,
+  faClockRotateLeft,
   faListCheck,
   faBriefcase,
   faCircleCheck,
@@ -42,18 +43,11 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Studio",
     icon: faPlug,
     items: [
+      { label: "Agents", path: "/agents", icon: faRobot },
       { label: "Connectors", path: "/connectors", icon: faPlug },
       { label: "Knowledge", path: "/knowledge", icon: faBook },
       { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles },
       { label: "Entities", path: "/entities", icon: faCubes },
-    ],
-  },
-  {
-    key: "other",
-    label: "Other",
-    icon: faRobot,
-    items: [
-      { label: "Agents", path: "/agents", icon: faRobot },
     ],
   },
   {
@@ -62,6 +56,7 @@ export const NAV_GROUPS: NavGroup[] = [
     icon: faClipboardCheck,
     items: [
       { label: "Benchmarks", path: "/evals", icon: faClipboardCheck },
+      { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft },
     ],
   },
   {

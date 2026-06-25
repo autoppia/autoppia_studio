@@ -4,10 +4,10 @@ import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
+  faBook,
   faCheck,
   faCircleNodes,
   faCode,
-  faGlobe,
   faListCheck,
   faPlug,
   faPlay,
@@ -40,7 +40,7 @@ import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
 
-type TabKey = "overview" | "webs" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
+type TabKey = "overview" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
 type SkillAssetTab = "skills" | "traces";
 type SnippetTab = "curl" | "javascript" | "python";
 type RunTarget = "selected" | "all";
@@ -127,8 +127,6 @@ export default function AgentDetail() {
   const [saving, setSaving] = useState(false);
   const [setupError, setSetupError] = useState("");
   const [runningId, setRunningId] = useState("");
-  const [webName, setWebName] = useState("");
-  const [webUrl, setWebUrl] = useState("");
   const [taskName, setTaskName] = useState("");
   const [taskPrompt, setTaskPrompt] = useState("");
   const [taskCriteria, setTaskCriteria] = useState("");
@@ -225,27 +223,42 @@ export default function AgentDetail() {
     tasks: evals,
   }), [evals, agent?.name, agentId]);
 
-  const addWeb = async () => {
-    if (!webName.trim() || !webUrl.trim() || saving) return;
-    setSaving(true);
-    try {
-      const res = await fetch(`${apiUrl}/agents/${agentId}/webs`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email, name: webName.trim(), baseUrl: webUrl.trim(), authRequired: false }),
-      });
-      if (!res.ok) throw new Error(await responseMessage(res, "Could not add web."));
-      setWebName("");
-      setWebUrl("");
-      await loadData();
-      showToast("Web added.", "success");
-    } catch (err) {
-      console.error("Failed to add web:", err);
-      showToast(err instanceof Error ? err.message : "Could not add web.", "error");
-    } finally {
-      setSaving(false);
+  // Connectors powering this agent, derived from its enabled toolkits.
+  const connectors = useMemo(() => {
+    const map = new Map<string, { name: string; category: string; toolCount: number }>();
+    for (const toolkit of toolkits) {
+      const key = toolkit.connectorId || toolkit.connectorName || toolkit.name;
+      if (!key) continue;
+      const existing = map.get(key);
+      if (existing) {
+        existing.toolCount += toolkit.tools.length;
+      } else {
+        map.set(key, {
+          name: toolkit.connectorName || toolkit.name,
+          category: toolkit.category,
+          toolCount: toolkit.tools.length,
+        });
+      }
     }
-  };
+    return Array.from(map.values());
+  }, [toolkits]);
+
+  // Every tool the agent can call, flattened across its toolkits.
+  const allTools = useMemo(
+    () => toolkits.flatMap((toolkit) => toolkit.tools.map((tool) => ({ ...tool, toolkit: toolkit.name }))),
+    [toolkits],
+  );
+
+  // Knowledge: vectorstore-backed toolkits + the runtime knowledge capability.
+  const knowledgeToolkits = useMemo(
+    () =>
+      toolkits.filter((toolkit) =>
+        (toolkit.runtimeRequirements || []).some(
+          (req) => req.toLowerCase().includes("vector") || req.toLowerCase().includes("knowledge"),
+        ),
+      ),
+    [toolkits],
+  );
 
   const addTrajectory = async () => {
     if (!taskName.trim() || !taskPrompt.trim() || saving) return;
@@ -503,10 +516,11 @@ export default function AgentDetail() {
 
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "overview", label: "Overview", icon: faRobot },
-    { key: "webs", label: "Webs", icon: faGlobe },
     { key: "skills", label: "Skills", icon: faCode },
     { key: "connect", label: "Connect", icon: faPlug },
   ];
+
+  const knowledgeEnabled = agent.runtimeCapabilities?.knowledge ?? false;
 
   const apiBase = (apiUrl || "").replace(/\/$/, "");
   const agentStepUrl = `${apiBase}/api/v1/agents/${agentId}/step`;
@@ -704,12 +718,13 @@ print(response.json()["result"])`;
                 </div>
               )}
 
-              <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
                 {[
-                  { label: "Tasks", value: agent.tasks?.length || 0, icon: faListCheck },
-                  { label: "Webs", value: webs.length, icon: faGlobe },
+                  { label: "Connectors", value: connectors.length, icon: faPlug },
+                  { label: "Tools", value: allTools.length, icon: faWrench },
+                  { label: "Skills", value: skills.length, icon: faCode },
+                  { label: "Knowledge", value: knowledgeToolkits.length, icon: faBook },
                   { label: "Training Traces", value: trajectories.length, icon: faRoute },
-                  { label: "Skills", value: skills.length, icon: faWrench },
                   { label: "Runs", value: runs.length, icon: faCircleNodes },
                 ].map((item) => (
                   <div key={item.label} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
@@ -720,6 +735,129 @@ print(response.json()["result"])`;
                     <p className="text-2xl font-semibold text-gray-900 dark:text-white">{item.value}</p>
                   </div>
                 ))}
+              </div>
+
+              {/* What this agent is made of — connectors, tools, skills, knowledge. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {/* Connectors */}
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon icon={faPlug} className="text-xs text-primary" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Connectors</p>
+                      <StatusBadge label={`${connectors.length}`} tone={connectors.length ? "blue" : "gray"} />
+                    </div>
+                    <button onClick={() => navigate("/connectors")} className="text-xs font-medium text-primary hover:underline">
+                      Manage
+                    </button>
+                  </div>
+                  {connectors.length === 0 ? (
+                    <Empty text="No connectors enabled. Connect a tool from the Connectors page." />
+                  ) : (
+                    <div className="space-y-2">
+                      {connectors.map((connector) => (
+                        <div key={connector.name} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{connector.name}</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{normalizeName(connector.category || "connector")}</p>
+                          </div>
+                          <StatusBadge label={`${connector.toolCount} tool${connector.toolCount === 1 ? "" : "s"}`} tone="gray" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Skills */}
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon icon={faCode} className="text-xs text-primary" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Skills</p>
+                      <StatusBadge label={`${skills.length}`} tone={skills.length ? "blue" : "gray"} />
+                    </div>
+                    <button onClick={() => setActiveTab("skills")} className="text-xs font-medium text-primary hover:underline">
+                      View all
+                    </button>
+                  </div>
+                  {skills.length === 0 ? (
+                    <Empty text="No skills yet. Approve a training trace to build a reusable workflow." />
+                  ) : (
+                    <div className="space-y-2">
+                      {skills.slice(0, 5).map((skill) => (
+                        <div key={skill.capabilityId} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
+                          <p className="font-mono text-sm font-medium text-gray-900 dark:text-white truncate">{skill.name}()</p>
+                          <StatusBadge label={skill.type || "web"} tone={skill.type === "api" ? "green" : "gray"} />
+                        </div>
+                      ))}
+                      {skills.length > 5 && (
+                        <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">+{skills.length - 5} more</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Tools */}
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon icon={faWrench} className="text-xs text-primary" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Tools</p>
+                      <StatusBadge label={`${allTools.length}`} tone={allTools.length ? "blue" : "gray"} />
+                    </div>
+                  </div>
+                  {allTools.length === 0 ? (
+                    <Empty text="No tools available yet. Enable a connector to expose tools." />
+                  ) : (
+                    <div className="flex flex-wrap gap-1.5">
+                      {allTools.slice(0, 14).map((tool, index) => (
+                        <span
+                          key={`${tool.name}-${index}`}
+                          title={`${tool.toolkit} · ${tool.sideEffects || "no side effects"}`}
+                          className="font-mono text-[11px] px-2 py-1 rounded-lg bg-gray-100 dark:bg-dark-bg text-gray-700 dark:text-gray-200 border border-gray-200/70 dark:border-dark-border"
+                        >
+                          {tool.name}
+                        </span>
+                      ))}
+                      {allTools.length > 14 && (
+                        <span className="text-[11px] px-2 py-1 text-gray-400 dark:text-gray-500">+{allTools.length - 14} more</span>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Knowledge */}
+                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <FontAwesomeIcon icon={faBook} className="text-xs text-primary" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Knowledge</p>
+                      <StatusBadge label={knowledgeEnabled ? "enabled" : "disabled"} tone={knowledgeEnabled ? "green" : "gray"} />
+                    </div>
+                    <button onClick={() => navigate("/knowledge")} className="text-xs font-medium text-primary hover:underline">
+                      Manage
+                    </button>
+                  </div>
+                  {knowledgeToolkits.length === 0 ? (
+                    <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      {knowledgeEnabled
+                        ? "Knowledge search is enabled for this runtime. Attach a vectorstore from the Knowledge page to ground answers in your documents."
+                        : "Knowledge search is off. Enable it in Runtime settings and attach a vectorstore to let this agent read your documents."}
+                    </p>
+                  ) : (
+                    <div className="space-y-2">
+                      {knowledgeToolkits.map((toolkit) => (
+                        <div key={toolkit.toolkitId} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{toolkit.name}</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{toolkit.connectorName || "Knowledge"}</p>
+                          </div>
+                          <StatusBadge label="vectorstore" tone="blue" />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
@@ -793,30 +931,6 @@ print(response.json()["result"])`;
                   )}
                 </div>
               )}
-            </div>
-          )}
-
-          {activeTab === "webs" && (
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 lg:grid-cols-[1fr_1fr_auto] gap-3 bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
-                <input className={inputClass} placeholder="Web name" value={webName} onChange={(e) => setWebName(e.target.value)} />
-                <input className={inputClass} placeholder="https://example.com" value={webUrl} onChange={(e) => setWebUrl(e.target.value)} />
-                <button onClick={addWeb} disabled={saving || !webName.trim() || !webUrl.trim()} className="h-10 px-4 rounded-xl bg-gradient-primary text-white text-sm font-medium disabled:opacity-60">
-                  <FontAwesomeIcon icon={saving ? faSpinner : faPlus} className={`mr-2 text-xs ${saving ? "animate-spin" : ""}`} />
-                  Add Web
-                </button>
-              </div>
-              {webs.map((web) => (
-                <div key={web.webId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">{web.name}</p>
-                      <p className="text-xs font-mono text-gray-500 dark:text-gray-400 truncate">{web.baseUrl}</p>
-                    </div>
-                    <StatusBadge label={web.authRequired ? "auth" : "public"} tone={web.authRequired ? "amber" : "gray"} />
-                  </div>
-                </div>
-              ))}
             </div>
           )}
 

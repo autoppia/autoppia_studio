@@ -188,7 +188,7 @@ export default function Credentials(): React.ReactElement {
         <img src="/assets/images/bg/dark-bg.webp" alt="" className="w-full h-full object-cover" />
       </div>
       <div className="flex flex-col w-full h-full relative">
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
           <div className="flex items-center gap-2">
             <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Credentials</h1>
             <InfoIcon title="Credentials Vault">

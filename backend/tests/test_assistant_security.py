@@ -735,6 +735,51 @@ async def test_assistant_message_inherits_conversation_company_scope(monkeypatch
 
 
 @pytest.mark.asyncio
+async def test_assistant_company_scoped_load_rejects_unscoped_conversation(monkeypatch):
+    from app.assistant import service as assistant_service
+
+    collection = _ConversationCollection(
+        {
+            "conversationId": "conv-1",
+            "email": "owner@example.com",
+            "mode": "studio_global",
+            "messages": [],
+        }
+    )
+    monkeypatch.setattr(assistant_service, "assistant_conversations_collection", collection)
+
+    service = AutomataAssistantService(AssistantContext(email="owner@example.com", company_id="company-1"))
+
+    with pytest.raises(HTTPException) as exc:
+        await service.get_conversation("conv-1")
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_assistant_company_scoped_load_rejects_other_company(monkeypatch):
+    from app.assistant import service as assistant_service
+
+    collection = _ConversationCollection(
+        {
+            "conversationId": "conv-1",
+            "email": "owner@example.com",
+            "companyId": "company-2",
+            "mode": "studio_global",
+            "messages": [],
+        }
+    )
+    monkeypatch.setattr(assistant_service, "assistant_conversations_collection", collection)
+
+    service = AutomataAssistantService(AssistantContext(email="owner@example.com", company_id="company-1"))
+
+    with pytest.raises(HTTPException) as exc:
+        await service.send_message("conv-1", "summary")
+
+    assert exc.value.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_assistant_history_is_scoped_by_email_and_company(monkeypatch):
     from app.assistant import service as assistant_service
 
@@ -769,3 +814,33 @@ async def test_assistant_history_is_scoped_by_email_and_company(monkeypatch):
     assert collection.last_find_query == {"email": "owner@example.com", "companyId": "company-1"}
     assert [item["conversationId"] for item in history] == ["owned-1"]
     assert history[0]["title"] == "Owned question"
+
+
+@pytest.mark.asyncio
+async def test_assistant_history_without_company_does_not_return_company_chats(monkeypatch):
+    from app.assistant import service as assistant_service
+
+    collection = _ConversationListCollection(
+        [
+            {
+                "conversationId": "global-1",
+                "email": "owner@example.com",
+                "companyId": "",
+                "messages": [{"role": "user", "content": "Global question"}],
+                "updatedAt": "2026-01-01T00:00:00+00:00",
+            },
+            {
+                "conversationId": "company-1",
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "messages": [{"role": "user", "content": "Company question"}],
+            },
+        ]
+    )
+    monkeypatch.setattr(assistant_service, "assistant_conversations_collection", collection)
+
+    service = AutomataAssistantService(AssistantContext(email="owner@example.com"))
+    history = await service.list_conversations()
+
+    assert collection.last_find_query == {"email": "owner@example.com", "companyId": ""}
+    assert [item["conversationId"] for item in history] == ["global-1"]

@@ -76,6 +76,23 @@ const ACTIVITY_ICON: Record<RuntimeActivity, IconDefinition> = {
   done: faFlagCheckered,
 };
 
+function formatRuntimeStepLabel(label: string): string {
+  if (label === "runtime.think") return "Thinking";
+  if (label === "router.no_match") return "No trajectory match";
+  if (label === "router.matched_skill") return "Router matched";
+  if (label === "imap.search_emails") return "Search emails";
+  if (label === "imap.read_email") return "Read email";
+  if (label === "smtp.draft_email") return "Draft email";
+  if (label === "smtp.send_email") return "Send email";
+  if (label === "api.human_approval") return "Approval required";
+  return label
+    .replace(/^browser\./, "")
+    .replace(/^user\./, "")
+    .split(/[._]/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
 const STATE_META: Record<RuntimeRunState, { label: string; dot: string; text: string; border: string; glow: string; accent: string }> = {
   idle: {
     label: "Idle",
@@ -624,6 +641,7 @@ export function RecentActivityStrip({
         Recent
       </span>
       {recent.map((step, index) => {
+        const formattedLabel = formatRuntimeStepLabel(step.label);
         const statusClass =
           step.status === "ok"
             ? "text-emerald-600 border-emerald-400/30 bg-emerald-500/10 dark:text-emerald-300"
@@ -634,10 +652,10 @@ export function RecentActivityStrip({
           <span
             key={`${step.label}-${index}`}
             className={`inline-flex h-7 max-w-[150px] flex-shrink-0 items-center gap-1.5 rounded-lg border px-2 text-[11px] ${statusClass}`}
-            title={step.label}
+            title={formattedLabel}
           >
             <FontAwesomeIcon icon={ACTIVITY_ICON[step.activity]} className={`text-[10px] ${step.status === "pending" ? "animate-pulse" : ""}`} />
-            <span className="truncate">{step.label}</span>
+            <span className="truncate">{formattedLabel}</span>
           </span>
         );
       })}
@@ -654,6 +672,7 @@ function ActivityDock({ timeline }: { timeline: RuntimeTimelineStep[] }) {
       <div className="mb-1.5 px-2 text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">Recent activity</div>
       <div className="flex gap-1.5 overflow-x-auto pb-1">
         {recent.map((step, index) => {
+          const formattedLabel = formatRuntimeStepLabel(step.label);
           const statusClass =
             step.status === "ok"
               ? "text-emerald-300 border-emerald-400/20 bg-emerald-500/10"
@@ -666,7 +685,7 @@ function ActivityDock({ timeline }: { timeline: RuntimeTimelineStep[] }) {
               className={`inline-flex h-8 min-w-0 flex-shrink-0 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] ${statusClass}`}
             >
               <FontAwesomeIcon icon={ACTIVITY_ICON[step.activity]} className={`text-[10px] ${step.status === "pending" ? "animate-pulse" : ""}`} />
-              <span className="max-w-[150px] truncate">{step.label}</span>
+              <span className="max-w-[150px] truncate">{formattedLabel}</span>
             </span>
           );
         })}

@@ -12,12 +12,23 @@ export default function useSessions() {
   const [loading, setLoading] = useState(true);
 
   const email = useSelector((state: any) => state.user.email);
+  const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      setCompanyId((event as CustomEvent).detail?.companyId ?? localStorage.getItem("automata_company_id") ?? "");
+    };
+    window.addEventListener("automata-company-changed", handler);
+    return () => window.removeEventListener("automata-company-changed", handler);
+  }, []);
 
   useEffect(() => {
     async function fetchData() {
       try {
         setLoading(true);
-        const response = await fetch(`${apiUrl}/sessions?email=${email}`);
+        const params = new URLSearchParams({ email });
+        if (companyId) params.set("companyId", companyId);
+        const response = await fetch(`${apiUrl}/sessions?${params.toString()}`);
         const data = await response.json();
         setSessions(data.sessions || []);
         setFilteredSessions(data.sessions || []);
@@ -28,7 +39,7 @@ export default function useSessions() {
       }
     }
     if (email) fetchData();
-  }, [email]);
+  }, [email, companyId]);
 
   useEffect(() => {
     if (!searchString) {

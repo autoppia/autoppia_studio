@@ -5,8 +5,9 @@ from app.routes import session as session_routes
 
 
 class _Result:
-    def __init__(self, deleted_count=0):
+    def __init__(self, deleted_count=0, upserted_id=None):
         self.deleted_count = deleted_count
+        self.upserted_id = upserted_id
 
 
 class _Cursor:
@@ -41,6 +42,21 @@ class _Collection:
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 
+    async def update_one(self, query, update, upsert=False):
+        for index, doc in enumerate(self.docs):
+            if _matches(doc, query):
+                next_doc = dict(doc)
+                next_doc.update(update.get("$set", {}))
+                self.docs[index] = next_doc
+                return _Result()
+        if upsert:
+            doc = dict(query)
+            doc.update(update.get("$setOnInsert", {}))
+            doc.update(update.get("$set", {}))
+            self.docs.append(doc)
+            return _Result(upserted_id="inserted")
+        return _Result()
+
     async def delete_one(self, query):
         before = len(self.docs)
         self.docs = [doc for doc in self.docs if not _matches(doc, query)]
@@ -49,6 +65,59 @@ class _Collection:
 
 def _matches(doc, query):
     return all(doc.get(key) == value for key, value in query.items())
+
+
+@pytest.mark.asyncio
+async def test_get_sessions_filters_by_company(monkeypatch):
+    monkeypatch.setattr(
+        session_routes,
+        "sessions_collection",
+        _Collection(
+            [
+                {"sessionId": "session-1", "email": "user@example.com", "companyId": "company-1", "prompt": "Company one", "createdAt": "2026-06-19T10:00:00Z"},
+                {"sessionId": "session-2", "email": "user@example.com", "companyId": "company-2", "prompt": "Company two", "createdAt": "2026-06-19T11:00:00Z"},
+                {"sessionId": "session-3", "email": "other@example.com", "companyId": "company-1", "prompt": "Other user", "createdAt": "2026-06-19T12:00:00Z"},
+            ]
+        ),
+    )
+
+    result = await session_routes.get_sessions(email="user@example.com", companyId="company-1")
+
+    assert [item["sessionId"] for item in result["sessions"]] == ["session-1"]
+    assert result["sessions"][0]["companyId"] == "company-1"
+
+
+@pytest.mark.asyncio
+async def test_save_session_persists_company_id(monkeypatch):
+    sessions = _Collection()
+    monkeypatch.setattr(session_routes, "sessions_collection", sessions)
+
+    result = await session_routes.save_session(
+        session_routes.SessionSaveRequest(
+            sessionId="session-1",
+            email="user@example.com",
+            companyId="company-1",
+            prompt="Handle payroll email",
+            chatHistory=[],
+        )
+    )
+
+    assert result["created"] is True
+    assert sessions.docs[0]["companyId"] == "company-1"
+
+
+@pytest.mark.asyncio
+async def test_get_session_rejects_wrong_company(monkeypatch):
+    monkeypatch.setattr(
+        session_routes,
+        "sessions_collection",
+        _Collection([{"sessionId": "session-1", "email": "user@example.com", "companyId": "company-1", "prompt": "Company one"}]),
+    )
+
+    with pytest.raises(Exception) as exc:
+        await session_routes.get_session("session-1", email="user@example.com", companyId="company-2")
+
+    assert getattr(exc.value, "status_code", None) == 404
 
 
 @pytest.mark.asyncio

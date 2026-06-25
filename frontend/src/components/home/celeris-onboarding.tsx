@@ -473,18 +473,18 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
   const showEmptyConversation = !loading && (!session || session.messages.length === 0) && !busy;
 
   return (
-    <div className="w-full max-w-6xl animate-slide-up">
-      <div className="mb-5">
-        <div className="inline-flex items-center gap-2 px-3 h-8 rounded-full bg-gradient-primary text-white text-xs font-semibold mb-3 shadow-glow">
-          <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[11px]" />
+    <div className="w-full max-w-6xl">
+      <div className="mb-4 pr-12">
+        <div className="inline-flex items-center gap-2 px-3 h-7 rounded-full bg-gradient-primary text-white text-[11px] font-semibold mb-2.5 shadow-glow">
+          <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
           Onboarding agent
-          <span className="inline-flex items-center gap-1 ml-1 pl-2 border-l border-white/25">
+          <span className="inline-flex items-center gap-1 ml-0.5 pl-2 border-l border-white/25">
             <span className="w-1.5 h-1.5 rounded-full bg-green-300 animate-pulse" />
             <span className="text-[10px] font-medium text-white/90">{busy ? "Working" : "Online"}</span>
           </span>
         </div>
-        <h1 className="text-3xl md:text-4xl font-semibold text-gray-900 dark:text-white mb-2 tracking-tight">Create a company agent by chatting</h1>
-        <p className="text-sm md:text-base text-gray-500 dark:text-gray-400 max-w-3xl">
+        <h1 className="text-2xl md:text-[28px] font-semibold text-gray-900 dark:text-white mb-1.5 tracking-tight leading-tight">Create a company agent by chatting</h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 max-w-3xl leading-relaxed">
           Describe your company once. Automata reads it live, wires up connectors, drafts benchmark tasks, and assembles a specialized agent — you watch it happen.
         </p>
       </div>

@@ -14,6 +14,7 @@ from app.database import (
     evals_collection,
 )
 from app.services.eval_judge import judge_eval_run
+from app.services.connector_benchmarks import audit_connector_benchmark_matrix, connector_benchmark_catalog, harvest_and_smoke_connector_benchmark, run_connector_runtime_smoke, seed_connector_benchmark
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -70,6 +71,31 @@ class JudgeRunRequest(BaseModel):
     userContext: dict[str, Any] = {}
     apply: bool = True
     force: bool = False
+
+
+class ConnectorBenchmarkSeedRequest(BaseModel):
+    email: str
+    companyId: str
+    connectorId: str
+    benchmarkKey: str = "email"
+    agentId: str = ""
+    publishTools: bool = True
+
+
+class ConnectorBenchmarkSmokeRequest(BaseModel):
+    agentId: str = ""
+    taskKeys: list[str] = Field(default_factory=list)
+    approveSkills: bool = True
+
+
+class ConnectorBenchmarkAuditRequest(BaseModel):
+    email: str
+    companyId: str
+    publishTools: bool = True
+
+
+class ConnectorBenchmarkSeedAndSmokeRequest(ConnectorBenchmarkSeedRequest):
+    taskKeys: list[str] = Field(default_factory=list)
 
 
 def _clean_judge_type(value: Any) -> str:
@@ -206,6 +232,95 @@ async def list_benchmarks(email: str, companyId: str = ""):
             for benchmark in benchmarks
         ]
     }
+
+
+@router.get("/connector-benchmarks/catalog")
+async def list_connector_benchmark_catalog():
+    return {"benchmarks": connector_benchmark_catalog()}
+
+
+@router.post("/connector-benchmarks/audit-matrix")
+async def audit_connector_benchmark_matrix_endpoint(body: ConnectorBenchmarkAuditRequest):
+    if not body.email.strip():
+        raise HTTPException(status_code=400, detail="email is required")
+    if not body.companyId.strip():
+        raise HTTPException(status_code=400, detail="companyId is required")
+    report = await audit_connector_benchmark_matrix(
+        email=body.email,
+        company_id=body.companyId,
+        publish_tools=body.publishTools,
+    )
+    return {"success": report["summary"]["fail"] == 0, "connectorAudit": report}
+
+
+@router.post("/connector-benchmarks/seed")
+async def seed_connector_benchmark_endpoint(body: ConnectorBenchmarkSeedRequest):
+    if not body.email.strip():
+        raise HTTPException(status_code=400, detail="email is required")
+    if not body.companyId.strip():
+        raise HTTPException(status_code=400, detail="companyId is required")
+    if not body.connectorId.strip():
+        raise HTTPException(status_code=400, detail="connectorId is required")
+    try:
+        seeded = await seed_connector_benchmark(
+            benchmark_key=body.benchmarkKey,
+            email=body.email,
+            company_id=body.companyId,
+            connector_id=body.connectorId,
+            agent_id=body.agentId,
+            publish_tools=body.publishTools,
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"success": True, **seeded}
+
+
+@router.post("/connector-benchmarks/seed-and-smoke")
+async def seed_and_smoke_connector_benchmark(body: ConnectorBenchmarkSeedAndSmokeRequest):
+    seeded = await seed_connector_benchmark_endpoint(body)
+    benchmark = seeded["benchmark"]
+    agent = seeded["agent"]
+    report = await run_connector_runtime_smoke(
+        benchmark_id=str(benchmark.get("benchmarkId") or ""),
+        agent_id=str(agent.get("agentId") or ""),
+        task_keys=body.taskKeys or None,
+    )
+    return {"success": report["failed"] == 0, "benchmark": benchmark, "agent": agent, "tasks": seeded["tasks"], "runtimeSmoke": report}
+
+
+@router.post("/benchmarks/{benchmark_id}/connector-runtime-smoke")
+async def run_connector_benchmark_smoke(benchmark_id: str, body: ConnectorBenchmarkSmokeRequest):
+    benchmark = await benchmarks_collection.find_one({"benchmarkId": benchmark_id}, {"_id": 0})
+    if not benchmark:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+    agent_id = body.agentId or str(benchmark.get("agentId") or "")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agentId is required")
+    report = await run_connector_runtime_smoke(
+        benchmark_id=benchmark_id,
+        agent_id=agent_id,
+        task_keys=body.taskKeys or None,
+    )
+    return {"success": report["failed"] == 0, "runtimeSmoke": report}
+
+
+@router.post("/benchmarks/{benchmark_id}/connector-harvest-and-smoke")
+async def harvest_and_smoke_connector_benchmark_endpoint(benchmark_id: str, body: ConnectorBenchmarkSmokeRequest):
+    benchmark = await benchmarks_collection.find_one({"benchmarkId": benchmark_id}, {"_id": 0})
+    if not benchmark:
+        raise HTTPException(status_code=404, detail="Benchmark not found")
+    agent_id = body.agentId or str(benchmark.get("agentId") or "")
+    if not agent_id:
+        raise HTTPException(status_code=400, detail="agentId is required")
+    report = await harvest_and_smoke_connector_benchmark(
+        benchmark_id=benchmark_id,
+        agent_id=agent_id,
+        task_keys=body.taskKeys or None,
+        approve_skills=body.approveSkills,
+    )
+    return {"success": report["success"], "report": report}
 
 
 @router.post("/benchmarks")

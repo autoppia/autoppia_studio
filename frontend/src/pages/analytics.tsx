@@ -114,8 +114,7 @@ export default function Analytics() {
 
       <div className="flex flex-col w-full h-full relative">
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
-          bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
           <div className="flex items-center gap-3">
             <SectionTitle icon={faChartLine} title="Analytics" subtitle="Usage and performance" />
             <span className="text-xs text-gray-500 dark:text-gray-400">

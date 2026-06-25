@@ -1,6 +1,7 @@
 export interface SessionItem {
     sessionId: string;
     email: string;
+    companyId?: string;
     socketioPath: string;
     prompt: string;
     initialUrl: string;
@@ -14,8 +15,9 @@ export interface ChatItem {
   role: string;
   content?: string;
   actions?: string[];
-  actionMetadata?: ({ skill?: Record<string, any> } | undefined)[];
+  actionMetadata?: ({ skill?: Record<string, any>; router?: Record<string, any>; tool?: Record<string, any> } | undefined)[];
   actionResults?: (boolean | undefined)[];
+  actionTimings?: ({ elapsedSeconds?: number; emittedAt?: string } | undefined)[];
   screenshots?: string[];
   artifacts?: SessionArtifact[];
   thinking?: string;

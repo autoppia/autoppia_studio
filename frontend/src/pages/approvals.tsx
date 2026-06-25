@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBuilding,
@@ -208,12 +209,14 @@ function ApprovalCard({
 
 export default function Approvals(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
+  const navigate = useNavigate();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [tab, setTab] = useState<ApprovalTab>("pending");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
+  const [sessionResumeNotice, setSessionResumeNotice] = useState<{ sessionId: string; approvalId: string } | null>(null);
 
   const loadApprovals = useCallback(async () => {
     if (!user.email || !companyId) {
@@ -227,6 +230,7 @@ export default function Approvals(): React.ReactElement {
       const params = new URLSearchParams({ email: user.email, companyId });
       if (tab !== "all") params.set("status", tab);
       else params.set("status", "");
+      params.set("includeRuntime", "true");
       const res = await fetch(`${apiUrl}/approvals?${params.toString()}`);
       if (res.status === 404) {
         setApprovals([]);
@@ -269,6 +273,19 @@ export default function Approvals(): React.ReactElement {
       if (!res.ok) {
         throw new Error(await responseErrorMessage(res, `Could not ${decision} approval.`));
       }
+      const data = await res.json();
+      const resume = data?.sessionResume;
+      if (decision === "approve" && resume?.required && resume?.sessionId) {
+        sessionStorage.setItem(
+          `approval-session-resume:${resume.sessionId}`,
+          JSON.stringify({
+            approvalId,
+            runtimeStatePatch: resume.runtimeStatePatch || data?.statePatch || {},
+            approvedAt: new Date().toISOString(),
+          }),
+        );
+        setSessionResumeNotice({ sessionId: resume.sessionId, approvalId });
+      }
       await loadApprovals();
     } catch (err: any) {
       console.error(`Failed to ${decision} approval:`, err);
@@ -295,14 +312,14 @@ export default function Approvals(): React.ReactElement {
         <img src="/assets/images/bg/dark-bg.webp" alt="" className="w-full h-full object-cover" />
       </div>
       <div className="flex flex-col w-full h-full relative">
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
           <div className="flex items-center gap-3">
             <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
               <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
             </span>
             <div>
               <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Approvals</h1>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Review asynchronous work approvals before execution</p>
+              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Review runtime session and asynchronous work approvals before execution</p>
             </div>
           </div>
         </div>
@@ -313,6 +330,21 @@ export default function Approvals(): React.ReactElement {
               <FontAwesomeIcon icon={faTriangleExclamation} className="mt-0.5 text-xs" />
               <span className="flex-1">{error}</span>
               <button onClick={() => setError("")} className="text-red-400 hover:text-red-600"><FontAwesomeIcon icon={faXmark} className="text-xs" /></button>
+            </div>
+          )}
+
+          {sessionResumeNotice && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+              <div>
+                <p className="font-semibold">Approval applied to runtime session</p>
+                <p className="mt-0.5 text-xs opacity-80">Open the original session to continue with the approved runtime state.</p>
+              </div>
+              <button
+                onClick={() => navigate(`/session/${sessionResumeNotice.sessionId}`, { state: { approvalResume: true, approvalId: sessionResumeNotice.approvalId } })}
+                className="h-8 rounded-lg bg-emerald-600 px-3 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                Open session
+              </button>
             </div>
           )}
 

@@ -79,11 +79,18 @@ async def approve_approval(
     resume = await _resume_work_item_for_approval(approval)
     metadata = approval.get("metadata") if isinstance(approval.get("metadata"), dict) else {}
     state_patch = metadata.get("statePatch") if isinstance(metadata.get("statePatch"), dict) else {"approvedConnectorToolCalls": [approval.get("approvalKey", "")]}
+    session_id = str(metadata.get("sessionId") or "")
     return {
         "success": True,
         "approval": approval,
         "statePatch": state_patch,
         "resume": resume,
+        "sessionResume": {
+            "required": bool(session_id and not resume.get("started")),
+            "sessionId": session_id,
+            "runtimeStatePatch": state_patch,
+            "socketEvent": "continue-task",
+        },
     }
 
 

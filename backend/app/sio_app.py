@@ -1,13 +1,16 @@
 import asyncio
+import hashlib
 import json
 import logging
 import time
 import socketio
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agent.autoppia_agent import AutoppiaAgent, _execute_tool_call
 from agent.browser_executor import BrowserExecutor
 from app.database import agents_collection, artifacts_collection
+from app.services.agent_runtime import agent_step_result
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -35,6 +38,304 @@ async def _agent_base_url_for_agent(agent_id: str) -> str:
     if not endpoint:
         raise ValueError("Selected agent is not deployed yet.")
     return endpoint
+
+
+async def _agent_config_for_agent(agent_id: str) -> dict:
+    if not agent_id:
+        return {}
+    return await agents_collection.find_one({"agentId": agent_id}, {"_id": 0}) or {}
+
+
+def _is_tool_only_agent(agent_config: dict) -> bool:
+    if not agent_config:
+        return False
+    runtime_type = str(agent_config.get("runtimeType") or "")
+    runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
+    runtime_capabilities = agent_config.get("runtimeCapabilities") if isinstance(agent_config.get("runtimeCapabilities"), dict) else {}
+    return (
+        runtime_type in {"local_email_agent", "local_connector_agent"}
+        or runtime_spec.get("browserEnabled") is False
+        or runtime_capabilities.get("browser") is False
+    )
+
+
+def _tool_only_success(response: dict) -> bool:
+    state_out = response.get("state_out") if isinstance(response.get("state_out"), dict) else {}
+    if state_out.get("pendingConnectorApproval"):
+        return True
+    tool_results = response.get("tool_results") if isinstance(response.get("tool_results"), list) else []
+    if tool_results:
+        return all(result.get("success") is not False for result in tool_results if isinstance(result, dict))
+    if response.get("tool_calls"):
+        return True
+    return bool(response.get("content"))
+
+
+def _router_action_payload(router_trace: dict, previous_success: bool) -> dict:
+    decision = str(router_trace.get("decision") or "")
+    fallback = str(router_trace.get("fallbackRuntime") or "")
+    matched_name = str(router_trace.get("matchedSkillName") or "")
+    matched_task = str(router_trace.get("matchedTaskName") or "")
+    confidence = router_trace.get("confidence")
+    if decision == "matched_skill":
+        action = "router.matched_skill"
+        target = f"{matched_name or 'approved skill'}"
+        if matched_task:
+            target = f"{target} / {matched_task}"
+        reasoning = f"Router matched approved trajectory: {target}."
+    else:
+        action = "router.no_match"
+        fallback_label = fallback.replace("_", " ") if fallback else "agent runtime"
+        reasoning = f"No safe trajectory match. Falling back to {fallback_label}."
+    if isinstance(confidence, (int, float)):
+        reasoning = f"{reasoning} Confidence {confidence:.2f}."
+    return {
+        "action": action,
+        "reasoning": reasoning,
+        "previous_success": previous_success,
+        "router": router_trace,
+    }
+
+
+def _tool_action_payload(action: str, reasoning: str, previous_success: bool, tool: dict | None = None) -> dict:
+    payload = {
+        "action": action,
+        "reasoning": reasoning,
+        "previous_success": previous_success,
+    }
+    if tool:
+        payload["tool"] = tool
+    return payload
+
+
+def _runtime_event_timing(started: float) -> dict:
+    return {
+        "emittedAt": datetime.now(timezone.utc).isoformat(),
+        "elapsedSeconds": round(max(0.0, time.monotonic() - started), 3),
+    }
+
+
+def _runtime_action_history(response: dict) -> list[dict]:
+    history: list[dict] = []
+    for item in response.get("executed_tool_calls") or []:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("name") or "")
+        if not name:
+            continue
+        entry = {
+            "step_index": len(history),
+            "tool_call": {
+                "name": name,
+                "arguments": item.get("arguments") if isinstance(item.get("arguments"), dict) else {},
+            },
+            "success": item.get("success") is not False,
+        }
+        if item.get("error"):
+            entry["error"] = str(item.get("error"))
+        history.append(entry)
+
+    if not history:
+        for item in response.get("tool_results") or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("tool") or "")
+            if not name:
+                continue
+            history.append({
+                "step_index": len(history),
+                "tool_call": {"name": name, "arguments": {}},
+                "success": item.get("success") is not False,
+                **({"error": str(item.get("error"))} if item.get("error") else {}),
+            })
+
+    for call in response.get("tool_calls") or []:
+        if not isinstance(call, dict):
+            continue
+        name = str(call.get("name") or "")
+        if not name:
+            continue
+        history.append({
+            "step_index": len(history),
+            "tool_call": {
+                "name": name,
+                "arguments": call.get("arguments") if isinstance(call.get("arguments"), dict) else {},
+            },
+            "success": True,
+            "executed": False,
+        })
+    return history
+
+
+def _runtime_result_content(response: dict, elapsed: float) -> str:
+    content = str(response.get("content") or "")
+    state_out = response.get("state_out") if isinstance(response.get("state_out"), dict) else {}
+    pending_call = state_out.get("pendingConnectorToolCall") if isinstance(state_out.get("pendingConnectorToolCall"), dict) else {}
+    pending_name = str(pending_call.get("name") or "connector action")
+    if state_out.get("pendingConnectorApproval"):
+        return f"Waiting for human approval before executing {pending_name}.\n\nPrepared in {elapsed:.1f}s."
+    suffix = f"\n\nCompleted in {elapsed:.1f}s."
+    return f"{content}{suffix}" if content else f"Completed in {elapsed:.1f}s."
+
+
+def _artifact_id(context: dict, source_tool: str, url: str) -> str:
+    raw = "|".join([context.get("sessionId", ""), source_tool, url])
+    digest = hashlib.sha1(raw.encode("utf-8")).hexdigest()[:16]
+    return f"artifact_{digest}"
+
+
+def _artifact_identity_source(source_tool: str, url: str, file_name: str, content: object) -> str:
+    if url:
+        return url
+    if content is not None:
+        digest = hashlib.sha1(str(content).encode("utf-8")).hexdigest()[:16]
+        return f"inline:{file_name or source_tool}:{digest}"
+    return file_name or source_tool
+
+
+def _artifact_type_from_url(url: str, content_type: str = "") -> str:
+    lowered = f"{url} {content_type}".lower()
+    if ".pdf" in lowered or "application/pdf" in lowered:
+        return "pdf"
+    if ".csv" in lowered or "text/csv" in lowered:
+        return "csv"
+    if ".html" in lowered or "text/html" in lowered:
+        return "html"
+    if ".json" in lowered or "application/json" in lowered:
+        return "json"
+    return "url"
+
+
+def _artifacts_from_tool_results(sid: str, response: dict) -> list[dict]:
+    context = _artifact_context(sid)
+    artifacts: list[dict] = []
+    for result in response.get("tool_results") or []:
+        if not isinstance(result, dict) or result.get("success") is False:
+            continue
+        output = result.get("output") if isinstance(result.get("output"), dict) else {}
+        url = str(output.get("pdfUrl") or output.get("fileUrl") or output.get("downloadUrl") or output.get("url") or "").strip()
+        source_tool = str(result.get("tool") or "tool")
+        content_type = str(output.get("contentType") or "")
+        content = output.get("content")
+        if content is None and isinstance(output.get("text"), str):
+            content = output.get("text")
+        if not url and content is None:
+            continue
+        artifact_type = str(output.get("artifactType") or output.get("kind") or "")
+        if not artifact_type:
+            artifact_type = _artifact_type_from_url(url or str(output.get("fileName") or ""), content_type)
+        label = str(output.get("title") or output.get("numBOPA") or output.get("fileName") or source_tool)
+        file_name = str(output.get("fileName") or (url.rsplit("/", 1)[-1] if url else "") or label)
+        identity_source = _artifact_identity_source(source_tool, url, file_name, content)
+        artifacts.append(
+            {
+                "artifactId": _artifact_id(context, source_tool, identity_source),
+                "name": label,
+                "title": label,
+                "artifactType": artifact_type,
+                "kind": artifact_type,
+                "url": url,
+                "fileName": file_name,
+                "contentType": content_type or ("application/pdf" if artifact_type == "pdf" else ""),
+                **({"content": str(content)} if content is not None else {}),
+                "sourceTool": source_tool,
+                "metadata": {
+                    "tool": source_tool,
+                    "output": output,
+                },
+            }
+        )
+    return artifacts
+
+
+async def _perform_tool_only_task(sid: str, data: dict, agent_id: str, task: str, runtime_state: dict | None = None) -> None:
+    started = time.monotonic()
+    await sio.emit(
+        "action",
+        {
+            "action": "runtime.think",
+            "reasoning": "Thinking about the request and selecting the right tools.",
+            "previous_success": True,
+            **_runtime_event_timing(started),
+        },
+        to=sid,
+    )
+    try:
+        response = await agent_step_result(
+            agent_id,
+            {
+                "prompt": task,
+                "task": task,
+                "step_index": int(data.get("step_index") or 0),
+                "state_in": runtime_state or {},
+                "disableSkillRouting": bool(data.get("disableSkillRouting")),
+                "context": _runtime_context(sid, data),
+            },
+        )
+        reasoning = str(response.get("reasoning") or "Running tools.")
+        router_trace = response.get("router_trace") if isinstance(response.get("router_trace"), dict) else {}
+        previous_success = True
+        if router_trace:
+            await sio.emit("action", {**_router_action_payload(router_trace, previous_success), **_runtime_event_timing(started)}, to=sid)
+        tool_results = response.get("tool_results") if isinstance(response.get("tool_results"), list) else []
+        if not tool_results and isinstance(response.get("tool_calls"), list):
+            for call in response.get("tool_calls") or []:
+                if not isinstance(call, dict):
+                    continue
+                await sio.emit(
+                    "action",
+                    {
+                        **_tool_action_payload(
+                            str(call.get("name") or "tool.call"),
+                            reasoning,
+                            previous_success,
+                            {"arguments": call.get("arguments") if isinstance(call.get("arguments"), dict) else {}},
+                        ),
+                        **_runtime_event_timing(started),
+                    },
+                    to=sid,
+                )
+                previous_success = True
+        for result in tool_results:
+            if not isinstance(result, dict):
+                continue
+            await sio.emit(
+                "action",
+                {
+                    **_tool_action_payload(
+                        str(result.get("tool") or "tool.call"),
+                        reasoning,
+                        previous_success,
+                        {
+                            "success": result.get("success") is not False,
+                            "output": result.get("output"),
+                            "error": result.get("error"),
+                        },
+                    ),
+                    **_runtime_event_timing(started),
+                },
+                to=sid,
+            )
+            previous_success = result.get("success") is not False
+
+        elapsed = time.monotonic() - started
+        success = _tool_only_success(response)
+        response_artifacts = response.get("artifacts") if isinstance(response.get("artifacts"), list) else []
+        derived_artifacts = _artifacts_from_tool_results(sid, response)
+        result_payload = {
+            "content": _runtime_result_content(response, elapsed),
+            "success": success,
+            "runtimeState": response.get("state_out") if isinstance(response.get("state_out"), dict) else {},
+            "actionHistory": _runtime_action_history(response),
+            "screenshots": [],
+            "artifacts": await _persist_session_artifacts(sid, [*response_artifacts, *derived_artifacts]),
+        }
+        await sio.emit("result", result_payload, to=sid)
+    except Exception as exc:
+        logger.error(f"Error in _perform_tool_only_task: {exc}", exc_info=True)
+        await sio.emit("result", {"content": str(exc), "success": False, "screenshots": [], "artifacts": []}, to=sid)
+    finally:
+        running_tasks.pop(sid, None)
 
 
 @sio.on("connect")
@@ -100,9 +401,22 @@ def _artifact_context(sid: str, data: dict | None = None) -> dict:
     }
 
 
+def _runtime_context(sid: str, data: dict | None = None) -> dict:
+    data = data if isinstance(data, dict) else {}
+    context = data.get("context") if isinstance(data.get("context"), dict) else {}
+    return {
+        **_artifact_context(sid, data),
+        **context,
+        "benchmarkId": str(data.get("benchmarkId") or context.get("benchmarkId") or ""),
+        "taskId": str(data.get("taskId") or context.get("taskId") or ""),
+        "disableSkillRouting": bool(data.get("disableSkillRouting") or context.get("disableSkillRouting")),
+    }
+
+
 async def _persist_session_artifacts(sid: str, artifacts: list[dict] | None) -> list[dict]:
     context = _artifact_context(sid)
     persisted: list[dict] = []
+    now = datetime.now(timezone.utc).isoformat()
     for artifact in artifacts or []:
         if not isinstance(artifact, dict):
             continue
@@ -114,6 +428,8 @@ async def _persist_session_artifacts(sid: str, artifacts: list[dict] | None) -> 
             "companyId": str(artifact.get("companyId") or context["companyId"]),
             "agentId": str(artifact.get("agentId") or context["agentId"]),
             "agentName": str(artifact.get("agentName") or context["agentName"]),
+            "createdAt": artifact.get("createdAt") or now,
+            "updatedAt": now,
         }
         if not doc["artifactId"] or not doc["sessionId"] or not doc["email"]:
             persisted.append(doc)
@@ -149,6 +465,12 @@ async def start_task(sid, data):
         return
 
     logger.info(f"Starting task: {task}, Initial URL: {initial_url}, Context ID: {context_id}, Agent ID: {agent_id}")
+
+    selected_agent_config = await _agent_config_for_agent(agent_id)
+    if _is_tool_only_agent(selected_agent_config):
+        runtime_state = data.get("runtimeState") if isinstance(data.get("runtimeState"), dict) else {}
+        running_tasks[sid] = asyncio.create_task(_perform_tool_only_task(sid, data, agent_id, task, runtime_state))
+        return
 
     storage_state_path = storage_state_dir / "automata.json"
     if not storage_state_path.exists():
@@ -208,6 +530,12 @@ async def continue_task(sid, data):
 
     agent_config = sessions.get(sid)
     if not agent_config:
+        agent_id = str(data.get("agent_id") or data.get("agentId") or session_metadata.get(sid, {}).get("agentId") or "")
+        selected_agent_config = await _agent_config_for_agent(agent_id)
+        if _is_tool_only_agent(selected_agent_config):
+            runtime_state = data.get("runtimeState") if isinstance(data.get("runtimeState"), dict) else {}
+            running_tasks[sid] = asyncio.create_task(_perform_tool_only_task(sid, data, agent_id, task, runtime_state))
+            return
         await sio.emit("error", {"message": "No existing session for this sid"}, to=sid)
         return
 

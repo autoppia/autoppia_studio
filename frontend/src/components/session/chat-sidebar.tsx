@@ -97,6 +97,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
         email: user.email || "",
         companyId: localStorage.getItem("automata_company_id") || "",
         task: taskWithInstructions,
+        runtimeState: runtimeState || {},
       });
     } else {
       setSubmitting(true);
@@ -138,6 +139,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
           companyId: localStorage.getItem("automata_company_id") || "",
           task: taskWithInstructions,
           initial_url: "",
+          runtimeState: runtimeState || {},
           context_id: contextId || "",
           agent_id: agentId || "",
           browser_mode: getSessionBrowserMode(),
@@ -280,7 +282,7 @@ export default function ChatSidebar(props: ChatSidebarProps) {
       <div
         className={`${open ? "hidden lg:flex" : "hidden"} flex-col flex-shrink-0 px-3 sm:px-4 md:px-5 z-10
           h-full pt-4 pb-1 overflow-hidden
-          bg-white dark:bg-dark-bg border-l border-gray-100 dark:border-dark-border
+          bg-white dark:bg-dark-bg border-r border-gray-100 dark:border-dark-border
           transition-all duration-300`}
         style={{ width: CHAT_SIDEBAR_WIDTH }}
       >

@@ -1,23 +1,45 @@
-import React from "react";
+import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { faClock } from "@fortawesome/free-solid-svg-icons";
+import { faClock, faAnglesLeft, faAnglesRight } from "@fortawesome/free-solid-svg-icons";
 import type { HistoryItem } from "../../utils/types";
 
 /**
  * Chat / session history rail — the old sidebar history list, shown on the
- * chat surfaces (home + active session).
+ * chat surfaces (home + active session). Can be collapsed to a slim rail.
  */
 export default function ChatHistoryRail({ histories }: { histories: HistoryItem[] }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const [collapsed, setCollapsed] = useState(false);
+
+  if (collapsed) {
+    return (
+      <aside className="flex h-full w-12 flex-shrink-0 flex-col items-center border-r border-gray-200 bg-white pt-4 dark:border-dark-border dark:bg-dark-bg">
+        <button
+          onClick={() => setCollapsed(false)}
+          title="Expand history"
+          className="flex h-8 w-8 items-center justify-center rounded-lg text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 dark:text-zinc-500 dark:hover:bg-zinc-900/60 dark:hover:text-zinc-200"
+        >
+          <FontAwesomeIcon icon={faAnglesRight} className="text-xs" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="flex h-full w-60 flex-shrink-0 flex-col border-r border-gray-200 bg-white dark:border-dark-border dark:bg-dark-bg">
-      <div className="px-4 pb-1 pt-4">
+      <div className="flex items-center justify-between px-4 pb-1 pt-4">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
           History
         </span>
+        <button
+          onClick={() => setCollapsed(true)}
+          title="Collapse history"
+          className="flex h-6 w-6 items-center justify-center rounded-md text-gray-400 transition-colors duration-200 hover:bg-gray-100 hover:text-gray-700 dark:text-zinc-500 dark:hover:bg-zinc-900/60 dark:hover:text-zinc-200"
+        >
+          <FontAwesomeIcon icon={faAnglesLeft} className="text-xs" />
+        </button>
       </div>
 
       <div className="scrollbar-thin flex-grow overflow-y-auto px-2 pb-2">

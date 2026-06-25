@@ -15,6 +15,12 @@ import {
   faPlus,
   faArrowLeft,
   faArrowRight,
+  faPlug,
+  faWrench,
+  faTriangleExclamation,
+  faWandMagicSparkles,
+  faChevronDown,
+  faChevronUp,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, EvalRun } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
@@ -33,6 +39,87 @@ interface Benchmark {
   agentName?: string;
   tasks: EvalItem[];
   persisted?: boolean;
+}
+
+interface ConnectorItem {
+  connectorId: string;
+  name: string;
+  type: string;
+  status?: string;
+}
+
+interface ConnectorBenchmarkTaskSpec {
+  key: string;
+  name: string;
+  expectedTools: string[];
+  expectedArtifacts?: string[];
+  requiresApproval?: boolean;
+  requiresBrowser?: boolean;
+  runtimeExpectation?: string;
+}
+
+interface ConnectorBenchmarkSpec {
+  key: string;
+  name: string;
+  description: string;
+  connectorTypes: string[];
+  runtimeType: string;
+  tasks: ConnectorBenchmarkTaskSpec[];
+}
+
+interface ConnectorSmokeResult {
+  taskId: string;
+  name: string;
+  success: boolean;
+  failures: string[];
+  expectedTools: string[];
+  actualTools: string[];
+  routerDecision?: string;
+  skillReplayExpected?: boolean;
+  executionMode?: string;
+  content?: string | null;
+}
+
+interface ConnectorSmokeReport {
+  benchmarkId: string;
+  agentId: string;
+  total: number;
+  passed: number;
+  failed: number;
+  results: ConnectorSmokeResult[];
+}
+
+interface ConnectorHarvestSmokeReport {
+  success: boolean;
+  runtimeWithoutSkill: ConnectorSmokeReport;
+  harvest: {
+    total: number;
+    harvested: number;
+    approvedSkills: number;
+    results: { taskId: string; name: string; status: string; trajectoryId?: string; skill?: { capabilityId: string; status: string } | null; reason?: string }[];
+  };
+  runtimeWithSkill: ConnectorSmokeReport;
+}
+
+interface ConnectorAuditRow {
+  benchmark: string;
+  status: string;
+  connectorId?: string;
+  connectorName?: string;
+  connectorType?: string;
+  connectorStatus?: string;
+  taskKeys?: string[];
+  live?: { passed: number; total: number; failed: number };
+  withSkill?: { passed: number; total: number; failed: number };
+  harvested?: number;
+  approvedSkills?: number;
+  reason?: string;
+  failures?: { task?: string; failures?: string[] }[];
+}
+
+interface ConnectorAuditReport {
+  summary: { pass: number; blocked: number; missing: number; fail: number; total: number };
+  rows: ConnectorAuditRow[];
 }
 
 interface PendingRun {
@@ -84,16 +171,23 @@ function judgeClass(judgeType?: string) {
     : "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
-export default function Evals() {
+function routerClass(decision?: string) {
+  if (decision === "matched_skill") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (decision === "no_safe_match") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
   const startSession = useStartSession();
 
-  const [activeTab, setActiveTab] = useState<TabKey>("benchmarks");
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [connectors, setConnectors] = useState<ConnectorItem[]>([]);
+  const [connectorBenchmarks, setConnectorBenchmarks] = useState<ConnectorBenchmarkSpec[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [runningEvalId, setRunningEvalId] = useState<string | null>(null);
@@ -112,6 +206,16 @@ export default function Evals() {
   const [newTask, setNewTask] = useState({ name: "", prompt: "", successCriteria: "", initialUrl: "", judgeType: "manual" });
   const [judgingRunId, setJudgingRunId] = useState<string | null>(null);
   const [selectedRunGroupId, setSelectedRunGroupId] = useState<string | null>(null);
+  const [selectedConnectorBenchmarkKey, setSelectedConnectorBenchmarkKey] = useState("email");
+  const [selectedConnectorId, setSelectedConnectorId] = useState("");
+  const [connectorSmokeLoading, setConnectorSmokeLoading] = useState(false);
+  const [connectorHarvestLoading, setConnectorHarvestLoading] = useState(false);
+  const [connectorSmokeReport, setConnectorSmokeReport] = useState<ConnectorSmokeReport | null>(null);
+  const [connectorHarvestReport, setConnectorHarvestReport] = useState<ConnectorHarvestSmokeReport | null>(null);
+  const [connectorAuditLoading, setConnectorAuditLoading] = useState(false);
+  const [connectorAuditReport, setConnectorAuditReport] = useState<ConnectorAuditReport | null>(null);
+  const [connectorSmokeError, setConnectorSmokeError] = useState("");
+  const [showConnectorSmoke, setShowConnectorSmoke] = useState(false);
 
   useEffect(() => {
     if (!user.email) return;
@@ -135,11 +239,15 @@ export default function Evals() {
       if (companyId) scoped.set("companyId", companyId);
       const agentParams = new URLSearchParams({ email: user.email });
       if (companyId) agentParams.set("companyId", companyId);
-      const [evalsRes, runsRes, agentsRes, benchmarksRes] = await Promise.all([
+      const connectorParams = new URLSearchParams({ email: user.email });
+      if (companyId) connectorParams.set("companyId", companyId);
+      const [evalsRes, runsRes, agentsRes, benchmarksRes, connectorsRes, connectorCatalogRes] = await Promise.all([
         fetch(`${apiUrl}/evals?${scoped.toString()}`),
         fetch(`${apiUrl}/eval-runs?${scoped.toString()}`),
         fetch(`${apiUrl}/agents?${agentParams.toString()}`),
         fetch(`${apiUrl}/benchmarks?${scoped.toString()}`),
+        fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/connector-benchmarks/catalog`),
       ]);
       if (!evalsRes.ok) throw new Error(await evalsRes.text());
       const evalsData = await evalsRes.json();
@@ -155,6 +263,18 @@ export default function Evals() {
       if (benchmarksRes.ok) {
         const benchmarksData = await benchmarksRes.json();
         setFetchedBenchmarks(benchmarksData.benchmarks || []);
+      }
+      if (connectorsRes.ok) {
+        const connectorsData = await connectorsRes.json();
+        setConnectors(connectorsData.connectors || []);
+      }
+      if (connectorCatalogRes.ok) {
+        const catalogData = await connectorCatalogRes.json();
+        const catalog = catalogData.benchmarks || [];
+        setConnectorBenchmarks(catalog);
+        if (catalog.length && !catalog.some((item: ConnectorBenchmarkSpec) => item.key === selectedConnectorBenchmarkKey)) {
+          setSelectedConnectorBenchmarkKey(catalog[0].key);
+        }
       }
     } catch (err) {
       console.error("Failed to fetch benchmark data:", err);
@@ -250,6 +370,22 @@ export default function Evals() {
   });
 
   const selectedRunGroup = runGroups.find((group) => group.groupId === selectedRunGroupId) || null;
+  const selectedConnectorBenchmark = connectorBenchmarks.find((item) => item.key === selectedConnectorBenchmarkKey) || connectorBenchmarks[0] || null;
+  const compatibleConnectors = selectedConnectorBenchmark
+    ? connectors
+        .filter((connector) => selectedConnectorBenchmark.connectorTypes.includes((connector.type || "").toLowerCase()))
+        .sort((a, b) => {
+          const connected = (value?: string) => (String(value || "").toLowerCase() === "connected" ? 0 : 1);
+          return connected(a.status) - connected(b.status) || a.name.localeCompare(b.name);
+        })
+    : [];
+  const selectedConnector = compatibleConnectors.find((connector) => connector.connectorId === selectedConnectorId) || compatibleConnectors[0] || null;
+  const selectedConnectorReady = String(selectedConnector?.status || "").toLowerCase() === "connected";
+  const connectorReadinessMessage = selectedConnector
+    ? selectedConnectorReady
+      ? "Connector is connected and ready for runtime smoke."
+      : `${selectedConnector.name} is ${selectedConnector.status || "unknown"}; connect it before running runtime smoke.`
+    : "Select a compatible connector.";
 
   const openRunSelector = (next: PendingRun) => {
     setPendingRun(next);
@@ -259,6 +395,106 @@ export default function Evals() {
 
   const selectedAgent = agents.find((agent) => agent.agentId === selectedAgentId) || null;
   const selectedAgentName = selectedAgent?.name || (selectedAgentId ? "Custom Agent" : "Generalist Agent");
+
+  useEffect(() => {
+    if (!selectedConnectorBenchmark) return;
+    if (!compatibleConnectors.some((connector) => connector.connectorId === selectedConnectorId)) {
+      setSelectedConnectorId(compatibleConnectors[0]?.connectorId || "");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedConnectorBenchmarkKey, connectors.length, connectorBenchmarks.length]);
+
+  const runConnectorBenchmarkSmoke = async () => {
+    if (!selectedConnectorBenchmark || !selectedConnector || !selectedConnectorReady || connectorSmokeLoading) return;
+    setConnectorSmokeLoading(true);
+    setConnectorSmokeError("");
+    setConnectorSmokeReport(null);
+    setConnectorHarvestReport(null);
+    try {
+      const res = await fetch(`${apiUrl}/connector-benchmarks/seed-and-smoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          companyId,
+          connectorId: selectedConnector.connectorId,
+          benchmarkKey: selectedConnectorBenchmark.key,
+        }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setConnectorSmokeReport(data.runtimeSmoke || null);
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setConnectorSmokeError(message);
+      console.error("Failed to run connector benchmark smoke:", err);
+    } finally {
+      setConnectorSmokeLoading(false);
+    }
+  };
+
+  const runConnectorHarvestSmoke = async () => {
+    if (!selectedConnectorBenchmark || !selectedConnector || !selectedConnectorReady || connectorHarvestLoading) return;
+    setConnectorHarvestLoading(true);
+    setConnectorSmokeError("");
+    setConnectorSmokeReport(null);
+    setConnectorHarvestReport(null);
+    try {
+      const seedRes = await fetch(`${apiUrl}/connector-benchmarks/seed`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: user.email,
+          companyId,
+          connectorId: selectedConnector.connectorId,
+          benchmarkKey: selectedConnectorBenchmark.key,
+        }),
+      });
+      if (!seedRes.ok) throw new Error(await seedRes.text());
+      const seeded = await seedRes.json();
+      const benchmarkId = seeded.benchmark?.benchmarkId;
+      if (!benchmarkId) throw new Error("Seed did not return a benchmarkId");
+      const harvestRes = await fetch(`${apiUrl}/benchmarks/${encodeURIComponent(benchmarkId)}/connector-harvest-and-smoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ agentId: seeded.agent?.agentId || "", approveSkills: true }),
+      });
+      if (!harvestRes.ok) throw new Error(await harvestRes.text());
+      const data = await harvestRes.json();
+      setConnectorHarvestReport(data.report || null);
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setConnectorSmokeError(message);
+      console.error("Failed to run connector harvest smoke:", err);
+    } finally {
+      setConnectorHarvestLoading(false);
+    }
+  };
+
+  const runConnectorAuditMatrix = async () => {
+    if (connectorAuditLoading || !companyId) return;
+    setConnectorAuditLoading(true);
+    setConnectorSmokeError("");
+    try {
+      const res = await fetch(`${apiUrl}/connector-benchmarks/audit-matrix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, companyId, publishTools: true }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      setConnectorAuditReport(data.connectorAudit || null);
+      await fetchData();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setConnectorSmokeError(message);
+      console.error("Failed to run connector audit matrix:", err);
+    } finally {
+      setConnectorAuditLoading(false);
+    }
+  };
 
   const runEval = async (evalItem: EvalItem, agentId = selectedAgentId) => {
     if (runningEvalId) return;
@@ -511,6 +747,69 @@ export default function Evals() {
     </div>
   );
 
+  const renderConnectorSmokeRows = (report: ConnectorSmokeReport, maxRows = 4) => (
+    <div className="space-y-1.5">
+      {report.results.slice(0, maxRows).map((result) => (
+        <div key={`${report.benchmarkId}-${result.taskId}`} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-dark-border dark:bg-dark-surface">
+          <div className="flex items-center justify-between gap-2">
+            <p className="min-w-0 flex-1 truncate text-xs font-medium text-gray-700 dark:text-gray-200">{result.name}</p>
+            <span className={`h-2 w-2 flex-shrink-0 rounded-full ${result.success ? "bg-green-400" : "bg-red-400"}`} />
+          </div>
+          <div className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${routerClass(result.routerDecision)}`}>
+              {result.routerDecision || "router unknown"}
+            </span>
+            {result.skillReplayExpected && (
+              <span className="rounded-md border border-primary/20 bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">
+                skill replay expected
+              </span>
+            )}
+            <span className="min-w-0 truncate text-[11px] text-gray-400 dark:text-gray-500">
+              {(result.actualTools || []).join(", ") || "No tool"} · {result.executionMode || "unknown"}
+            </span>
+          </div>
+          {result.failures?.length > 0 && (
+            <p className="mt-1 line-clamp-2 text-[11px] text-red-500 dark:text-red-300">{result.failures[0]}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
+  const renderConnectorAuditRows = (report: ConnectorAuditReport) => (
+    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+      {report.rows.map((row) => (
+        <div key={row.benchmark} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{row.benchmark}</p>
+              <p className="mt-0.5 truncate text-[11px] text-gray-400 dark:text-gray-500">
+                {row.connectorName || "No connector"}{row.connectorStatus ? ` · ${row.connectorStatus}` : ""}
+              </p>
+            </div>
+            <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${statusClass(row.status === "pass" ? "approved" : row.status === "fail" ? "failed" : "pending")}`}>
+              {row.status}
+            </span>
+          </div>
+          {row.status === "pass" ? (
+            <div className="mt-2 grid grid-cols-2 gap-2 text-[11px]">
+              <div className="rounded-lg bg-white px-2 py-1.5 dark:bg-dark-surface">
+                <p className="text-gray-400">Live</p>
+                <p className="font-semibold text-gray-700 dark:text-gray-200">{row.live?.passed}/{row.live?.total}</p>
+              </div>
+              <div className="rounded-lg bg-white px-2 py-1.5 dark:bg-dark-surface">
+                <p className="text-gray-400">Skill</p>
+                <p className="font-semibold text-gray-700 dark:text-gray-200">{row.withSkill?.passed}/{row.withSkill?.total}</p>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 line-clamp-2 text-[11px] text-amber-600 dark:text-amber-400">{row.reason || "Not runnable yet."}</p>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
@@ -518,56 +817,41 @@ export default function Evals() {
       </div>
 
       <div className="flex flex-col w-full h-full relative">
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
-          bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
           <div className="flex items-center gap-2.5">
             <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
-              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
+              <FontAwesomeIcon icon={mode === "benchmarks" ? faClipboardCheck : faClockRotateLeft} className="text-sm" />
             </span>
             <div>
-              <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Benchmarks</h1>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Evaluation tasks and runs</p>
+              <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">
+                {mode === "benchmarks" ? "Benchmarks" : "Runs"}
+              </h1>
+              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">
+                {mode === "benchmarks" ? "Evaluation tasks and benchmarks" : "Benchmark run results"}
+              </p>
             </div>
           </div>
-          <button
-            onClick={() => setShowCreateBenchmark(true)}
-            className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold
-              bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg transition-all"
-          >
-            <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
-            New Benchmark
-          </button>
+          {mode === "benchmarks" && (
+            <button
+              onClick={() => setShowCreateBenchmark(true)}
+              className="flex items-center justify-center gap-1.5 h-9 px-3 rounded-lg text-xs font-semibold
+                bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg transition-all"
+            >
+              <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
+              New Benchmark
+            </button>
+          )}
         </div>
 
-        <div className="flex-1 overflow-auto px-8 lg:px-16 xl:px-28 py-8">
+        <div className="flex-1 overflow-auto px-6 py-6">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3 mb-6">
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-white dark:bg-dark-surface border border-gray-200 dark:border-dark-border">
-              {[
-                { key: "benchmarks" as TabKey, label: "Benchmarks", icon: faClipboardCheck },
-                { key: "runs" as TabKey, label: "Runs", icon: faClockRotateLeft },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => setActiveTab(tab.key)}
-                  className={`flex items-center gap-2 h-8 px-3 rounded-lg text-sm font-medium transition-colors
-                    ${activeTab === tab.key
-                      ? "bg-gradient-primary text-white shadow-glow"
-                      : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border"
-                    }`}
-                >
-                  <FontAwesomeIcon icon={tab.icon} className="text-xs" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-
             <div className="flex items-center gap-2 px-3 h-10 rounded-xl bg-white dark:bg-dark-surface flex-1
               border border-gray-200 dark:border-dark-border
               focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-200">
               <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
               <input
                 type="text"
-                placeholder={activeTab === "benchmarks" ? "Search benchmarks..." : "Search runs..."}
+                placeholder={mode === "benchmarks" ? "Search benchmarks..." : "Search runs..."}
                 className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
@@ -591,16 +875,212 @@ export default function Evals() {
 
           </div>
 
+          {mode === "benchmarks" && (
+            <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-soft dark:border-dark-border dark:bg-dark-surface">
+              <button
+                onClick={() => setShowConnectorSmoke((v) => !v)}
+                className="flex w-full items-center gap-2.5 p-4 text-left"
+              >
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <FontAwesomeIcon icon={faPlug} className="text-xs" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Connector runtime smoke</h2>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Seed benchmark tasks, publish tools, and run the live connector runtime path.
+                  </p>
+                </div>
+                <span className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5">
+                  <FontAwesomeIcon icon={showConnectorSmoke ? faChevronUp : faChevronDown} className="text-xs" />
+                </span>
+              </button>
+              {showConnectorSmoke && (
+              <div className="flex flex-col gap-4 border-t border-gray-100 px-4 py-4 dark:border-dark-border xl:flex-row xl:items-start xl:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto]">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Benchmark</span>
+                      <select
+                        value={selectedConnectorBenchmark?.key || ""}
+                        onChange={(event) => {
+                          setSelectedConnectorBenchmarkKey(event.target.value);
+                          setConnectorSmokeReport(null);
+                          setConnectorSmokeError("");
+                        }}
+                        className={fieldClass}
+                      >
+                        {connectorBenchmarks.map((benchmark) => (
+                          <option key={benchmark.key} value={benchmark.key}>{benchmark.name}</option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Connector</span>
+                      <select
+                        value={selectedConnector?.connectorId || ""}
+                        onChange={(event) => {
+                          setSelectedConnectorId(event.target.value);
+                          setConnectorSmokeReport(null);
+                          setConnectorSmokeError("");
+                        }}
+                        className={fieldClass}
+                        disabled={!compatibleConnectors.length}
+                      >
+                        {compatibleConnectors.length === 0 && <option value="">No compatible connector</option>}
+                        {compatibleConnectors.map((connector) => (
+                          <option key={connector.connectorId} value={connector.connectorId}>
+                            {connector.name} · {connector.status || "unknown"}
+                          </option>
+                        ))}
+                      </select>
+                      <span className={`text-[11px] ${selectedConnectorReady ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"}`}>
+                        {connectorReadinessMessage}
+                      </span>
+                    </label>
+
+                    <button
+                      onClick={runConnectorBenchmarkSmoke}
+                      disabled={!selectedConnector || !selectedConnectorReady || connectorSmokeLoading || connectorHarvestLoading}
+                      className="mt-5 flex h-10 items-center justify-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-medium text-white shadow-glow transition-all hover:shadow-glow-lg disabled:opacity-60 md:mt-auto"
+                    >
+                      <FontAwesomeIcon icon={connectorSmokeLoading ? faSpinner : faWrench} className={`text-xs ${connectorSmokeLoading ? "animate-spin" : ""}`} />
+                      {connectorSmokeLoading ? "Running..." : "Seed + Smoke"}
+                    </button>
+                    <button
+                      onClick={runConnectorHarvestSmoke}
+                      disabled={!selectedConnector || !selectedConnectorReady || connectorSmokeLoading || connectorHarvestLoading}
+                      className="mt-5 flex h-10 items-center justify-center gap-2 rounded-xl border border-primary/30 bg-primary/10 px-4 text-sm font-medium text-primary transition-all hover:bg-primary/15 disabled:opacity-60 md:mt-auto"
+                    >
+                      <FontAwesomeIcon icon={connectorHarvestLoading ? faSpinner : faWandMagicSparkles} className={`text-xs ${connectorHarvestLoading ? "animate-spin" : ""}`} />
+                      {connectorHarvestLoading ? "Harvesting..." : "Harvest + Skill smoke"}
+                    </button>
+                  </div>
+
+                  {selectedConnectorBenchmark && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedConnectorBenchmark.tasks.map((task) => (
+                        <span
+                          key={task.key}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"
+                          title={task.expectedTools.join(", ")}
+                        >
+                          {task.requiresBrowser && <FontAwesomeIcon icon={faGlobe} className="text-[10px] text-sky-500" />}
+                          {task.requiresApproval && <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px] text-amber-500" />}
+                          {task.name}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                    <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800 dark:text-gray-100">Connector audit matrix</p>
+                        <p className="text-[11px] text-gray-500 dark:text-gray-400">Run every connector benchmark and mark blocked auth separately from runtime failures.</p>
+                      </div>
+                      <button
+                        onClick={runConnectorAuditMatrix}
+                        disabled={connectorAuditLoading || !companyId}
+                        className="flex h-8 items-center justify-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border"
+                      >
+                        <FontAwesomeIcon icon={connectorAuditLoading ? faSpinner : faListCheck} className={`text-[10px] ${connectorAuditLoading ? "animate-spin" : ""}`} />
+                        {connectorAuditLoading ? "Auditing..." : "Run matrix"}
+                      </button>
+                    </div>
+                    {connectorAuditReport && (
+                      <div className="mt-3">
+                        <div className="flex flex-wrap gap-1.5 text-[11px] font-semibold">
+                          <span className="rounded-md bg-green-50 px-2 py-0.5 text-green-600 dark:bg-green-500/10 dark:text-green-400">{connectorAuditReport.summary.pass} pass</span>
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">{connectorAuditReport.summary.blocked} blocked</span>
+                          <span className="rounded-md bg-red-50 px-2 py-0.5 text-red-500 dark:bg-red-500/10 dark:text-red-400">{connectorAuditReport.summary.fail} fail</span>
+                          <span className="rounded-md bg-white px-2 py-0.5 text-gray-500 dark:bg-dark-surface dark:text-gray-400">{connectorAuditReport.summary.total} total</span>
+                        </div>
+                        {renderConnectorAuditRows(connectorAuditReport)}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="w-full xl:w-[360px]">
+                  {connectorSmokeError ? (
+                    <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                      {connectorSmokeError}
+                    </div>
+                  ) : connectorHarvestReport ? (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Skill smoke</p>
+                        <span className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                          {connectorHarvestReport.harvest.approvedSkills} skills
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-[11px] font-semibold">
+                        <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
+                          <p className="text-gray-400">Without skill</p>
+                          <p className="mt-1 text-gray-700 dark:text-gray-200">{connectorHarvestReport.runtimeWithoutSkill.passed}/{connectorHarvestReport.runtimeWithoutSkill.total} pass</p>
+                          <p className="mt-0.5 truncate text-gray-400">live runtime, skill replay forbidden</p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
+                          <p className="text-gray-400">With skill</p>
+                          <p className="mt-1 text-gray-700 dark:text-gray-200">{connectorHarvestReport.runtimeWithSkill.passed}/{connectorHarvestReport.runtimeWithSkill.total} pass</p>
+                          <p className="mt-0.5 truncate text-gray-400">approved trajectory replay required</p>
+                        </div>
+                      </div>
+                      <div className="mt-2">
+                        <p className="mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400">Without skill router trace</p>
+                        {renderConnectorSmokeRows(connectorHarvestReport.runtimeWithoutSkill, 3)}
+                      </div>
+                      <div className="mt-2">
+                        <p className="mb-1 text-[11px] font-semibold text-gray-500 dark:text-gray-400">With skill router trace</p>
+                        {renderConnectorSmokeRows(connectorHarvestReport.runtimeWithSkill, 3)}
+                      </div>
+                      <div className="mt-2 space-y-1.5">
+                        {connectorHarvestReport.harvest.results.slice(0, 3).map((result) => (
+                          <div key={result.taskId} className="rounded-lg border border-gray-200 bg-white px-2.5 py-2 dark:border-dark-border dark:bg-dark-surface">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate text-xs font-medium text-gray-700 dark:text-gray-200">{result.name}</p>
+                              <span className={`h-2 w-2 flex-shrink-0 rounded-full ${result.skill ? "bg-green-400" : result.status === "skipped" ? "bg-amber-400" : "bg-red-400"}`} />
+                            </div>
+                            <p className="mt-1 truncate text-[11px] text-gray-400 dark:text-gray-500">
+                              {result.status}{result.skill ? ` · ${result.skill.status} skill` : result.reason ? ` · ${result.reason}` : ""}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : connectorSmokeReport ? (
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="mb-2 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-700 dark:text-gray-200">Last smoke</p>
+                        <div className="flex items-center gap-1.5 text-[11px] font-semibold">
+                          <span className="rounded-md bg-green-50 px-2 py-0.5 text-green-600 dark:bg-green-500/10 dark:text-green-400">{connectorSmokeReport.passed} pass</span>
+                          <span className="rounded-md bg-red-50 px-2 py-0.5 text-red-500 dark:bg-red-500/10 dark:text-red-400">{connectorSmokeReport.failed} fail</span>
+                        </div>
+                      </div>
+                      {renderConnectorSmokeRows(connectorSmokeReport, 4)}
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-dashed border-gray-200 px-3 py-6 text-center text-xs text-gray-400 dark:border-dark-border dark:text-gray-500">
+                      No connector smoke run yet.
+                    </div>
+                  )}
+                </div>
+              </div>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20 gap-3">
               <FontAwesomeIcon icon={faSpinner} className="text-primary text-2xl animate-spin" />
               <p className="text-sm text-gray-400 dark:text-gray-500">Loading evals...</p>
             </div>
-          ) : activeTab === "benchmarks" ? (
+          ) : mode === "benchmarks" ? (
             filteredBenchmarks.length === 0 ? (
               <EmptyState text={companyId ? "No benchmarks for this company yet." : "Select a company to see its benchmarks."} />
             ) : (
-              <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-4">
                 {filteredBenchmarks.map((benchmark) => (
                   <div
                     key={benchmark.benchmarkId}
@@ -648,9 +1128,9 @@ export default function Evals() {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="grid gap-2 md:grid-cols-2">
                       {benchmark.tasks.length === 0 && (
-                        <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border px-3 py-6 text-center">
+                        <div className="md:col-span-2 rounded-lg border border-dashed border-gray-200 dark:border-dark-border px-3 py-6 text-center">
                           <p className="text-xs text-gray-400 dark:text-gray-500">
                             No tasks yet.{benchmark.persisted ? " Use “Add Task” to create one." : ""}
                           </p>
@@ -677,15 +1157,6 @@ export default function Evals() {
                             </div>
                             <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
                           </div>
-                          <button
-                            onClick={() => openRunSelector({ type: "task", evalItem: task })}
-                            disabled={runningEvalId === task.evalId}
-                            className="flex items-center justify-center gap-1.5 px-3 h-8 rounded-lg text-xs font-medium
-                              bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg disabled:opacity-60 transition-all"
-                          >
-                            <FontAwesomeIcon icon={runningEvalId === task.evalId ? faSpinner : faPlay} className={`text-[10px] ${runningEvalId === task.evalId ? "animate-spin" : ""}`} />
-                            Run
-                          </button>
                         </div>
                       ))}
                     </div>
