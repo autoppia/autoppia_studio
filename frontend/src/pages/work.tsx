@@ -1303,12 +1303,18 @@ export default function Work() {
               )}
 
               {latestWorkSessionId(selectedItem) && (
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   <button
                     onClick={() => navigate(`/session/${latestWorkSessionId(selectedItem)}`)}
                     className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
                   >
                     Open latest runtime session
+                  </button>
+                  <button
+                    onClick={() => navigate(`/runtime?sessionIds=${encodeURIComponent((selectedItem.operational?.latestSessionIds || []).join(","))}`)}
+                    className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                  >
+                    Open Runtime Lab
                   </button>
                   <button
                     onClick={() => navigate(`/artifacts?sessionId=${encodeURIComponent(latestWorkSessionId(selectedItem))}`)}

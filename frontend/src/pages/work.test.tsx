@@ -118,5 +118,6 @@ describe("Work page", () => {
     expect(await screen.findByRole("button", { name: "Open tool" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open benchmark" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open recent runs" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
   });
 });
