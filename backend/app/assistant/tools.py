@@ -32,6 +32,7 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.entity_mapper import propose_entities_from_openapi_url
+from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
@@ -462,64 +463,6 @@ def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
-def _skill_package_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    manifest_ready = 0
-    io_contracts = 0
-    expected_artifacts = 0
-    regression_suites = 0
-    publishable = 0
-    versioned = 0
-    samples: list[dict[str, Any]] = []
-    for doc in docs:
-        package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
-        activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
-        policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
-        evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
-        regression = evidence.get("regressionSuite") if isinstance(evidence.get("regressionSuite"), dict) else {}
-        io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
-        outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
-        has_activation = bool(str(doc.get("whenToUse") or activation.get("description") or "").strip())
-        has_instructions = bool(str(doc.get("instructions") or "").strip())
-        has_policy = bool(str(doc.get("riskPolicy") or policies.get("riskPolicy") or "").strip() or policies.get("runtimePolicy") or doc.get("runtimePolicy"))
-        has_lineage = bool(_list_values(doc.get("trajectoryIds")) or _list_values(evidence.get("sourceTrajectoryIds")) or evidence.get("sourceTrajectories"))
-        has_io = bool(io_contract.get("declared") or _list_values(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip())
-        has_artifacts = bool(_list_values(doc.get("expectedArtifacts")) or _list_values(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard"))
-        has_regression = bool(regression.get("cases") or _list_values(regression.get("benchmarkIds")) or _list_values(regression.get("evalIds")) or evidence.get("latestRegression"))
-        can_publish = bool(regression.get("publishable") or (isinstance(evidence.get("latestRegression"), dict) and str(evidence["latestRegression"].get("label") or "").lower() == "pass"))
-        ready = has_activation and has_instructions and has_policy and has_lineage and has_io
-        if ready:
-            manifest_ready += 1
-        if has_io:
-            io_contracts += 1
-        if has_artifacts:
-            expected_artifacts += 1
-        if has_regression:
-            regression_suites += 1
-        if ready and can_publish:
-            publishable += 1
-        if doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion"):
-            versioned += 1
-        if len(samples) < 5:
-            samples.append({
-                "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
-                "name": str(doc.get("name") or ""),
-                "manifestReady": ready,
-                "ioContract": has_io,
-                "regressionSuite": has_regression,
-                "publishable": ready and can_publish,
-            })
-    return {
-        "total": len(docs),
-        "manifestReady": manifest_ready,
-        "ioContracts": io_contracts,
-        "expectedArtifacts": expected_artifacts,
-        "regressionSuites": regression_suites,
-        "publishable": publishable,
-        "versioned": versioned,
-        "sample": samples,
-    }
-
-
 def _work_orchestration_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     with_contract = 0
     budgeted = 0
@@ -720,7 +663,7 @@ class AutomataAssistantTools:
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         connector_map = _connector_factory_summary(connector_docs)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
-        skill_package_summary = _skill_package_summary(skill_docs)
+        skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = _session_contract_summary(session_docs)

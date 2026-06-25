@@ -31,6 +31,7 @@ from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
@@ -147,63 +148,6 @@ def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
         "replayReady": replay_ready,
         "creditsSpent": round(total_credits, 4),
         "runtimeKinds": _sorted_counts(runtime_kinds),
-    }
-
-
-def _skill_package_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    packages: list[dict[str, Any]] = []
-    for doc in docs:
-        package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
-        activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
-        policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
-        evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
-        regression = evidence.get("regressionSuite") if isinstance(evidence.get("regressionSuite"), dict) else {}
-        io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
-        outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
-        production_gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else {}
-        latest_regression = evidence.get("latestRegression") if isinstance(evidence.get("latestRegression"), dict) else doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else {}
-        checks = {
-            "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
-            "instructions": bool(str(doc.get("instructions") or "").strip()),
-            "riskPolicy": bool(str(doc.get("riskPolicy") or policies.get("riskPolicy") or "").strip() or policies.get("runtimePolicy") or doc.get("runtimePolicy")),
-            "sourceTrajectory": bool(_normalized_list(doc.get("trajectoryIds")) or _normalized_list(evidence.get("sourceTrajectoryIds")) or evidence.get("sourceTrajectories")),
-            "ioContract": bool(io_contract.get("declared") or _normalized_list(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip()),
-            "expectedArtifacts": bool(_normalized_list(doc.get("expectedArtifacts")) or _normalized_list(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard")),
-            "regressionSuite": bool(regression.get("cases") or _normalized_list(regression.get("benchmarkIds")) or _normalized_list(regression.get("evalIds")) or latest_regression),
-        }
-        manifest_ready = checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["sourceTrajectory"] and checks["ioContract"]
-        publishable_regression = bool(
-            regression.get("publishable")
-            or str(latest_regression.get("label") or "").lower() == "pass"
-            or str(production_gate.get("state") or "").lower() == "publishable"
-            or production_gate.get("canPublish")
-        )
-        blockers = _normalized_list(production_gate.get("blockers"))
-        if not blockers:
-            blockers = [key for key, ready in checks.items() if not ready]
-            if manifest_ready and not publishable_regression:
-                blockers.append("publishableRegression")
-        packages.append(
-            {
-                "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
-                "name": str(doc.get("name") or ""),
-                "manifestReady": manifest_ready,
-                "publishable": manifest_ready and publishable_regression,
-                "checks": checks,
-                "blockers": blockers[:8],
-                "versioned": bool(doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion")),
-            }
-        )
-    return {
-        "total": len(docs),
-        "manifestReady": sum(1 for item in packages if item["manifestReady"]),
-        "publishable": sum(1 for item in packages if item["publishable"]),
-        "withIoContract": sum(1 for item in packages if item["checks"]["ioContract"]),
-        "withExpectedArtifacts": sum(1 for item in packages if item["checks"]["expectedArtifacts"]),
-        "withRegressionSuite": sum(1 for item in packages if item["checks"]["regressionSuite"]),
-        "versioned": sum(1 for item in packages if item["versioned"]),
-        "blocked": sum(1 for item in packages if item["blockers"]),
-        "packages": packages[:8],
     }
 
 
@@ -551,7 +495,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         benchmark_verticals = _sorted_counts([str(doc.get("vertical") or "general") for doc in benchmarks])
         skill_artifacts = sorted({artifact for skill in skills for artifact in _normalized_list(skill.get("expectedArtifacts"))})
         hardened_skills = sum(1 for skill in skills if skill_reusability_ready(skill))
-        skill_packages = _skill_package_summary(skills)
+        skill_packages = summarize_skill_packages(skills, package_limit=8)
         side_effects = _sorted_counts([str(tool.get("sideEffects") or tool.get("sideEffect") or "unknown") for tool in tools])
         tool_entities = sorted(
             {

@@ -24,6 +24,7 @@ from app.models.agent_config import AgentCallable, AgentConfig
 from app.services.approvals import create_pending_approval, stable_approval_key
 from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
+from app.services.skill_packages import summarize_skill_packages
 
 
 DEFAULT_BASE_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", "http://127.0.0.1:5060/step").strip()
@@ -132,62 +133,6 @@ def _skill_callable(doc: dict[str, Any]) -> dict[str, Any]:
         outputEntity=str(doc.get("outputEntity") or ""),
         outputCard=doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {},
     ).model_dump()
-
-
-def _list_values(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [str(item).strip() for item in value if str(item or "").strip()]
-
-
-def _skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
-    package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
-    activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
-    policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
-    evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
-    regression = evidence.get("regressionSuite") if isinstance(evidence.get("regressionSuite"), dict) else {}
-    io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
-    outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
-    production_gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else {}
-    checks = {
-        "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
-        "instructions": bool(str(doc.get("instructions") or "").strip()),
-        "riskPolicy": bool(str(doc.get("riskPolicy") or policies.get("riskPolicy") or "").strip() or policies.get("runtimePolicy") or doc.get("runtimePolicy")),
-        "sourceTrajectory": bool(_list_values(doc.get("trajectoryIds")) or evidence.get("sourceTrajectories")),
-        "ioContract": bool(io_contract.get("declared") or _list_values(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip()),
-        "expectedArtifacts": bool(_list_values(doc.get("expectedArtifacts")) or _list_values(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard")),
-        "regressionSuite": bool(regression.get("cases") or _list_values(regression.get("benchmarkIds")) or _list_values(regression.get("evalIds")) or evidence.get("latestRegression")),
-    }
-    manifest_ready = checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["sourceTrajectory"] and checks["ioContract"]
-    publishable = bool(production_gate.get("canPublish") or production_gate.get("state") == "publishable" or (manifest_ready and regression.get("publishable")))
-    blockers = _list_values(production_gate.get("blockers"))
-    if not blockers:
-        blockers = [key for key, ready in checks.items() if not ready]
-        if manifest_ready and not publishable:
-            blockers.append("publishableRegression")
-    return {
-        "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
-        "name": str(doc.get("name") or ""),
-        "version": doc.get("version") or (package.get("metadata") if isinstance(package.get("metadata"), dict) else {}).get("version"),
-        "manifestReady": manifest_ready,
-        "publishable": publishable,
-        "checks": checks,
-        "blockers": blockers,
-        "progressiveDisclosure": package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {},
-    }
-
-
-def _skill_package_runtime_summary(skill_docs: list[dict[str, Any]]) -> dict[str, Any]:
-    packages = [_skill_package_readiness(skill) for skill in skill_docs]
-    return {
-        "total": len(skill_docs),
-        "manifestReady": sum(1 for item in packages if item["manifestReady"]),
-        "publishable": sum(1 for item in packages if item["publishable"]),
-        "withIoContract": sum(1 for item in packages if item["checks"]["ioContract"]),
-        "withRegressionSuite": sum(1 for item in packages if item["checks"]["regressionSuite"]),
-        "blocked": sum(1 for item in packages if item["blockers"]),
-        "packages": packages[:50],
-    }
 
 
 def _agent_config_payload(agent_config: dict[str, Any], context: dict[str, Any], memory: dict[str, Any]) -> dict[str, Any]:
@@ -533,7 +478,7 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
     context = await _capability_context(agent_config)
     tool_callables = annotate_runtime_availability(agent_config, [_tool_callable(tool) for tool in context["tools"]])
     skill_callables = annotate_runtime_availability(agent_config, [_skill_callable(skill) for skill in context["skills"]])
-    skill_packages = _skill_package_runtime_summary(context["skills"])
+    skill_packages = summarize_skill_packages(context["skills"])
     resources = context.get("resources") if isinstance(context.get("resources"), list) else []
     browser_tools = [
         "browser.navigate",
