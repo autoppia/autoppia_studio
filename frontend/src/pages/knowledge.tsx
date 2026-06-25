@@ -566,6 +566,7 @@ export default function Knowledge(): React.ReactElement {
               {visibleDocuments.map((document) => {
                 const meta = fileMeta(document.filename, document.contentType);
                 const contract = document.resourceContract;
+                const gate = contract?.resourceGate;
                 return (
                   <div key={document.documentId} className="group bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 hover:border-primary/40 hover:shadow-soft transition-all duration-200">
                     <div className="flex items-start gap-3">
@@ -613,7 +614,17 @@ export default function Knowledge(): React.ReactElement {
                         <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${contract.governance?.freshness?.status === "current" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
                           {contract.governance?.freshness?.status || "indexing"}
                         </span>
+                        {gate && (
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${gate.readyForRuntime ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                            {gate.readyForRuntime ? "runtime-ready" : gate.state || "blocked"}
+                          </span>
+                        )}
                       </div>
+                    )}
+                    {gate && !gate.readyForRuntime && (
+                      <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 truncate">
+                        {gate.nextActions?.[0] || `${gate.blockers?.length || 0} blocker(s) before runtime use.`}
+                      </p>
                     )}
                     {["indexing", "uploaded"].includes((document.status || "").toLowerCase()) && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 truncate">

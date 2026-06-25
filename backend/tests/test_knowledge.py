@@ -171,6 +171,14 @@ async def test_upload_document_creates_knowledge_connector(monkeypatch, tmp_path
     assert result["document"]["resourceContract"]["governance"]["citability"]["citable"] is False
     assert result["document"]["resourceContract"]["governance"]["citability"]["citationLabel"] == "handbook.md"
     assert "knowledge.company_knowledge.search" in result["document"]["resourceContract"]["readTools"]
+    assert result["document"]["resourceContract"]["resourceGate"]["state"] == "blocked"
+    assert result["document"]["resourceContract"]["resourceGate"]["readyForRuntime"] is False
+    assert set(result["document"]["resourceContract"]["resourceGate"]["blockers"]) == {
+        "indexed",
+        "acl",
+        "freshness",
+        "citability",
+    }
     assert len(vector_dbs.docs) == 2
     assert connectors.docs[0]["type"] == "knowledge"
     assert documents.docs[0]["connectorId"] == connectors.docs[0]["connectorId"]
@@ -289,6 +297,43 @@ def test_vector_index_payload_names_provider_collection_and_embedding(monkeypatc
     assert payload["embeddingModel"] == "hash-128"
     assert payload["indexedDocuments"] == 1
     assert payload["documentCount"] == 2
+
+
+def test_serialize_marks_indexed_acl_resource_ready_for_runtime():
+    document = knowledge_route._serialize(
+        {
+            "documentId": "doc-1",
+            "resourceId": "resource-1",
+            "email": "user@example.com",
+            "companyId": "company-1",
+            "filename": "claims-handbook.md",
+            "contentType": "text/markdown",
+            "size": 1234,
+            "status": "indexed",
+            "source": "upload",
+            "connectorId": "connector-1",
+            "vectorDatabaseId": "vector-1",
+            "vectorDatabaseName": "Claims Knowledge",
+            "vectorCollectionName": "claims_knowledge",
+            "acl": {"visibility": "company", "allowedRoles": ["claims"]},
+            "citationLabel": "Claims Handbook",
+            "stale": False,
+        }
+    )
+
+    gate = document["resourceContract"]["resourceGate"]
+
+    assert gate["state"] == "ready"
+    assert gate["readyForRuntime"] is True
+    assert gate["blockers"] == []
+    assert gate["checks"] == {
+        "indexed": True,
+        "vectorStore": True,
+        "readTools": True,
+        "acl": True,
+        "freshness": True,
+        "citability": True,
+    }
 
 
 @pytest.mark.asyncio

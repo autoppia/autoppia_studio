@@ -1286,6 +1286,13 @@ export interface KnowledgeDocument {
       };
     };
     readTools?: string[];
+    resourceGate?: {
+      state?: "ready" | "blocked" | "indexing" | string;
+      readyForRuntime?: boolean;
+      blockers?: string[];
+      nextActions?: string[];
+      checks?: Record<string, boolean>;
+    };
   };
   createdAt?: string;
   updatedAt?: string;
