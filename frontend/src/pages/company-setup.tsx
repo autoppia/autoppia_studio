@@ -86,6 +86,36 @@ function SurfaceLabel({ value }: { value: string }) {
   return <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-medium ${tone}`}>{label}</span>;
 }
 
+function DeepLinkCard({
+  label,
+  value,
+  hint,
+  actionLabel,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+  actionLabel: string;
+  onClick: () => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>
+      <button
+        type="button"
+        onClick={onClick}
+        className="mt-4 inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+      >
+        {actionLabel}
+        <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+      </button>
+    </div>
+  );
+}
+
 function statusTone(status: string) {
   if (status === "connected") return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300";
   if (status === "needs_auth") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
@@ -427,6 +457,67 @@ export default function CompanySetup(): React.ReactElement {
                   ))}
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900 dark:text-white">Operating Graph</h2>
+              <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                Read the company as a control plane: systems create capabilities, capabilities run in governed runtime sessions, and runtime feeds work, approvals and artifacts.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 grid gap-4 xl:grid-cols-4">
+            <DeepLinkCard
+              label="Capability Factory"
+              value={contract.factory.skills}
+              hint={`${contract.factory.tools} tools · ${contract.factory.trajectories} trajectories · ${contract.factory.readySkills} ready skills`}
+              actionLabel="Open capabilities"
+              onClick={() => navigate("/capabilities")}
+            />
+            <DeepLinkCard
+              label="Runtime Lab"
+              value={contract.runtime.sessions}
+              hint={`${contract.runtime.artifacts} artifacts · ${contract.runtime.pendingApprovals} pending approvals`}
+              actionLabel="Open runtime"
+              onClick={() => navigate("/runtime")}
+            />
+            <DeepLinkCard
+              label="Work Orchestration"
+              value={contract.runtime.workItems}
+              hint={`${contract.runtime.runningWorkItems} running · ${contract.runtime.reviewWorkItems} in review`}
+              actionLabel="Open work"
+              onClick={() => navigate("/work")}
+            />
+            <DeepLinkCard
+              label="Approval Surface"
+              value={contract.runtime.pendingApprovals}
+              hint={`${contract.runtime.approvedApprovals} approved decisions already recorded`}
+              actionLabel="Open approvals"
+              onClick={() => navigate("/approvals?status=pending")}
+            />
+          </div>
+          <div className="mt-4 grid gap-4 xl:grid-cols-2">
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Flow</p>
+              <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                Systems and credentials unlock typed tools. Tasks and benchmarks create trajectories. Approved trajectories become skills. Sessions execute those capabilities under policy and produce approvals, artifacts and work evidence.
+              </p>
+            </div>
+            <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Next bottleneck</p>
+              <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                {contract.factory.readySkills === 0
+                  ? "The factory still needs approved skills before runtime can reuse business procedures reliably."
+                  : contract.runtime.pendingApprovals > 0
+                    ? "Runtime is generating governed actions. Clear pending approvals to keep work flowing."
+                    : contract.runtime.workItems === 0
+                      ? "Capabilities and runtime are ready, but work orchestration is still thin."
+                      : "The core operating graph is active. Next gains likely come from better eval coverage and deeper tool synthesis."}
+              </p>
             </div>
           </div>
         </div>
