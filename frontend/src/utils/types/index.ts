@@ -811,6 +811,8 @@ export interface HarvesterRun {
   companyId: string;
   connectorId: string;
   connectorName: string;
+  benchmarkId?: string;
+  evalId?: string;
   harvesterType?: string;
   surface?: string;
   status: string;

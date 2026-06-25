@@ -1369,6 +1369,7 @@ export default function Capabilities(): React.ReactElement {
     [connectors],
   );
   const connectorFilter = searchParams.get("connector") || "";
+  const benchmarkFilter = searchParams.get("benchmark") || "";
 
   const generateConnector = useMemo(
     () => customConnectors.find((connector) => connector.connectorId === generateConnectorId) || null,
@@ -1526,21 +1527,73 @@ export default function Capabilities(): React.ReactElement {
     [connectorFilter, connectors],
   );
   const benchmarkNamesById = useMemo(() => new Map(benchmarks.map((benchmark) => [benchmark.benchmarkId, benchmark.name])), [benchmarks]);
+  const filteredBenchmark = useMemo(
+    () => benchmarks.find((benchmark) => benchmark.benchmarkId === benchmarkFilter) || null,
+    [benchmarkFilter, benchmarks],
+  );
+  const benchmarkFilterEvalIds = useMemo(
+    () => new Set((filteredBenchmark?.tasks || []).map((task) => task.evalId).filter(Boolean)),
+    [filteredBenchmark],
+  );
+  const benchmarkScopedConnectorIds = useMemo(() => {
+    if (!benchmarkFilter) return null;
+    const scoped = new Set<string>();
+    for (const trajectory of trajectories) {
+      const matches = trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId));
+      if (!matches) continue;
+      for (const connectorId of trajectory.connectorIds || []) {
+        if (connectorId) scoped.add(connectorId);
+      }
+    }
+    for (const skill of skills) {
+      const directMatch = skill.benchmarkId === benchmarkFilter || (skill.evalId && benchmarkFilterEvalIds.has(skill.evalId));
+      const trajectoryMatch = (skill.trajectoryIds || []).some((trajectoryId) => {
+        const trajectory = trajectoriesById.get(trajectoryId);
+        return Boolean(trajectory && (trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId))));
+      });
+      if (!directMatch && !trajectoryMatch) continue;
+      for (const connectorId of skill.connectorIds || []) {
+        if (connectorId) scoped.add(connectorId);
+      }
+    }
+    return scoped;
+  }, [benchmarkFilter, benchmarkFilterEvalIds, skills, trajectories, trajectoriesById]);
   const filteredTools = useMemo(
-    () => connectorFilter ? tools.filter((tool) => tool.connectorId === connectorFilter) : tools,
-    [connectorFilter, tools],
+    () => tools.filter((tool) => {
+      if (connectorFilter && tool.connectorId !== connectorFilter) return false;
+      if (!benchmarkScopedConnectorIds) return true;
+      return benchmarkScopedConnectorIds.has(tool.connectorId);
+    }),
+    [benchmarkScopedConnectorIds, connectorFilter, tools],
   );
   const filteredTrajectories = useMemo(
-    () => connectorFilter ? trajectories.filter((trajectory) => (trajectory.connectorIds || []).includes(connectorFilter)) : trajectories,
-    [connectorFilter, trajectories],
+    () => trajectories.filter((trajectory) => {
+      if (connectorFilter && !(trajectory.connectorIds || []).includes(connectorFilter)) return false;
+      if (!benchmarkFilter) return true;
+      return trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId));
+    }),
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, trajectories],
   );
   const filteredSkills = useMemo(
-    () => connectorFilter ? skills.filter((skill) => (skill.connectorIds || []).includes(connectorFilter)) : skills,
-    [connectorFilter, skills],
+    () => skills.filter((skill) => {
+      if (connectorFilter && !(skill.connectorIds || []).includes(connectorFilter)) return false;
+      if (!benchmarkFilter) return true;
+      if (skill.benchmarkId === benchmarkFilter) return true;
+      if (skill.evalId && benchmarkFilterEvalIds.has(skill.evalId)) return true;
+      return (skill.trajectoryIds || []).some((trajectoryId) => {
+        const trajectory = trajectoriesById.get(trajectoryId);
+        return Boolean(trajectory && (trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId))));
+      });
+    }),
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, skills, trajectoriesById],
   );
   const filteredRuns = useMemo(
-    () => connectorFilter ? runs.filter((run) => run.connectorId === connectorFilter) : runs,
-    [connectorFilter, runs],
+    () => runs.filter((run) => {
+      if (connectorFilter && run.connectorId !== connectorFilter) return false;
+      if (!benchmarkFilter) return true;
+      return run.benchmarkId === benchmarkFilter || (run.evalId && benchmarkFilterEvalIds.has(run.evalId));
+    }),
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, runs],
   );
   const toolsByConnector = useMemo(() => {
     const groups = new Map<string, { connectorKey: string; connectorName: string; tools: CompanyTool[] }>();
@@ -1683,6 +1736,21 @@ export default function Capabilities(): React.ReactElement {
     navigate(path);
   }, [navigate]);
 
+  const setFactoryScope = useCallback((options: { view?: ViewKey; connectorId?: string; benchmarkId?: string; replace?: boolean }) => {
+    const next = new URLSearchParams(searchParams);
+    if (options.view) next.set("view", options.view);
+    if (options.connectorId) next.set("connector", options.connectorId);
+    else if (options.connectorId === "") next.delete("connector");
+    if (options.benchmarkId) next.set("benchmark", options.benchmarkId);
+    else if (options.benchmarkId === "") next.delete("benchmark");
+    if (routeKind) {
+      navigate(`/capabilities?${next.toString()}`, { replace: options.replace ?? false });
+      return;
+    }
+    if (options.view) setView(options.view);
+    setSearchParams(next, { replace: options.replace ?? false });
+  }, [navigate, routeKind, searchParams, setSearchParams]);
+
   useEffect(() => {
     if (!routeKind || !routeId) {
       setDetail(null);
@@ -1793,6 +1861,7 @@ export default function Capabilities(): React.ReactElement {
   const connectorCoverage = useMemo(() => {
     const auditByBenchmark = new Map((connectorAuditReport?.rows || []).map((row) => [row.benchmark, row]));
     return connectorBenchmarks.map((spec) => {
+      const matchingBenchmark = benchmarks.find((benchmark) => benchmark.name === spec.name);
       const connector = connectors
         .filter((item) => (spec.connectorTypes || []).includes(item.type))
         .sort((a, b) => {
@@ -1822,6 +1891,7 @@ export default function Capabilities(): React.ReactElement {
       return {
         spec,
         connector,
+        benchmark: matchingBenchmark || null,
         audit,
         tools: toolIds.size,
         trajectories: trajectories.length,
@@ -1829,7 +1899,7 @@ export default function Capabilities(): React.ReactElement {
         regressionReady: skills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "pass").length,
       };
     });
-  }, [connectorAuditReport?.rows, connectorBenchmarks, connectors, filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId]);
+  }, [benchmarks, connectorAuditReport?.rows, connectorBenchmarks, connectors, filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId]);
   const factoryGaps = useMemo(() => {
     const failedRuns = filteredRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
     const untypedTools = filteredTools.filter((tool) => (tool.inputEntities || []).length === 0 && !tool.outputEntity);
@@ -2018,13 +2088,29 @@ export default function Capabilities(): React.ReactElement {
                   </div>
                   <button
                     onClick={() => {
-                      const next = new URLSearchParams(searchParams);
-                      next.delete("connector");
-                      setSearchParams(next);
+                      setFactoryScope({ connectorId: "" });
                     }}
                     className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
                   >
                     Clear filter
+                  </button>
+                </div>
+              )}
+              {filteredBenchmark && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Benchmark filter active</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Showing Factory evidence only for <span className="font-semibold text-gray-700 dark:text-gray-200">{filteredBenchmark.name}</span>.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setFactoryScope({ benchmarkId: "" });
+                    }}
+                    className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+                  >
+                    Clear benchmark
                   </button>
                 </div>
               )}
@@ -2359,6 +2445,31 @@ export default function Capabilities(): React.ReactElement {
                             <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">{row.audit.reason}</p>
                           )}
                         </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-dark-border">
+                          <button
+                            onClick={() => setFactoryScope({
+                              view: "trajectories",
+                              connectorId: row.connector?.connectorId || "",
+                              benchmarkId: row.benchmark?.benchmarkId || "",
+                            })}
+                            disabled={!row.connector?.connectorId}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border"
+                          >
+                            Open traces
+                          </button>
+                          <button
+                            onClick={() => row.benchmark
+                              ? setFactoryScope({
+                                view: "skills",
+                                connectorId: row.connector?.connectorId || "",
+                                benchmarkId: row.benchmark.benchmarkId,
+                              })
+                              : navigate("/evals")}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                          >
+                            {row.benchmark ? "Open skill pipeline" : "Seed benchmark"}
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -2465,14 +2576,17 @@ export default function Capabilities(): React.ReactElement {
                           )}
                           <div className="mt-3 flex flex-wrap items-center gap-2">
                             <button
-                              onClick={() => setFactoryView("trajectories")}
+                              onClick={() => setFactoryScope({ view: "trajectories", benchmarkId: row.benchmarkId })}
                               className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
                             >
                               <FontAwesomeIcon icon={faRoute} className="text-[10px]" />
                               Review evidence
                             </button>
                             <button
-                              onClick={() => setFactoryView(row.skillCount > 0 ? "skills" : row.runFailures > 0 ? "runs" : "trajectories")}
+                              onClick={() => setFactoryScope({
+                                view: row.skillCount > 0 ? "skills" : row.runFailures > 0 ? "runs" : "trajectories",
+                                benchmarkId: row.benchmarkId,
+                              })}
                               className="inline-flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white"
                             >
                               <FontAwesomeIcon icon={row.skillCount > 0 ? faWandMagicSparkles : row.runFailures > 0 ? faTractor : faArrowRight} className="text-[10px]" />
