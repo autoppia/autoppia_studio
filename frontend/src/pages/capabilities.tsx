@@ -645,6 +645,90 @@ function CapabilityDetailModal({
           trajectories: (detail.item.trajectoryIds || []).length,
           skills: 1,
         };
+  const capabilityGraph = useMemo(() => {
+    const entities = new Set<string>();
+    const tools = new Set<string>();
+    const benchmarks = new Set<string>();
+    const trajectories = new Set<string>();
+    const skills = new Set<string>();
+    const toolsById = new Map(Array.from(toolsByName.values()).map((tool) => [tool.toolId, tool]));
+
+    const addTool = (tool?: CompanyTool | null, fallbackName?: string) => {
+      if (tool) {
+        tools.add(tool.name || tool.toolId);
+        (tool.inputEntities || []).forEach((entity) => entities.add(entity));
+        if (tool.outputEntity) entities.add(tool.outputEntity);
+        return;
+      }
+      if (fallbackName) tools.add(fallbackName);
+    };
+
+    const addTrajectory = (trajectory?: CompanyTrajectory | null) => {
+      if (!trajectory) return;
+      trajectories.add(trajectory.trajectoryId);
+      const relatedBenchmarkId = trajectory.benchmarkId || "";
+      if (relatedBenchmarkId) benchmarks.add(benchmarkNamesById.get(relatedBenchmarkId) || relatedBenchmarkId);
+      trajectoryToolCallList(trajectory).forEach((call) => {
+        const normalized = call.name.startsWith("browser.") ? call.name.split(".", 2)[1] : call.name;
+        addTool(toolsByName.get(call.name) || toolsByName.get(normalized), call.name);
+      });
+    };
+
+    if (detail.kind === "tool") {
+      addTool(detail.item);
+    } else if (detail.kind === "trajectory") {
+      addTrajectory(detail.item);
+    } else {
+      skills.add(detail.item.name || detail.item.skillId);
+      (detail.item.inputEntities || []).forEach((entity) => entities.add(entity));
+      if (detail.item.outputEntity) entities.add(detail.item.outputEntity);
+      (detail.item.trajectoryIds || []).forEach((trajectoryId) => addTrajectory(trajectoriesById.get(trajectoryId)));
+      (detail.item.toolIds || []).forEach((toolId) => addTool(toolsById.get(toolId), toolId));
+      const relatedBenchmarkIds = new Set([detail.item.benchmarkId, ...(detail.item.lineage?.benchmarkIds || [])].filter(Boolean) as string[]);
+      relatedBenchmarkIds.forEach((relatedBenchmarkId) => benchmarks.add(benchmarkNamesById.get(relatedBenchmarkId) || relatedBenchmarkId));
+    }
+
+    if (benchmarkName) benchmarks.add(benchmarkName);
+    return {
+      entities: Array.from(entities),
+      tools: Array.from(tools),
+      benchmarks: Array.from(benchmarks),
+      trajectories: Array.from(trajectories),
+      skills: Array.from(skills),
+    };
+  }, [benchmarkName, benchmarkNamesById, detail, toolsByName, trajectoriesById]);
+  const capabilityGraphCards = [
+    {
+      label: "Entities",
+      count: capabilityGraph.entities.length,
+      items: capabilityGraph.entities,
+      empty: "No entities mapped",
+    },
+    {
+      label: "Tools",
+      count: capabilityGraph.tools.length,
+      items: capabilityGraph.tools,
+      empty: "No tools resolved",
+    },
+    {
+      label: "Benchmarks",
+      count: capabilityGraph.benchmarks.length,
+      items: capabilityGraph.benchmarks,
+      empty: "No benchmark linked",
+    },
+    {
+      label: "Trajectories",
+      count: capabilityGraph.trajectories.length || lineageSummary.trajectories,
+      items: capabilityGraph.trajectories,
+      empty: lineageSummary.trajectories ? "Tracked by lineage counts" : "No trajectories linked",
+    },
+    {
+      label: "Skills",
+      count: capabilityGraph.skills.length || lineageSummary.skills,
+      items: capabilityGraph.skills,
+      empty: lineageSummary.skills ? "Tracked by lineage counts" : "No skills promoted",
+    },
+  ];
   const skillCandidateTrajectories = useMemo(() => {
     if (!isSkill) return [] as CompanyTrajectory[];
     return trajectories.filter((trajectory) => {
@@ -816,6 +900,41 @@ function CapabilityDetailModal({
                   {isTool ? "Published skills that depend on this action" : isTrajectory ? "Skills promoted from this trace" : "This capability is production-ready"}
                 </p>
               </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Capability graph</p>
+              <span className="inline-flex items-center gap-1 rounded-full border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                <FontAwesomeIcon icon={faCircleNodes} className="text-[9px]" />
+                entities to skills
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              {capabilityGraphCards.map((card) => (
+                <div key={card.label} className="rounded-xl border border-gray-200 bg-white px-3 py-3 shadow-sm dark:border-dark-border dark:bg-dark-surface">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{card.label}</p>
+                    <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 dark:bg-dark-bg dark:text-gray-300">
+                      {card.count}
+                    </span>
+                  </div>
+                  <div className="mt-2 space-y-1">
+                    {card.items.slice(0, 4).map((item) => (
+                      <p key={item} className="truncate rounded-md bg-gray-50 px-2 py-1 font-mono text-[10px] text-gray-600 dark:bg-dark-bg dark:text-gray-300">
+                        {item}
+                      </p>
+                    ))}
+                    {card.items.length > 4 && (
+                      <p className="text-[10px] text-gray-400">+{card.items.length - 4} more</p>
+                    )}
+                    {card.items.length === 0 && (
+                      <p className="text-[11px] text-gray-400">{card.empty}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 
