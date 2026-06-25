@@ -397,6 +397,44 @@ export interface CompanySetupContract {
     runningWorkItems: number;
     reviewWorkItems: number;
   };
+  workOrchestration?: {
+    queues: {
+      total: number;
+      byStatus: CompanySetupCount[];
+      running: number;
+      review: number;
+      blockedByApproval: number;
+    };
+    triggers: {
+      manual: number;
+      scheduled: number;
+      due: number;
+      upcoming: number;
+      frequencies: CompanySetupCount[];
+    };
+    budgets: {
+      budgetedItems: number;
+      exhaustedItems: number;
+      totalMaxBudgetCredits: number;
+      latestCreditsSpent: number;
+    };
+    retries: {
+      itemsRetried: number;
+      maxRetryCount: number;
+      totalRetryCount: number;
+    };
+    approvalBoundary: {
+      pendingApprovals: number;
+      workItemsBlocked: number;
+      linkedApprovalWorkItems: number;
+    };
+    sla: {
+      reviewBlocked: number;
+      scheduledDue: number;
+      budgetExhausted: number;
+      needsAttention: number;
+    };
+  };
   governance: {
     credentials: number;
     allowedOrigins: string[];

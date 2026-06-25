@@ -77,6 +77,44 @@ describe("Company Setup page", () => {
                 runningWorkItems: 1,
                 reviewWorkItems: 2,
               },
+              workOrchestration: {
+                queues: {
+                  total: 6,
+                  byStatus: [{ name: "REVIEW", count: 2 }],
+                  running: 1,
+                  review: 2,
+                  blockedByApproval: 2,
+                },
+                triggers: {
+                  manual: 4,
+                  scheduled: 2,
+                  due: 1,
+                  upcoming: 1,
+                  frequencies: [{ name: "daily", count: 2 }],
+                },
+                budgets: {
+                  budgetedItems: 5,
+                  exhaustedItems: 1,
+                  totalMaxBudgetCredits: 12,
+                  latestCreditsSpent: 3.5,
+                },
+                retries: {
+                  itemsRetried: 1,
+                  maxRetryCount: 2,
+                  totalRetryCount: 2,
+                },
+                approvalBoundary: {
+                  pendingApprovals: 2,
+                  workItemsBlocked: 2,
+                  linkedApprovalWorkItems: 1,
+                },
+                sla: {
+                  reviewBlocked: 2,
+                  scheduledDue: 1,
+                  budgetExhausted: 1,
+                  needsAttention: 4,
+                },
+              },
               governance: {
                 credentials: 3,
                 allowedOrigins: ["https://erp.celeris.example"],
@@ -137,6 +175,8 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("Operating Graph")).toBeInTheDocument();
     expect(await screen.findByText("Capability map")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
+    expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();
+    expect(await screen.findByText("1 due now")).toBeInTheDocument();
     expect(await screen.findByText("Capability Factory")).toBeInTheDocument();
     expect(await screen.findByText("Work Orchestration")).toBeInTheDocument();
     expect(await screen.findByText("Approval Surface")).toBeInTheDocument();
@@ -148,7 +188,7 @@ describe("Company Setup page", () => {
     fireEvent.click(screen.getByRole("button", { name: /open runtime/i }));
     expect(mockNavigate).toHaveBeenCalledWith("/runtime");
 
-    fireEvent.click(screen.getByRole("button", { name: /open work/i }));
+    fireEvent.click(screen.getAllByRole("button", { name: /open work/i })[0]);
     expect(mockNavigate).toHaveBeenCalledWith("/work");
 
     fireEvent.click(screen.getByRole("button", { name: /open approvals/i }));

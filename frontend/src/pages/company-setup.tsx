@@ -252,6 +252,7 @@ export default function CompanySetup(): React.ReactElement {
   const readiness = contract.readiness;
   const integration = contract.integration;
   const capabilityMap = contract.capabilityMap;
+  const workOrchestration = contract.workOrchestration;
   const readinessPercent = Math.round((readiness?.score || 0) * 100);
   const gapPath = (target: string) => {
     if (target === "connectors") return "/connectors";
@@ -666,6 +667,53 @@ export default function CompanySetup(): React.ReactElement {
               </p>
             </div>
           </div>
+          {workOrchestration && (
+            <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Work orchestration contract</p>
+                  <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+                    Queues, recurring triggers, budgets, retries and approval blocks that decide whether enterprise work can run unattended.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate("/work")}
+                  className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                >
+                  Open work
+                  <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+                </button>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-5">
+                <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Queue</p>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Total: <span className="font-semibold text-gray-900 dark:text-white">{workOrchestration.queues.total}</span></p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{workOrchestration.queues.blockedByApproval} approval-blocked</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Triggers</p>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Scheduled: <span className="font-semibold text-gray-900 dark:text-white">{workOrchestration.triggers.scheduled}</span></p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{workOrchestration.triggers.due} due now</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Budgets</p>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Spent: <span className="font-semibold text-gray-900 dark:text-white">{workOrchestration.budgets.latestCreditsSpent}</span></p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{workOrchestration.budgets.exhaustedItems} exhausted</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Retries</p>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Retries: <span className="font-semibold text-gray-900 dark:text-white">{workOrchestration.retries.totalRetryCount}</span></p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{workOrchestration.retries.itemsRetried} items retried</p>
+                </div>
+                <div className={`rounded-xl border p-3 ${workOrchestration.sla.needsAttention > 0 ? "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10" : "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"}`}>
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">SLA</p>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Attention: <span className="font-semibold text-gray-900 dark:text-white">{workOrchestration.sla.needsAttention}</span></p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">review, due or budget blocked</p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="grid gap-6 xl:grid-cols-2">

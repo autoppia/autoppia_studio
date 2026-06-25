@@ -175,6 +175,33 @@ def _top_named_items(items: list[dict[str, Any]], *, name_key: str, count_key: s
     ]
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _work_latest_credits(doc: dict[str, Any]) -> float:
+    report = doc.get("report") if isinstance(doc.get("report"), dict) else {}
+    return _safe_float(report.get("creditsSpent"))
+
+
+def _work_retry_count(doc: dict[str, Any]) -> int:
+    history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
+    return max(0, len(history) - 1)
+
+
 async def _ensure_default_company(email: str) -> dict[str, Any]:
     existing = await companies_collection.find_one({"email": email})
     if existing:
@@ -326,6 +353,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         tools = await tools_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
         benchmarks = await benchmarks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
         benchmark_tasks = await benchmark_tasks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
+        work_items = await work_items_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
+        approvals = await approvals_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
 
         runtime_kinds = [_session_runtime_kind(doc) for doc in sessions]
         connected_connectors = [doc for doc in connectors if str(doc.get("status") or "") == "connected"]
@@ -352,6 +381,40 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 if entity
             }
         )
+        now_dt = datetime.now(timezone.utc)
+        work_item_ids = {str(doc.get("workItemId") or "") for doc in work_items if str(doc.get("workItemId") or "")}
+        approval_work_item_ids = {
+            str((approval.get("metadata") if isinstance(approval.get("metadata"), dict) else {}).get("workItemId") or "")
+            for approval in approvals
+            if str(approval.get("status") or "") == "pending"
+        }
+        approval_work_item_ids = {item for item in approval_work_item_ids if item in work_item_ids}
+        scheduled_items = [doc for doc in work_items if str(doc.get("triggerType") or "manual") == "scheduled"]
+        due_scheduled_items = [
+            doc
+            for doc in scheduled_items
+            if (parsed := _parse_iso_datetime(doc.get("nextRunAt"))) is not None and parsed <= now_dt
+        ]
+        upcoming_scheduled_items = [
+            doc
+            for doc in scheduled_items
+            if (parsed := _parse_iso_datetime(doc.get("nextRunAt"))) is not None and parsed > now_dt
+        ]
+        budgeted_items = [doc for doc in work_items if _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun"))) > 0]
+        exhausted_budget_items = [
+            doc
+            for doc in budgeted_items
+            if _work_latest_credits(doc) >= _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun")))
+        ]
+        retried_items = [doc for doc in work_items if _work_retry_count(doc) > 0]
+        max_retry_count = max([_work_retry_count(doc) for doc in work_items] or [0])
+        review_blocked_items = [
+            doc
+            for doc in work_items
+            if str(doc.get("status") or "") == "REVIEW"
+            or str((doc.get("pendingApproval") if isinstance(doc.get("pendingApproval"), dict) else {}).get("approvalId") or "")
+            or str(doc.get("workItemId") or "") in approval_work_item_ids
+        ]
 
         counts = {
             "connectors": len(connectors),
@@ -385,11 +448,11 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "readySkills": sum(1 for doc in skills if str(doc.get("status") or "") in {"ready", "approved"}),
             "sessions": len(sessions),
             "artifacts": await _count({"companyId": company_id, "email": email}, artifacts_collection),
-            "pendingApprovals": await _count({"companyId": company_id, "email": email, "status": "pending"}, approvals_collection),
-            "approvedApprovals": await _count({"companyId": company_id, "email": email, "status": "approved"}, approvals_collection),
-            "workItems": await _count({"companyId": company_id, "email": email}, work_items_collection),
-            "runningWorkItems": await _count({"companyId": company_id, "email": email, "status": "RUNNING"}, work_items_collection),
-            "reviewWorkItems": await _count({"companyId": company_id, "email": email, "status": "REVIEW"}, work_items_collection),
+            "pendingApprovals": sum(1 for doc in approvals if str(doc.get("status") or "") == "pending"),
+            "approvedApprovals": sum(1 for doc in approvals if str(doc.get("status") or "") == "approved"),
+            "workItems": len(work_items),
+            "runningWorkItems": sum(1 for doc in work_items if str(doc.get("status") or "") == "RUNNING"),
+            "reviewWorkItems": sum(1 for doc in work_items if str(doc.get("status") or "") == "REVIEW"),
         }
         readiness_checks = {
             "profile": bool(str(company.get("name") or "").strip()),
@@ -489,6 +552,44 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "workItems": counts["workItems"],
                 "runningWorkItems": counts["runningWorkItems"],
                 "reviewWorkItems": counts["reviewWorkItems"],
+            },
+            "workOrchestration": {
+                "queues": {
+                    "total": counts["workItems"],
+                    "byStatus": _sorted_counts([str(doc.get("status") or "TODO") for doc in work_items]),
+                    "running": counts["runningWorkItems"],
+                    "review": counts["reviewWorkItems"],
+                    "blockedByApproval": len(review_blocked_items),
+                },
+                "triggers": {
+                    "manual": sum(1 for doc in work_items if str(doc.get("triggerType") or "manual") != "scheduled"),
+                    "scheduled": len(scheduled_items),
+                    "due": len(due_scheduled_items),
+                    "upcoming": len(upcoming_scheduled_items),
+                    "frequencies": _sorted_counts([str(doc.get("scheduleFrequency") or "none") for doc in scheduled_items]),
+                },
+                "budgets": {
+                    "budgetedItems": len(budgeted_items),
+                    "exhaustedItems": len(exhausted_budget_items),
+                    "totalMaxBudgetCredits": round(sum(_safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun"))) for doc in budgeted_items), 4),
+                    "latestCreditsSpent": round(sum(_work_latest_credits(doc) for doc in work_items), 4),
+                },
+                "retries": {
+                    "itemsRetried": len(retried_items),
+                    "maxRetryCount": max_retry_count,
+                    "totalRetryCount": sum(_work_retry_count(doc) for doc in work_items),
+                },
+                "approvalBoundary": {
+                    "pendingApprovals": counts["pendingApprovals"],
+                    "workItemsBlocked": len(review_blocked_items),
+                    "linkedApprovalWorkItems": len(approval_work_item_ids),
+                },
+                "sla": {
+                    "reviewBlocked": len(review_blocked_items),
+                    "scheduledDue": len(due_scheduled_items),
+                    "budgetExhausted": len(exhausted_budget_items),
+                    "needsAttention": len(review_blocked_items) + len(due_scheduled_items) + len(exhausted_budget_items),
+                },
             },
             "governance": {
                 "credentials": counts["credentials"],

@@ -433,7 +433,20 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         _Collection(
             [
                 {"approvalId": "approval-1", "companyId": "company-1", "email": "owner@example.com", "status": "pending"},
-                {"approvalId": "approval-2", "companyId": "company-1", "email": "owner@example.com", "status": "approved"},
+                {
+                    "approvalId": "approval-2",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "status": "approved",
+                    "metadata": {"workItemId": "work-2"},
+                },
+                {
+                    "approvalId": "approval-3",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "status": "pending",
+                    "metadata": {"workItemId": "work-1"},
+                },
             ]
         ),
     )
@@ -442,8 +455,28 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         "work_items_collection",
         _Collection(
             [
-                {"workItemId": "work-1", "companyId": "company-1", "email": "owner@example.com", "status": "RUNNING"},
-                {"workItemId": "work-2", "companyId": "company-1", "email": "owner@example.com", "status": "REVIEW"},
+                {
+                    "workItemId": "work-1",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "status": "REVIEW",
+                    "triggerType": "manual",
+                    "maxBudgetCredits": 2,
+                    "report": {"creditsSpent": 0.5},
+                    "pendingApproval": {"approvalId": "approval-3"},
+                },
+                {
+                    "workItemId": "work-2",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "status": "RUNNING",
+                    "triggerType": "scheduled",
+                    "scheduleFrequency": "daily",
+                    "nextRunAt": "2000-01-01T00:00:00+00:00",
+                    "maxBudgetCredits": 1,
+                    "report": {"creditsSpent": 1.25},
+                    "runHistory": [{"runId": "run-1"}, {"runId": "run-2"}],
+                },
             ]
         ),
     )
@@ -456,7 +489,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["context"]["typedTools"] == 1
     assert result["contract"]["factory"]["readySkills"] == 2
     assert result["contract"]["runtime"]["sessions"] == 2
-    assert result["contract"]["runtime"]["pendingApprovals"] == 1
+    assert result["contract"]["runtime"]["pendingApprovals"] == 2
     assert result["contract"]["governance"]["credentials"] == 1
     assert result["contract"]["governance"]["hostJwtConfigured"] is True
     assert "erp.example.com" in result["contract"]["governance"]["allowedOriginHosts"]
@@ -464,8 +497,16 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["integration"]["systems"] == 2
     assert result["contract"]["integration"]["secrets"] == 1
     assert "portal.example.com" in result["contract"]["integration"]["domainAllowlist"]
-    assert result["contract"]["integration"]["approvalBoundary"]["pending"] == 1
+    assert result["contract"]["integration"]["approvalBoundary"]["pending"] == 2
     assert result["contract"]["integration"]["compliance"]["auditEvidence"]["sessions"] == 2
+    assert result["contract"]["workOrchestration"]["queues"]["total"] == 2
+    assert result["contract"]["workOrchestration"]["queues"]["blockedByApproval"] == 1
+    assert result["contract"]["workOrchestration"]["triggers"]["scheduled"] == 1
+    assert result["contract"]["workOrchestration"]["triggers"]["due"] == 1
+    assert result["contract"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
+    assert result["contract"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
+    assert result["contract"]["workOrchestration"]["approvalBoundary"]["linkedApprovalWorkItems"] == 1
+    assert result["contract"]["workOrchestration"]["sla"]["needsAttention"] == 3
     assert result["contract"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert result["contract"]["capabilityMap"]["taskContracts"]["coverageRatio"] == 1
     assert "insurance_erp" in result["contract"]["capabilityMap"]["taskContracts"]["allowedSystems"]
