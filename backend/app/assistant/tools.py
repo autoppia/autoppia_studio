@@ -317,6 +317,96 @@ def _vertical_demo_summary(
     }
 
 
+def _connector_factory_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    entity_mapped = 0
+    entity_source_ready = 0
+    entity_pending = 0
+    typed_tool_ready = 0
+    tool_synthesis_pending = 0
+    ingestion_blocked = 0
+    samples: list[dict[str, Any]] = []
+    for doc in docs:
+        discovery = doc.get("capabilityDiscovery") if isinstance(doc.get("capabilityDiscovery"), dict) else {}
+        entity_mapping = discovery.get("entityMapping") if isinstance(discovery.get("entityMapping"), dict) else {}
+        tool_synthesis = discovery.get("toolSynthesis") if isinstance(discovery.get("toolSynthesis"), dict) else {}
+        ingestion = discovery.get("ingestionPipeline") if isinstance(discovery.get("ingestionPipeline"), dict) else {}
+        entity_status = str(entity_mapping.get("status") or "").strip().lower()
+        if entity_status == "mapped" or entity_mapping.get("readyForToolBinding"):
+            entity_mapped += 1
+        elif entity_status == "source_ready":
+            entity_source_ready += 1
+        else:
+            entity_pending += 1
+        if int(tool_synthesis.get("typedToolCount") or 0) > 0:
+            typed_tool_ready += 1
+        elif discovery:
+            tool_synthesis_pending += 1
+        if str(ingestion.get("state") or "").lower() == "blocked":
+            ingestion_blocked += 1
+        if len(samples) < 5:
+            samples.append(
+                {
+                    "connectorId": str(doc.get("connectorId") or ""),
+                    "name": str(doc.get("name") or ""),
+                    "entityMapping": entity_status or "unknown",
+                    "businessObjects": _list_values(entity_mapping.get("businessObjects"))[:5],
+                    "typedToolCount": int(tool_synthesis.get("typedToolCount") or 0),
+                    "ingestionState": str(ingestion.get("state") or ""),
+                }
+            )
+    return {
+        "total": len(docs),
+        "entityMapped": entity_mapped,
+        "entitySourceReady": entity_source_ready,
+        "entityPending": entity_pending,
+        "typedToolReady": typed_tool_ready,
+        "toolSynthesisPending": tool_synthesis_pending,
+        "ingestionBlocked": ingestion_blocked,
+        "sample": samples,
+    }
+
+
+def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    publishable = 0
+    blocked = 0
+    needs_regression = 0
+    missing_gate = 0
+    blockers: dict[str, int] = {}
+    samples: list[dict[str, Any]] = []
+    for doc in docs:
+        package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
+        gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else doc.get("productionGate") if isinstance(doc.get("productionGate"), dict) else {}
+        state = str(gate.get("state") or "").strip().lower()
+        if gate.get("canPublish") or state == "publishable":
+            publishable += 1
+        elif state == "needs_regression":
+            needs_regression += 1
+        elif gate:
+            blocked += 1
+        else:
+            missing_gate += 1
+        for blocker in _list_values(gate.get("blockers")):
+            blockers[blocker] = blockers.get(blocker, 0) + 1
+        if len(samples) < 5:
+            samples.append(
+                {
+                    "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
+                    "name": str(doc.get("name") or ""),
+                    "state": state or "unknown",
+                    "blockers": _list_values(gate.get("blockers"))[:5],
+                }
+            )
+    return {
+        "total": len(docs),
+        "publishable": publishable,
+        "blocked": blocked,
+        "needsRegression": needs_regression,
+        "missingGate": missing_gate,
+        "blockers": [{"name": key, "count": value} for key, value in sorted(blockers.items())],
+        "sample": samples,
+    }
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -346,6 +436,7 @@ class AutomataAssistantTools:
         scheduled_work = await self._count(work_items_collection, {**scoped, "triggerType": "scheduled"})
         running_work = await self._count(work_items_collection, {**scoped, "status": "RUNNING"})
         skill_docs = await _to_list(capabilities_collection.find({**scoped, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", -1), 500)
+        connector_docs = await _to_list(connectors_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         tool_docs = await _to_list(tools_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         benchmark_docs = await _to_list(benchmarks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
@@ -376,6 +467,8 @@ class AutomataAssistantTools:
         hardened_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
+        connector_map = _connector_factory_summary(connector_docs)
+        skill_gate_summary = _skill_production_gate_summary(skill_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
         now_dt = datetime.now(timezone.utc)
@@ -451,6 +544,8 @@ class AutomataAssistantTools:
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
+                {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
+                {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
@@ -504,6 +599,7 @@ class AutomataAssistantTools:
             "factory": {
                 "connectors": counts["connectors"],
                 "connectedConnectors": connected_connectors,
+                "connectorMap": connector_map,
                 "resources": counts["knowledgeDocuments"],
                 "entities": counts["entities"],
                 "tools": counts["tools"],
@@ -529,6 +625,7 @@ class AutomataAssistantTools:
                     "approved": approved_skills,
                     "hardened": hardened_skills,
                     "expectedArtifacts": skill_expected_artifacts,
+                    "productionGate": skill_gate_summary,
                 },
                 "verticalDemos": vertical_demos,
             },

@@ -229,7 +229,26 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
         ]
     )
-    connectors = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "connected", "name": "ERP"}])
+    connectors = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "connectorId": "conn-1",
+                "status": "connected",
+                "name": "ERP",
+                "capabilityDiscovery": {
+                    "entityMapping": {
+                        "status": "pending",
+                        "businessObjects": [],
+                        "readyForToolBinding": False,
+                    },
+                    "toolSynthesis": {"typedToolCount": 0},
+                    "ingestionPipeline": {"state": "blocked"},
+                },
+            }
+        ]
+    )
     sessions = _Collection([{"email": "owner@example.com", "companyId": "company-1", "sessionId": "session-1"}])
     artifacts = _Collection([{"email": "owner@example.com", "companyId": "company-1", "artifactId": "artifact-1"}])
     eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
@@ -349,10 +368,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["counts"]["skills"] == 1
     assert snapshot["counts"]["pendingApprovals"] == 1
     assert snapshot["operatingState"]["factory"]["connectedConnectors"] == 1
+    assert snapshot["operatingState"]["factory"]["connectorMap"]["entityPending"] == 1
+    assert snapshot["operatingState"]["factory"]["connectorMap"]["ingestionBlocked"] == 1
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
@@ -375,6 +397,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
+    assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
