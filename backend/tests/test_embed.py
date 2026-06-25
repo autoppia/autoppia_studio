@@ -432,3 +432,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["governance"]["hostJwtConfigured"] is True
     assert "erp.example.com" in result["contract"]["governance"]["allowedOriginHosts"]
     assert "portal.example.com" in result["contract"]["governance"]["discoveredDomains"]
+    assert result["contract"]["integration"]["systems"] == 2
+    assert result["contract"]["integration"]["secrets"] == 1
+    assert "portal.example.com" in result["contract"]["integration"]["domainAllowlist"]
+    assert result["contract"]["integration"]["approvalBoundary"]["pending"] == 1
+    assert result["contract"]["integration"]["compliance"]["auditEvidence"]["sessions"] == 2
+    assert result["contract"]["readiness"]["checks"]["systems"] is True
+    assert result["contract"]["readiness"]["checks"]["credentials"] is True
+    assert result["contract"]["readiness"]["checks"]["runtime"] is True
+    assert any(gap["key"] == "auth" for gap in result["contract"]["readiness"]["gaps"])

@@ -249,6 +249,19 @@ export default function CompanySetup(): React.ReactElement {
   }
 
   const governanceReady = contract.governance.credentials > 0 && contract.systems.summary.connectedConnectors > 0;
+  const readiness = contract.readiness;
+  const integration = contract.integration;
+  const readinessPercent = Math.round((readiness?.score || 0) * 100);
+  const gapPath = (target: string) => {
+    if (target === "connectors") return "/connectors";
+    if (target === "credentials") return "/credentials";
+    if (target === "knowledge") return "/knowledge";
+    if (target === "capabilities") return "/capabilities";
+    if (target === "evals") return "/evals";
+    if (target === "runtime") return "/runtime";
+    if (target === "governance") return "/company-setup";
+    return "/company-setup";
+  };
   const snippetNeedsHostJwt = Boolean(company.embedSettings?.hostJwtConfigured || hostJwtSecret.trim());
   const embedSnippet = `<script src="${apiUrl}/embed/v1/widget.js" data-token="${publicToken || "YOUR_PUBLIC_TOKEN"}"${snippetNeedsHostJwt ? ' data-user-ref="EMPLOYEE_ID" data-host-jwt="SIGNED_EMPLOYEE_JWT"' : ""} async></script>`;
 
@@ -371,6 +384,55 @@ export default function CompanySetup(): React.ReactElement {
           <SummaryCard label="Governance" value={governanceReady ? "Ready" : "Needs work"} hint={`${contract.governance.allowedOrigins.length} allowed origins, ${contract.governance.discoveredDomains.length} discovered domains`} tone={governanceReady ? "good" : "warning"} />
         </div>
 
+        {readiness && (
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Enterprise readiness</p>
+              <div className="mt-4 flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-4xl font-semibold text-gray-900 dark:text-white">{readinessPercent}%</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{readiness.passed}/{readiness.total} contract checks passing</p>
+                </div>
+                <span className={`rounded-xl border px-3 py-1.5 text-xs font-semibold ${readinessPercent >= 70 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                  {readinessPercent >= 70 ? "operable" : "needs setup"}
+                </span>
+              </div>
+              <div className="mt-5 grid grid-cols-2 gap-2">
+                {Object.entries(readiness.checks).map(([key, value]) => (
+                  <span key={key} className={`rounded-lg border px-3 py-2 text-xs font-medium ${value ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                    {key.replace(/([A-Z])/g, " $1").toLowerCase()}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Integration gaps</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Next actions to turn setup into a governed enterprise control plane.</p>
+                </div>
+              </div>
+              <div className="mt-4 space-y-2">
+                {readiness.gaps.length === 0 ? (
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                    No critical integration gaps detected.
+                  </div>
+                ) : readiness.gaps.slice(0, 5).map((gap) => (
+                  <button
+                    key={gap.key}
+                    type="button"
+                    onClick={() => navigate(gapPath(gap.target))}
+                    className="flex w-full items-center justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-left text-sm text-gray-700 transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:border-primary/30"
+                  >
+                    <span>{gap.label}</span>
+                    <FontAwesomeIcon icon={faArrowRight} className="text-xs text-gray-400" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
           <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
             <div className="flex items-center gap-2">
@@ -424,6 +486,31 @@ export default function CompanySetup(): React.ReactElement {
                 <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Artifacts: <span className="font-semibold text-gray-900 dark:text-white">{contract.runtime.artifacts}</span></p>
               </div>
             </div>
+            {integration && (
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Enterprise integration surface</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-3">
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Access</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Systems: <span className="font-semibold text-gray-900 dark:text-white">{integration.systems}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Secrets: <span className="font-semibold text-gray-900 dark:text-white">{integration.secrets}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Environments: <span className="font-semibold text-gray-900 dark:text-white">{integration.environments.length}</span></p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Boundaries</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Domains: <span className="font-semibold text-gray-900 dark:text-white">{integration.domainAllowlist.length}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Pending approvals: <span className="font-semibold text-gray-900 dark:text-white">{integration.approvalBoundary.pending}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Host JWT: <span className="font-semibold text-gray-900 dark:text-white">{integration.acl.hostJwtConfigured ? "configured" : "not configured"}</span></p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Compliance evidence</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">Sessions: <span className="font-semibold text-gray-900 dark:text-white">{integration.compliance.auditEvidence.sessions}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Artifacts: <span className="font-semibold text-gray-900 dark:text-white">{integration.compliance.auditEvidence.artifacts}</span></p>
+                    <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Eval runs: <span className="font-semibold text-gray-900 dark:text-white">{integration.compliance.auditEvidence.evalRuns}</span></p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">

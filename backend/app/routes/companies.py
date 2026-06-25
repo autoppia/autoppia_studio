@@ -333,6 +333,37 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "runningWorkItems": await _count({"companyId": company_id, "email": email, "status": "RUNNING"}, work_items_collection),
             "reviewWorkItems": await _count({"companyId": company_id, "email": email, "status": "REVIEW"}, work_items_collection),
         }
+        readiness_checks = {
+            "profile": bool(str(company.get("name") or "").strip()),
+            "systems": counts["connectors"] > 0,
+            "credentials": counts["credentials"] > 0,
+            "context": counts["resources"] > 0 or counts["entities"] > 0,
+            "typedTools": counts["typedTools"] > 0,
+            "benchmarks": counts["benchmarkTasks"] > 0,
+            "skills": counts["readySkills"] > 0,
+            "runtime": counts["sessions"] > 0,
+            "approvals": counts["pendingApprovals"] > 0 or counts["approvedApprovals"] > 0,
+            "domainAllowlist": bool((company.get("embedSettings") or {}).get("allowedOrigins") or connector_domains),
+        }
+        readiness_gaps = []
+        if not readiness_checks["systems"]:
+            readiness_gaps.append({"key": "systems", "label": "Connect at least one enterprise system.", "target": "connectors"})
+        if counts["connectorsNeedingAuth"] > 0:
+            readiness_gaps.append({"key": "auth", "label": f"{counts['connectorsNeedingAuth']} connectors still need authentication.", "target": "credentials"})
+        if not readiness_checks["context"]:
+            readiness_gaps.append({"key": "context", "label": "Add knowledge resources or mapped business entities.", "target": "knowledge"})
+        if not readiness_checks["typedTools"]:
+            readiness_gaps.append({"key": "typed_tools", "label": "Publish typed tools with entity mapping and side-effect metadata.", "target": "capabilities"})
+        if not readiness_checks["benchmarks"]:
+            readiness_gaps.append({"key": "benchmarks", "label": "Create benchmark tasks with success criteria and expected artifacts.", "target": "evals"})
+        if not readiness_checks["skills"]:
+            readiness_gaps.append({"key": "skills", "label": "Promote at least one hardened, ready skill.", "target": "capabilities"})
+        if not readiness_checks["runtime"]:
+            readiness_gaps.append({"key": "runtime", "label": "Run at least one governed runtime session.", "target": "runtime"})
+        if not readiness_checks["domainAllowlist"]:
+            readiness_gaps.append({"key": "domains", "label": "Define domain allowlists for browser/embed governance.", "target": "governance"})
+        readiness_passed = sum(1 for value in readiness_checks.values() if value)
+        readiness_score = round(readiness_passed / len(readiness_checks), 3) if readiness_checks else 0.0
 
         contract = {
             "integrationContractVersion": "2026-06-25",
@@ -403,6 +434,38 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
                 "discoveredDomains": connector_domains,
                 "skillPolicies": policy_counts,
+            },
+            "integration": {
+                "systems": counts["connectors"],
+                "secrets": counts["credentials"],
+                "environments": surface_counts,
+                "domainAllowlist": sorted(set(connector_domains + _allowed_origin_hosts(company))),
+                "approvalBoundary": {
+                    "pending": counts["pendingApprovals"],
+                    "approved": counts["approvedApprovals"],
+                    "skillPolicies": policy_counts,
+                },
+                "acl": {
+                    "ownerEmail": email,
+                    "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
+                    "allowedOrigins": list((company.get("embedSettings") or {}).get("allowedOrigins") or []),
+                },
+                "compliance": {
+                    "browserRestrictedByDomain": bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins")),
+                    "humanApprovalConfigured": bool(policy_counts or counts["pendingApprovals"] or counts["approvedApprovals"]),
+                    "auditEvidence": {
+                        "sessions": counts["sessions"],
+                        "artifacts": counts["artifacts"],
+                        "evalRuns": counts["evalRuns"],
+                    },
+                },
+            },
+            "readiness": {
+                "score": readiness_score,
+                "passed": readiness_passed,
+                "total": len(readiness_checks),
+                "checks": readiness_checks,
+                "gaps": readiness_gaps,
             },
         }
 

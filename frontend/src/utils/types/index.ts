@@ -365,6 +365,38 @@ export interface CompanySetupContract {
     discoveredDomains: string[];
     skillPolicies: CompanySetupCount[];
   };
+  integration?: {
+    systems: number;
+    secrets: number;
+    environments: CompanySetupCount[];
+    domainAllowlist: string[];
+    approvalBoundary: {
+      pending: number;
+      approved: number;
+      skillPolicies: CompanySetupCount[];
+    };
+    acl: {
+      ownerEmail: string;
+      hostJwtConfigured: boolean;
+      allowedOrigins: string[];
+    };
+    compliance: {
+      browserRestrictedByDomain: boolean;
+      humanApprovalConfigured: boolean;
+      auditEvidence: {
+        sessions: number;
+        artifacts: number;
+        evalRuns: number;
+      };
+    };
+  };
+  readiness?: {
+    score: number;
+    passed: number;
+    total: number;
+    checks: Record<string, boolean>;
+    gaps: Array<{ key: string; label: string; target: string }>;
+  };
 }
 
 export interface AgentToolkit {
