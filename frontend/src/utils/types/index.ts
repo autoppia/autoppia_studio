@@ -48,6 +48,42 @@ export interface SessionItem {
         artifactId?: string;
         skillId?: string;
     }[];
+    runtimeEvidence?: {
+        summary?: {
+            runtimeKind?: string;
+            toolCalls?: number;
+            browserSteps?: number;
+            artifacts?: number;
+            pendingApprovals?: number;
+            creditsSpent?: number;
+            durationSeconds?: number;
+        };
+        trace?: {
+            traceIds?: string[];
+            traceCount?: number;
+            timelineSteps?: number;
+            failedSteps?: number;
+            pendingSteps?: number;
+            lastTraceId?: string;
+            replayReady?: boolean;
+        };
+        capabilityRefs?: {
+            skillId?: string;
+            skillName?: string;
+            workItemId?: string;
+            runId?: string;
+            linked?: boolean;
+        };
+        approvalBoundary?: {
+            approvalRequiredFor?: string[];
+            hasHumanBoundary?: boolean;
+            pendingConnectorApproval?: string;
+        };
+        outputs?: {
+            artifactCount?: number;
+            hasBusinessOutput?: boolean;
+        };
+    };
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";

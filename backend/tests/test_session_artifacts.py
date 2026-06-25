@@ -190,6 +190,16 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["runtimeTimeline"][1]["activity"] == "tool"
     assert session["runtimeTimeline"][1]["traceId"] == "trace-email"
     assert session["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
+    assert session["runtimeEvidence"]["summary"]["runtimeKind"] == "hybrid"
+    assert session["runtimeEvidence"]["summary"]["toolCalls"] == 1
+    assert session["runtimeEvidence"]["summary"]["browserSteps"] == 1
+    assert session["runtimeEvidence"]["summary"]["artifacts"] == 2
+    assert session["runtimeEvidence"]["trace"]["traceCount"] == 4
+    assert session["runtimeEvidence"]["trace"]["timelineSteps"] == 2
+    assert session["runtimeEvidence"]["trace"]["replayReady"] is False
+    assert session["runtimeEvidence"]["capabilityRefs"]["skillId"] == "skill-1"
+    assert session["runtimeEvidence"]["capabilityRefs"]["workItemId"] == "work-42"
+    assert session["runtimeEvidence"]["approvalBoundary"]["approvalRequiredFor"] == ["send"]
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
@@ -312,6 +322,9 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["sourceKind"] == "work"
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
+    assert session["runtimeEvidence"]["summary"]["pendingApprovals"] == 1
+    assert session["runtimeEvidence"]["trace"]["replayReady"] is False
+    assert session["runtimeEvidence"]["outputs"]["hasBusinessOutput"] is True
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"

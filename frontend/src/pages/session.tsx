@@ -734,6 +734,9 @@ function Session(): React.ReactElement {
   const runId = String(loadedSession?.runId || runtimeState?.runId || "");
   const creditsLabel = formatCredits(loadedSession?.creditsSpent ?? runtimeState?.creditsSpent);
   const runtimePolicyBoundary = loadedSession?.runtimePolicyBoundary;
+  const runtimeEvidence = loadedSession?.runtimeEvidence;
+  const runtimeEvidenceTrace = runtimeEvidence?.trace;
+  const runtimeEvidenceCapabilityRefs = runtimeEvidence?.capabilityRefs;
   const boundaryCounts = runtimePolicyBoundary?.boundaries || {};
   const approvalRequiredFor = runtimePolicyBoundary?.approvalRequiredFor || [];
   const runtimeKind = loadedSession?.runtimeKind === "hybrid"
@@ -811,6 +814,34 @@ function Session(): React.ReactElement {
               <span className={`rounded-lg border px-2 py-1 font-semibold ${runtimePolicyBoundary.hasHumanBoundary ? "border-primary/30 bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"}`}>
                 approvals {runtimePolicyBoundary.pendingApprovalCount || 0} pending · {runtimePolicyBoundary.approvedApprovalCount || 0} approved
               </span>
+            </div>
+          </div>
+        )}
+        {runtimeEvidence && (
+          <div className="mt-3 grid gap-2 rounded-xl border border-gray-200 bg-gray-50 p-3 text-[11px] dark:border-dark-border dark:bg-dark-bg sm:grid-cols-4">
+            <div>
+              <p className="font-semibold uppercase tracking-wide text-gray-400">Trace evidence</p>
+              <p className="mt-1 text-gray-700 dark:text-gray-200">
+                {runtimeEvidenceTrace?.traceCount || 0} trace ids · {runtimeEvidenceTrace?.timelineSteps || 0} steps
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold uppercase tracking-wide text-gray-400">Replay</p>
+              <p className={runtimeEvidenceTrace?.replayReady ? "mt-1 font-semibold text-emerald-600 dark:text-emerald-300" : "mt-1 font-semibold text-amber-600 dark:text-amber-300"}>
+                {runtimeEvidenceTrace?.replayReady ? "Replay ready" : "Needs review"}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold uppercase tracking-wide text-gray-400">Capability link</p>
+              <p className="mt-1 truncate text-gray-700 dark:text-gray-200">
+                {runtimeEvidenceCapabilityRefs?.skillName || runtimeEvidenceCapabilityRefs?.skillId || runtimeEvidenceCapabilityRefs?.workItemId || "No capability linked"}
+              </p>
+            </div>
+            <div>
+              <p className="font-semibold uppercase tracking-wide text-gray-400">Outputs</p>
+              <p className="mt-1 text-gray-700 dark:text-gray-200">
+                {runtimeEvidence.outputs?.artifactCount || 0} artifacts · {runtimeEvidence.summary?.pendingApprovals || 0} approvals
+              </p>
             </div>
           </div>
         )}

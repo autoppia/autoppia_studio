@@ -303,8 +303,58 @@ def _attach_session_runtime_counts(summary: dict[str, Any], *, artifact_count: i
         artifact_count=artifact_count,
         pending_approval_count=pending_approval_count,
     )
+    summary["runtimeEvidence"] = _session_runtime_evidence(summary, artifact_count=artifact_count, pending_approval_count=pending_approval_count)
     summary.pop("_actionHistory", None)
     return summary
+
+
+def _session_runtime_evidence(summary: dict[str, Any], *, artifact_count: int, pending_approval_count: int) -> dict[str, Any]:
+    runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
+    runtime_metrics = summary.get("runtimeMetrics") if isinstance(summary.get("runtimeMetrics"), dict) else {}
+    policy_boundary = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
+    timeline = summary.get("runtimeTimeline") if isinstance(summary.get("runtimeTimeline"), list) else []
+    trace_ids = runtime_metrics.get("traceIds") if isinstance(runtime_metrics.get("traceIds"), list) else []
+    failed_steps = [item for item in timeline if isinstance(item, dict) and item.get("status") == "failed"]
+    pending_steps = [item for item in timeline if isinstance(item, dict) and item.get("status") == "pending"]
+    capability_refs = {
+        "skillId": str(summary.get("matchedSkillId") or runtime_state.get("matchedSkillId") or ""),
+        "skillName": str(summary.get("matchedSkillName") or runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or ""),
+        "workItemId": str(summary.get("workItemId") or runtime_state.get("workItemId") or ""),
+        "runId": str(summary.get("runId") or runtime_state.get("runId") or ""),
+    }
+    capability_refs["linked"] = any(capability_refs[key] for key in ("skillId", "workItemId", "runId"))
+    browser_count = int(summary.get("browserActionCount") or runtime_metrics.get("browserActionCount") or 0)
+    connector_count = int(summary.get("connectorActionCount") or runtime_metrics.get("connectorActionCount") or 0)
+    return {
+        "summary": {
+            "runtimeKind": str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api"),
+            "toolCalls": connector_count,
+            "browserSteps": browser_count,
+            "artifacts": artifact_count,
+            "pendingApprovals": pending_approval_count,
+            "creditsSpent": _safe_float(summary.get("creditsSpent") or runtime_metrics.get("creditsSpent")),
+            "durationSeconds": _safe_float(runtime_metrics.get("durationSeconds")),
+        },
+        "trace": {
+            "traceIds": trace_ids,
+            "traceCount": len(trace_ids),
+            "timelineSteps": len(timeline),
+            "failedSteps": len(failed_steps),
+            "pendingSteps": len(pending_steps),
+            "lastTraceId": str(trace_ids[-1]) if trace_ids else "",
+            "replayReady": bool(timeline and not pending_steps and not pending_approval_count),
+        },
+        "capabilityRefs": capability_refs,
+        "approvalBoundary": {
+            "approvalRequiredFor": policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else [],
+            "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
+            "pendingConnectorApproval": str(summary.get("pendingConnectorApproval") or runtime_state.get("pendingConnectorApproval") or ""),
+        },
+        "outputs": {
+            "artifactCount": artifact_count,
+            "hasBusinessOutput": artifact_count > 0,
+        },
+    }
 
 
 def _serialize_session_summary(doc: dict) -> dict:
