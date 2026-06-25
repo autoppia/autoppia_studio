@@ -998,6 +998,27 @@ export interface KnowledgeDocument {
       source?: string;
       contentType?: string;
       size?: number;
+      acl?: {
+        visibility?: string;
+        allowedRoles?: string[];
+        allowedUsers?: string[];
+      };
+      versioning?: {
+        version?: number;
+        versionLabel?: string;
+        createdAt?: string;
+        updatedAt?: string;
+      };
+      freshness?: {
+        lastIndexedAt?: string;
+        stale?: boolean;
+        status?: string;
+      };
+      citability?: {
+        citable?: boolean;
+        citationLabel?: string;
+        sourceUrl?: string;
+      };
     };
     readTools?: string[];
   };

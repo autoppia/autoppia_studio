@@ -601,6 +601,18 @@ export default function Knowledge(): React.ReactElement {
                         <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
                           {(contract.readTools || []).length} read tools
                         </span>
+                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                          ACL {contract.governance?.acl?.visibility || "company"}
+                        </span>
+                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                          {contract.governance?.versioning?.versionLabel || "v1"}
+                        </span>
+                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${contract.governance?.citability?.citable ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                          {contract.governance?.citability?.citable ? "citable" : "not citable yet"}
+                        </span>
+                        <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${contract.governance?.freshness?.status === "current" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                          {contract.governance?.freshness?.status || "indexing"}
+                        </span>
                       </div>
                     )}
                     {["indexing", "uploaded"].includes((document.status || "").toLowerCase()) && (

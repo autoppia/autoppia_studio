@@ -76,6 +76,11 @@ def _serialize(doc: dict) -> dict:
     vector_collection = doc.get("vectorCollectionName", "")
     connector_id = doc.get("connectorId", "")
     indexed = str(doc.get("status") or "").lower() in {"indexed", "ready"}
+    created_at = doc.get("createdAt")
+    updated_at = doc.get("updatedAt") or created_at
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    version = int(doc.get("version") or metadata.get("version") or 1)
+    acl = doc.get("acl") if isinstance(doc.get("acl"), dict) else metadata.get("acl") if isinstance(metadata.get("acl"), dict) else {}
     segment = "_".join(part for part in re.sub(r"[^a-zA-Z0-9]+", "_", str(vector_name or "knowledge").lower()).split("_") if part)[:48] or "knowledge"
     resource_contract = {
         "resourceId": resource_id,
@@ -95,6 +100,27 @@ def _serialize(doc: dict) -> dict:
             "source": doc.get("source", "upload"),
             "contentType": doc.get("contentType", ""),
             "size": doc.get("size", 0),
+            "acl": {
+                "visibility": acl.get("visibility") or "company",
+                "allowedRoles": acl.get("allowedRoles") if isinstance(acl.get("allowedRoles"), list) else [],
+                "allowedUsers": acl.get("allowedUsers") if isinstance(acl.get("allowedUsers"), list) else [],
+            },
+            "versioning": {
+                "version": version,
+                "versionLabel": doc.get("versionLabel") or metadata.get("versionLabel") or f"v{version}",
+                "createdAt": created_at,
+                "updatedAt": updated_at,
+            },
+            "freshness": {
+                "lastIndexedAt": doc.get("lastIndexedAt") or doc.get("indexedAt") or updated_at,
+                "stale": bool(doc.get("stale", False)),
+                "status": "current" if indexed and not doc.get("stale", False) else "stale" if doc.get("stale", False) else "indexing",
+            },
+            "citability": {
+                "citable": indexed,
+                "citationLabel": doc.get("citationLabel") or doc.get("filename", ""),
+                "sourceUrl": doc.get("sourceUrl") or metadata.get("sourceUrl") or "",
+            },
         },
         "readTools": [
             f"knowledge.{segment}.search",
@@ -119,8 +145,8 @@ def _serialize(doc: dict) -> dict:
         "vectorDatabaseName": doc.get("vectorDatabaseName", ""),
         "vectorCollectionName": doc.get("vectorCollectionName", ""),
         "resourceContract": resource_contract,
-        "createdAt": doc.get("createdAt"),
-        "updatedAt": doc.get("updatedAt"),
+        "createdAt": created_at,
+        "updatedAt": updated_at,
     }
 
 
