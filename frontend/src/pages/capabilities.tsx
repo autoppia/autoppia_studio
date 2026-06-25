@@ -1578,6 +1578,7 @@ export default function Capabilities(): React.ReactElement {
   const [promoteTarget, setPromoteTarget] = useState<CompanyTrajectory | null>(null);
   const [detail, setDetail] = useState<CapabilityDetail>(null);
   const [promoting, setPromoting] = useState(false);
+  const [activeGraphNode, setActiveGraphNode] = useState("");
 
   // Create Capability wizard state. `createPath` tracks which of the four paths is expanded.
   const [showCreate, setShowCreate] = useState(false);
@@ -2177,6 +2178,39 @@ export default function Capabilities(): React.ReactElement {
     }
     openCapabilityRoute(`/capabilities/skill/${id}`);
   }, [openCapabilityDetail, openCapabilityRoute, skillsById, trajectoriesById]);
+
+  const openScopedApprovals = useCallback((params: { skillId?: string; trajectoryId?: string; toolId?: string }) => {
+    const next = new URLSearchParams({ status: "all" });
+    if (params.skillId) next.set("skillId", params.skillId);
+    if (params.trajectoryId) next.set("trajectoryId", params.trajectoryId);
+    if (params.toolId) next.set("toolId", params.toolId);
+    navigate(`/approvals?${next.toString()}`);
+  }, [navigate]);
+
+  const openScopedArtifacts = useCallback((params: { skillId?: string; trajectoryId?: string; toolId?: string; sessionId?: string }) => {
+    const next = new URLSearchParams();
+    if (params.skillId) next.set("skillId", params.skillId);
+    if (params.trajectoryId) next.set("trajectoryId", params.trajectoryId);
+    if (params.toolId) next.set("toolId", params.toolId);
+    if (params.sessionId) next.set("sessionId", params.sessionId);
+    navigate(`/artifacts${next.toString() ? `?${next.toString()}` : ""}`);
+  }, [navigate]);
+
+  const openScopedWork = useCallback((params: { skillId?: string; trajectoryId?: string; toolId?: string; sessionId?: string }) => {
+    const next = new URLSearchParams();
+    if (params.skillId) next.set("skillId", params.skillId);
+    if (params.trajectoryId) next.set("trajectoryId", params.trajectoryId);
+    if (params.toolId) next.set("toolId", params.toolId);
+    if (params.sessionId) next.set("sessionId", params.sessionId);
+    navigate(`/work${next.toString() ? `?${next.toString()}` : ""}`);
+  }, [navigate]);
+
+  const openScopedRuntime = useCallback((params: { skillId?: string; sessionIds?: string[] }) => {
+    const next = new URLSearchParams();
+    if (params.skillId) next.set("skillId", params.skillId);
+    if (params.sessionIds && params.sessionIds.length > 0) next.set("sessionIds", params.sessionIds.join(","));
+    navigate(`/runtime${next.toString() ? `?${next.toString()}` : ""}`);
+  }, [navigate]);
 
   const setFactoryScope = useCallback((options: { view?: ViewKey; connectorId?: string; benchmarkId?: string; entityId?: string; replace?: boolean }) => {
     const next = new URLSearchParams(searchParams);
@@ -3057,12 +3091,45 @@ export default function Capabilities(): React.ReactElement {
                       <div className="mt-2 space-y-2">
                         {activeScopeGraph.tools.length === 0 ? (
                           <span className="text-xs text-gray-400">No tools in this scope.</span>
-                        ) : activeScopeGraph.tools.map((tool) => (
-                          <button key={tool.toolId} onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
-                            <p className="truncate font-semibold text-gray-900 dark:text-white">{tool.name}</p>
-                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{tool.connectorName || connectorsById.get(tool.connectorId)?.name || "Connector"}</p>
-                          </button>
-                        ))}
+                        ) : activeScopeGraph.tools.map((tool) => {
+                          const nodeKey = `tool:${tool.toolId}`;
+                          const expanded = activeGraphNode === nodeKey;
+                          const nodeSessions = runtimeUsage.sessionsByToolId.get(tool.toolId) || [];
+                          const nodeApprovals = runtimeUsage.approvalsByToolId.get(tool.toolId) || [];
+                          const nodeArtifacts = runtimeUsage.artifactsByToolId.get(tool.toolId) || [];
+                          const nodeWork = runtimeUsage.workItemsByToolId.get(tool.toolId) || [];
+                          return (
+                            <div key={tool.toolId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
+                              <button
+                                onClick={() => setActiveGraphNode(expanded ? "" : nodeKey)}
+                                className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:border-primary/30"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-gray-900 dark:text-white">{tool.name}</p>
+                                  <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{tool.connectorName || connectorsById.get(tool.connectorId)?.name || "Connector"}</p>
+                                </div>
+                                <FontAwesomeIcon icon={faChevronDown} className={`mt-1 text-[10px] text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                              </button>
+                              {expanded && (
+                                <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
+                                  <div className="mb-3 flex flex-wrap gap-1.5">
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
+                                    <button onClick={() => openScopedRuntime({ sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
+                                    <button onClick={() => openScopedApprovals({ toolId: tool.toolId })} disabled={nodeApprovals.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Approvals</button>
+                                    <button onClick={() => openScopedArtifacts({ toolId: tool.toolId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeArtifacts.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Artifacts</button>
+                                    <button onClick={() => openScopedWork({ toolId: tool.toolId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeWork.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Work</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -3074,12 +3141,45 @@ export default function Capabilities(): React.ReactElement {
                       <div className="mt-2 space-y-2">
                         {activeScopeGraph.trajectories.length === 0 ? (
                           <span className="text-xs text-gray-400">No trajectory evidence in this scope.</span>
-                        ) : activeScopeGraph.trajectories.map((trajectory) => (
-                          <button key={trajectory.trajectoryId} onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
-                            <p className="truncate font-semibold text-gray-900 dark:text-white">{trajectory.name || trajectory.trajectoryId}</p>
-                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{trajectory.intent || trajectory.description || "No intent"}</p>
-                          </button>
-                        ))}
+                        ) : activeScopeGraph.trajectories.map((trajectory) => {
+                          const nodeKey = `trajectory:${trajectory.trajectoryId}`;
+                          const expanded = activeGraphNode === nodeKey;
+                          const nodeSessions = runtimeUsage.sessionsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const nodeApprovals = runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const nodeArtifacts = runtimeUsage.artifactsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const nodeWork = runtimeUsage.workItemsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          return (
+                            <div key={trajectory.trajectoryId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
+                              <button
+                                onClick={() => setActiveGraphNode(expanded ? "" : nodeKey)}
+                                className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:border-primary/30"
+                              >
+                                <div className="min-w-0">
+                                  <p className="truncate font-semibold text-gray-900 dark:text-white">{trajectory.name || trajectory.trajectoryId}</p>
+                                  <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{trajectory.intent || trajectory.description || "No intent"}</p>
+                                </div>
+                                <FontAwesomeIcon icon={faChevronDown} className={`mt-1 text-[10px] text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                              </button>
+                              {expanded && (
+                                <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
+                                  <div className="mb-3 flex flex-wrap gap-1.5">
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
+                                    <button onClick={() => openScopedRuntime({ sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
+                                    <button onClick={() => openScopedApprovals({ trajectoryId: trajectory.trajectoryId })} disabled={nodeApprovals.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Approvals</button>
+                                    <button onClick={() => openScopedArtifacts({ trajectoryId: trajectory.trajectoryId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeArtifacts.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Artifacts</button>
+                                    <button onClick={() => openScopedWork({ trajectoryId: trajectory.trajectoryId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeWork.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Work</button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
 
@@ -3091,17 +3191,50 @@ export default function Capabilities(): React.ReactElement {
                       <div className="mt-2 space-y-2">
                         {activeScopeGraph.skills.length === 0 ? (
                           <span className="text-xs text-gray-400">No reusable skills in this scope.</span>
-                        ) : activeScopeGraph.skills.map((skill) => (
-                          <button key={skill.skillId} onClick={() => openCapabilityDetail({ kind: "skill", item: skill })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
-                            <div className="flex items-center justify-between gap-2">
-                              <p className="truncate font-semibold text-gray-900 dark:text-white">{skill.name}</p>
-                              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${regressionTone(skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel)}`}>
-                                {skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel || "n/a"}
-                              </span>
+                        ) : activeScopeGraph.skills.map((skill) => {
+                          const nodeKey = `skill:${skill.skillId}`;
+                          const expanded = activeGraphNode === nodeKey;
+                          const nodeSessions = runtimeUsage.sessionsBySkillId.get(skill.skillId) || [];
+                          const nodeApprovals = runtimeUsage.approvalsBySkillId.get(skill.skillId) || [];
+                          const nodeArtifacts = runtimeUsage.artifactsBySkillId.get(skill.skillId) || [];
+                          const nodeWork = runtimeUsage.workItemsBySkillId.get(skill.skillId) || [];
+                          return (
+                            <div key={skill.skillId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
+                              <button
+                                onClick={() => setActiveGraphNode(expanded ? "" : nodeKey)}
+                                className="flex w-full items-start justify-between gap-2 px-3 py-2 text-left text-xs transition-colors hover:border-primary/30"
+                              >
+                                <div className="min-w-0">
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="truncate font-semibold text-gray-900 dark:text-white">{skill.name}</p>
+                                    <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${regressionTone(skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel)}`}>
+                                      {skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel || "n/a"}
+                                    </span>
+                                  </div>
+                                  <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{skill.whenToUse || skill.description || "No activation guidance"}</p>
+                                </div>
+                                <FontAwesomeIcon icon={faChevronDown} className={`mt-1 text-[10px] text-gray-400 transition-transform ${expanded ? "rotate-180" : ""}`} />
+                              </button>
+                              {expanded && (
+                                <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
+                                  <div className="mb-3 flex flex-wrap gap-1.5">
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
+                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <button onClick={() => openCapabilityDetail({ kind: "skill", item: skill })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
+                                    <button onClick={() => openScopedRuntime({ skillId: skill.skillId, sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
+                                    <button onClick={() => openScopedApprovals({ skillId: skill.skillId })} disabled={nodeApprovals.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Approvals</button>
+                                    <button onClick={() => openScopedArtifacts({ skillId: skill.skillId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeArtifacts.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Artifacts</button>
+                                    <button onClick={() => openScopedWork({ skillId: skill.skillId, sessionId: nodeSessions.length === 1 ? nodeSessions[0].sessionId : "" })} disabled={nodeWork.length === 0 && nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Work</button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{skill.whenToUse || skill.description || "No activation guidance"}</p>
-                          </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
