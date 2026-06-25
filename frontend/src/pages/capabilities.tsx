@@ -460,6 +460,7 @@ function CapabilityDetailModal({
   userEmail,
   onOpenSession,
   onOpenApprovals,
+  onOpenRuntime,
   onOpenCapability,
   onOpenBenchmarkOps,
   onReload,
@@ -488,6 +489,7 @@ function CapabilityDetailModal({
   userEmail: string;
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
+  onOpenRuntime: (params: { skillId?: string; sessionIds?: string[] }) => void;
   onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
   onOpenBenchmarkOps: (params: { mode: "benchmarks" | "runs"; benchmarkId?: string }) => void;
   onReload: () => Promise<void>;
@@ -864,6 +866,21 @@ function CapabilityDetailModal({
                 </div>
               )}
             </div>
+            {(isSkill || isTrajectory || isTool) && runtimeUsage.sessions.length > 0 && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onOpenRuntime(
+                    isSkill
+                      ? { skillId: detail.item.skillId }
+                      : { sessionIds: runtimeUsage.sessions.map((session) => session.sessionId) },
+                  )}
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                >
+                  Open Runtime Lab
+                </button>
+              </div>
+            )}
             {recentSessions.length === 0 && recentApprovals.length === 0 && recentArtifacts.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 text-xs text-gray-400">
                 No runtime evidence is linked to this capability yet.
@@ -3187,6 +3204,12 @@ export default function Capabilities(): React.ReactElement {
               if (trajectoryId) params.set("trajectoryId", trajectoryId);
               if (toolId) params.set("toolId", toolId);
               navigate(`/approvals?${params.toString()}`);
+            }}
+            onOpenRuntime={({ skillId, sessionIds }) => {
+              const params = new URLSearchParams();
+              if (skillId) params.set("skillId", skillId);
+              if (sessionIds && sessionIds.length > 0) params.set("sessionIds", sessionIds.join(","));
+              navigate(`/runtime${params.toString() ? `?${params.toString()}` : ""}`);
             }}
             onOpenCapability={openCapabilityDetail}
             onOpenBenchmarkOps={({ mode, benchmarkId }) => {

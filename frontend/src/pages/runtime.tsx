@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowRight,
@@ -263,12 +263,18 @@ function SessionCard({
 export default function Runtime(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "browser" | "api" | "hybrid">("all");
+  const skillFilter = searchParams.get("skillId") || "";
+  const sessionIdsFilter = useMemo(
+    () => new Set((searchParams.get("sessionIds") || "").split(",").map((value) => value.trim()).filter(Boolean)),
+    [searchParams],
+  );
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -304,6 +310,8 @@ export default function Runtime(): React.ReactElement {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return sessions.filter((session) => {
+      if (skillFilter && String(session.matchedSkillId || "") !== skillFilter) return false;
+      if (sessionIdsFilter.size > 0 && !sessionIdsFilter.has(session.sessionId)) return false;
       const kindMatches = kindFilter === "all" || runtimeKind(session) === kindFilter;
       if (!kindMatches) return false;
       if (!q) return true;
@@ -318,16 +326,16 @@ export default function Runtime(): React.ReactElement {
       ].join(" ").toLowerCase().includes(q)
       );
     });
-  }, [kindFilter, search, sessions]);
+  }, [kindFilter, search, sessionIdsFilter, sessions, skillFilter]);
 
   const metrics = useMemo(() => ({
-    total: sessions.length,
-    browser: sessions.filter((session) => session.hasBrowserActivity).length,
-    skillReplay: sessions.filter((session) => !!session.matchedSkillId).length,
-    approvals: sessions.reduce((sum, session) => sum + (session.approvedConnectorToolCallCount || 0), 0),
-    pendingApprovals: sessions.reduce((sum, session) => sum + (session.pendingApprovalCount || 0), 0),
-    artifacts: sessions.reduce((sum, session) => sum + (session.artifactCount || 0), 0),
-  }), [sessions]);
+    total: filtered.length,
+    browser: filtered.filter((session) => session.hasBrowserActivity).length,
+    skillReplay: filtered.filter((session) => !!session.matchedSkillId).length,
+    approvals: filtered.reduce((sum, session) => sum + (session.approvedConnectorToolCallCount || 0), 0),
+    pendingApprovals: filtered.reduce((sum, session) => sum + (session.pendingApprovalCount || 0), 0),
+    artifacts: filtered.reduce((sum, session) => sum + (session.artifactCount || 0), 0),
+  }), [filtered]);
 
   return (
     <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
@@ -366,6 +374,30 @@ export default function Runtime(): React.ReactElement {
               />
             </label>
           </div>
+
+          {(skillFilter || sessionIdsFilter.size > 0) && (
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-bg">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime scope active</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {skillFilter
+                    ? `Showing sessions for skill ${skillFilter}.`
+                    : `Showing ${sessionIdsFilter.size} linked runtime ${sessionIdsFilter.size === 1 ? "session" : "sessions"}.`}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("skillId");
+                  next.delete("sessionIds");
+                  setSearchParams(next, { replace: true });
+                }}
+                className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-surface"
+              >
+                Clear scope
+              </button>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             {([
