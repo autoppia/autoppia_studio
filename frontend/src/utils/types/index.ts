@@ -164,6 +164,44 @@ export interface SessionItem {
         artifactCount?: number;
         pendingApprovalCount?: number;
     };
+    sessionContract?: {
+        contractVersion?: string;
+        sessionId?: string;
+        agentRuntime?: {
+            runtimeKind?: "browser" | "api" | "hybrid" | string;
+            sourceKind?: string;
+            agentId?: string;
+            agentName?: string;
+            workItemId?: string;
+            runId?: string;
+        };
+        selectedSkill?: {
+            matched?: boolean;
+            skillId?: string;
+            skillName?: string;
+        };
+        approvalState?: {
+            pending?: number;
+            approvedConnectorCalls?: number;
+            requiredFor?: string[];
+            hasHumanBoundary?: boolean;
+        };
+        artifactState?: {
+            count?: number;
+            hasBusinessOutput?: boolean;
+        };
+        costState?: {
+            creditsSpent?: number;
+            durationSeconds?: number;
+            lastStepSeconds?: number;
+        };
+        traceState?: {
+            traceIds?: string[];
+            traceCount?: number;
+            timelineSteps?: number;
+            replayReady?: boolean;
+        };
+    };
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";

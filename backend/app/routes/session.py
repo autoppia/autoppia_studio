@@ -325,8 +325,58 @@ def _attach_session_runtime_counts(summary: dict[str, Any], *, artifact_count: i
     summary["runtimeEvidence"] = _session_runtime_evidence(summary, artifact_count=artifact_count, pending_approval_count=pending_approval_count)
     summary["runtimeLab"] = _session_runtime_lab(summary, artifact_count=artifact_count, pending_approval_count=pending_approval_count)
     summary["runtimeAuditTrail"] = _session_runtime_audit_trail(summary, action_history=action_history, artifact_count=artifact_count, pending_approval_count=pending_approval_count)
+    summary["sessionContract"] = _session_contract(summary, artifact_count=artifact_count, pending_approval_count=pending_approval_count)
     summary.pop("_actionHistory", None)
     return summary
+
+
+def _session_contract(summary: dict[str, Any], *, artifact_count: int, pending_approval_count: int) -> dict[str, Any]:
+    runtime_metrics = summary.get("runtimeMetrics") if isinstance(summary.get("runtimeMetrics"), dict) else {}
+    runtime_lab = summary.get("runtimeLab") if isinstance(summary.get("runtimeLab"), dict) else {}
+    runtime_evidence = summary.get("runtimeEvidence") if isinstance(summary.get("runtimeEvidence"), dict) else {}
+    runtime_policy = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
+    skill_match = runtime_lab.get("skillMatch") if isinstance(runtime_lab.get("skillMatch"), dict) else {}
+    outputs = runtime_lab.get("outputs") if isinstance(runtime_lab.get("outputs"), dict) else {}
+    approvals = runtime_lab.get("approvals") if isinstance(runtime_lab.get("approvals"), dict) else {}
+    trace = runtime_evidence.get("trace") if isinstance(runtime_evidence.get("trace"), dict) else {}
+    return {
+        "contractVersion": "2026-06-25",
+        "sessionId": str(summary.get("sessionId") or ""),
+        "agentRuntime": {
+            "runtimeKind": str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api"),
+            "sourceKind": str(summary.get("sourceKind") or ""),
+            "agentId": str(summary.get("agentId") or ""),
+            "agentName": str(summary.get("agentName") or ""),
+            "workItemId": str(summary.get("workItemId") or ""),
+            "runId": str(summary.get("runId") or ""),
+        },
+        "selectedSkill": {
+            "matched": bool(skill_match.get("matched") or summary.get("matchedSkillId") or summary.get("matchedSkillName")),
+            "skillId": str(skill_match.get("skillId") or summary.get("matchedSkillId") or ""),
+            "skillName": str(skill_match.get("skillName") or summary.get("matchedSkillName") or ""),
+        },
+        "approvalState": {
+            "pending": pending_approval_count,
+            "approvedConnectorCalls": int(approvals.get("approvedConnectorCalls") or 0),
+            "requiredFor": approvals.get("requiredFor") if isinstance(approvals.get("requiredFor"), list) else [],
+            "hasHumanBoundary": bool(approvals.get("hasHumanBoundary") or runtime_policy.get("hasHumanBoundary")),
+        },
+        "artifactState": {
+            "count": artifact_count,
+            "hasBusinessOutput": bool(outputs.get("hasBusinessOutput") or artifact_count > 0),
+        },
+        "costState": {
+            "creditsSpent": _safe_float(outputs.get("creditsSpent") or summary.get("creditsSpent") or runtime_metrics.get("creditsSpent")),
+            "durationSeconds": _safe_float(outputs.get("durationSeconds") or runtime_metrics.get("durationSeconds")),
+            "lastStepSeconds": _safe_float(outputs.get("lastStepSeconds") or runtime_metrics.get("lastStepSeconds")),
+        },
+        "traceState": {
+            "traceIds": trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else summary.get("traceIds", []),
+            "traceCount": int(trace.get("traceCount") or 0),
+            "timelineSteps": int(trace.get("timelineSteps") or 0),
+            "replayReady": bool(trace.get("replayReady")),
+        },
+    }
 
 
 def _session_operational_fields(
@@ -386,6 +436,7 @@ def _session_operational_fields(
             "timelineSteps": int(trace.get("timelineSteps") or 0),
             "replayReady": bool(trace.get("replayReady")),
         },
+        "sessionContract": summary.get("sessionContract", {}),
     }
 
 

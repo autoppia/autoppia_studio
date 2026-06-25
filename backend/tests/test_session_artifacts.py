@@ -215,6 +215,16 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["runtimeLab"]["approvals"]["requiredFor"] == ["send"]
     assert session["runtimeLab"]["outputs"]["artifacts"] == 2
     assert session["runtimeLab"]["outputs"]["creditsSpent"] == 2.5
+    assert session["sessionContract"]["agentRuntime"]["runtimeKind"] == "hybrid"
+    assert session["sessionContract"]["agentRuntime"]["workItemId"] == "work-42"
+    assert session["sessionContract"]["selectedSkill"] == {"matched": True, "skillId": "skill-1", "skillName": "Handle claim summary"}
+    assert session["sessionContract"]["approvalState"]["pending"] == 1
+    assert session["sessionContract"]["approvalState"]["requiredFor"] == ["send"]
+    assert session["sessionContract"]["artifactState"] == {"count": 2, "hasBusinessOutput": True}
+    assert session["sessionContract"]["costState"]["creditsSpent"] == 2.5
+    assert session["sessionContract"]["costState"]["durationSeconds"] == 2.0
+    assert session["sessionContract"]["traceState"]["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
+    assert session["sessionContract"]["traceState"]["replayReady"] is False
     assert session["runtimeAuditTrail"]["uniform"] is True
     assert session["runtimeAuditTrail"]["hasHumanBoundary"] is True
     assert session["runtimeAuditTrail"]["approvalRequiredFor"] == ["send"]
@@ -259,6 +269,8 @@ async def test_save_session_persists_company_id(monkeypatch):
     assert sessions.docs[0]["artifactState"]["count"] == 0
     assert sessions.docs[0]["costState"]["creditsSpent"] == 0.0
     assert sessions.docs[0]["traceState"]["traceIds"] == []
+    assert sessions.docs[0]["sessionContract"]["agentRuntime"]["runtimeKind"] == "api"
+    assert sessions.docs[0]["sessionContract"]["selectedSkill"]["matched"] is False
 
 
 @pytest.mark.asyncio
@@ -316,6 +328,10 @@ async def test_save_chat_history_persists_operational_session_snapshot(monkeypat
     assert doc["traceState"]["traceIds"] == ["run-1", "trace-browser", "trace-draft"]
     assert doc["runtimeLab"]["timeline"]["steps"] == 2
     assert doc["runtimeAuditTrail"]["hasHumanBoundary"] is True
+    assert doc["sessionContract"]["selectedSkill"] == {"matched": True, "skillId": "skill-1", "skillName": "Draft claim response"}
+    assert doc["sessionContract"]["approvalState"]["pending"] == 1
+    assert doc["sessionContract"]["artifactState"]["hasBusinessOutput"] is True
+    assert doc["sessionContract"]["traceState"]["traceIds"] == ["run-1", "trace-browser", "trace-draft"]
 
 
 @pytest.mark.asyncio
@@ -422,6 +438,10 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["runtimeLab"]["toolCalls"]["pendingApproval"] == "smtp.send_email:0:abc"
     assert session["runtimeLab"]["skillMatch"]["matched"] is True
     assert session["runtimeLab"]["outputs"]["hasBusinessOutput"] is True
+    assert session["sessionContract"]["agentRuntime"]["runId"] == "run-9"
+    assert session["sessionContract"]["selectedSkill"]["skillId"] == "skill-1"
+    assert session["sessionContract"]["approvalState"]["hasHumanBoundary"] is True
+    assert session["sessionContract"]["artifactState"]["count"] == 2
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
