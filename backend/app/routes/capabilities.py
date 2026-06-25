@@ -52,6 +52,9 @@ class SkillUpdateRequest(BaseModel):
     name: str | None = None
     description: str | None = None
     whenToUse: str | None = None
+    instructions: str | None = None
+    preconditions: list[str] | None = None
+    expectedArtifacts: list[str] | None = None
     riskPolicy: str | None = None
     status: str | None = None
     inputEntities: list[str] | None = None
@@ -78,6 +81,9 @@ class PromoteTrajectoryRequest(BaseModel):
     email: str = ""
     name: str = ""
     whenToUse: str = ""
+    instructions: str = ""
+    preconditions: list[str] = Field(default_factory=list)
+    expectedArtifacts: list[str] = Field(default_factory=list)
     permissions: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: str = "human_approval_for_writes"
     inputEntities: list[str] = Field(default_factory=list)
@@ -197,9 +203,23 @@ def _serialize_trajectory(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
+async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
     status = str(doc.get("status", "draft") or "draft")
     version = _skill_version(doc)
+    trajectory_ids = _dedupe_strings([str(value or "") for value in doc.get("trajectoryIds", [])])
+    trajectory_docs: list[dict[str, Any]] = []
+    latest_regression: dict[str, Any] | None = None
+    try:
+        for trajectory_id in trajectory_ids:
+            trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
+            if trajectory:
+                trajectory_docs.append(trajectory)
+        latest_regression = await _latest_skill_regression(doc, trajectory_docs=trajectory_docs)
+    except Exception:
+        trajectory_docs = []
+        latest_regression = None
+    lineage = _skill_lineage(doc, trajectory_docs)
+    hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
     return {
         "capabilityId": doc.get("capabilityId", ""),
         "capabilityKind": "skill",
@@ -213,6 +233,9 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "name": doc.get("name", ""),
         "description": doc.get("description", ""),
         "whenToUse": doc.get("whenToUse", ""),
+        "instructions": doc.get("instructions", ""),
+        "preconditions": doc.get("preconditions", []),
+        "expectedArtifacts": doc.get("expectedArtifacts", []),
         "benchmarkId": doc.get("benchmarkId", ""),
         "evalId": doc.get("evalId", ""),
         "permissions": doc.get("permissions", {}),
@@ -234,6 +257,9 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "discovererName": doc.get("discovererName", ""),
         "discovererVersion": doc.get("discovererVersion", ""),
         "judge": doc.get("judge", {}),
+        "lineage": lineage,
+        "latestRegression": latest_regression,
+        "hardeningStatus": hardening,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -289,7 +315,7 @@ async def _upsert_skill(doc: dict[str, Any]) -> dict[str, Any]:
     doc.update(_skill_lifecycle_fields(previous=existing or {}, next_doc=doc, now=now))
     doc["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": doc["capabilityId"]}, {"$set": doc}, upsert=True)
-    return _serialize_skill(doc)
+    return await _serialize_skill(doc)
 
 
 def _dedupe_strings(values: list[str]) -> list[str]:
@@ -340,6 +366,57 @@ def _skill_lifecycle_fields(*, previous: dict[str, Any], next_doc: dict[str, Any
     if previous_status != next_status:
         update["lastPromotedAt"] = now
     return update
+
+
+def _skill_lineage(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]]) -> dict[str, Any]:
+    benchmark_ids = _dedupe_strings([str(skill.get("benchmarkId") or "")])
+    eval_ids = _dedupe_strings([str(skill.get("evalId") or "")])
+    connector_ids = _dedupe_strings([str(value or "") for value in skill.get("connectorIds") or []])
+    tool_ids = _dedupe_strings([str(value or "") for value in skill.get("toolIds") or []])
+    trajectory_ids = _dedupe_strings([str(value or "") for value in skill.get("trajectoryIds") or []])
+    sources = _dedupe_strings([str(skill.get("source") or "")])
+
+    for trajectory in trajectory_docs:
+        benchmark_ids.extend(_dedupe_strings([str(trajectory.get("benchmarkId") or "")]))
+        eval_ids.extend(_dedupe_strings([str(trajectory.get("evalId") or "")]))
+        connector_ids.extend(_dedupe_strings([str(value or "") for value in trajectory.get("connectorIds") or []]))
+        tool_ids.extend(_dedupe_strings([str(value or "") for value in trajectory.get("toolIds") or []]))
+        sources.extend(_dedupe_strings([str(trajectory.get("source") or "")]))
+
+    return {
+        "trajectoryIds": _dedupe_strings(trajectory_ids),
+        "benchmarkIds": _dedupe_strings(benchmark_ids),
+        "evalIds": _dedupe_strings(eval_ids),
+        "connectorIds": _dedupe_strings(connector_ids),
+        "toolIds": _dedupe_strings(tool_ids),
+        "sources": _dedupe_strings(sources),
+    }
+
+
+def _skill_hardening_status(
+    skill: dict[str, Any],
+    *,
+    trajectory_docs: list[dict[str, Any]],
+    latest_regression: dict[str, Any] | None,
+) -> dict[str, Any]:
+    checks = {
+        "activation": bool(str(skill.get("whenToUse") or "").strip()),
+        "instructions": bool(str(skill.get("instructions") or "").strip()),
+        "riskPolicy": bool(str(skill.get("riskPolicy") or "").strip()),
+        "lineage": bool(skill.get("trajectoryIds") or trajectory_docs),
+        "regression": latest_regression is not None,
+        "publishableRegression": bool(latest_regression and latest_regression.get("label") == "pass"),
+        "entities": bool((skill.get("inputEntities") or []) or str(skill.get("outputEntity") or "").strip()),
+        "artifacts": bool(skill.get("expectedArtifacts") or skill.get("outputCard")),
+    }
+    passed = sum(1 for value in checks.values() if value)
+    return {
+        "checks": checks,
+        "passedChecks": passed,
+        "totalChecks": len(checks),
+        "score": round(passed / len(checks), 3) if checks else 0.0,
+        "state": "hardened" if checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["lineage"] and checks["publishableRegression"] else "drafting",
+    }
 
 
 async def _skill_eval_ids(
@@ -626,6 +703,9 @@ async def _harvest_capabilities_for_connector(
                     "name": _task_skill_name(connector, task),
                     "description": prompt,
                     "whenToUse": prompt,
+                    "instructions": prompt,
+                    "preconditions": [],
+                    "expectedArtifacts": [],
                     "connectorIds": [connector_id],
                     "toolIds": tool_ids if connector_type == "api" else [],
                     "trajectoryIds": [trajectory_id],
@@ -678,7 +758,7 @@ async def list_company_capabilities(company_id: str, email: str = ""):
     tools = [_serialize_tool(doc) async for doc in tools_collection.find(query, {"_id": 0}).sort("createdAt", 1)]
     trajectories = [_serialize_trajectory(doc) async for doc in trajectories_collection.find(query, {"_id": 0}).sort("createdAt", 1)]
     skills = [
-        _serialize_skill(doc)
+        await _serialize_skill(doc)
         async for doc in capabilities_collection.find({**query, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", 1)
     ]
     return {"capabilities": [*tools, *trajectories, *skills], "tools": tools, "trajectories": trajectories, "skills": skills}
@@ -753,7 +833,7 @@ async def update_skill_approval(skill_id: str, body: CapabilityApprovalUpdateReq
     permissions = skill.get("permissions") if isinstance(skill.get("permissions"), dict) else {}
     updated = {**permissions, "approval": _clean_approval_mode(body.approval)}
     await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": {"permissions": updated, "updatedAt": _now()}})
-    return {"success": True, "skill": _serialize_skill({**skill, "permissions": updated, "updatedAt": _now()})}
+    return {"success": True, "skill": await _serialize_skill({**skill, "permissions": updated, "updatedAt": _now()})}
 
 
 @router.patch("/skills/{skill_id}")
@@ -772,6 +852,12 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
         update["description"] = body.description.strip()
     if body.whenToUse is not None:
         update["whenToUse"] = body.whenToUse.strip()
+    if body.instructions is not None:
+        update["instructions"] = body.instructions.strip()
+    if body.preconditions is not None:
+        update["preconditions"] = _dedupe_strings(body.preconditions)
+    if body.expectedArtifacts is not None:
+        update["expectedArtifacts"] = _dedupe_strings(body.expectedArtifacts)
     if body.riskPolicy is not None:
         update["riskPolicy"] = body.riskPolicy.strip() or skill.get("riskPolicy", "")
     if body.status is not None:
@@ -818,7 +904,7 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
         await _assert_skill_publishable(candidate_skill, trajectory_docs=trajectory_docs)
 
     now = _now()
-    material_keys = {"name", "description", "whenToUse", "riskPolicy", "status", "inputEntities", "outputEntity", "outputCard", "trajectoryIds", "connectorIds", "toolIds", "runtimeRequirements", "benchmarkId", "evalId"}
+    material_keys = {"name", "description", "whenToUse", "instructions", "preconditions", "expectedArtifacts", "riskPolicy", "status", "inputEntities", "outputEntity", "outputCard", "trajectoryIds", "connectorIds", "toolIds", "runtimeRequirements", "benchmarkId", "evalId"}
     if any(key in update and skill.get(key) != candidate_skill.get(key) for key in material_keys):
         next_version = _skill_version(skill) + 1
         update["version"] = next_version
@@ -828,7 +914,7 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
     update["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": update})
     refreshed = {**skill, **update}
-    return {"success": True, "skill": _serialize_skill(refreshed)}
+    return {"success": True, "skill": await _serialize_skill(refreshed)}
 
 
 @router.post("/tools/{tool_id}/test")
@@ -973,6 +1059,9 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         "name": body.name or trajectory.get("name") or trajectory.get("taskName") or "Skill",
         "description": trajectory.get("prompt") or trajectory.get("intent", ""),
         "whenToUse": body.whenToUse or trajectory.get("intent") or trajectory.get("prompt", ""),
+        "instructions": body.instructions or trajectory.get("prompt") or trajectory.get("intent", ""),
+        "preconditions": _dedupe_strings(body.preconditions),
+        "expectedArtifacts": _dedupe_strings(body.expectedArtifacts),
         "connectorIds": trajectory.get("connectorIds", []),
         "toolIds": trajectory.get("toolIds", []),
         "trajectoryIds": [trajectory_id],
@@ -1001,7 +1090,7 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         {"trajectoryId": trajectory_id},
         {"$set": {"status": "promoted", "promotedSkillId": capability_id, "updatedAt": now}},
     )
-    return {"success": True, "skill": _serialize_skill(doc)}
+    return {"success": True, "skill": await _serialize_skill(doc)}
 
 
 @router.post("/trajectories/{trajectory_id}/review")

@@ -229,6 +229,9 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
             name="Hardened renewal workflow",
             description="Reusable renewal workflow",
             whenToUse="Use for customer renewal follow-up",
+            instructions="Look up the policy, confirm renewal state, draft the response and stop before sending.",
+            preconditions=["Customer identity verified", "Policy number available"],
+            expectedArtifacts=["draft_email", "renewal_summary"],
             riskPolicy="human_approval_always",
             status="published",
             inputEntities=["Customer", "Policy"],
@@ -251,6 +254,17 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["runtimeRequirements"] == ["network", "browser"]
     assert skill["benchmarkId"] == "bench-1"
     assert skill["evalId"] == "eval-1"
+    assert skill["instructions"].startswith("Look up the policy")
+    assert skill["preconditions"] == ["Customer identity verified", "Policy number available"]
+    assert skill["expectedArtifacts"] == ["draft_email", "renewal_summary"]
+    assert skill["lineage"]["trajectoryIds"] == ["traj-1", "traj-2"]
+    assert skill["lineage"]["benchmarkIds"] == ["bench-1", "bench-2"]
+    assert skill["lineage"]["evalIds"] == ["eval-1", "eval-2"]
+    assert skill["latestRegression"]["runId"] == "run-1"
+    assert skill["latestRegression"]["label"] == "pass"
+    assert skill["hardeningStatus"]["checks"]["instructions"] is True
+    assert skill["hardeningStatus"]["checks"]["publishableRegression"] is True
+    assert skill["hardeningStatus"]["state"] == "hardened"
 
 
 @pytest.mark.asyncio
@@ -654,6 +668,9 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     monkeypatch.setattr(capabilities, "companies_collection", _Collection([{"companyId": "co-1"}]))
     monkeypatch.setattr(capabilities, "tools_collection", _Collection())
     monkeypatch.setattr(capabilities, "harvester_runs_collection", _Collection())
+    monkeypatch.setattr(capabilities, "eval_runs_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
     monkeypatch.setattr(
         capabilities,
         "trajectories_collection",
@@ -677,7 +694,12 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
 
     result = await capabilities.promote_trajectory_to_skill(
         "traj-1",
-        capabilities.PromoteTrajectoryRequest(email="user@example.com"),
+        capabilities.PromoteTrajectoryRequest(
+            email="user@example.com",
+            instructions="Fetch the latest invoice, draft the email and stop before sending.",
+            preconditions=["Customer email exists"],
+            expectedArtifacts=["draft_email"],
+        ),
     )
 
     assert result["success"] is True
@@ -687,6 +709,12 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     assert result["skill"]["version"] == 1
     assert result["skill"]["versionLabel"] == "v1"
     assert result["skill"]["readyAt"]
+    assert result["skill"]["instructions"].startswith("Fetch the latest invoice")
+    assert result["skill"]["preconditions"] == ["Customer email exists"]
+    assert result["skill"]["expectedArtifacts"] == ["draft_email"]
+    assert result["skill"]["lineage"]["trajectoryIds"] == ["traj-1"]
+    assert result["skill"]["hardeningStatus"]["checks"]["lineage"] is True
+    assert result["skill"]["hardeningStatus"]["checks"]["regression"] is False
 
     listed = await capabilities.list_company_capabilities("co-1")
     assert listed["skills"][0]["trajectoryIds"] == ["traj-1"]
