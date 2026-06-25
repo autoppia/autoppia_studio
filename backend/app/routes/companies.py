@@ -148,13 +148,25 @@ def _task_metadata(task: dict[str, Any]) -> dict[str, Any]:
     return task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
 
 
-def _task_contract_ready(task: dict[str, Any]) -> bool:
+def _task_contract(task: dict[str, Any]) -> dict[str, Any]:
     metadata = _task_metadata(task)
+    nested = metadata.get("taskContract") if isinstance(metadata.get("taskContract"), dict) else {}
+    return {
+        "businessIntent": task.get("businessIntent") or metadata.get("businessIntent") or nested.get("businessIntent") or "",
+        "allowedSystems": task.get("allowedSystems") or metadata.get("allowedSystems") or nested.get("allowedSystems") or [],
+        "expectedArtifacts": task.get("expectedArtifacts") or metadata.get("expectedArtifacts") or nested.get("expectedArtifacts") or [],
+        "riskClass": task.get("riskClass") or metadata.get("riskClass") or nested.get("riskClass") or "",
+        "successCriteria": task.get("successCriteria") or metadata.get("successCriteria") or nested.get("successCriteria") or "",
+    }
+
+
+def _task_contract_ready(task: dict[str, Any]) -> bool:
+    contract = _task_contract(task)
     return bool(
-        str(metadata.get("businessIntent") or "").strip()
-        and _normalized_list(metadata.get("allowedSystems"))
-        and _normalized_list(metadata.get("expectedArtifacts"))
-        and str(metadata.get("riskClass") or "").strip()
+        str(contract.get("businessIntent") or "").strip()
+        and _normalized_list(contract.get("allowedSystems"))
+        and _normalized_list(contract.get("expectedArtifacts"))
+        and str(contract.get("riskClass") or "").strip()
     )
 
 
@@ -398,10 +410,14 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         surface_counts = _sorted_counts([connector_surface(doc) for doc in connectors])
         policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
         task_contracts_ready = sum(1 for task in benchmark_tasks if _task_contract_ready(task))
-        task_artifacts = sorted({artifact for task in benchmark_tasks for artifact in _normalized_list(_task_metadata(task).get("expectedArtifacts"))})
-        task_allowed_systems = sorted({system for task in benchmark_tasks for system in _normalized_list(_task_metadata(task).get("allowedSystems"))})
-        task_business_intents = [str(_task_metadata(task).get("businessIntent") or task.get("name") or task.get("agentTaskName") or "").strip() for task in benchmark_tasks]
-        task_risks = [str(_task_metadata(task).get("riskClass") or "unspecified") for task in benchmark_tasks]
+        task_contracts = [_task_contract(task) for task in benchmark_tasks]
+        task_artifacts = sorted({artifact for contract in task_contracts for artifact in _normalized_list(contract.get("expectedArtifacts"))})
+        task_allowed_systems = sorted({system for contract in task_contracts for system in _normalized_list(contract.get("allowedSystems"))})
+        task_business_intents = [
+            str(contract.get("businessIntent") or task.get("name") or task.get("agentTaskName") or "").strip()
+            for task, contract in zip(benchmark_tasks, task_contracts)
+        ]
+        task_risks = [str(contract.get("riskClass") or "unspecified") for contract in task_contracts]
         benchmark_verticals = _sorted_counts([str(doc.get("vertical") or "general") for doc in benchmarks])
         skill_artifacts = sorted({artifact for skill in skills for artifact in _normalized_list(skill.get("expectedArtifacts"))})
         hardened_skills = sum(1 for skill in skills if _skill_hardening_ready(skill))

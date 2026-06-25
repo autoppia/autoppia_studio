@@ -402,11 +402,19 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "name": "Draft claim status response",
                     "companyId": "company-1",
                     "email": "owner@example.com",
+                    "businessIntent": "Respond to a customer about claim status",
+                    "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                    "expectedArtifacts": ["draft_email", "claim_summary"],
+                    "riskClass": "draft",
+                    "successCriteria": "Draft response cites claim status and is not sent",
                     "metadata": {
-                        "businessIntent": "Respond to a customer about claim status",
-                        "allowedSystems": ["email", "insurance_erp", "knowledge"],
-                        "expectedArtifacts": ["draft_email", "claim_summary"],
-                        "riskClass": "draft",
+                        "taskContract": {
+                            "businessIntent": "Respond to a customer about claim status",
+                            "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                            "expectedArtifacts": ["draft_email", "claim_summary"],
+                            "riskClass": "draft",
+                            "successCriteria": "Draft response cites claim status and is not sent",
+                        },
                     },
                 }
             ]
