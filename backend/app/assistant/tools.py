@@ -114,6 +114,10 @@ def _work_credits_spent(doc: dict[str, Any]) -> float:
     return _safe_float(report.get("creditsSpent"))
 
 
+def _surface_status(ready: bool) -> str:
+    return "ready" if ready else "needs_work"
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -227,6 +231,55 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
         if failing_runs:
             recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
+        risk_alerts = [
+            alert
+            for alert in [
+                {"area": "approvals", "severity": "high", "message": f"{pending_approvals} pending approval(s) block write/send boundaries."} if pending_approvals else None,
+                {"area": "evals", "severity": "high", "message": f"{failing_runs} failing eval run(s) need trace review before skill promotion."} if failing_runs else None,
+                {"area": "work", "severity": "medium", "message": f"{scheduled_due} scheduled work item(s) are due."} if scheduled_due else None,
+                {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
+                {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
+                {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
+            ]
+            if alert
+        ]
+        automata_guidance = {
+            "role": "studio_copilot",
+            "primaryNextAction": recommended_actions[0] if recommended_actions else {"area": "runtime", "action": "Run a representative AgentRuntime session and inspect approvals, artifacts, trace and skill usage.", "reason": "Core Studio surfaces are configured."},
+            "riskAlerts": risk_alerts,
+            "surfacePlaybook": [
+                {
+                    "surface": "Company Setup",
+                    "status": _surface_status(bool(company_id) and counts["connectors"] > 0),
+                    "nextAction": "Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.",
+                },
+                {
+                    "surface": "Capability Factory",
+                    "status": _surface_status(counts["tools"] > 0 and counts["benchmarkTasks"] > 0 and counts["skills"] > 0),
+                    "nextAction": "Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.",
+                },
+                {
+                    "surface": "Runtime Lab",
+                    "status": _surface_status(counts["sessions"] > 0),
+                    "nextAction": "Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.",
+                },
+                {
+                    "surface": "Work Orchestration",
+                    "status": _surface_status(counts["workItems"] > 0 and review_blocked == 0 and budget_exhausted == 0),
+                    "nextAction": "Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.",
+                },
+                {
+                    "surface": "Automata",
+                    "status": "ready",
+                    "nextAction": "Ask Automata to explain failing tasks, suggest missing benchmarks, or draft the next capability-hardening step.",
+                },
+            ],
+            "explainFailurePrompts": [
+                "Why did the latest eval fail and which trace/tool call should I inspect?",
+                "Which skills are blocked from publishing and what hardening evidence is missing?",
+                "Which permissions or approvals create the biggest runtime risk right now?",
+            ],
+        }
         operating_state = {
             "readiness": {
                 "score": round(ready_count / len(readiness_checks), 2),
@@ -306,8 +359,9 @@ class AutomataAssistantTools:
                 },
             },
             "recommendedNextActions": recommended_actions[:6],
+            "automataGuidance": automata_guidance,
         }
-        return {"companies": companies, "activeCompanyId": company_id, "counts": counts, "operatingState": operating_state}
+        return {"companies": companies, "activeCompanyId": company_id, "counts": counts, "operatingState": operating_state, "automataGuidance": automata_guidance}
 
     async def list_agents(self, limit: int = 10) -> list[dict[str, Any]]:
         return await _to_list(agents_collection.find(self._query(), {"_id": 0}).sort("createdAt", -1), limit)

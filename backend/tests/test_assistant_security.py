@@ -307,6 +307,10 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
     assert snapshot["operatingState"]["runtime"]["sessions"] == 1
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
+    assert snapshot["automataGuidance"]["role"] == "studio_copilot"
+    assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
+    assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
+    assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert capabilities_payload["skills"] == [
         {
@@ -579,6 +583,10 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 },
                 "workOrchestration": {"sla": {"needsAttention": 3}},
                 "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
+                "automataGuidance": {
+                    "primaryNextAction": {"area": "evals", "action": "Inspect failed traces before publishing."},
+                    "riskAlerts": [{"area": "evals", "severity": "high", "message": "1 failing eval."}],
+                },
             },
         }
     )
@@ -586,7 +594,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
     assert "Work attention items: 3." in reply
-    assert "Next: Create benchmark tasks for the top insurance workflows." in reply
+    assert "Automata sees 1 risk alert(s)." in reply
+    assert "Next: Inspect failed traces before publishing." in reply
 
 
 @pytest.mark.asyncio
