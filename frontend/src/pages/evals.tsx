@@ -42,7 +42,32 @@ interface Benchmark {
   agentId: string;
   agentName?: string;
   tasks: EvalItem[];
+  coverage?: BenchmarkCoverage;
   persisted?: boolean;
+}
+
+interface BenchmarkCoverage {
+  taskCount?: number;
+  systems?: string[];
+  expectedArtifacts?: string[];
+  riskClasses?: string[];
+  connectorIds?: string[];
+  entityNames?: string[];
+  skillCoverage?: {
+    skillIds?: string[];
+    total?: number;
+    ready?: number;
+    published?: number;
+  };
+  runCoverage?: {
+    total?: number;
+    pass?: number;
+    fail?: number;
+    pending?: number;
+    latestLabel?: string;
+    latestRunId?: string;
+    latestCreatedAt?: string;
+  };
 }
 
 interface ConnectorItem {
@@ -311,6 +336,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
         agentId: bench.agentId || "",
         agentName: bench.agentName || "",
         tasks: bench.tasks || [],
+        coverage: bench.coverage,
         persisted: true,
       });
     }
@@ -1164,6 +1190,52 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                         </button>
                       </div>
                     </div>
+
+                    {benchmark.coverage && (
+                      <div className="mb-4 grid gap-2 md:grid-cols-4">
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {benchmark.coverage.skillCoverage?.ready || 0}/{benchmark.coverage.skillCoverage?.total || 0} ready
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {benchmark.coverage.skillCoverage?.published || 0} published skills
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Systems & connectors</p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {(benchmark.coverage.systems || []).length} systems · {(benchmark.coverage.connectorIds || []).length} connectors
+                          </p>
+                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                            {[...(benchmark.coverage.systems || []), ...(benchmark.coverage.connectorIds || [])].slice(0, 4).join(", ") || "No systems declared"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entities & artifacts</p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {(benchmark.coverage.entityNames || []).length} entities · {(benchmark.coverage.expectedArtifacts || []).length} artifacts
+                          </p>
+                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                            {(benchmark.coverage.expectedArtifacts || []).slice(0, 4).join(", ") || "No artifacts declared"}
+                          </p>
+                        </div>
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression coverage</p>
+                          <div className="mt-1 flex items-center gap-2">
+                            <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${labelClass(benchmark.coverage.runCoverage?.latestLabel || "pending")}`}>
+                              {benchmark.coverage.runCoverage?.latestLabel || "no runs"}
+                            </span>
+                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                              {benchmark.coverage.runCoverage?.pass || 0}/{benchmark.coverage.runCoverage?.total || 0} pass
+                            </span>
+                          </div>
+                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                            {(benchmark.coverage.riskClasses || []).join(", ") || "No risk classes"}
+                          </p>
+                        </div>
+                      </div>
+                    )}
 
                     <div className="grid gap-2 md:grid-cols-2">
                       {benchmark.tasks.length === 0 && (

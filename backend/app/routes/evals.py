@@ -10,6 +10,7 @@ from app.database import (
     agents_collection,
     benchmark_tasks_collection,
     benchmarks_collection,
+    capabilities_collection,
     eval_runs_collection,
     evals_collection,
 )
@@ -155,6 +156,77 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _dedupe_strings(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
+def _benchmark_coverage_summary(
+    *,
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+    benchmark: dict[str, Any],
+) -> dict[str, Any]:
+    unique_skills: list[dict[str, Any]] = []
+    seen_skill_ids: set[str] = set()
+    for skill in skills:
+        skill_id = str(skill.get("capabilityId") or skill.get("skillId") or "").strip()
+        if skill_id and skill_id in seen_skill_ids:
+            continue
+        if skill_id:
+            seen_skill_ids.add(skill_id)
+        unique_skills.append(skill)
+    skills = unique_skills
+    task_evals = [_task_to_eval(task, benchmark) for task in tasks]
+    contracts = [task.get("taskContract") or {} for task in task_evals]
+    systems = _dedupe_strings([system for contract in contracts for system in (contract.get("allowedSystems") or [])])
+    task_artifacts = _dedupe_strings([artifact for contract in contracts for artifact in (contract.get("expectedArtifacts") or [])])
+    skill_artifacts = _dedupe_strings([artifact for skill in skills for artifact in (skill.get("expectedArtifacts") or [])])
+    risk_classes = _dedupe_strings([contract.get("riskClass") for contract in contracts])
+    connector_ids = _dedupe_strings([connector_id for skill in skills for connector_id in (skill.get("connectorIds") or [])])
+    entity_names = _dedupe_strings([
+        entity
+        for skill in skills
+        for entity in [*(skill.get("inputEntities") or []), skill.get("outputEntity")]
+    ])
+    skill_ids = _dedupe_strings([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
+    labels = [str(run.get("label") or "pending").lower() for run in runs]
+    latest_run = runs[0] if runs else None
+    published_statuses = {"published", "approved", "active", "production"}
+    ready_statuses = {"ready", *published_statuses}
+    return {
+        "taskCount": len(tasks),
+        "systems": systems,
+        "expectedArtifacts": _dedupe_strings([*task_artifacts, *skill_artifacts]),
+        "riskClasses": risk_classes,
+        "connectorIds": connector_ids,
+        "entityNames": entity_names,
+        "skillCoverage": {
+            "skillIds": skill_ids,
+            "total": len(skill_ids),
+            "ready": sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in ready_statuses),
+            "published": sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in published_statuses),
+        },
+        "runCoverage": {
+            "total": len(runs),
+            "pass": labels.count("pass"),
+            "fail": labels.count("fail"),
+            "pending": labels.count("pending"),
+            "latestLabel": str((latest_run or {}).get("label") or ""),
+            "latestRunId": str((latest_run or {}).get("runId") or ""),
+            "latestCreatedAt": (latest_run or {}).get("createdAt"),
+        },
+    }
+
+
 async def _benchmark_task_eval(eval_id: str) -> dict[str, Any] | None:
     task = await benchmark_tasks_collection.find_one({"taskId": eval_id}, {"_id": 0})
     if not task:
@@ -236,14 +308,52 @@ async def list_benchmarks(email: str, companyId: str = ""):
         query["companyId"] = companyId
     benchmarks = await benchmarks_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)
     tasks = await benchmark_tasks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    benchmark_ids = _dedupe_strings([benchmark.get("benchmarkId") for benchmark in benchmarks])
+    task_ids = _dedupe_strings([task.get("taskId") for task in tasks])
+    skills: list[dict[str, Any]] = []
+    if benchmark_ids or task_ids:
+        skill_query: dict[str, Any] = {**query, "capabilityKind": "skill"}
+        linked_filters = []
+        if benchmark_ids:
+            linked_filters.append({"benchmarkId": {"$in": benchmark_ids}})
+        if task_ids:
+            linked_filters.append({"evalId": {"$in": task_ids}})
+        if linked_filters:
+            skill_query["$or"] = linked_filters
+        skills = await capabilities_collection.find(skill_query, {"_id": 0}).sort("updatedAt", -1).to_list(length=1000)
+    runs = []
+    if task_ids:
+        runs = await eval_runs_collection.find({"evalId": {"$in": task_ids}}, {"_id": 0, "actions": 0}).sort("createdAt", -1).to_list(length=1000)
     tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
     for task in tasks:
         tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
+    skills_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills:
+        benchmark_id = str(skill.get("benchmarkId") or "")
+        if benchmark_id:
+            skills_by_benchmark.setdefault(benchmark_id, []).append(skill)
+        eval_id = str(skill.get("evalId") or "")
+        if eval_id:
+            task = next((item for item in tasks if item.get("taskId") == eval_id), None)
+            if task and task.get("benchmarkId"):
+                skills_by_benchmark.setdefault(str(task.get("benchmarkId")), []).append(skill)
+    runs_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    task_benchmark_by_id = {str(task.get("taskId") or ""): str(task.get("benchmarkId") or "") for task in tasks}
+    for run in runs:
+        benchmark_id = task_benchmark_by_id.get(str(run.get("evalId") or ""), "")
+        if benchmark_id:
+            runs_by_benchmark.setdefault(benchmark_id, []).append(run)
     return {
         "benchmarks": [
             {
                 **benchmark,
                 "tasks": [_task_to_eval(task, benchmark) for task in tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), [])],
+                "coverage": _benchmark_coverage_summary(
+                    tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                    skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                    runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                    benchmark=benchmark,
+                ),
             }
             for benchmark in benchmarks
         ]

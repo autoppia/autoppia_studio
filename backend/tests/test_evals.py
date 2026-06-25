@@ -99,6 +99,30 @@ class _FakeAgentsCollection:
         return None
 
 
+def _matches_query(doc, query):
+    for key, value in query.items():
+        if key == "$or":
+            if not any(_matches_query(doc, item) for item in value):
+                return False
+            continue
+        current = doc.get(key)
+        if isinstance(value, dict) and "$in" in value:
+            if current not in value["$in"]:
+                return False
+            continue
+        if current != value:
+            return False
+    return True
+
+
+class _SimpleCollection:
+    def __init__(self, docs=None):
+        self.docs = [dict(doc) for doc in (docs or [])]
+
+    def find(self, query, projection=None):
+        return _FakeCursor([doc for doc in self.docs if _matches_query(doc, query)])
+
+
 @pytest.mark.asyncio
 async def test_create_benchmark_run_uses_selected_agent(monkeypatch):
     evals = _FakeEvalsCollection(
@@ -187,6 +211,76 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert task["task"]["taskContract"]["allowedSystems"] == ["knowledge", "email"]
     assert task["task"]["taskContract"]["expectedArtifacts"] == ["answer_summary"]
     assert task["task"]["taskContract"]["riskClass"] == "read"
+
+
+@pytest.mark.asyncio
+async def test_list_benchmarks_includes_coverage_summary(monkeypatch):
+    monkeypatch.setattr(
+        evals_route,
+        "benchmarks_collection",
+        _SimpleCollection([{"benchmarkId": "bench-1", "email": "user@example.com", "companyId": "company-1", "name": "Claims QA"}]),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "benchmark_tasks_collection",
+        _SimpleCollection(
+            [
+                {
+                    "taskId": "task-1",
+                    "benchmarkId": "bench-1",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "prompt": "Answer claim status",
+                    "successCriteria": "Draft includes claim status.",
+                    "metadata": {
+                        "allowedSystems": ["email", "erp"],
+                        "expectedArtifacts": ["draft_email"],
+                        "riskClass": "draft",
+                        "businessIntent": "Respond to claim status request",
+                    },
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "capabilities_collection",
+        _SimpleCollection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "benchmarkId": "bench-1",
+                    "status": "published",
+                    "connectorIds": ["email-1", "erp-1"],
+                    "inputEntities": ["Claim", "Customer"],
+                    "outputEntity": "DraftEmail",
+                    "expectedArtifacts": ["claim_summary"],
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "eval_runs_collection",
+        _SimpleCollection([{"runId": "run-1", "evalId": "task-1", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"}]),
+    )
+
+    result = await evals_route.list_benchmarks(email="user@example.com", companyId="company-1")
+    coverage = result["benchmarks"][0]["coverage"]
+
+    assert coverage["taskCount"] == 1
+    assert coverage["systems"] == ["email", "erp"]
+    assert coverage["expectedArtifacts"] == ["draft_email", "claim_summary"]
+    assert coverage["riskClasses"] == ["draft"]
+    assert coverage["connectorIds"] == ["email-1", "erp-1"]
+    assert coverage["entityNames"] == ["Claim", "Customer", "DraftEmail"]
+    assert coverage["skillCoverage"]["total"] == 1
+    assert coverage["skillCoverage"]["published"] == 1
+    assert coverage["runCoverage"]["pass"] == 1
+    assert coverage["runCoverage"]["latestRunId"] == "run-1"
 
 
 @pytest.mark.asyncio
