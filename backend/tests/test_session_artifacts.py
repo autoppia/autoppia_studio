@@ -162,6 +162,7 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"
     assert session["matchedSkillName"] == "Handle claim summary"
+    assert session["approvedConnectorToolCalls"] == ["smtp.send_email:0:abc"]
     assert session["approvedConnectorToolCallCount"] == 1
     assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
     assert session["artifactCount"] == 2
@@ -272,6 +273,7 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"
     assert session["matchedSkillName"] == "Handle claim summary"
+    assert session["approvedConnectorToolCalls"] == ["smtp.send_email:0:abc"]
     assert session["approvedConnectorToolCallCount"] == 1
     assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
     assert session["artifactCount"] == 2

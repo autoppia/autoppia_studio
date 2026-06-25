@@ -17,6 +17,7 @@ export interface SessionItem {
     hasConnectorActivity?: boolean;
     matchedSkillId?: string;
     matchedSkillName?: string;
+    approvedConnectorToolCalls?: string[];
     approvedConnectorToolCallCount?: number;
     pendingConnectorApproval?: string;
     pendingApprovalCount?: number;

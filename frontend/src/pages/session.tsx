@@ -711,7 +711,12 @@ function Session(): React.ReactElement {
   const benchmarkId = String(locationState?.benchmarkId || "");
   const benchmarkRunId = String(locationState?.benchmarkRunId || "");
   const pendingConnectorApproval = String(loadedSession?.pendingConnectorApproval || runtimeState?.pendingConnectorApproval || "");
-  const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
+  const loadedApprovedConnectorToolCalls = loadedSession?.approvedConnectorToolCalls;
+  const approvedConnectorToolCalls = Array.isArray(loadedApprovedConnectorToolCalls)
+    ? loadedApprovedConnectorToolCalls
+    : Array.isArray(runtimeState?.approvedConnectorToolCalls)
+      ? runtimeState.approvedConnectorToolCalls
+      : [];
   const approvedConnectorToolCallCount = Number(loadedSession?.approvedConnectorToolCallCount ?? approvedConnectorToolCalls.length);
   const sourceKind = String(loadedSession?.sourceKind || runtimeState?.sourceKind || "");
   const workItemId = String(loadedSession?.workItemId || runtimeState?.workItemId || "");

@@ -129,6 +129,7 @@ def _serialize_session_summary(doc: dict) -> dict:
         "hasConnectorActivity": has_connector_activity,
         "matchedSkillId": str(runtime_state.get("matchedSkillId") or ""),
         "matchedSkillName": str(runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or ""),
+        "approvedConnectorToolCalls": approved_calls,
         "approvedConnectorToolCallCount": len(approved_calls),
         "pendingConnectorApproval": str(runtime_state.get("pendingConnectorApproval") or ""),
         "sourceKind": source_kind,
