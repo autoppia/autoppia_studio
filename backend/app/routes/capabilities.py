@@ -6,10 +6,12 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import (
+    benchmarks_collection,
     capabilities_collection,
     benchmark_tasks_collection,
     companies_collection,
     connectors_collection,
+    entities_collection,
     eval_runs_collection,
     evals_collection,
     harvester_runs_collection,
@@ -420,6 +422,94 @@ def _dedupe_strings(values: list[str]) -> list[str]:
         seen.add(clean)
         deduped.append(clean)
     return deduped
+
+
+def _graph_node(kind: str, node_id: str, label: str, payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": f"{kind}:{node_id}",
+        "kind": kind,
+        "refId": node_id,
+        "label": label or node_id,
+        "payload": payload,
+    }
+
+
+def _graph_edge(source: str, target: str, relation: str, evidence: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "id": f"{source}->{relation}->{target}",
+        "source": source,
+        "target": target,
+        "relation": relation,
+        "evidence": evidence or {},
+    }
+
+
+def _add_node(nodes: dict[str, dict[str, Any]], kind: str, node_id: str, label: str, payload: dict[str, Any]) -> str:
+    if not node_id:
+        return ""
+    node = _graph_node(kind, node_id, label, payload)
+    nodes.setdefault(node["id"], node)
+    return node["id"]
+
+
+def _add_edge(edges: dict[str, dict[str, Any]], source: str, target: str, relation: str, evidence: dict[str, Any] | None = None) -> None:
+    if not source or not target:
+        return
+    edge = _graph_edge(source, target, relation, evidence)
+    edges.setdefault(edge["id"], edge)
+
+
+def _entity_names(entity_docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for entity in entity_docs:
+        name = str(entity.get("name") or "").strip()
+        if name:
+            result[name.lower()] = entity
+        metadata = entity.get("metadata") if isinstance(entity.get("metadata"), dict) else {}
+        aliases = metadata.get("aliases") or metadata.get("businessAliases") or []
+        for alias in aliases if isinstance(aliases, list) else []:
+            clean = str(alias or "").strip()
+            if clean:
+                result[clean.lower()] = entity
+    return result
+
+
+def _tool_lookup(tool_docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    result: dict[str, dict[str, Any]] = {}
+    for tool in tool_docs:
+        for key in (tool.get("toolId"), tool.get("name")):
+            clean = str(key or "").strip()
+            if clean:
+                result[clean] = tool
+    return result
+
+
+def _capability_graph_coverage(
+    *,
+    entity_docs: list[dict[str, Any]],
+    tool_docs: list[dict[str, Any]],
+    benchmark_docs: list[dict[str, Any]],
+    task_docs: list[dict[str, Any]],
+    trajectory_docs: list[dict[str, Any]],
+    skill_docs: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+) -> dict[str, Any]:
+    edge_relations = {edge.get("relation") for edge in edges}
+    ready_tools = sum(1 for tool in tool_docs if str(tool.get("status") or "").lower() == "ready")
+    ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
+    complete_tasks = sum(1 for task in task_docs if isinstance(task.get("metadata"), dict) and isinstance(task["metadata"].get("taskContract"), dict))
+    return {
+        "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
+        "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
+        "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
+        "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
+        "skills": {"total": len(skill_docs), "ready": ready_skills},
+        "promotionPath": {
+            "hasTaskToTrajectory": "produced_trajectory" in edge_relations,
+            "hasTrajectoryToSkill": "promoted_to" in edge_relations,
+            "hasToolToSkill": "used_by_skill" in edge_relations,
+        },
+    }
 
 
 def _skill_version(doc: dict[str, Any]) -> int:
@@ -1035,6 +1125,138 @@ async def list_company_capabilities(company_id: str, email: str = ""):
         async for doc in capabilities_collection.find({**query, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", 1)
     ]
     return {"capabilities": [*tools, *trajectories, *skills], "tools": tools, "trajectories": trajectories, "skills": skills}
+
+
+@router.get("/companies/{company_id}/capability-graph")
+async def get_company_capability_graph(company_id: str, email: str = ""):
+    await _ensure_company(company_id)
+    query: dict[str, Any] = {"companyId": company_id}
+    if email:
+        query["email"] = email
+
+    connector_docs = await connectors_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=500)
+    entity_docs = await entities_collection.find(query, {"_id": 0}).sort("name", 1).to_list(length=500)
+    tool_docs = await tools_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    benchmark_docs = await benchmarks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=500)
+    task_docs = await benchmark_tasks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    trajectory_docs = await trajectories_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    skill_docs = await capabilities_collection.find({**query, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: dict[str, dict[str, Any]] = {}
+    entity_by_name = _entity_names(entity_docs)
+    tool_by_ref = _tool_lookup(tool_docs)
+
+    for connector in connector_docs:
+        connector_id = str(connector.get("connectorId") or "")
+        _add_node(nodes, "connector", connector_id, str(connector.get("name") or connector_id), {
+            "connectorId": connector_id,
+            "type": connector.get("type", ""),
+            "status": connector.get("status", ""),
+            "provider": connector.get("provider", ""),
+        })
+
+    for entity in entity_docs:
+        entity_id = str(entity.get("entityId") or entity.get("name") or "")
+        entity_node = _add_node(nodes, "entity", entity_id, str(entity.get("name") or entity_id), {
+            "entityId": entity.get("entityId", ""),
+            "name": entity.get("name", ""),
+            "sourceConnectorId": entity.get("sourceConnectorId", ""),
+            "source": entity.get("source", ""),
+        })
+        connector_node = f"connector:{entity.get('sourceConnectorId')}"
+        _add_edge(edges, connector_node, entity_node, "maps_entity", {"source": "entity.sourceConnectorId"})
+
+    for tool in tool_docs:
+        tool_id = str(tool.get("toolId") or "")
+        tool_node = _add_node(nodes, "tool", tool_id, str(tool.get("name") or tool_id), _serialize_tool(tool))
+        _add_edge(edges, f"connector:{tool.get('connectorId')}", tool_node, "exposes_tool", {"source": "tool.connectorId"})
+        for entity_name in tool.get("inputEntities") or []:
+            entity = entity_by_name.get(str(entity_name).lower())
+            entity_id = str((entity or {}).get("entityId") or entity_name)
+            entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or entity_name), entity or {"name": entity_name})
+            _add_edge(edges, entity_node, tool_node, "input_entity", {"source": "tool.inputEntities"})
+        output_entity = str(tool.get("outputEntity") or "")
+        if output_entity:
+            entity = entity_by_name.get(output_entity.lower())
+            entity_id = str((entity or {}).get("entityId") or output_entity)
+            entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or output_entity), entity or {"name": output_entity})
+            _add_edge(edges, tool_node, entity_node, "output_entity", {"source": "tool.outputEntity"})
+
+    for benchmark in benchmark_docs:
+        benchmark_id = str(benchmark.get("benchmarkId") or "")
+        _add_node(nodes, "benchmark", benchmark_id, str(benchmark.get("name") or benchmark_id), {
+            "benchmarkId": benchmark_id,
+            "agentId": benchmark.get("agentId", ""),
+            "status": benchmark.get("status", ""),
+            "description": benchmark.get("description", ""),
+        })
+
+    for task in task_docs:
+        task_id = str(task.get("taskId") or "")
+        task_metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+        task_node = _add_node(nodes, "task", task_id, str(task.get("name") or task.get("taskName") or task_id), {
+            "taskId": task_id,
+            "benchmarkId": task.get("benchmarkId", ""),
+            "status": task.get("status", ""),
+            "businessIntent": task.get("businessIntent") or task_metadata.get("businessIntent") or "",
+            "riskClass": task.get("riskClass") or task_metadata.get("riskClass") or "",
+        })
+        _add_edge(edges, f"benchmark:{task.get('benchmarkId')}", task_node, "contains_task", {"source": "benchmark_tasks"})
+        if task.get("trajectoryId"):
+            _add_edge(edges, task_node, f"trajectory:{task.get('trajectoryId')}", "produced_trajectory", {"source": "task.trajectoryId"})
+
+    for trajectory in trajectory_docs:
+        trajectory_id = str(trajectory.get("trajectoryId") or "")
+        trajectory_node = _add_node(nodes, "trajectory", trajectory_id, str(trajectory.get("taskName") or trajectory.get("name") or trajectory_id), _serialize_trajectory(trajectory))
+        _add_edge(edges, f"benchmark:{trajectory.get('benchmarkId')}", trajectory_node, "evaluated_by", {"source": "trajectory.benchmarkId"})
+        _add_edge(edges, f"task:{trajectory.get('taskId')}", trajectory_node, "produced_trajectory", {"source": "trajectory.taskId"})
+        for connector_id in trajectory.get("connectorIds") or []:
+            _add_edge(edges, f"connector:{connector_id}", trajectory_node, "used_in_trajectory", {"source": "trajectory.connectorIds"})
+        for tool_ref in trajectory.get("toolIds") or []:
+            tool = tool_by_ref.get(str(tool_ref))
+            tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
+            _add_edge(edges, tool_node, trajectory_node, "used_in_trajectory", {"source": "trajectory.toolIds"})
+
+    serialized_skills = [await _serialize_skill(skill) for skill in skill_docs]
+    for skill in serialized_skills:
+        skill_id = str(skill.get("skillId") or skill.get("capabilityId") or "")
+        skill_node = _add_node(nodes, "skill", skill_id, str(skill.get("name") or skill_id), skill)
+        for trajectory_id in skill.get("trajectoryIds") or []:
+            _add_edge(edges, f"trajectory:{trajectory_id}", skill_node, "promoted_to", {"source": "skill.trajectoryIds"})
+        for tool_ref in skill.get("toolIds") or []:
+            tool = tool_by_ref.get(str(tool_ref))
+            tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
+            _add_edge(edges, tool_node, skill_node, "used_by_skill", {"source": "skill.toolIds"})
+        for entity_name in skill.get("inputEntities") or []:
+            entity = entity_by_name.get(str(entity_name).lower())
+            entity_id = str((entity or {}).get("entityId") or entity_name)
+            entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or entity_name), entity or {"name": entity_name})
+            _add_edge(edges, entity_node, skill_node, "input_entity", {"source": "skill.inputEntities"})
+        output_entity = str(skill.get("outputEntity") or "")
+        if output_entity:
+            entity = entity_by_name.get(output_entity.lower())
+            entity_id = str((entity or {}).get("entityId") or output_entity)
+            entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or output_entity), entity or {"name": output_entity})
+            _add_edge(edges, skill_node, entity_node, "output_entity", {"source": "skill.outputEntity"})
+
+    edge_list = list(edges.values())
+    return {
+        "graph": {
+            "companyId": company_id,
+            "nodes": list(nodes.values()),
+            "edges": edge_list,
+            "coverage": _capability_graph_coverage(
+                entity_docs=entity_docs,
+                tool_docs=tool_docs,
+                benchmark_docs=benchmark_docs,
+                task_docs=task_docs,
+                trajectory_docs=trajectory_docs,
+                skill_docs=serialized_skills,
+                edges=edge_list,
+            ),
+        }
+    }
 
 
 @router.get("/companies/{company_id}/tools")

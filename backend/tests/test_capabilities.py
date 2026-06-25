@@ -210,6 +210,124 @@ async def test_tool_synthesis_contract_exposes_governed_action_readiness(monkeyp
 
 
 @pytest.mark.asyncio
+async def test_company_capability_graph_links_factory_assets(monkeypatch):
+    monkeypatch.setattr(capabilities, "companies_collection", _Collection([{"companyId": "co-1"}]))
+    monkeypatch.setattr(
+        capabilities,
+        "connectors_collection",
+        _Collection([{"connectorId": "conn-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims ERP", "type": "api", "status": "connected"}]),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "entities_collection",
+        _Collection([{"entityId": "entity-claim", "companyId": "co-1", "email": "user@example.com", "name": "Claim", "sourceConnectorId": "conn-1"}]),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "tools_collection",
+        _Collection(
+            [
+                {
+                    "toolId": "tool-claim",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "connectorId": "conn-1",
+                    "name": "claims.get",
+                    "status": "ready",
+                    "inputSchema": {"type": "object", "properties": {"claimId": {"type": "string"}}},
+                    "outputSchema": {"type": "object", "properties": {"status": {"type": "string"}}},
+                    "sideEffects": "reads",
+                    "riskLevel": "low",
+                    "inputEntities": ["Claim"],
+                    "outputEntity": "Claim",
+                    "toolContract": {"format": "autoppia.tool_contract"},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "benchmarks_collection",
+        _Collection([{"benchmarkId": "bench-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims Benchmark", "status": "draft"}]),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "benchmark_tasks_collection",
+        _Collection(
+            [
+                {
+                    "taskId": "task-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "benchmarkId": "bench-1",
+                    "name": "Review claim",
+                    "status": "harvested",
+                    "trajectoryId": "traj-1",
+                    "businessIntent": "Review claim status",
+                    "riskClass": "low",
+                    "metadata": {"taskContract": {"businessIntent": "Review claim status"}},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "trajectories_collection",
+        _Collection(
+            [
+                {
+                    "trajectoryId": "traj-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "benchmarkId": "bench-1",
+                    "taskId": "task-1",
+                    "taskName": "Review claim",
+                    "status": "approved",
+                    "connectorIds": ["conn-1"],
+                    "toolIds": ["tool-claim"],
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "eval_runs_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "name": "Review claim skill",
+                    "status": "ready",
+                    "promotionStatus": "ready",
+                    "trajectoryIds": ["traj-1"],
+                    "toolIds": ["tool-claim"],
+                    "inputEntities": ["Claim"],
+                    "outputEntity": "Claim",
+                    "riskPolicy": "human_approval_for_writes",
+                }
+            ]
+        ),
+    )
+
+    result = await capabilities.get_company_capability_graph("co-1", email="user@example.com")
+    graph = result["graph"]
+    node_ids = {node["id"] for node in graph["nodes"]}
+    edge_relations = {edge["relation"] for edge in graph["edges"]}
+
+    assert {"connector:conn-1", "entity:entity-claim", "tool:tool-claim", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
+    assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
+    assert graph["coverage"]["tools"]["governed"] == 1
+    assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
+    assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
+    assert graph["coverage"]["promotionPath"]["hasTrajectoryToSkill"] is True
+
+
+@pytest.mark.asyncio
 async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     monkeypatch.setattr(
         capabilities,
