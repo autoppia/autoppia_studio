@@ -238,34 +238,71 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
     max_per_run = _safe_float(doc.get("maxCreditsPerRun"))
     retry_count = max(0, len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []) - 1)
     budget_remaining = max(0.0, max_budget - latest_credits_spent) if max_budget > 0 else 0.0
+    budget_exhausted = bool(max_budget > 0 and latest_credits_spent >= max_budget)
+    queue_state = str(doc.get("status") or "TODO")
+    trigger_type = str(doc.get("triggerType") or "manual")
+    next_run_at = str(doc.get("nextRunAt") or "")
+    run_attempts = len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else [])
+    max_steps = int(doc.get("maxSteps", 8) or 8)
+    blockers: list[str] = []
+    next_actions: list[str] = []
+    if review_blocked:
+        blockers.append("pending_approval")
+        next_actions.append("Resolve pending approvals before allowing unattended execution.")
+    if budget_exhausted:
+        blockers.append("budget_exhausted")
+        next_actions.append("Increase the work budget or reduce runtime scope before retrying.")
+    if queue_state.upper() in {"FAILED", "ERROR", "BUDGET_EXHAUSTED"}:
+        blockers.append("failed_state")
+        next_actions.append("Review the latest run result and retry once the cause is fixed.")
+    if trigger_type == "scheduled" and not next_run_at:
+        blockers.append("missing_schedule")
+        next_actions.append("Set the next scheduled run time or switch this item to manual.")
+    if not blockers and trigger_type == "manual":
+        next_actions.append("Manual work is ready; schedule it if it should run unattended.")
+    if not blockers and trigger_type == "scheduled":
+        next_actions.append("Scheduled work can run under the current budget, retry and approval policy.")
+    gate_state = "blocked" if blockers else "scheduled" if trigger_type == "scheduled" else "manual_ready"
     return {
-        "queueState": str(doc.get("status") or "TODO"),
-        "triggerType": str(doc.get("triggerType") or "manual"),
+        "queueState": queue_state,
+        "triggerType": trigger_type,
         "schedule": {
             "frequency": str(doc.get("scheduleFrequency") or "none"),
             "time": str(doc.get("scheduleTime") or "09:00"),
             "dayOfWeek": int(doc.get("scheduleDayOfWeek", 1) or 0),
-            "nextRunAt": str(doc.get("nextRunAt") or ""),
+            "nextRunAt": next_run_at,
         },
         "budget": {
             "maxCreditsPerRun": max_per_run,
             "maxBudgetCredits": max_budget,
             "latestCreditsSpent": latest_credits_spent,
             "remainingCredits": round(budget_remaining, 4),
-            "exhausted": bool(max_budget > 0 and latest_credits_spent >= max_budget),
+            "exhausted": budget_exhausted,
         },
         "retry": {
-            "runAttempts": len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []),
+            "runAttempts": run_attempts,
             "retryCount": retry_count,
-            "maxSteps": int(doc.get("maxSteps", 8) or 8),
+            "maxSteps": max_steps,
         },
         "approval": {
             "pendingApprovalCount": pending_approval_count,
             "reviewBlocked": review_blocked,
         },
         "sla": {
-            "state": "blocked" if review_blocked else "scheduled" if doc.get("nextRunAt") else "manual",
+            "state": "blocked" if review_blocked else "scheduled" if next_run_at else "manual",
             "needsHumanReview": review_blocked,
+        },
+        "automationGate": {
+            "state": gate_state,
+            "canRunUnattended": gate_state == "scheduled",
+            "blockers": blockers,
+            "nextActions": next_actions,
+            "policy": {
+                "requiresSchedule": trigger_type == "scheduled",
+                "requiresApprovalClearance": True,
+                "requiresBudget": max_budget > 0,
+                "maxSteps": max_steps,
+            },
         },
     }
 

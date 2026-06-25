@@ -784,6 +784,18 @@ export interface WorkItem {
         state?: string;
         needsHumanReview?: boolean;
       };
+      automationGate?: {
+        state?: string;
+        canRunUnattended?: boolean;
+        blockers?: string[];
+        nextActions?: string[];
+        policy?: {
+          requiresSchedule?: boolean;
+          requiresApprovalClearance?: boolean;
+          requiresBudget?: boolean;
+          maxSteps?: number;
+        };
+      };
     };
   };
   lastRunId?: string;

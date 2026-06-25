@@ -900,6 +900,11 @@ export default function Work() {
                                   sla {item.operational.orchestration.sla.state}
                                 </span>
                               )}
+                              {item.operational?.orchestration?.automationGate?.state && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(item.operational.orchestration.automationGate.state)}`}>
+                                  gate {item.operational.orchestration.automationGate.state}
+                                </span>
+                              )}
                               {item.operational?.orchestration?.budget?.remainingCredits !== undefined && (
                                 <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${item.operational.orchestration.budget.exhausted ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                                   {Number(item.operational.orchestration.budget.remainingCredits || 0).toFixed(2)} cr left
@@ -1302,6 +1307,19 @@ export default function Work() {
                       <p className="mt-1">{selectedItem.operational.orchestration.retry?.maxSteps || selectedItem.maxSteps} max steps</p>
                     </div>
                   </div>
+                  {selectedItem.operational.orchestration.automationGate && (
+                    <div className={`mt-3 rounded-lg border px-3 py-2 text-xs ${orchestrationTone(selectedItem.operational.orchestration.automationGate.state)}`}>
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold">Automation gate: {selectedItem.operational.orchestration.automationGate.state || "manual_ready"}</p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide">
+                          {selectedItem.operational.orchestration.automationGate.canRunUnattended ? "unattended allowed" : `${selectedItem.operational.orchestration.automationGate.blockers?.length || 0} blocker(s)`}
+                        </p>
+                      </div>
+                      <p className="mt-1 opacity-85">
+                        {(selectedItem.operational.orchestration.automationGate.nextActions || [])[0] || "Work can run under the current orchestration policy."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 

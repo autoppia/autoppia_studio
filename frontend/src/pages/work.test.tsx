@@ -62,6 +62,16 @@ describe("Work page", () => {
                   latestMatchedTrajectoryIds: ["trajectory-1"],
                   latestToolIds: ["tool-1"],
                   latestSessionIds: ["session-1", "session-1b"],
+                  orchestration: {
+                    sla: { state: "blocked" },
+                    budget: { remainingCredits: 0, exhausted: true },
+                    automationGate: {
+                      state: "blocked",
+                      canRunUnattended: false,
+                      blockers: ["pending_approval"],
+                      nextActions: ["Resolve pending approvals before allowing unattended execution."],
+                    },
+                  },
                 },
               },
               {
@@ -141,5 +151,6 @@ describe("Work page", () => {
     expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
     expect(await screen.findByText("1 pending approvals")).toBeInTheDocument();
     expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
+    expect(await screen.findByText("gate blocked")).toBeInTheDocument();
   });
 });

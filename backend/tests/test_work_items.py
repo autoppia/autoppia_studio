@@ -645,3 +645,7 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["orchestration"]["retry"]["maxSteps"] == 4
     assert operational["orchestration"]["approval"]["reviewBlocked"] is True
     assert operational["orchestration"]["sla"]["state"] == "blocked"
+    assert operational["orchestration"]["automationGate"]["state"] == "blocked"
+    assert operational["orchestration"]["automationGate"]["canRunUnattended"] is False
+    assert operational["orchestration"]["automationGate"]["blockers"] == ["pending_approval"]
+    assert operational["orchestration"]["automationGate"]["policy"]["maxSteps"] == 4
