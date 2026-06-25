@@ -8,6 +8,7 @@ from typing import Any
 from app.database import agents_collection, benchmark_tasks_collection, benchmarks_collection, capabilities_collection, connectors_collection, tools_collection, trajectories_collection
 from app.harvesters.toolkit import ToolkitHarvester
 from app.services.agent_runtime import _connector_tool_arguments, agent_step_result
+from app.services.skills import approve_trajectory_as_skill
 
 
 def now_iso() -> str:
@@ -830,42 +831,34 @@ async def harvest_connector_benchmark_tasks(
 
         skill = None
         if approve_skills:
-            capability_id = f"{trajectory_id}:skill"
-            skill_doc = {
-                "capabilityId": capability_id,
-                "capabilityKind": "skill",
-                "email": trajectory_doc["email"],
-                "companyId": company_id,
-                "agentId": agent_id,
-                "benchmarkId": benchmark_id,
-                "name": f"{task.get('name') or 'Connector benchmark task'} Skill",
-                "description": prompt,
-                "whenToUse": prompt,
-                "connectorIds": trajectory_doc["connectorIds"],
-                "toolIds": trajectory_doc["toolIds"],
-                "trajectoryIds": [trajectory_id],
-                "runtimeRequirements": trajectory_doc["runtimeRequirements"],
-                "permissions": {"requiresApproval": False},
-                "runtime": "trajectory_executor_with_recovery",
-                "status": "approved",
-                "source": "connector_benchmark_harvester",
-                "tasks": [
-                    {
-                        "taskId": task.get("taskId", ""),
-                        "name": task.get("name", ""),
-                        "prompt": prompt,
-                        "successCriteria": task.get("successCriteria", ""),
-                    }
-                ],
-                "createdAt": now,
-                "updatedAt": now,
-            }
+            capability_id = await approve_trajectory_as_skill(
+                trajectory_doc,
+                judge={
+                    "label": "pass",
+                    "judge": "connector_benchmark_harvester",
+                    "confidence": 1.0,
+                    "needsHumanReview": False,
+                    "reason": "Connector benchmark task harvested from expected tools.",
+                },
+            )
             await capabilities_collection.update_one(
                 {"capabilityId": capability_id},
-                {"$set": skill_doc},
-                upsert=True,
+                {
+                    "$set": {
+                        "benchmarkId": benchmark_id,
+                        "tasks": [
+                            {
+                                "taskId": task.get("taskId", ""),
+                                "name": task.get("name", ""),
+                                "prompt": prompt,
+                                "successCriteria": task.get("successCriteria", ""),
+                            }
+                        ],
+                        "updatedAt": now_iso(),
+                    }
+                },
             )
-            skill = {"capabilityId": capability_id, "status": "approved", "trajectoryIds": [trajectory_id]}
+            skill = {"capabilityId": capability_id, "status": "ready", "promotionStatus": "ready", "trajectoryIds": [trajectory_id]}
 
         results.append(
             {
@@ -897,7 +890,7 @@ async def harvest_and_smoke_connector_benchmark(
     approve_skills: bool = True,
 ) -> dict[str, Any]:
     await capabilities_collection.update_many(
-        {"agentId": agent_id, "benchmarkId": benchmark_id, "source": "connector_benchmark_harvester", "status": "approved"},
+        {"agentId": agent_id, "benchmarkId": benchmark_id, "source": "connector_benchmark_harvester", "status": {"$in": ["approved", "ready", "published"]}},
         {"$set": {"status": "archived", "updatedAt": now_iso()}},
     )
     runtime_without_skill = await run_connector_runtime_smoke(

@@ -2,6 +2,7 @@ import pytest
 
 from app.services import connector_benchmarks
 from app.services import agent_runtime
+from app.services import skills as skills_service
 
 
 class _Cursor:
@@ -591,6 +592,9 @@ async def test_harvest_connector_benchmark_tasks_promotes_approved_skill(monkeyp
     monkeypatch.setattr(connector_benchmarks, "benchmark_tasks_collection", tasks)
     monkeypatch.setattr(connector_benchmarks, "trajectories_collection", trajectories)
     monkeypatch.setattr(connector_benchmarks, "capabilities_collection", capabilities)
+    monkeypatch.setattr(skills_service, "agents_collection", connector_benchmarks.agents_collection)
+    monkeypatch.setattr(skills_service, "trajectories_collection", trajectories)
+    monkeypatch.setattr(skills_service, "capabilities_collection", capabilities)
 
     report = await connector_benchmarks.harvest_connector_benchmark_tasks(
         benchmark_id=benchmark_id,
@@ -603,7 +607,11 @@ async def test_harvest_connector_benchmark_tasks_promotes_approved_skill(monkeyp
     assert report["approvedSkills"] == 1
     assert trajectories.docs[0]["status"] == "approved"
     assert trajectories.docs[0]["trajectory"] == [{"name": "bopa.latest_bulletin_pdf", "arguments": {}}]
-    assert capabilities.docs[0]["status"] == "approved"
+    assert capabilities.docs[0]["status"] == "ready"
+    assert capabilities.docs[0]["promotionStatus"] == "ready"
+    assert capabilities.docs[0]["skillPackage"]["format"] == "autoppia.agent_skill"
+    assert capabilities.docs[0]["skillPackage"]["evidence"]["regressionSuite"]["benchmarkIds"] == [benchmark_id]
+    assert capabilities.docs[0]["hardeningStatus"]["checks"]["lineage"] is True
     assert capabilities.docs[0]["tasks"][0]["prompt"].startswith("Consigue el PDF")
 
 
