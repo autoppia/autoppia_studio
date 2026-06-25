@@ -227,6 +227,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "trajectoryIds": ["traj-1"],
                 "inputEntities": ["Claim"],
                 "outputEntity": "Draft email",
+                "runtimeRequirements": ["browser", "network"],
                 "version": 2,
                 "skillPackage": {
                     "manifestVersion": 1,
@@ -252,6 +253,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "connectorId": "conn-1",
                 "status": "connected",
                 "name": "ERP",
+                "config": {"baseUrl": "https://claims.example.com/api"},
                 "capabilityDiscovery": {
                     "entityMapping": {
                         "status": "pending",
@@ -488,6 +490,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["sendsProtected"] is True
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
@@ -767,6 +775,13 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
                 },
                 "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
+                "runtime": {
+                    "runtimePolicyMap": {
+                        "defaultBrowserUse": "exception",
+                        "runtimeClasses": {"browserSessions": 1},
+                        "humanApproval": {"writesProtected": True, "sendsProtected": True},
+                    },
+                },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
                     "contracts": {"withContract": 2, "total": 4, "slaTracked": 3, "auditTrails": 2},
@@ -785,6 +800,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
+    assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
     assert "Work attention items: 3." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automata sees 1 risk alert(s)." in reply

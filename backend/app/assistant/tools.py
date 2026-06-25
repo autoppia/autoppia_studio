@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from bson import ObjectId
 
@@ -32,6 +33,7 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.entity_mapper import propose_entities_from_openapi_url
+from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
@@ -423,6 +425,27 @@ def _connector_factory_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
+    domains: set[str] = set()
+    for doc in docs:
+        config = doc.get("config") if isinstance(doc.get("config"), dict) else {}
+        for key in ("baseUrl", "startUrl", "loginUrl", "docsUrl", "openApiUrl", "sourceUrl"):
+            parsed = urlparse(str(config.get(key) or "").strip())
+            if parsed.hostname:
+                domains.add(parsed.hostname.lower())
+    return sorted(domains)
+
+
+def _company_allowed_origin_hosts(company: dict[str, Any]) -> list[str]:
+    settings = company.get("embedSettings") if isinstance(company.get("embedSettings"), dict) else {}
+    hosts: set[str] = set()
+    for origin in settings.get("allowedOrigins") or []:
+        parsed = urlparse(str(origin or "").strip())
+        if parsed.hostname:
+            hosts.add(parsed.hostname.lower())
+    return sorted(hosts)
+
+
 def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     publishable = 0
     blocked = 0
@@ -670,6 +693,16 @@ class AutomataAssistantTools:
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = _session_contract_summary(session_docs)
         work_contracts = _work_orchestration_contract_summary(work_docs)
+        company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
+        browser_allowlisted = bool(_connector_domains(connector_docs) or _company_allowed_origin_hosts(company_doc))
+        runtime_policy_map = summarize_runtime_policy_map(
+            skills=skill_docs,
+            tools=tool_docs,
+            runtime_kinds=[str(item.get("name") or "") for item in session_contracts.get("runtimeKinds") or [] for _ in range(int(item.get("count") or 0))],
+            browser_allowlisted=browser_allowlisted,
+            pending_approvals=pending_approvals,
+            approved_approvals=await self._count(approvals_collection, {**scoped, "status": "approved"}),
+        )
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
         pending_approval_work_item_ids = {
@@ -738,6 +771,9 @@ class AutomataAssistantTools:
             recommended_actions.append({"area": "evals", "action": "Link promoted skills to benchmark regressions before treating them as production capabilities.", "reason": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."})
         if counts["skills"] and skill_eval_gate["blockedByRegression"]:
             recommended_actions.insert(0, {"area": "evals", "action": "Resolve regression-blocked skills before publishing or widening runtime access.", "reason": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."})
+        if runtime_policy_map["gaps"]:
+            first_gap = runtime_policy_map["gaps"][0]
+            recommended_actions.append({"area": "runtime", "action": first_gap["label"], "reason": "Runtime policy map has an unresolved enterprise control gap."})
         if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
             recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
         if failing_runs:
@@ -757,6 +793,8 @@ class AutomataAssistantTools:
                 {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
+                {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
+                {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "work", "severity": "medium", "message": "Some work items are missing normalized orchestration contracts."} if counts["workItems"] and work_contracts["withContract"] < counts["workItems"] else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
@@ -851,6 +889,7 @@ class AutomataAssistantTools:
                 "passingEvalRuns": passing_runs,
                 "failingEvalRuns": failing_runs,
                 "pendingApprovals": pending_approvals,
+                "runtimePolicyMap": runtime_policy_map,
             },
             "work": {
                 "items": counts["workItems"],
