@@ -339,6 +339,20 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                         "citability": {"citable": False, "citationLabel": "claims-policy.md"},
                     },
                     "readTools": ["knowledge.claims.search", "knowledge.claims.read_document"],
+                    "resourceGate": {
+                        "state": "blocked",
+                        "readyForRuntime": False,
+                        "blockers": ["indexed", "acl", "freshness", "citability"],
+                        "nextActions": ["Declare ACL visibility, roles or users for the resource."],
+                        "checks": {
+                            "indexed": False,
+                            "vectorStore": True,
+                            "readTools": True,
+                            "acl": False,
+                            "freshness": False,
+                            "citability": False,
+                        },
+                    },
                 },
             }
         ]
@@ -386,6 +400,15 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["resourceMap"]["acl"]["visibility"] == [{"name": "unspecified", "count": 1}]
     assert snapshot["operatingState"]["resourceMap"]["sample"][0]["aclVisibility"] == "unspecified"
     assert snapshot["operatingState"]["resourceMap"]["readTools"] == ["knowledge.claims.search", "knowledge.claims.read_document"]
+    assert snapshot["operatingState"]["resourceMap"]["runtimeGate"]["ready"] == 0
+    assert snapshot["operatingState"]["resourceMap"]["runtimeGate"]["blocked"] == 1
+    assert snapshot["operatingState"]["resourceMap"]["runtimeGate"]["blockers"] == [
+        {"name": "acl", "count": 1},
+        {"name": "citability", "count": 1},
+        {"name": "freshness", "count": 1},
+        {"name": "indexed", "count": 1},
+    ]
+    assert snapshot["operatingState"]["resourceMap"]["sample"][0]["runtimeGate"]["state"] == "blocked"
     assert snapshot["operatingState"]["resourceMap"]["gaps"][0]["key"] == "resource_acl"
     assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1

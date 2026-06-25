@@ -103,6 +103,33 @@ def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
     return _list_values(contract.get("readTools") or doc.get("readTools"))
 
 
+def _resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(doc)
+    gate = contract.get("resourceGate")
+    return gate if isinstance(gate, dict) else {}
+
+
+def _derived_resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
+    gate = _resource_gate(doc)
+    if gate:
+        return gate
+    checks = {
+        "indexed": _resource_indexed(doc),
+        "vectorStore": bool(_resource_vector_id(doc)),
+        "readTools": bool(_resource_read_tools(doc)),
+        "acl": bool(_resource_acl(doc).get("explicit")),
+        "citability": _resource_citable(doc),
+    }
+    blockers = [key for key, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not blockers else "blocked",
+        "readyForRuntime": not blockers,
+        "blockers": blockers,
+        "nextActions": [],
+        "checks": checks,
+    }
+
+
 def _resource_status(doc: dict[str, Any]) -> str:
     return str(doc.get("status") or _resource_contract(doc).get("status") or "unknown").strip().lower()
 
@@ -129,11 +156,21 @@ def _resource_vector_id(doc: dict[str, Any]) -> str:
 
 def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     read_tools = _dedupe([tool for doc in docs for tool in _resource_read_tools(doc)])
+    gates = [_derived_resource_gate(doc) for doc in docs]
+    runtime_ready = sum(1 for gate in gates if bool(gate.get("readyForRuntime")))
+    gate_state_counts: dict[str, int] = {}
+    gate_blockers: dict[str, int] = {}
+    for gate in gates:
+        state = str(gate.get("state") or "unknown").strip().lower() or "unknown"
+        gate_state_counts[state] = gate_state_counts.get(state, 0) + 1
+        for blocker in _list_values(gate.get("blockers")):
+            gate_blockers[blocker] = gate_blockers.get(blocker, 0) + 1
     sample = []
     for doc in docs[:8]:
         governance = _resource_governance(doc)
         freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
         citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+        gate = _derived_resource_gate(doc)
         sample.append({
             "documentId": str(doc.get("documentId") or ""),
             "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
@@ -146,6 +183,11 @@ def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
             "vectorDatabaseId": _resource_vector_id(doc),
             "aclVisibility": _resource_acl(doc)["visibility"],
             "readTools": _resource_read_tools(doc)[:8],
+            "runtimeGate": {
+                "state": str(gate.get("state") or "unknown"),
+                "readyForRuntime": bool(gate.get("readyForRuntime")),
+                "blockers": _list_values(gate.get("blockers"))[:8],
+            },
         })
     total = len(docs)
     indexed = sum(1 for doc in docs if _resource_indexed(doc))
@@ -183,8 +225,14 @@ def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
             "visibility": [{"name": key, "count": visibility_counts[key]} for key in sorted(visibility_counts, key=lambda item: (-visibility_counts[item], item))],
         },
         "readTools": read_tools[:20],
+        "runtimeGate": {
+            "ready": runtime_ready,
+            "blocked": sum(count for state, count in gate_state_counts.items() if state not in {"ready"}),
+            "states": [{"name": key, "count": gate_state_counts[key]} for key in sorted(gate_state_counts, key=lambda item: (-gate_state_counts[item], item))],
+            "blockers": [{"name": key, "count": gate_blockers[key]} for key in sorted(gate_blockers, key=lambda item: (-gate_blockers[item], item))],
+        },
         "sample": sample,
-        "ready": bool(total and indexed == total and citable == total and with_contract == total and with_vector_store == total and with_acl == total and read_tools),
+        "ready": bool(total and runtime_ready == total),
         "gaps": gaps,
     }
 
