@@ -115,6 +115,24 @@ class _Approvals:
         return _Cursor(docs)
 
 
+class _Sessions:
+    def __init__(self):
+        self.docs = {}
+
+    async def update_one(self, query, update, upsert=False):
+        session_id = query.get("sessionId", "")
+        existing = dict(self.docs.get(session_id, {"sessionId": session_id}))
+        existing.update(update.get("$setOnInsert", {}))
+        existing.update(update.get("$set", {}))
+        self.docs[session_id] = existing
+
+    async def find_one(self, query, projection=None):
+        for doc in self.docs.values():
+            if all(doc.get(key) == value for key, value in query.items()):
+                return dict(doc)
+        return None
+
+
 class _Agents:
     def __init__(self):
         self.docs = [
@@ -147,9 +165,11 @@ async def test_create_and_list_work_items(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
     approvals = _Approvals()
+    sessions = _Sessions()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", sessions)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -179,10 +199,12 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     boards = _Boards()
     agents = _Agents()
     approvals = _Approvals()
+    sessions = _Sessions()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", sessions)
 
     notifications = []
 
@@ -232,12 +254,18 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     )
     await work_items._run_work_item(work_item_id, started["runId"])
     refreshed = await collection.find_one({"workItemId": work_item_id})
+    session_doc = await sessions.find_one({"sessionId": started["sessionId"]})
 
     assert started["workItem"]["status"] == "RUNNING"
+    assert started["sessionId"]
     assert refreshed["status"] == "DONE"
     assert refreshed["judge"]["label"] == "success"
     assert refreshed["report"]["results"][0]["agentId"] == "agent-1"
     assert refreshed["runHistory"][0]["runId"] == started["runId"]
+    assert refreshed["runHistory"][0]["sessionId"] == started["sessionId"]
+    assert refreshed["report"]["sessionId"] == started["sessionId"]
+    assert session_doc["provider"] == "work_orchestration"
+    assert session_doc["runtimeState"]["runId"] == started["runId"]
     assert [item["title"] for item in notifications] == ["Work item started", "Work item done"]
     assert jobs[0][0] == "work_run"
 
@@ -283,10 +311,12 @@ async def test_run_work_item_pauses_on_human_approval(monkeypatch):
     boards = _Boards()
     agents = _Agents()
     approvals = _Approvals()
+    sessions = _Sessions()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", sessions)
 
     async def fake_create_notification(**kwargs):
         return kwargs
@@ -357,9 +387,11 @@ async def test_scheduled_work_item_gets_next_run(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
     approvals = _Approvals()
+    sessions = _Sessions()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", sessions)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -384,9 +416,11 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
     approvals = _Approvals()
+    sessions = _Sessions()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", sessions)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -446,6 +480,7 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
+    monkeypatch.setattr(work_items, "sessions_collection", _Sessions())
 
     collection.docs["work-1"] = {
         "workItemId": "work-1",

@@ -96,6 +96,10 @@ function matchedSkillSummary(item: WorkItem) {
   return `${names[0]} +${names.length - 1}`;
 }
 
+function latestWorkSessionId(item: WorkItem) {
+  return item.operational?.latestSessionIds?.[0] || "";
+}
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
@@ -785,6 +789,14 @@ export default function Work() {
                                   matched {matchedSkillSummary(item)}
                                 </span>
                               )}
+                              {latestWorkSessionId(item) && (
+                                <button
+                                  onClick={(event) => { event.stopPropagation(); navigate(`/session/${latestWorkSessionId(item)}`); }}
+                                  className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-bg"
+                                >
+                                  Open runtime
+                                </button>
+                              )}
                             </div>
                           )}
 
@@ -1190,6 +1202,15 @@ export default function Work() {
                   className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
                 >
                   Open approvals for this job
+                </button>
+              )}
+
+              {latestWorkSessionId(selectedItem) && (
+                <button
+                  onClick={() => navigate(`/session/${latestWorkSessionId(selectedItem)}`)}
+                  className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                >
+                  Open latest runtime session
                 </button>
               )}
 

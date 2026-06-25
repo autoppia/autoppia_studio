@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, field_validator
 
-from app.database import agents_collection, approvals_collection, work_boards_collection, work_items_collection
+from app.database import agents_collection, approvals_collection, sessions_collection, work_boards_collection, work_items_collection
 from app.repositories import WorkBoardRepository, WorkItemRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.notifications import create_notification
@@ -258,6 +258,9 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
             matched_skill_names.append(matched_skill_name)
         if session_id and session_id not in session_ids:
             session_ids.append(session_id)
+    current_session_id = str(doc.get("currentSessionId") or "")
+    if current_session_id and current_session_id not in session_ids:
+        session_ids.append(current_session_id)
 
     pending = doc.get("pendingApproval") if isinstance(doc.get("pendingApproval"), dict) else {}
     review_blocked = bool(
@@ -413,8 +416,101 @@ def _deep_merge_state(base: dict[str, Any], patch: dict[str, Any]) -> dict[str, 
     return merged
 
 
+def _work_run_session_id(work_item_id: str, run_id: str) -> str:
+    return f"work-{work_item_id}-{run_id}"
+
+
+def _session_action_history(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    history: list[dict[str, Any]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+        agent_id = str(result.get("agentId") or "")
+        agent_name = str(result.get("agentName") or "")
+        steps = result.get("steps") if isinstance(result.get("steps"), list) else []
+        for step in steps:
+            if not isinstance(step, dict):
+                continue
+            calls = step.get("toolCalls") if isinstance(step.get("toolCalls"), list) else []
+            for call in calls:
+                if not isinstance(call, dict):
+                    continue
+                history.append({
+                    "action": str(call.get("name") or call.get("action") or ""),
+                    "arguments": call.get("arguments") if isinstance(call.get("arguments"), dict) else {},
+                    "agentId": agent_id,
+                    "agentName": agent_name,
+                    "stepIndex": step.get("stepIndex", 0),
+                    "success": True,
+                })
+    return history
+
+
+def _session_runtime_state(item: dict[str, Any], run_id: str, results: list[dict[str, Any]], *, pending_approval: dict[str, Any] | None = None, judge: dict[str, Any] | None = None) -> dict[str, Any]:
+    runtime_state: dict[str, Any] = {
+        "workItemId": str(item.get("workItemId") or ""),
+        "runId": run_id,
+        "sourceKind": "work",
+    }
+    matched_skill_id = ""
+    matched_skill_name = ""
+    approved_connector_calls: set[str] = set()
+    for result in results:
+        payload = result.get("result") if isinstance(result.get("result"), dict) else {}
+        state_out = payload.get("state_out") if isinstance(payload.get("state_out"), dict) else {}
+        matched_skill_id = matched_skill_id or str(state_out.get("matchedSkillId") or payload.get("matchedSkillId") or "")
+        matched_skill_name = matched_skill_name or str(state_out.get("matchedSkillName") or state_out.get("matchedSkill") or payload.get("matchedSkillName") or "")
+        approved_connector_calls.update(str(value) for value in (state_out.get("approvedConnectorToolCalls") or []) if value)
+    if matched_skill_id:
+        runtime_state["matchedSkillId"] = matched_skill_id
+    if matched_skill_name:
+        runtime_state["matchedSkillName"] = matched_skill_name
+    if approved_connector_calls:
+        runtime_state["approvedConnectorToolCalls"] = sorted(approved_connector_calls)
+    if pending_approval:
+        runtime_state["pendingConnectorApproval"] = str(pending_approval.get("approvalKey") or "")
+    if judge:
+        runtime_state["workJudge"] = judge
+    return runtime_state
+
+
+async def _save_work_run_session(
+    item: dict[str, Any],
+    *,
+    run_id: str,
+    session_id: str,
+    initial_url: str = "",
+    last_url: str = "",
+    action_history: list[dict[str, Any]] | None = None,
+    runtime_state: dict[str, Any] | None = None,
+) -> None:
+    now = datetime.now(timezone.utc)
+    await sessions_collection.update_one(
+        {"sessionId": session_id},
+        {
+            "$set": {
+                "email": str(item.get("email") or ""),
+                "companyId": str(item.get("companyId") or ""),
+                "prompt": str(item.get("prompt") or ""),
+                "initialUrl": initial_url,
+                "lastUrl": last_url,
+                "chatHistory": [],
+                "actionHistory": action_history or [],
+                "runtimeState": runtime_state or {},
+                "provider": "work_orchestration",
+                "agentId": str(item.get("agentId") or ""),
+                "agentName": str(item.get("agentName") or ""),
+                "contextId": run_id,
+            },
+            "$setOnInsert": {"sessionId": session_id, "createdAt": now},
+        },
+        upsert=True,
+    )
+
+
 async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_id: str) -> dict[str, Any]:
     agent_id = str(doc.get("agentId") or "")
+    session_id = str(item.get("currentSessionId") or "")
     browser_enabled = bool(item.get("browserEnabled", True))
     max_steps = max(1, min(30, int(item.get("maxSteps", 8) or 8)))
     runtime_budget = max(0.0, float(item.get("maxBudgetCredits", item.get("maxCreditsPerRun", 0.0)) or 0.0))
@@ -478,10 +574,14 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
                         },
                         "workItemId": item.get("workItemId"),
                         "runId": run_id,
+                        "sessionId": session_id,
                     },
+                    "sessionId": session_id,
                 },
             )
             final_result = result if isinstance(result, dict) else {"raw": result}
+            if isinstance(final_result, dict) and session_id:
+                final_result.setdefault("sessionId", session_id)
             state = final_result.get("state_out") if isinstance(final_result.get("state_out"), dict) else state
             tool_calls = final_result.get("tool_calls") if isinstance(final_result.get("tool_calls"), list) else []
             step_record: dict[str, Any] = {
@@ -552,10 +652,11 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
                         "state": state,
                         "statePatch": approval_args.get("statePatch") if isinstance(approval_args.get("statePatch"), dict) else {},
                         "stepIndex": step_index,
-                        "currentUrl": current_url,
-                        "agentId": agent_id,
-                    },
-                }
+                    "currentUrl": current_url,
+                    "agentId": agent_id,
+                    "sessionId": session_id,
+                },
+            }
             if final_result.get("done") is True:
                 break
             if not tool_calls and final_result.get("content"):
@@ -569,6 +670,7 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
             "steps": steps,
             "finalUrl": current_url,
             "stepCount": len(steps),
+            "sessionId": session_id,
         }
     except Exception as exc:
         return {
@@ -579,6 +681,7 @@ async def _run_agent_work_steps(item: dict[str, Any], doc: dict[str, Any], run_i
             "steps": steps,
             "finalUrl": current_url,
             "stepCount": len(steps),
+            "sessionId": session_id,
         }
     finally:
         if browser:
@@ -594,10 +697,15 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         return
 
     results: list[dict[str, Any]] = []
+    session_id = str(item.get("currentSessionId") or _work_run_session_id(work_item_id, run_id))
+    item = {**item, "currentSessionId": session_id}
     try:
         docs = await _agent_docs_for_work(item)
         if not docs:
             raise HTTPException(status_code=404, detail="No agents found")
+
+        initial_url = str(docs[0].get("websiteUrl") or "")
+        await _save_work_run_session(item, run_id=run_id, session_id=session_id, initial_url=initial_url)
 
         for doc in docs:
             results.append(await _run_agent_work_steps(item, doc, run_id))
@@ -605,13 +713,27 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         waiting = next((result for result in results if result.get("status") == "waiting_approval"), None)
         if waiting:
             pending = waiting.get("pendingApproval") if isinstance(waiting.get("pendingApproval"), dict) else {}
+            action_history = _session_action_history(results)
+            runtime_state = _session_runtime_state(item, run_id, results, pending_approval=pending)
+            last_url = str(waiting.get("finalUrl") or "")
+            await _save_work_run_session(
+                item,
+                run_id=run_id,
+                session_id=session_id,
+                initial_url=initial_url,
+                last_url=last_url,
+                action_history=action_history,
+                runtime_state=runtime_state,
+            )
             await work_items_collection.update_one(
                 {"workItemId": work_item_id},
                 {
                     "$set": {
                         "status": "REVIEW",
+                        "currentSessionId": session_id,
                         "report": {
                             "runId": run_id,
+                            "sessionId": session_id,
                             "target": item.get("runTarget", "selected"),
                             "resultCount": len(results),
                             "results": results,
@@ -620,7 +742,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                         "pendingApproval": {**pending, "status": "pending", "runId": run_id, "updatedAt": _now()},
                         "updatedAt": _now(),
                     },
-                    "$push": {"runHistory": {"runId": run_id, "status": "WAITING_APPROVAL", "createdAt": _now(), "approvalId": pending.get("approvalId", "")}},
+                    "$push": {"runHistory": {"runId": run_id, "sessionId": session_id, "status": "WAITING_APPROVAL", "createdAt": _now(), "approvalId": pending.get("approvalId", "")}},
                 },
             )
             await _notify_work_item(
@@ -635,8 +757,21 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
 
         judge = await _judge_result(item, results)
         next_status = "DONE" if judge["label"] == "success" else "REVIEW" if judge["label"] == "needs_review" else "FAILED"
+        action_history = _session_action_history(results)
+        runtime_state = _session_runtime_state(item, run_id, results, judge=judge)
+        last_url = next((str(result.get("finalUrl") or "") for result in reversed(results) if str(result.get("finalUrl") or "")), "")
+        await _save_work_run_session(
+            item,
+            run_id=run_id,
+            session_id=session_id,
+            initial_url=initial_url,
+            last_url=last_url,
+            action_history=action_history,
+            runtime_state=runtime_state,
+        )
         report = {
             "runId": run_id,
+            "sessionId": session_id,
             "target": item.get("runTarget", "selected"),
             "resultCount": len(results),
             "results": results,
@@ -647,6 +782,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
             {
                 "$set": {
                     "status": next_status,
+                    "currentSessionId": session_id,
                     "report": report,
                     "judge": judge,
                     "pendingApproval": {},
@@ -658,7 +794,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                     "completedAt": _now(),
                     "updatedAt": _now(),
                 },
-                "$push": {"runHistory": {"runId": run_id, "status": next_status, "judge": judge, "createdAt": _now()}},
+                "$push": {"runHistory": {"runId": run_id, "sessionId": session_id, "status": next_status, "judge": judge, "createdAt": _now()}},
             },
         )
         await _notify_work_item(
@@ -671,12 +807,24 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         )
     except Exception as exc:
         judge = {"label": "failed", "reason": str(getattr(exc, "detail", exc)), "judgeType": "deterministic_runtime_result"}
+        action_history = _session_action_history(results)
+        runtime_state = _session_runtime_state(item, run_id, results, judge=judge)
+        await _save_work_run_session(
+            item,
+            run_id=run_id,
+            session_id=session_id,
+            initial_url=str(item.get("websiteUrl") or ""),
+            last_url=next((str(result.get("finalUrl") or "") for result in reversed(results) if str(result.get("finalUrl") or "")), ""),
+            action_history=action_history,
+            runtime_state=runtime_state,
+        )
         await work_items_collection.update_one(
             {"workItemId": work_item_id},
             {
                 "$set": {
                     "status": "FAILED",
-                    "report": {"runId": run_id, "results": results, "summary": judge["reason"]},
+                    "currentSessionId": session_id,
+                    "report": {"runId": run_id, "sessionId": session_id, "results": results, "summary": judge["reason"]},
                     "judge": judge,
                     "nextRunAt": _next_run_at(
                         frequency=str(item.get("scheduleFrequency") or "none"),
@@ -686,7 +834,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                     "completedAt": _now(),
                     "updatedAt": _now(),
                 },
-                "$push": {"runHistory": {"runId": run_id, "status": "FAILED", "judge": judge, "createdAt": _now()}},
+                "$push": {"runHistory": {"runId": run_id, "sessionId": session_id, "status": "FAILED", "judge": judge, "createdAt": _now()}},
             },
         )
         await _notify_work_item(
@@ -896,10 +1044,19 @@ async def run_work_item(work_item_id: str, body: WorkItemRunRequest = WorkItemRu
         updates["maxCreditsPerRun"] = max(0.0, float(body.maxCreditsPerRun or 0.0))
         updates["maxBudgetCredits"] = updates["maxCreditsPerRun"]
     run_id = str(uuid.uuid4())
+    session_id = _work_run_session_id(work_item_id, run_id)
     updates["lastRunId"] = run_id
+    updates["currentSessionId"] = session_id
     await repo.update_owned_one({"workItemId": work_item_id}, {"$set": updates}, not_found="Work item not found")
     await enqueue_job("work_run", {"workItemId": work_item_id, "runId": run_id}, dedupe_key=f"work_run:{work_item_id}:{run_id}")
     refreshed = await work_items_collection.find_one({"workItemId": work_item_id}, {"_id": 0})
+    await _save_work_run_session(
+        refreshed or existing,
+        run_id=run_id,
+        session_id=session_id,
+        initial_url=str((refreshed or existing).get("websiteUrl") or ""),
+        runtime_state={"workItemId": work_item_id, "runId": run_id, "sourceKind": "work"},
+    )
     await _notify_work_item(
         refreshed or existing,
         title="Work item started",
@@ -908,7 +1065,9 @@ async def run_work_item(work_item_id: str, body: WorkItemRunRequest = WorkItemRu
         run_id=run_id,
         status="RUNNING",
     )
-    return {"success": True, "runId": run_id, "workItem": _serialize(refreshed or existing)}
+    work_item = _serialize(refreshed or existing)
+    work_item["operational"] = _work_operational_summary(refreshed or existing, [])
+    return {"success": True, "runId": run_id, "sessionId": session_id, "workItem": work_item}
 
 
 @router.post("/work-items/{work_item_id}/rejudge")
@@ -979,6 +1138,16 @@ async def run_due_scheduled_work_items_once() -> int:
         )
         if not doc:
             break
+        session_id = _work_run_session_id(str(doc.get("workItemId") or ""), run_id)
+        await work_items_collection.update_one({"workItemId": str(doc.get("workItemId") or "")}, {"$set": {"currentSessionId": session_id, "updatedAt": _now()}})
+        doc["currentSessionId"] = session_id
+        await _save_work_run_session(
+            doc,
+            run_id=run_id,
+            session_id=session_id,
+            initial_url=str(doc.get("websiteUrl") or ""),
+            runtime_state={"workItemId": str(doc.get("workItemId") or ""), "runId": run_id, "sourceKind": "work"},
+        )
         await _notify_work_item(
             doc,
             title="Scheduled work started",
