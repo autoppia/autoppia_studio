@@ -84,6 +84,60 @@ export interface SessionItem {
             hasBusinessOutput?: boolean;
         };
     };
+    runtimeLab?: {
+        controlPlane?: {
+            sessionId?: string;
+            runtimeKind?: string;
+            sourceKind?: string;
+            agentId?: string;
+            agentName?: string;
+            workItemId?: string;
+            runId?: string;
+        };
+        timeline?: {
+            steps?: number;
+            browserSteps?: number;
+            toolSteps?: number;
+            skillSteps?: number;
+            failedSteps?: number;
+            pendingSteps?: number;
+            lastAction?: string;
+            lastActivityAt?: string;
+            traceIds?: string[];
+            replayReady?: boolean;
+        };
+        toolCalls?: {
+            total?: number;
+            approved?: number;
+            pendingApproval?: string;
+            sample?: Array<{
+                index?: number;
+                action?: string;
+                label?: string;
+                status?: string;
+                traceId?: string;
+                elapsedSeconds?: number;
+            }>;
+        };
+        skillMatch?: {
+            matched?: boolean;
+            skillId?: string;
+            skillName?: string;
+        };
+        approvals?: {
+            pending?: number;
+            approvedConnectorCalls?: number;
+            requiredFor?: string[];
+            hasHumanBoundary?: boolean;
+        };
+        outputs?: {
+            artifacts?: number;
+            hasBusinessOutput?: boolean;
+            creditsSpent?: number;
+            durationSeconds?: number;
+            lastStepSeconds?: number;
+        };
+    };
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";

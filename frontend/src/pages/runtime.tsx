@@ -141,6 +141,12 @@ function SessionCard({
   const traceCount = session.traceIds?.length || session.runtimeMetrics?.traceIds?.length || 0;
   const browserActions = browserActionCount(session);
   const connectorActions = connectorActionCount(session);
+  const runtimeLab = session.runtimeLab;
+  const labReplayLabel = runtimeLab?.timeline?.replayReady ? "Replay ready" : "Replay blocked";
+  const labToolTotal = runtimeLab?.toolCalls?.total ?? connectorActions;
+  const labArtifacts = runtimeLab?.outputs?.artifacts ?? session.artifactCount ?? 0;
+  const labCreditsLabel = formatCredits(runtimeLab?.outputs?.creditsSpent ?? session.creditsSpent);
+  const labSkillName = runtimeLab?.skillMatch?.skillName || matchedSkillName || "";
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -273,6 +279,34 @@ function SessionCard({
         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
           Latest activity: <span className="font-semibold text-gray-800 dark:text-gray-100">{latestActivityLabel}</span>
           {latestActivityAt ? <span> · {formatDate(latestActivityAt)}</span> : null}
+        </div>
+      )}
+      {runtimeLab && (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Runtime Lab evidence</p>
+            <span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${runtimeLab.timeline?.replayReady ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+              {labReplayLabel}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeLab.timeline?.steps || 0} steps</p>
+              <p className="text-gray-500 dark:text-gray-400">{runtimeLab.timeline?.browserSteps || 0} browser · {runtimeLab.timeline?.toolSteps || 0} tool</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{labToolTotal} {labToolTotal === 1 ? "tool call" : "tool calls"}</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{runtimeLab.toolCalls?.sample?.[0]?.label || runtimeLab.toolCalls?.sample?.[0]?.action || "No tool sample"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeLab.skillMatch?.matched ? "Skill matched" : "No skill match"}</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{labSkillName || runtimeLab.skillMatch?.skillId || "Manual runtime"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeLab.approvals?.pending || 0} approvals</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{labArtifacts} artifacts{labCreditsLabel ? ` · ${labCreditsLabel}` : ""}</p>
+            </div>
+          </div>
         </div>
       )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-dark-border">

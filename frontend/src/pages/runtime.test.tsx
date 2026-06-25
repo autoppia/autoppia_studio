@@ -45,6 +45,37 @@ describe("Runtime page", () => {
             connectorActionCount: 1,
             pendingApprovalCount: 1,
             artifactCount: 2,
+            creditsSpent: 2.5,
+            runtimeLab: {
+              timeline: {
+                steps: 3,
+                browserSteps: 2,
+                toolSteps: 1,
+                replayReady: false,
+              },
+              toolCalls: {
+                total: 1,
+                approved: 0,
+                pendingApproval: "smtp.send_email:0:abc",
+                sample: [{ action: "imap.read_email", label: "Read email", status: "ok" }],
+              },
+              skillMatch: {
+                matched: true,
+                skillId: "skill-1",
+                skillName: "Resolve claim",
+              },
+              approvals: {
+                pending: 1,
+                approvedConnectorCalls: 0,
+                requiredFor: ["send"],
+                hasHumanBoundary: true,
+              },
+              outputs: {
+                artifacts: 2,
+                hasBusinessOutput: true,
+                creditsSpent: 2.5,
+              },
+            },
           },
           {
             sessionId: "session-2",
@@ -81,7 +112,7 @@ describe("Runtime page", () => {
     render(<Runtime />);
 
     expect(await screen.findByText("Latest activity:")).toBeInTheDocument();
-    expect(await screen.findByText("Read email")).toBeInTheDocument();
+    expect((await screen.findAllByText("Read email")).length).toBeGreaterThan(0);
   });
 
   it("shows runtime action totals in the summary cards", async () => {
@@ -99,5 +130,17 @@ describe("Runtime page", () => {
     expect(within(connectorActionsCard as HTMLElement).getByText("3")).toBeInTheDocument();
     expect(await screen.findByText("2 browser actions")).toBeInTheDocument();
     expect(await screen.findByText("1 connector action")).toBeInTheDocument();
+  });
+
+  it("shows Runtime Lab evidence for replay, tools, skills, approvals and outputs", async () => {
+    render(<Runtime />);
+
+    expect(await screen.findByText("Runtime Lab evidence")).toBeInTheDocument();
+    expect(await screen.findByText("Replay blocked")).toBeInTheDocument();
+    expect(await screen.findByText("3 steps")).toBeInTheDocument();
+    expect(await screen.findByText("1 tool call")).toBeInTheDocument();
+    expect(await screen.findByText("Skill matched")).toBeInTheDocument();
+    expect(await screen.findByText("1 approvals")).toBeInTheDocument();
+    expect(await screen.findByText("2 artifacts · 2.50 cr")).toBeInTheDocument();
   });
 });

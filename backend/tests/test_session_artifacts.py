@@ -200,6 +200,20 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["runtimeEvidence"]["capabilityRefs"]["skillId"] == "skill-1"
     assert session["runtimeEvidence"]["capabilityRefs"]["workItemId"] == "work-42"
     assert session["runtimeEvidence"]["approvalBoundary"]["approvalRequiredFor"] == ["send"]
+    assert session["runtimeLab"]["controlPlane"]["runtimeKind"] == "hybrid"
+    assert session["runtimeLab"]["controlPlane"]["workItemId"] == "work-42"
+    assert session["runtimeLab"]["timeline"]["steps"] == 2
+    assert session["runtimeLab"]["timeline"]["browserSteps"] == 1
+    assert session["runtimeLab"]["timeline"]["toolSteps"] == 1
+    assert session["runtimeLab"]["timeline"]["replayReady"] is False
+    assert session["runtimeLab"]["toolCalls"]["total"] == 1
+    assert session["runtimeLab"]["toolCalls"]["approved"] == 1
+    assert session["runtimeLab"]["toolCalls"]["sample"][0]["action"] == "imap.search_emails"
+    assert session["runtimeLab"]["skillMatch"]["skillId"] == "skill-1"
+    assert session["runtimeLab"]["approvals"]["pending"] == 1
+    assert session["runtimeLab"]["approvals"]["requiredFor"] == ["send"]
+    assert session["runtimeLab"]["outputs"]["artifacts"] == 2
+    assert session["runtimeLab"]["outputs"]["creditsSpent"] == 2.5
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
@@ -325,6 +339,10 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["runtimeEvidence"]["summary"]["pendingApprovals"] == 1
     assert session["runtimeEvidence"]["trace"]["replayReady"] is False
     assert session["runtimeEvidence"]["outputs"]["hasBusinessOutput"] is True
+    assert session["runtimeLab"]["controlPlane"]["runId"] == "run-9"
+    assert session["runtimeLab"]["toolCalls"]["pendingApproval"] == "smtp.send_email:0:abc"
+    assert session["runtimeLab"]["skillMatch"]["matched"] is True
+    assert session["runtimeLab"]["outputs"]["hasBusinessOutput"] is True
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
