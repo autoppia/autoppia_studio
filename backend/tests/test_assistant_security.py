@@ -508,6 +508,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["sessionId"] == "session-1"
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["skillId"] == "skill-1"
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["pendingApprovals"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["total"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1

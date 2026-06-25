@@ -37,6 +37,7 @@ from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
+from app.services.runtime_sessions import summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
@@ -516,68 +517,6 @@ def _work_orchestration_contract_summary(docs: list[dict[str, Any]]) -> dict[str
     }
 
 
-def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    with_contract = 0
-    selected_skill = 0
-    pending_approvals = 0
-    artifact_outputs = 0
-    replay_ready = 0
-    total_credits = 0.0
-    runtime_kinds: dict[str, int] = {}
-    trace_count = 0
-    samples: list[dict[str, Any]] = []
-    for doc in docs:
-        contract = doc.get("sessionContract") if isinstance(doc.get("sessionContract"), dict) else {}
-        runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
-        skill = contract.get("selectedSkill") if isinstance(contract.get("selectedSkill"), dict) else {}
-        approvals = contract.get("approvalState") if isinstance(contract.get("approvalState"), dict) else {}
-        artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
-        cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
-        trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
-        if contract:
-            with_contract += 1
-        runtime_kind = str(runtime.get("runtimeKind") or doc.get("runtimeKind") or "unknown").strip() or "unknown"
-        runtime_kinds[runtime_kind] = runtime_kinds.get(runtime_kind, 0) + 1
-        skill_id = str(skill.get("skillId") or doc.get("matchedSkillId") or "").strip()
-        if skill.get("matched") or skill_id:
-            selected_skill += 1
-        approval_count = int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0)
-        pending_approvals += approval_count
-        artifact_count = int(artifacts.get("count") or doc.get("artifactCount") or 0)
-        artifact_outputs += artifact_count
-        credits = _safe_float(cost.get("creditsSpent") or doc.get("creditsSpent"))
-        total_credits += credits
-        traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else doc.get("traceIds") if isinstance(doc.get("traceIds"), list) else []
-        trace_count += len(_list_values(traces))
-        if trace.get("replayReady"):
-            replay_ready += 1
-        if len(samples) < 5:
-            samples.append(
-                {
-                    "sessionId": str(doc.get("sessionId") or contract.get("sessionId") or ""),
-                    "runtimeKind": runtime_kind,
-                    "skillId": skill_id,
-                    "pendingApprovals": approval_count,
-                    "artifacts": artifact_count,
-                    "creditsSpent": round(credits, 4),
-                    "traceCount": len(_list_values(traces)),
-                    "replayReady": bool(trace.get("replayReady")),
-                }
-            )
-    return {
-        "total": len(docs),
-        "withContract": with_contract,
-        "selectedSkill": selected_skill,
-        "pendingApprovals": pending_approvals,
-        "artifactOutputs": artifact_outputs,
-        "traceIds": trace_count,
-        "replayReady": replay_ready,
-        "creditsSpent": round(total_credits, 4),
-        "runtimeKinds": [{"name": key, "count": runtime_kinds[key]} for key in sorted(runtime_kinds, key=lambda item: (-runtime_kinds[item], item))],
-        "sample": samples,
-    }
-
-
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -647,7 +586,7 @@ class AutomataAssistantTools:
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
-        session_contracts = _session_contract_summary(session_docs)
+        session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = _work_orchestration_contract_summary(work_docs)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})

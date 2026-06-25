@@ -636,6 +636,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert result["contract"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert result["contract"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.5
+    assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["sessionId"] == "session-browser"
+    assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["runtimeKind"] == "browser"
+    assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["traceCount"] == 2
     assert result["contract"]["runtime"]["artifactOutputs"]["total"] == 1
     assert result["contract"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
     assert result["contract"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
