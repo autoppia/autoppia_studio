@@ -264,8 +264,19 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "status": "harvested",
                     "trajectoryId": "traj-1",
                     "businessIntent": "Review claim status",
+                    "allowedSystems": ["claims_erp", "knowledge"],
+                    "expectedArtifacts": ["claim_summary"],
                     "riskClass": "low",
-                    "metadata": {"taskContract": {"businessIntent": "Review claim status"}},
+                    "successCriteria": "Claim status is summarized without changing the claim",
+                    "metadata": {
+                        "taskContract": {
+                            "businessIntent": "Review claim status",
+                            "allowedSystems": ["claims_erp", "knowledge"],
+                            "expectedArtifacts": ["claim_summary"],
+                            "riskClass": "low",
+                            "successCriteria": "Claim status is summarized without changing the claim",
+                        }
+                    },
                 }
             ]
         ),
@@ -318,9 +329,13 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     graph = result["graph"]
     node_ids = {node["id"] for node in graph["nodes"]}
     edge_relations = {edge["relation"] for edge in graph["edges"]}
+    task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
     assert {"connector:conn-1", "entity:entity-claim", "tool:tool-claim", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
+    assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
+    assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary"]
+    assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
     assert graph["coverage"]["tools"]["governed"] == 1
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
     assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
