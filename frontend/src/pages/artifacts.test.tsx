@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { ReactNode } from "react";
 import { useSelector } from "react-redux";
 import Artifacts from "./artifacts";
@@ -59,11 +59,17 @@ describe("Artifacts page", () => {
       content: "# New document",
       fileName: "new-artifact.md",
     };
-    global.fetch = jest
-      .fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ artifacts: [] }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ artifact: saved }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ artifacts: [saved] }) }) as jest.Mock;
+    let created = false;
+    global.fetch = jest.fn().mockImplementation((url: string, options?: RequestInit) => {
+      if (url.includes("/companies/company-1/artifacts") && options?.method === "POST") {
+        created = true;
+        return Promise.resolve({ ok: true, json: async () => ({ artifact: saved }) });
+      }
+      if (url.includes("/companies/company-1/artifacts")) {
+        return Promise.resolve({ ok: true, json: async () => ({ artifacts: created ? [saved] : [] }) });
+      }
+      return Promise.resolve({ ok: false, status: 500, text: async () => "unexpected fetch" });
+    }) as jest.Mock;
 
     render(<Artifacts />);
 
@@ -90,6 +96,21 @@ describe("Artifacts page", () => {
     expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&sessionId=session-7"),
+    );
+  });
+
+  it("passes the work item filter through to the artifacts query", async () => {
+    mockSearch = "workItemId=work-7";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ artifacts: [] }),
+    }) as jest.Mock;
+
+    render(<Artifacts />);
+
+    expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&workItemId=work-7"),
     );
   });
 
@@ -138,5 +159,48 @@ describe("Artifacts page", () => {
     expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open job" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
+  });
+
+  it("shows operational artifact summary cards for runtime and work linkage", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        artifacts: [
+          {
+            artifactId: "artifact-1",
+            companyId: "company-1",
+            email: "demo@example.com",
+            title: "Draft reply",
+            artifactType: "markdown",
+            description: "",
+            content: "# Draft",
+            fileName: "draft-reply.md",
+            sessionId: "session-1",
+            metadata: { workItemId: "work-1" },
+          },
+          {
+            artifactId: "artifact-2",
+            companyId: "company-1",
+            email: "demo@example.com",
+            title: "Static brief",
+            artifactType: "html",
+            description: "",
+            content: "<h1>Brief</h1>",
+            fileName: "brief.html",
+            metadata: {},
+          },
+        ],
+      }),
+    }) as jest.Mock;
+
+    render(<Artifacts />);
+
+    const runtimeLinkedCard = (await screen.findByText("Runtime linked")).closest("div");
+    const workLinkedCard = (await screen.findByText("Job linked")).closest("div");
+
+    expect(runtimeLinkedCard).not.toBeNull();
+    expect(workLinkedCard).not.toBeNull();
+    expect(within(runtimeLinkedCard as HTMLElement).getByText("1")).toBeInTheDocument();
+    expect(within(workLinkedCard as HTMLElement).getByText("1")).toBeInTheDocument();
   });
 });

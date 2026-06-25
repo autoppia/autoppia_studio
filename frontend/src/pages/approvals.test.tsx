@@ -171,4 +171,51 @@ describe("Approvals page", () => {
 
     expect(mockNavigate).toHaveBeenCalledWith("/runtime?sessionIds=session-42");
   });
+
+  it("shows operational approval summary cards", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        approvals: [
+          {
+            approvalId: "approval-1",
+            companyId: "company-1",
+            email: "demo@example.com",
+            agentId: "agent-1",
+            sessionId: "session-1",
+            workItemId: "work-1",
+            sourceKind: "work",
+            approvalKey: "smtp.send_email:0:abc",
+            toolName: "smtp.send_email",
+            title: "Approve send",
+            proposedAction: { name: "smtp.send_email", arguments: { to: "client@example.com" } },
+            status: "pending",
+            metadata: { sessionId: "session-1", workItemId: "work-1", skillId: "skill-1" },
+            auditTrail: [],
+          },
+          {
+            approvalId: "approval-2",
+            companyId: "company-1",
+            email: "demo@example.com",
+            agentId: "agent-2",
+            sessionId: "session-2",
+            sourceKind: "session",
+            approvalKey: "gmail.send_email:0:def",
+            toolName: "gmail.send_email",
+            title: "Approve reply",
+            proposedAction: { name: "gmail.send_email", arguments: { to: "customer@example.com" } },
+            status: "approved",
+            metadata: { sessionId: "session-2", toolId: "tool-2" },
+            auditTrail: [],
+          },
+        ],
+      }),
+    }) as jest.Mock;
+
+    renderApprovals();
+
+    expect(await screen.findByText("Runtime Sessions")).toBeInTheDocument();
+    expect(await screen.findByText("Jobs")).toBeInTheDocument();
+    expect(await screen.findByText("Capabilities")).toBeInTheDocument();
+  });
 });

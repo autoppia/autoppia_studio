@@ -71,6 +71,16 @@ function InfoPill({ label, value }: { label: string; value?: string }) {
   );
 }
 
+function SummaryCard({ label, value, hint }: { label: string; value: string | number; hint: string }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>
+    </div>
+  );
+}
+
 function ApprovalCard({
   approval,
   busy,
@@ -388,6 +398,31 @@ export default function Approvals(): React.ReactElement {
     );
   }, [approvals]);
 
+  const operationalSummary = useMemo(() => {
+    const runtimeSessions = new Set<string>();
+    const workItems = new Set<string>();
+    const capabilityLinked = new Set<string>();
+    for (const approval of approvals) {
+      const sessionId = String(approval.sessionId || approval.metadata?.sessionId || "");
+      const workItemId = String(approval.workItemId || approval.metadata?.workItemId || "");
+      const skillId = String(approval.metadata?.skillId || "");
+      const trajectoryId = String(approval.metadata?.trajectoryId || "");
+      const toolId = String(approval.metadata?.toolId || "");
+      if (sessionId) runtimeSessions.add(sessionId);
+      if (workItemId) workItems.add(workItemId);
+      if (skillId) capabilityLinked.add(`skill:${skillId}`);
+      if (trajectoryId) capabilityLinked.add(`trajectory:${trajectoryId}`);
+      if (toolId) capabilityLinked.add(`tool:${toolId}`);
+    }
+    return {
+      total: approvals.length,
+      pending: counts.pending || 0,
+      runtimeSessions: runtimeSessions.size,
+      workItems: workItems.size,
+      capabilityLinked: capabilityLinked.size,
+    };
+  }, [approvals, counts.pending]);
+
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
@@ -468,6 +503,14 @@ export default function Approvals(): React.ReactElement {
             </div>
           ) : (
             <>
+              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+                <SummaryCard label="Approvals" value={operationalSummary.total} hint="Governed actions currently visible in scope" />
+                <SummaryCard label="Pending" value={operationalSummary.pending} hint="Actions still blocked on a human decision" />
+                <SummaryCard label="Runtime Sessions" value={operationalSummary.runtimeSessions} hint="Governed sessions linked to these approvals" />
+                <SummaryCard label="Jobs" value={operationalSummary.workItems} hint="Work items currently waiting on or linked to approvals" />
+                <SummaryCard label="Capabilities" value={operationalSummary.capabilityLinked} hint="Skills, trajectories or tools referenced by approvals" />
+              </div>
+
               <div className="flex items-center gap-1.5 mb-5 overflow-x-auto">
                 {([
                   { key: "pending" as ApprovalTab, label: "Pending", icon: faClock },

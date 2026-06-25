@@ -109,7 +109,7 @@ async def test_artifact_listing_supports_capability_filters(monkeypatch):
             "artifactType": "markdown",
             "content": "# Skill",
             "sessionId": "session-1",
-            "metadata": {"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1"},
+            "metadata": {"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1", "workItemId": "work-1"},
             "updatedAt": "2026-06-25T10:00:00+00:00",
         },
         {
@@ -130,7 +130,9 @@ async def test_artifact_listing_supports_capability_filters(monkeypatch):
     by_skill = await artifacts.list_company_artifacts("co-1", email="user@example.com", skillId="skill-1", scope=scope)
     by_trajectory = await artifacts.list_company_artifacts("co-1", email="user@example.com", trajectoryId="trajectory-1", scope=scope)
     by_tool = await artifacts.list_company_artifacts("co-1", email="user@example.com", toolId="tool-1", scope=scope)
+    by_work_item = await artifacts.list_company_artifacts("co-1", email="user@example.com", workItemId="work-1", scope=scope)
 
     assert [item["artifactId"] for item in by_skill["artifacts"]] == ["artifact-skill"]
     assert [item["artifactId"] for item in by_trajectory["artifacts"]] == ["artifact-skill"]
     assert [item["artifactId"] for item in by_tool["artifacts"]] == ["artifact-skill"]
+    assert [item["artifactId"] for item in by_work_item["artifacts"]] == ["artifact-skill"]

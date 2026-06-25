@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import ReactMarkdown from "react-markdown";
 import { useNavigate, useSearchParams } from "react-router-dom";
@@ -201,7 +201,9 @@ export default function Artifacts(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const selectedIdRef = useRef("");
   const sessionFilter = searchParams.get("sessionId") || "";
+  const workItemFilter = searchParams.get("workItemId") || "";
   const skillFilter = searchParams.get("skillId") || "";
   const trajectoryFilter = searchParams.get("trajectoryId") || "";
   const toolFilter = searchParams.get("toolId") || "";
@@ -212,6 +214,10 @@ export default function Artifacts(): React.ReactElement {
   const selectedToolId = String(selected?.metadata?.toolId || "");
   const selectedSessionId = selected?.sessionId ?? "";
   const selectedWorkItemId = String(selected?.metadata?.workItemId || "");
+
+  useEffect(() => {
+    selectedIdRef.current = selectedId;
+  }, [selectedId]);
 
   const loadArtifacts = useCallback(async () => {
     if (!user.email || !companyId) {
@@ -224,6 +230,7 @@ export default function Artifacts(): React.ReactElement {
     try {
       const params = new URLSearchParams({ email: user.email });
       if (sessionFilter) params.set("sessionId", sessionFilter);
+      if (workItemFilter) params.set("workItemId", workItemFilter);
       if (skillFilter) params.set("skillId", skillFilter);
       if (trajectoryFilter) params.set("trajectoryId", trajectoryFilter);
       if (toolFilter) params.set("toolId", toolFilter);
@@ -236,7 +243,7 @@ export default function Artifacts(): React.ReactElement {
       const data = await res.json();
       const items = data.artifacts || [];
       setArtifacts(items);
-      if (!selectedId && items.length) {
+      if (!selectedIdRef.current && items.length) {
         const first = items[0];
         setSelectedId(first.artifactId);
         setDraft({
@@ -253,7 +260,7 @@ export default function Artifacts(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedId, sessionFilter, skillFilter, toolFilter, trajectoryFilter, user.email]);
+  }, [companyId, sessionFilter, skillFilter, toolFilter, trajectoryFilter, user.email, workItemFilter]);
 
   useEffect(() => {
     loadArtifacts();
@@ -357,7 +364,9 @@ export default function Artifacts(): React.ReactElement {
 
   const counts = useMemo(() => {
     const interactive = artifacts.filter((artifact) => ["html", "react", "svg", "mermaid"].includes(artifact.artifactType)).length;
-    return { total: artifacts.length, interactive };
+    const runtimeLinked = artifacts.filter((artifact) => Boolean(artifact.sessionId)).length;
+    const workLinked = artifacts.filter((artifact) => Boolean(artifact.metadata?.workItemId)).length;
+    return { total: artifacts.length, interactive, runtimeLinked, workLinked };
   }, [artifacts]);
 
   return (
@@ -384,12 +393,13 @@ export default function Artifacts(): React.ReactElement {
           <aside className="flex min-h-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
             <div className="border-b border-gray-200 p-4 dark:border-dark-border">
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Workspace artifacts</p>
-              {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
+              {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter || toolFilter) && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                   {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
-                  {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
-                  {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
-                  {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
+                  {workItemFilter ? <> {(sessionFilter) ? "· " : ""}Job <span className="font-mono text-gray-700 dark:text-gray-200">{workItemFilter}</span></> : null}
+                  {skillFilter ? <> {(sessionFilter || workItemFilter) ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                  {trajectoryFilter ? <> {(sessionFilter || workItemFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                  {toolFilter ? <> {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
                 </p>
               )}
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -400,6 +410,14 @@ export default function Artifacts(): React.ReactElement {
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                   <p className="text-[10px] uppercase text-gray-400">Interactive</p>
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.interactive}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
+                  <p className="text-[10px] uppercase text-gray-400">Runtime linked</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.runtimeLinked}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
+                  <p className="text-[10px] uppercase text-gray-400">Job linked</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.workLinked}</p>
                 </div>
               </div>
             </div>
@@ -439,21 +457,23 @@ export default function Artifacts(): React.ReactElement {
           </aside>
 
           <main className="min-w-0 space-y-4">
-            {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
+            {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter || toolFilter) && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime filter active</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
                     {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
-                    {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
-                    {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
-                    {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
+                    {workItemFilter ? <> {(sessionFilter) ? "· " : ""}Job <span className="font-mono text-gray-700 dark:text-gray-200">{workItemFilter}</span></> : null}
+                    {skillFilter ? <> {(sessionFilter || workItemFilter) ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                    {trajectoryFilter ? <> {(sessionFilter || workItemFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                    {toolFilter ? <> {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     const next = new URLSearchParams(searchParams);
                     next.delete("sessionId");
+                    next.delete("workItemId");
                     next.delete("skillId");
                     next.delete("trajectoryId");
                     next.delete("toolId");
@@ -496,9 +516,15 @@ export default function Artifacts(): React.ReactElement {
                       Open session
                     </button>
                   )}
-                  {selectedSessionId && (
+                  {(selectedSessionId || selectedWorkItemId) && (
                     <button
-                      onClick={() => navigate(`/runtime?sessionIds=${encodeURIComponent(selectedSessionId)}`)}
+                      onClick={() => {
+                        if (selectedSessionId) {
+                          navigate(`/runtime?sessionIds=${encodeURIComponent(selectedSessionId)}`);
+                          return;
+                        }
+                        navigate(`/runtime?workItemId=${encodeURIComponent(selectedWorkItemId)}`);
+                      }}
                       className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
                     >
                       Open Runtime Lab

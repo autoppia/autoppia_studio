@@ -118,6 +118,7 @@ async def list_company_artifacts(
     company_id: str,
     email: str = "",
     sessionId: str = "",
+    workItemId: str = "",
     skillId: str = "",
     trajectoryId: str = "",
     toolId: str = "",
@@ -129,6 +130,8 @@ async def list_company_artifacts(
     query: dict[str, Any] = {"companyId": company_id, "email": scoped_email}
     if sessionId:
         query["sessionId"] = sessionId
+    if workItemId:
+        query["metadata.workItemId"] = workItemId
     if skillId:
         query["metadata.skillId"] = skillId
     if trajectoryId:
