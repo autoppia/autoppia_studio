@@ -415,6 +415,12 @@ export interface AgentConfig {
   apiAuthConfigured?: boolean;
   tasks: AgentTask[];
   trajectories: AgentTrajectory[];
+  tools?: any[];
+  skills?: any[];
+  entities?: Record<string, any>;
+  resources?: any[];
+  knowledge?: any[];
+  memory?: Record<string, any>;
   successCriteria: string;
   createdAt?: string;
   updatedAt?: string;

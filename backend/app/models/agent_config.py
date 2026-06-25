@@ -75,6 +75,7 @@ class AgentConfig(BaseModel):
     tools: list[AgentCallable] = Field(default_factory=list)
     skills: list[AgentCallable] = Field(default_factory=list)
     entities: dict[str, Any] = Field(default_factory=dict)
+    resources: list[dict[str, Any]] = Field(default_factory=list)
     knowledge: list[dict[str, Any]] = Field(default_factory=list)
     memory: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: dict[str, Any] = Field(default_factory=lambda: {"writesRequireApproval": True})

@@ -149,6 +149,27 @@ class _FakeToolsCollection:
         ])
 
 
+class _FakeKnowledgeDocumentsCollection:
+    def __init__(self, docs=None):
+        self.docs = [dict(doc) for doc in (docs or [])]
+
+    def find(self, query, projection=None):
+        docs = []
+        for doc in self.docs:
+            if query.get("companyId") and doc.get("companyId") != query["companyId"]:
+                continue
+            row = dict(doc)
+            if projection and projection.get("storagePath") == 0:
+                row.pop("storagePath", None)
+            docs.append(row)
+        return _FakeListCursor(docs)
+
+
+@pytest.fixture(autouse=True)
+def _empty_runtime_knowledge_documents(monkeypatch):
+    monkeypatch.setattr(agent_runtime, "knowledge_documents_collection", _FakeKnowledgeDocumentsCollection())
+
+
 class _FakeTrajectoriesCollection:
     def __init__(self, docs):
         self.docs = docs
@@ -203,6 +224,37 @@ async def test_agent_step_injects_agent_config_and_records_runtime_events(monkey
     monkeypatch.setattr(agent_runtime, "agents_collection", _FakeAgentsCollection())
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
     monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(
+        agent_runtime,
+        "knowledge_documents_collection",
+        _FakeKnowledgeDocumentsCollection(
+            [
+                {
+                    "documentId": "doc-1",
+                    "resourceId": "doc-1",
+                    "companyId": "company-1",
+                    "filename": "claims-policy.md",
+                    "status": "indexed",
+                    "contentType": "text/markdown",
+                    "source": "upload",
+                    "vectorDatabaseId": "vec-1",
+                    "vectorCollectionName": "claims",
+                    "storagePath": "/tmp/secret/path",
+                    "resourceContract": {
+                        "resourceId": "doc-1",
+                        "resourceKind": "document",
+                        "readOnly": True,
+                        "indexing": {"indexed": True, "vectorDatabaseId": "vec-1", "vectorCollectionName": "claims"},
+                        "governance": {
+                            "freshness": {"status": "current"},
+                            "citability": {"citable": True, "citationLabel": "claims-policy.md"},
+                        },
+                        "readTools": ["knowledge.claims.search"],
+                    },
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(agent_runtime.httpx, "AsyncClient", _Client)
     monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
 
@@ -218,6 +270,11 @@ async def test_agent_step_injects_agent_config_and_records_runtime_events(monkey
     assert agent_config["memory"] == {"seen": 1}
     assert any(item["name"] == "skill.test_skill" for item in agent_config["skills"])
     assert any(item["name"] == "telegram.send_message" for item in agent_config["tools"])
+    assert agent_config["resources"][0]["resourceId"] == "doc-1"
+    assert agent_config["resources"][0]["citable"] is True
+    assert agent_config["resources"][0]["readTools"] == ["knowledge.claims.search"]
+    assert agent_config["knowledge"] == agent_config["resources"]
+    assert "storagePath" not in agent_config["resources"][0]
     assert posted["json"]["context"]["agentConfig"]["agentId"] == "agent-1"
     assert result["state_out"]["memory"] == {"seen": 1, "last": "ok"}
     assert [event["event_type"] for event in events] == ["agent.step.request", "agent.step.result"]
@@ -288,6 +345,26 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     monkeypatch.setattr(agent_runtime, "agents_collection", _NoNetworkAgentsCollection())
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
     monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+    monkeypatch.setattr(
+        agent_runtime,
+        "knowledge_documents_collection",
+        _FakeKnowledgeDocumentsCollection(
+            [
+                {
+                    "documentId": "doc-1",
+                    "resourceId": "doc-1",
+                    "companyId": "company-1",
+                    "filename": "claims-policy.md",
+                    "status": "indexed",
+                    "resourceContract": {
+                        "indexing": {"indexed": True},
+                        "governance": {"citability": {"citable": True}},
+                        "readTools": ["knowledge.claims.search"],
+                    },
+                }
+            ]
+        ),
+    )
 
     contract = await agent_runtime.runtime_contract_payload(await agent_runtime.load_agent_config("agent-1"))
 
@@ -298,6 +375,10 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["browserPolicy"]["enabled"] is False
     assert contract["browserPolicy"]["defaultUse"] == "exception"
     assert contract["browserPolicy"]["allowedDomains"] == ["example.com"]
+    assert contract["resourceGrounding"]["total"] == 1
+    assert contract["resourceGrounding"]["indexed"] == 1
+    assert contract["resourceGrounding"]["citable"] == 1
+    assert contract["resourceGrounding"]["readTools"] == ["knowledge.claims.search"]
 
 
 @pytest.mark.asyncio

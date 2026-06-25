@@ -228,6 +228,7 @@ async def test_generate_entities_can_resolve_source_from_connector(monkeypatch):
 @pytest.mark.asyncio
 async def test_runtime_capability_context_includes_relevant_entity_graph(monkeypatch):
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _Collection())
+    monkeypatch.setattr(agent_runtime, "knowledge_documents_collection", _Collection())
     monkeypatch.setattr(
         agent_runtime,
         "tools_collection",
