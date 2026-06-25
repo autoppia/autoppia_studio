@@ -211,6 +211,8 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert task["task"]["taskContract"]["allowedSystems"] == ["knowledge", "email"]
     assert task["task"]["taskContract"]["expectedArtifacts"] == ["answer_summary"]
     assert task["task"]["taskContract"]["riskClass"] == "read"
+    assert task["task"]["taskContract"]["completeness"]["state"] == "complete"
+    assert task["task"]["taskContract"]["completeness"]["passedChecks"] == 6
 
 
 @pytest.mark.asyncio
@@ -272,6 +274,9 @@ async def test_list_benchmarks_includes_coverage_summary(monkeypatch):
     coverage = result["benchmarks"][0]["coverage"]
 
     assert coverage["taskCount"] == 1
+    assert coverage["taskContractCoverage"]["complete"] == 0
+    assert coverage["taskContractCoverage"]["total"] == 1
+    assert coverage["taskContractCoverage"]["averageScore"] == 0.833
     assert coverage["systems"] == ["email", "erp"]
     assert coverage["expectedArtifacts"] == ["draft_email", "claim_summary"]
     assert coverage["riskClasses"] == ["draft"]

@@ -143,6 +143,13 @@ export interface EvalItem {
     expectedArtifacts?: string[];
     successCriteria?: string;
     riskClass?: string;
+    completeness?: {
+      checks?: Record<string, boolean>;
+      passedChecks?: number;
+      totalChecks?: number;
+      score?: number;
+      state?: string;
+    };
   };
   judgeType?: "manual" | "llm" | string;
   status?: string;

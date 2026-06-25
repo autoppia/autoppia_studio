@@ -131,6 +131,7 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
         "successCriteria": task.get("successCriteria", ""),
         "riskClass": str(metadata.get("riskClass") or ""),
     }
+    task_contract["completeness"] = _task_contract_completeness(task_contract)
     return {
         "evalId": task.get("taskId", ""),
         "taskId": task.get("taskId", ""),
@@ -168,6 +169,26 @@ def _dedupe_strings(values: list[Any]) -> list[str]:
     return result
 
 
+def _task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "businessIntent": bool(str(contract.get("businessIntent") or "").strip()),
+        "initialState": bool(contract.get("initialUrl") or contract.get("initialState")),
+        "allowedSystems": bool(contract.get("allowedSystems")),
+        "expectedArtifact": bool(contract.get("expectedArtifacts")),
+        "successCriteria": bool(str(contract.get("successCriteria") or "").strip()),
+        "riskClass": bool(str(contract.get("riskClass") or "").strip()),
+    }
+    passed = sum(1 for value in checks.values() if value)
+    total = len(checks)
+    return {
+        "checks": checks,
+        "passedChecks": passed,
+        "totalChecks": total,
+        "score": round(passed / total, 3) if total else 0.0,
+        "state": "complete" if passed == total else "incomplete",
+    }
+
+
 def _benchmark_coverage_summary(
     *,
     tasks: list[dict[str, Any]],
@@ -187,6 +208,7 @@ def _benchmark_coverage_summary(
     skills = unique_skills
     task_evals = [_task_to_eval(task, benchmark) for task in tasks]
     contracts = [task.get("taskContract") or {} for task in task_evals]
+    completeness = [contract.get("completeness") or _task_contract_completeness(contract) for contract in contracts]
     systems = _dedupe_strings([system for contract in contracts for system in (contract.get("allowedSystems") or [])])
     task_artifacts = _dedupe_strings([artifact for contract in contracts for artifact in (contract.get("expectedArtifacts") or [])])
     skill_artifacts = _dedupe_strings([artifact for skill in skills for artifact in (skill.get("expectedArtifacts") or [])])
@@ -204,6 +226,11 @@ def _benchmark_coverage_summary(
     ready_statuses = {"ready", *published_statuses}
     return {
         "taskCount": len(tasks),
+        "taskContractCoverage": {
+            "complete": sum(1 for item in completeness if item.get("state") == "complete"),
+            "total": len(completeness),
+            "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
+        },
         "systems": systems,
         "expectedArtifacts": _dedupe_strings([*task_artifacts, *skill_artifacts]),
         "riskClasses": risk_classes,

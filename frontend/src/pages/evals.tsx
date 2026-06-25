@@ -48,6 +48,11 @@ interface Benchmark {
 
 interface BenchmarkCoverage {
   taskCount?: number;
+  taskContractCoverage?: {
+    complete?: number;
+    total?: number;
+    averageScore?: number;
+  };
   systems?: string[];
   expectedArtifacts?: string[];
   riskClasses?: string[];
@@ -1192,7 +1197,16 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                     </div>
 
                     {benchmark.coverage && (
-                      <div className="mb-4 grid gap-2 md:grid-cols-4">
+                      <div className="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Task contracts</p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                            {benchmark.coverage.taskContractCoverage?.complete || 0}/{benchmark.coverage.taskContractCoverage?.total || 0} complete
+                          </p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {Math.round((benchmark.coverage.taskContractCoverage?.averageScore || 0) * 100)}% avg readiness
+                          </p>
+                        </div>
                         <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                           <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
                           <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
@@ -1263,6 +1277,11 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                               <span className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold ${judgeClass(task.judgeType)}`}>
                                 {(task.judgeType || "manual") === "llm" ? "LLMJudge" : "Manual"}
                               </span>
+                              {task.taskContract?.completeness && (
+                                <span className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold ${task.taskContract.completeness.state === "complete" ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                                  {task.taskContract.completeness.passedChecks || 0}/{task.taskContract.completeness.totalChecks || 0} contract
+                                </span>
+                              )}
                               {task.taskContract?.riskClass && (
                                 <span className="px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                                   {task.taskContract.riskClass}
