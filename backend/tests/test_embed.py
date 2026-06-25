@@ -463,8 +463,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "instructions": "Search claim state, cite policy knowledge, draft the customer reply and stop before sending.",
                     "whenToUse": "Customer asks about claim status.",
                     "expectedArtifacts": ["draft_email", "claim_summary"],
+                    "inputEntities": ["Claim"],
+                    "outputEntity": "DraftEmail",
                     "preconditions": ["claim id known"],
                     "trajectoryIds": ["traj-1"],
+                    "latestRegression": {"label": "pass"},
+                    "version": "1.0.0",
                     "runtimeRequirements": ["network"],
                 },
                 {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "human_approval_always", "status": "ready", "runtimeRequirements": ["browser"]},
@@ -616,6 +620,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["capabilityMap"]["tools"]["typed"] == 1
     assert "Claim" in result["contract"]["capabilityMap"]["tools"]["mappedEntities"]
     assert result["contract"]["capabilityMap"]["skills"]["hardened"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["manifestReady"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["publishable"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["withIoContract"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["withRegressionSuite"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["versioned"] == 1
+    assert result["contract"]["factory"]["publishableSkillPackages"] == 1
     assert "draft_email" in result["contract"]["capabilityMap"]["skills"]["expectedArtifacts"]
     assert result["contract"]["readiness"]["checks"]["systems"] is True
     assert result["contract"]["readiness"]["checks"]["capabilityCoverage"] is True

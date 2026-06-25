@@ -150,6 +150,63 @@ def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _skill_package_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    packages: list[dict[str, Any]] = []
+    for doc in docs:
+        package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
+        activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
+        policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
+        evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
+        regression = evidence.get("regressionSuite") if isinstance(evidence.get("regressionSuite"), dict) else {}
+        io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
+        outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
+        production_gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else {}
+        latest_regression = evidence.get("latestRegression") if isinstance(evidence.get("latestRegression"), dict) else doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else {}
+        checks = {
+            "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
+            "instructions": bool(str(doc.get("instructions") or "").strip()),
+            "riskPolicy": bool(str(doc.get("riskPolicy") or policies.get("riskPolicy") or "").strip() or policies.get("runtimePolicy") or doc.get("runtimePolicy")),
+            "sourceTrajectory": bool(_normalized_list(doc.get("trajectoryIds")) or _normalized_list(evidence.get("sourceTrajectoryIds")) or evidence.get("sourceTrajectories")),
+            "ioContract": bool(io_contract.get("declared") or _normalized_list(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip()),
+            "expectedArtifacts": bool(_normalized_list(doc.get("expectedArtifacts")) or _normalized_list(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard")),
+            "regressionSuite": bool(regression.get("cases") or _normalized_list(regression.get("benchmarkIds")) or _normalized_list(regression.get("evalIds")) or latest_regression),
+        }
+        manifest_ready = checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["sourceTrajectory"] and checks["ioContract"]
+        publishable_regression = bool(
+            regression.get("publishable")
+            or str(latest_regression.get("label") or "").lower() == "pass"
+            or str(production_gate.get("state") or "").lower() == "publishable"
+            or production_gate.get("canPublish")
+        )
+        blockers = _normalized_list(production_gate.get("blockers"))
+        if not blockers:
+            blockers = [key for key, ready in checks.items() if not ready]
+            if manifest_ready and not publishable_regression:
+                blockers.append("publishableRegression")
+        packages.append(
+            {
+                "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
+                "name": str(doc.get("name") or ""),
+                "manifestReady": manifest_ready,
+                "publishable": manifest_ready and publishable_regression,
+                "checks": checks,
+                "blockers": blockers[:8],
+                "versioned": bool(doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion")),
+            }
+        )
+    return {
+        "total": len(docs),
+        "manifestReady": sum(1 for item in packages if item["manifestReady"]),
+        "publishable": sum(1 for item in packages if item["publishable"]),
+        "withIoContract": sum(1 for item in packages if item["checks"]["ioContract"]),
+        "withExpectedArtifacts": sum(1 for item in packages if item["checks"]["expectedArtifacts"]),
+        "withRegressionSuite": sum(1 for item in packages if item["checks"]["regressionSuite"]),
+        "versioned": sum(1 for item in packages if item["versioned"]),
+        "blocked": sum(1 for item in packages if item["blockers"]),
+        "packages": packages[:8],
+    }
+
+
 def _connector_domains(connector: dict[str, Any]) -> list[str]:
     config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
     domains: set[str] = set()
@@ -494,6 +551,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         benchmark_verticals = _sorted_counts([str(doc.get("vertical") or "general") for doc in benchmarks])
         skill_artifacts = sorted({artifact for skill in skills for artifact in _normalized_list(skill.get("expectedArtifacts"))})
         hardened_skills = sum(1 for skill in skills if skill_reusability_ready(skill))
+        skill_packages = _skill_package_summary(skills)
         side_effects = _sorted_counts([str(tool.get("sideEffects") or tool.get("sideEffect") or "unknown") for tool in tools])
         tool_entities = sorted(
             {
@@ -637,6 +695,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "domainAllowlist": bool((company.get("embedSettings") or {}).get("allowedOrigins") or connector_domains),
             "resourceAcl": not knowledge_docs or docs_with_acl == len(knowledge_docs),
             "resourceRuntime": not knowledge_docs or runtime_ready_resources == len(knowledge_docs),
+            "skillPackages": not skills or skill_packages["publishable"] > 0,
         }
         readiness_gaps = []
         if not readiness_checks["systems"]:
@@ -655,6 +714,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             readiness_gaps.append({"key": "skills", "label": "Promote at least one hardened, ready skill.", "target": "capabilities"})
         if counts["skills"] > 0 and hardened_skills == 0:
             readiness_gaps.append({"key": "skill_hardening", "label": "Harden skills with activation guidance, instructions, preconditions or expected artifacts.", "target": "capabilities"})
+        if counts["skills"] > 0 and skill_packages["publishable"] == 0:
+            readiness_gaps.append({"key": "skill_packages", "label": "Complete at least one publishable skill package with IO contract and regression evidence.", "target": "capabilities"})
         if not readiness_checks["runtime"]:
             readiness_gaps.append({"key": "runtime", "label": "Run at least one governed runtime session.", "target": "runtime"})
         if not readiness_checks["domainAllowlist"]:
@@ -768,6 +829,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "approvedTrajectories": counts["approvedTrajectories"],
                 "skills": counts["skills"],
                 "readySkills": counts["readySkills"],
+                "publishableSkillPackages": skill_packages["publishable"],
             },
             "runtime": {
                 "sessions": counts["sessions"],
@@ -915,12 +977,14 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "hardenedRatio": round(hardened_skills / counts["skills"], 3) if counts["skills"] else 0.0,
                     "expectedArtifacts": skill_artifacts,
                     "policies": policy_counts,
+                    "packages": skill_packages,
                 },
                 "gaps": [
                     gap
                     for gap in [
                         {"key": "task_contracts", "label": "No benchmark task has a complete business contract.", "target": "evals"} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
                         {"key": "skill_hardening", "label": "Skills exist but none expose enough reusable package metadata.", "target": "capabilities"} if counts["skills"] and hardened_skills == 0 else None,
+                        {"key": "skill_packages", "label": "Skills exist but none are publishable packages with IO and regression gates.", "target": "capabilities"} if counts["skills"] and skill_packages["publishable"] == 0 else None,
                         {"key": "tool_entities", "label": "Typed tool/entity mapping is missing or thin.", "target": "capabilities"} if counts["tools"] and counts["typedTools"] == 0 else None,
                         {"key": "expected_artifacts", "label": "No expected business artifacts are declared for task coverage.", "target": "evals"} if counts["benchmarkTasks"] and not task_artifacts else None,
                     ]

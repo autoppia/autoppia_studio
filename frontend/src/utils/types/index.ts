@@ -759,6 +759,7 @@ export interface CompanySetupContract {
     approvedTrajectories: number;
     skills: number;
     readySkills: number;
+    publishableSkillPackages?: number;
   };
   runtime: {
     sessions: number;
@@ -916,6 +917,33 @@ export interface CompanySetupContract {
       hardenedRatio: number;
       expectedArtifacts: string[];
       policies: CompanySetupCount[];
+      packages?: {
+        total: number;
+        manifestReady: number;
+        publishable: number;
+        withIoContract: number;
+        withExpectedArtifacts: number;
+        withRegressionSuite: number;
+        versioned: number;
+        blocked: number;
+        packages?: Array<{
+          skillId: string;
+          name: string;
+          manifestReady: boolean;
+          publishable: boolean;
+          checks: {
+            activation: boolean;
+            instructions: boolean;
+            riskPolicy: boolean;
+            sourceTrajectory: boolean;
+            ioContract: boolean;
+            expectedArtifacts: boolean;
+            regressionSuite: boolean;
+          };
+          blockers: string[];
+          versioned: boolean;
+        }>;
+      };
     };
     gaps: Array<{ key: string; label: string; target: string }>;
   };

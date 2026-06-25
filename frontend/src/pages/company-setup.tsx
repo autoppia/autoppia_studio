@@ -252,6 +252,7 @@ export default function CompanySetup(): React.ReactElement {
   const readiness = contract.readiness;
   const integration = contract.integration;
   const capabilityMap = contract.capabilityMap;
+  const skillPackages = capabilityMap?.skills.packages;
   const resourceMap = contract.resourceMap;
   const runtimePolicyMap = contract.runtimePolicyMap;
   const workOrchestration = contract.workOrchestration;
@@ -383,7 +384,7 @@ export default function CompanySetup(): React.ReactElement {
           <SummaryCard label="Systems" value={contract.systems.summary.totalConnectors} hint={`${contract.systems.summary.connectedConnectors} connected connectors`} tone={contract.systems.summary.connectedConnectors > 0 ? "good" : "warning"} />
           <SummaryCard label="Credentials" value={contract.governance.credentials} hint="Secrets available to connectors and runtimes" tone={contract.governance.credentials > 0 ? "good" : "warning"} />
           <SummaryCard label="Resources" value={contract.context.resources} hint={`${contract.context.entities} entities and ${contract.context.vectorStores} vector stores`} tone={contract.context.resources > 0 ? "good" : "neutral"} />
-          <SummaryCard label="Factory" value={contract.factory.skills} hint={`${contract.factory.readySkills} ready skills, ${contract.factory.tools} tools`} tone={contract.factory.readySkills > 0 ? "good" : "neutral"} />
+          <SummaryCard label="Factory" value={contract.factory.skills} hint={`${contract.factory.readySkills} ready skills, ${contract.factory.publishableSkillPackages || 0} publishable packages`} tone={contract.factory.readySkills > 0 ? "good" : "neutral"} />
           <SummaryCard label="Runtime" value={contract.runtime.sessions} hint={`${contract.runtime.pendingApprovals} pending approvals`} tone={contract.runtime.pendingApprovals > 0 ? "warning" : "neutral"} />
           <SummaryCard label="Governance" value={governanceReady ? "Ready" : "Needs work"} hint={`${contract.governance.allowedOrigins.length} allowed origins, ${contract.governance.discoveredDomains.length} discovered domains`} tone={governanceReady ? "good" : "warning"} />
         </div>
@@ -537,10 +538,10 @@ export default function CompanySetup(): React.ReactElement {
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill packages</p>
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
-                        Hardened: <span className="font-semibold text-gray-900 dark:text-white">{capabilityMap.skills.hardened}/{capabilityMap.skills.total}</span>
+                        Publishable: <span className="font-semibold text-gray-900 dark:text-white">{skillPackages?.publishable ?? 0}/{capabilityMap.skills.total}</span>
                       </p>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                        {capabilityMap.skills.expectedArtifacts.slice(0, 3).join(", ") || "No skill artifacts declared"}
+                        {skillPackages ? `${skillPackages.manifestReady} manifest ready · ${skillPackages.withRegressionSuite} regressions` : `${capabilityMap.skills.hardened} hardened · no package contract`}
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
@@ -575,6 +576,37 @@ export default function CompanySetup(): React.ReactElement {
                           <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
                         </button>
                       ))}
+                    </div>
+                  )}
+                  {skillPackages && capabilityMap.skills.total > 0 && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Manifest</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Ready: <span className="font-semibold text-gray-900 dark:text-white">{skillPackages.manifestReady}/{skillPackages.total}</span>
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">IO / outputs</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          IO: <span className="font-semibold text-gray-900 dark:text-white">{skillPackages.withIoContract}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{skillPackages.withExpectedArtifacts} artifact contracts</p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression gate</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Suites: <span className="font-semibold text-gray-900 dark:text-white">{skillPackages.withRegressionSuite}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{skillPackages.publishable} publishable</p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Blocked</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Packages: <span className="font-semibold text-gray-900 dark:text-white">{skillPackages.blocked}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{skillPackages.versioned} versioned</p>
+                      </div>
                     </div>
                   )}
                 </div>

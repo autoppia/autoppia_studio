@@ -109,6 +109,7 @@ describe("Company Setup page", () => {
                 approvedTrajectories: 3,
                 skills: 3,
                 readySkills: 2,
+                publishableSkillPackages: 1,
               },
               runtime: {
                 sessions: 7,
@@ -237,6 +238,35 @@ describe("Company Setup page", () => {
                   hardenedRatio: 0.333,
                   expectedArtifacts: ["draft_email"],
                   policies: [{ name: "human_approval_for_writes", count: 1 }],
+                  packages: {
+                    total: 3,
+                    manifestReady: 2,
+                    publishable: 1,
+                    withIoContract: 2,
+                    withExpectedArtifacts: 2,
+                    withRegressionSuite: 1,
+                    versioned: 1,
+                    blocked: 2,
+                    packages: [
+                      {
+                        skillId: "skill-1",
+                        name: "Claim status reply",
+                        manifestReady: true,
+                        publishable: true,
+                        checks: {
+                          activation: true,
+                          instructions: true,
+                          riskPolicy: true,
+                          sourceTrajectory: true,
+                          ioContract: true,
+                          expectedArtifacts: true,
+                          regressionSuite: true,
+                        },
+                        blockers: [],
+                        versioned: true,
+                      },
+                    ],
+                  },
                 },
                 gaps: [],
               },
@@ -269,6 +299,10 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("acl 1")).toBeInTheDocument();
     expect(await screen.findByText("knowledge.claims.search, knowledge.claims.read_document")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
+    expect(await screen.findByText("2 ready skills, 1 publishable packages")).toBeInTheDocument();
+    expect(await screen.findByText("2 manifest ready · 1 regressions")).toBeInTheDocument();
+    expect(await screen.findByText("Regression gate")).toBeInTheDocument();
+    expect(await screen.findByText("1 publishable")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();
     expect(await screen.findByText("1 due now")).toBeInTheDocument();
     expect(await screen.findByText("Capability Factory")).toBeInTheDocument();
