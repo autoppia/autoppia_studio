@@ -140,6 +140,15 @@ interface ConnectorBenchmarkSpec {
   runtimeType: string;
   auditEnabled?: boolean;
   vertical?: string;
+  verticalDemo?: {
+    objective?: string;
+    runtimePath?: string;
+    coverage?: Array<{
+      key: string;
+      label: string;
+      evidence?: string;
+    }>;
+  } | null;
   tasks: ConnectorBenchmarkTaskSpec[];
 }
 
@@ -1083,25 +1092,47 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                   </div>
 
                   {selectedConnectorBenchmark && (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {selectedConnectorBenchmark.auditEnabled === false && (
-                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-                          <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px]" />
-                          manual vertical smoke{selectedConnectorBenchmark.vertical ? ` · ${selectedConnectorBenchmark.vertical}` : ""}
-                        </span>
+                    <>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {selectedConnectorBenchmark.auditEnabled === false && (
+                          <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                            <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px]" />
+                            manual vertical smoke{selectedConnectorBenchmark.vertical ? ` · ${selectedConnectorBenchmark.vertical}` : ""}
+                          </span>
+                        )}
+                        {selectedConnectorBenchmark.tasks.map((task) => (
+                          <span
+                            key={task.key}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"
+                            title={[task.businessIntent, ...(task.allowedSystems || []), ...task.expectedTools].filter(Boolean).join(" · ")}
+                          >
+                            {task.requiresBrowser && <FontAwesomeIcon icon={faGlobe} className="text-[10px] text-sky-500" />}
+                            {task.requiresApproval && <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px] text-amber-500" />}
+                            {task.name}{task.riskClass ? ` · ${task.riskClass}` : ""}
+                          </span>
+                        ))}
+                      </div>
+                      {selectedConnectorBenchmark.verticalDemo && (
+                        <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/70 p-3 dark:border-blue-500/30 dark:bg-blue-500/10">
+                          <div className="flex flex-col gap-1 md:flex-row md:items-center md:justify-between">
+                            <div>
+                              <p className="text-xs font-semibold text-blue-800 dark:text-blue-200">Vertical demo contract</p>
+                              <p className="mt-0.5 text-[11px] text-blue-700 dark:text-blue-300">{selectedConnectorBenchmark.verticalDemo.objective}</p>
+                            </div>
+                            <span className="inline-flex w-fit rounded-lg border border-blue-200 bg-white px-2.5 py-1 text-[11px] font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-dark-surface dark:text-blue-300">
+                              {(selectedConnectorBenchmark.verticalDemo.runtimePath || selectedConnectorBenchmark.runtimeType).replace(/_/g, " ")}
+                            </span>
+                          </div>
+                          <div className="mt-3 flex flex-wrap gap-1.5">
+                            {(selectedConnectorBenchmark.verticalDemo.coverage || []).map((item) => (
+                              <span key={item.key} title={item.evidence || ""} className="inline-flex items-center gap-1 rounded-lg border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-dark-surface dark:text-blue-300">
+                                {item.label}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
-                      {selectedConnectorBenchmark.tasks.map((task) => (
-                        <span
-                          key={task.key}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"
-                          title={[task.businessIntent, ...(task.allowedSystems || []), ...task.expectedTools].filter(Boolean).join(" · ")}
-                        >
-                          {task.requiresBrowser && <FontAwesomeIcon icon={faGlobe} className="text-[10px] text-sky-500" />}
-                          {task.requiresApproval && <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px] text-amber-500" />}
-                          {task.name}{task.riskClass ? ` · ${task.riskClass}` : ""}
-                        </span>
-                      ))}
-                    </div>
+                    </>
                   )}
 
                   <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">

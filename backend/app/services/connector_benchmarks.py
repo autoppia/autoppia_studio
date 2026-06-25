@@ -335,6 +335,21 @@ CONNECTOR_BENCHMARKS: dict[str, dict[str, Any]] = {
         "tasks": INSURANCE_CLAIMS_BENCHMARK_TASKS,
         "auditEnabled": False,
         "vertical": "insurance",
+        "verticalDemo": {
+            "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+            "runtimePath": "hybrid_api_first",
+            "coverage": [
+                {"key": "email_read", "label": "Email read", "evidence": "imap.search_emails"},
+                {"key": "erp_lookup", "label": "ERP lookup", "evidence": "erp.search_claims"},
+                {"key": "document_grounding", "label": "Document grounding", "evidence": "knowledge.search"},
+                {"key": "draft_artifact", "label": "Draft artifact", "evidence": "draft_email artifact"},
+                {"key": "approval_boundary", "label": "Approval boundary", "evidence": "send_requires_human_approval"},
+                {"key": "benchmark", "label": "Benchmark", "evidence": "connector-insurance_claims tasks"},
+                {"key": "trajectory", "label": "Trajectory", "evidence": "runtime trace/tool calls"},
+                {"key": "skill_promotion", "label": "Skill promotion", "evidence": "hardened skill package"},
+                {"key": "runtime_replay", "label": "Runtime replay", "evidence": "router matched approved trajectory"},
+            ],
+        },
     },
 }
 
@@ -351,6 +366,7 @@ def connector_benchmark_catalog() -> list[dict[str, Any]]:
                 "runtimeType": spec["runtimeType"],
                 "auditEnabled": bool(spec.get("auditEnabled", True)),
                 "vertical": str(spec.get("vertical") or ""),
+                "verticalDemo": spec.get("verticalDemo") if isinstance(spec.get("verticalDemo"), dict) else None,
                 "tasks": [
                     {
                         "key": task.key,
@@ -513,6 +529,7 @@ async def seed_connector_benchmark(
             "runtimeType": spec["runtimeType"],
             "auditEnabled": bool(spec.get("auditEnabled", True)),
             "vertical": str(spec.get("vertical") or ""),
+            "verticalDemo": spec.get("verticalDemo") if isinstance(spec.get("verticalDemo"), dict) else None,
             "connectorStatus": str(connector.get("status") or ""),
             "checks": ["connector_status", "published_tools", "runtime_without_skill", "runtime_with_skill_when_available"],
         },

@@ -86,6 +86,18 @@ def test_connector_benchmark_catalog_includes_email_business_flows():
     } <= task_keys
     assert insurance["auditEnabled"] is False
     assert insurance["vertical"] == "insurance"
+    assert insurance["verticalDemo"]["objective"].startswith("Responder a cliente")
+    assert [item["key"] for item in insurance["verticalDemo"]["coverage"]] == [
+        "email_read",
+        "erp_lookup",
+        "document_grounding",
+        "draft_artifact",
+        "approval_boundary",
+        "benchmark",
+        "trajectory",
+        "skill_promotion",
+        "runtime_replay",
+    ]
     assert insurance["tasks"][0]["allowedSystems"] == ["email", "insurance_erp", "knowledge"]
     assert insurance["tasks"][0]["riskClass"] == "draft"
 
@@ -260,6 +272,7 @@ async def test_seed_insurance_claims_vertical_benchmark_creates_full_task_contra
     first_task = result["tasks"][0]
     assert result["benchmark"]["metadata"]["vertical"] == "insurance"
     assert result["benchmark"]["metadata"]["auditEnabled"] is False
+    assert result["benchmark"]["metadata"]["verticalDemo"]["runtimePath"] == "hybrid_api_first"
     assert result["agent"]["runtimeType"] == "hybrid_runtime"
     assert first_task["metadata"]["businessIntent"].startswith("Responder a un cliente")
     assert first_task["metadata"]["allowedSystems"] == ["email", "insurance_erp", "knowledge"]
