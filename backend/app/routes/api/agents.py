@@ -12,6 +12,7 @@ from app.services.observability import record_runtime_event
 from app.services.agent_runtime import step_url as _step_url
 from app.services.agent_runtime import agent_step_result, runtime_contract_payload
 from app.services.agent_runtime import load_agent_config, serialize_agent
+from app.services.runtime_policy import serialize_runtime_policy
 
 router = APIRouter()
 _RATE_LIMIT_BUCKETS: dict[str, list[float]] = {}
@@ -81,6 +82,7 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "inputSchema": doc.get("inputSchema") or {"type": "object", "properties": {}},
         "sideEffects": doc.get("sideEffects", "reads"),
         "riskPolicy": doc.get("riskPolicy", ""),
+        "runtimePolicy": serialize_runtime_policy(doc),
         "riskLevel": doc.get("riskLevel", ""),
         "connectorIds": doc.get("connectorIds") or [],
         "toolIds": doc.get("toolIds") or [],

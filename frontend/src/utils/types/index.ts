@@ -779,6 +779,17 @@ export interface CompanyTrajectory {
   updatedAt?: string;
 }
 
+export interface RuntimePolicy {
+  policy: string;
+  approvalMode: "always" | "auto" | "never" | string;
+  approvalRequiredFor: string[];
+  writesRequireApproval: boolean;
+  sendsRequireApproval: boolean;
+  browserRuntime: boolean;
+  runtimeClass: "api" | "browser" | "hybrid" | string;
+  runtimeRequirements: string[];
+}
+
 export interface CompanySkill {
   capabilityId: string;
   capabilityKind: "skill";
@@ -802,6 +813,7 @@ export interface CompanySkill {
   outputCard?: Record<string, any>;
   permissions?: Record<string, any>;
   riskPolicy: string;
+  runtimePolicy?: RuntimePolicy;
   runtime: string;
   status: string;
   promotionStatus?: string;

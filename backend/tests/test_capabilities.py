@@ -252,6 +252,11 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["connectorIds"] == ["conn-1", "conn-2"]
     assert skill["toolIds"] == ["crm.search", "erp.update"]
     assert skill["runtimeRequirements"] == ["network", "browser"]
+    assert skill["runtimePolicy"]["policy"] == "human_approval_always"
+    assert skill["runtimePolicy"]["approvalMode"] == "always"
+    assert skill["runtimePolicy"]["approvalRequiredFor"] == ["read", "draft", "write", "send"]
+    assert skill["runtimePolicy"]["runtimeClass"] == "hybrid"
+    assert skill["runtimePolicy"]["browserRuntime"] is True
     assert skill["benchmarkId"] == "bench-1"
     assert skill["evalId"] == "eval-1"
     assert skill["instructions"].startswith("Look up the policy")
@@ -712,6 +717,10 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     assert result["skill"]["instructions"].startswith("Fetch the latest invoice")
     assert result["skill"]["preconditions"] == ["Customer email exists"]
     assert result["skill"]["expectedArtifacts"] == ["draft_email"]
+    assert result["skill"]["runtimePolicy"]["policy"] == "human_approval_for_writes"
+    assert result["skill"]["runtimePolicy"]["approvalMode"] == "auto"
+    assert result["skill"]["runtimePolicy"]["approvalRequiredFor"] == ["write", "send"]
+    assert result["skill"]["runtimePolicy"]["runtimeClass"] == "api"
     assert result["skill"]["lineage"]["trajectoryIds"] == ["traj-1"]
     assert result["skill"]["hardeningStatus"]["checks"]["lineage"] is True
     assert result["skill"]["hardeningStatus"]["checks"]["regression"] is False

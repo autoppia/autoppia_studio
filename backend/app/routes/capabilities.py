@@ -21,6 +21,7 @@ from app.harvesters.base import connector_surface
 from app.harvesters.toolkit import ToolkitHarvester
 from app.connectors import execute_connector_tool
 from app.routes.connectors import connector_toolkit
+from app.services.runtime_policy import serialize_runtime_policy
 
 router = APIRouter()
 
@@ -240,6 +241,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "evalId": doc.get("evalId", ""),
         "permissions": doc.get("permissions", {}),
         "riskPolicy": doc.get("riskPolicy", ""),
+        "runtimePolicy": serialize_runtime_policy(doc),
         "inputEntities": doc.get("inputEntities", []),
         "outputEntity": doc.get("outputEntity", ""),
         "outputCard": doc.get("outputCard", {}),

@@ -124,6 +124,8 @@ class _FakeCapabilitiesCollection:
                 "description": "Use test skill",
                 "runtime": "skill_tool",
                 "inputSchema": {"type": "object", "properties": {"instruction": {"type": "string"}}},
+                "riskPolicy": "autonomous",
+                "runtimeRequirements": ["browser"],
                 "trajectoryIds": ["traj-skill-1"],
                 "tasks": [{"name": "Test Skill", "prompt": "Execute approved test skill workflow safely"}],
             }
@@ -611,6 +613,19 @@ async def test_api_lists_agents_for_api_key_owner(monkeypatch):
     assert result["agents"][0]["agentId"] == "agent-1"
     assert result["agents"][0]["email"] == "user@example.com"
     assert result["agents"][0]["tasks"][0]["name"] == "Test Skill"
+
+
+@pytest.mark.asyncio
+async def test_api_lists_agent_skills_with_runtime_policy(monkeypatch):
+    monkeypatch.setattr(api_agents, "load_agent_config", lambda agent_id: _FakeAgentsCollection().find_one({"agentId": agent_id}))
+    monkeypatch.setattr(api_agents, "capabilities_collection", _FakeCapabilitiesCollection())
+
+    result = await api_agents.list_agent_skills("agent-1", api_key={"email": "user@example.com"})
+
+    assert result["skills"][0]["runtimePolicy"]["policy"] == "autonomous"
+    assert result["skills"][0]["runtimePolicy"]["approvalMode"] == "never"
+    assert result["skills"][0]["runtimePolicy"]["approvalRequiredFor"] == []
+    assert result["skills"][0]["runtimePolicy"]["runtimeClass"] == "browser"
 
 
 @pytest.mark.asyncio
