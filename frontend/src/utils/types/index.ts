@@ -1294,7 +1294,16 @@ export interface RuntimePolicy {
   sendsRequireApproval: boolean;
   browserRuntime: boolean;
   runtimeClass: "api" | "browser" | "hybrid" | string;
+  runtimeType?: string;
+  runtimeTypes?: string[];
   runtimeRequirements: string[];
+  browserPolicy?: {
+    defaultUse?: string;
+    restrictedByDomain?: boolean;
+    allowedDomains?: string[];
+    requiresSandbox?: boolean;
+    leastPrivilege?: boolean;
+  };
 }
 
 export interface CompanySkill {

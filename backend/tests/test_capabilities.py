@@ -307,7 +307,11 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["runtimePolicy"]["approvalMode"] == "always"
     assert skill["runtimePolicy"]["approvalRequiredFor"] == ["read", "draft", "write", "send"]
     assert skill["runtimePolicy"]["runtimeClass"] == "hybrid"
+    assert skill["runtimePolicy"]["runtimeType"] == "hybrid_runtime"
+    assert skill["runtimePolicy"]["runtimeTypes"] == ["api_runtime", "browser_runtime", "hybrid_runtime"]
     assert skill["runtimePolicy"]["browserRuntime"] is True
+    assert skill["runtimePolicy"]["browserPolicy"]["defaultUse"] == "exception"
+    assert skill["runtimePolicy"]["browserPolicy"]["requiresSandbox"] is True
     assert skill["benchmarkId"] == "bench-1"
     assert skill["evalId"] == "eval-1"
     assert skill["instructions"].startswith("Look up the policy")
@@ -333,6 +337,7 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["interface"]["ioContract"]["declared"] is True
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
+    assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeType"] == "hybrid_runtime"
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
     assert skill["skillPackage"]["evidence"]["versionHistory"][-1]["versionLabel"] == "v2"
 

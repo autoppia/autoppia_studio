@@ -1497,8 +1497,12 @@ function CapabilityDetailModal({
                 {[
                   { label: "Approval mode", value: detail.item.runtimePolicy?.approvalMode || approvalMode(detail.item) },
                   { label: "Approval scopes", value: detail.item.runtimePolicy?.approvalRequiredFor?.join(", ") || "none" },
-                  { label: "Runtime class", value: detail.item.runtimePolicy?.runtimeClass || "api" },
-                  { label: "Browser runtime", value: detail.item.runtimePolicy?.browserRuntime ? "yes" : "no" },
+                  { label: "Runtime type", value: (detail.item.runtimePolicy?.runtimeType || `${detail.item.runtimePolicy?.runtimeClass || "api"}_runtime`).replace(/_/g, " ") },
+                  { label: "Browser use", value: detail.item.runtimePolicy?.browserPolicy?.defaultUse || (detail.item.runtimePolicy?.browserRuntime ? "exception" : "none") },
+                  { label: "Browser sandbox", value: detail.item.runtimePolicy?.browserPolicy?.requiresSandbox ? "required" : "not required" },
+                  { label: "Domain restriction", value: detail.item.runtimePolicy?.browserPolicy?.restrictedByDomain ? "enabled" : "not configured" },
+                  { label: "Runtime classes", value: detail.item.runtimePolicy?.runtimeTypes?.map((item) => item.replace(/_/g, " ")).join(", ") || detail.item.runtimePolicy?.runtimeClass || "api" },
+                  { label: "Allowed domains", value: detail.item.runtimePolicy?.browserPolicy?.allowedDomains?.join(", ") || "none" },
                 ].map((item) => (
                   <div key={item.label} className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>

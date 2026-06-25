@@ -629,6 +629,9 @@ async def test_api_lists_agent_skills_with_runtime_policy(monkeypatch):
     assert result["skills"][0]["runtimePolicy"]["approvalMode"] == "never"
     assert result["skills"][0]["runtimePolicy"]["approvalRequiredFor"] == []
     assert result["skills"][0]["runtimePolicy"]["runtimeClass"] == "browser"
+    assert result["skills"][0]["runtimePolicy"]["runtimeType"] == "browser_runtime"
+    assert result["skills"][0]["runtimePolicy"]["browserPolicy"]["defaultUse"] == "exception"
+    assert result["skills"][0]["runtimePolicy"]["browserPolicy"]["requiresSandbox"] is True
 
 
 @pytest.mark.asyncio
