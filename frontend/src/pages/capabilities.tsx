@@ -152,6 +152,12 @@ function riskTone(risk: string) {
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
+function graphSignalTone(tone: "critical" | "warning" | "neutral") {
+  if (tone === "critical") return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
+  if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  return "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300";
+}
+
 function approvalMode(item?: { permissions?: Record<string, any>; riskLevel?: string; sideEffects?: string }): ApprovalMode {
   const explicit = String(item?.permissions?.approval || "").toLowerCase();
   if (explicit === "always" || explicit === "never" || explicit === "auto") return explicit;
@@ -2653,6 +2659,37 @@ export default function Capabilities(): React.ReactElement {
       for (const item of runtimeUsage.workItemsByToolId.get(tool.toolId) || []) workMap.set(item.workItemId, item);
     }
 
+    const pendingApprovals = Array.from(approvalMap.values()).filter((approval) => approval.status === "pending");
+    const writeTools = filteredTools.filter((tool) => ["writes", "deletes"].includes((tool.sideEffects || "").toLowerCase()));
+    const highRiskTools = filteredTools.filter((tool) => (tool.riskLevel || "").toLowerCase() === "high");
+    const failingSkills = filteredSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "fail");
+    const approvalHotspots = [
+      ...filteredSkills.map((skill) => ({
+        kind: "skill" as const,
+        id: skill.skillId,
+        label: skill.name,
+        count: (runtimeUsage.approvalsBySkillId.get(skill.skillId) || []).filter((approval) => approval.status === "pending").length,
+        item: skill,
+      })),
+      ...filteredTrajectories.map((trajectory) => ({
+        kind: "trajectory" as const,
+        id: trajectory.trajectoryId,
+        label: trajectory.name,
+        count: (runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || []).filter((approval) => approval.status === "pending").length,
+        item: trajectory,
+      })),
+      ...filteredTools.map((tool) => ({
+        kind: "tool" as const,
+        id: tool.toolId,
+        label: tool.displayName || tool.name,
+        count: (runtimeUsage.approvalsByToolId.get(tool.toolId) || []).filter((approval) => approval.status === "pending").length,
+        item: tool,
+      })),
+    ]
+      .filter((item) => item.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 3);
+
     return {
       title: filteredBenchmark ? filteredBenchmark.name : filteredEntity,
       subtitle: filteredBenchmark
@@ -2667,7 +2704,12 @@ export default function Capabilities(): React.ReactElement {
       artifactCount: artifactMap.size,
       workCount: workMap.size,
       regressionReadySkills: filteredSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "pass").length,
-      blockedSkills: filteredSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "fail").length,
+      blockedSkills: failingSkills.length,
+      pendingApprovalCount: pendingApprovals.length,
+      writeTools,
+      highRiskTools,
+      failingSkills,
+      approvalHotspots,
     };
   }, [
     benchmarkFilter,
@@ -3077,6 +3119,88 @@ export default function Capabilities(): React.ReactElement {
                         <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{item.value}</p>
                       </div>
                     ))}
+                  </div>
+
+                  <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Critical Path</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          Immediate operational signals for this scope before a capability is promoted or trusted in runtime.
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {[
+                          { label: "Pending approvals", value: activeScopeGraph.pendingApprovalCount, tone: activeScopeGraph.pendingApprovalCount > 0 ? "critical" as const : "neutral" as const },
+                          { label: "Write-capable tools", value: activeScopeGraph.writeTools.length, tone: activeScopeGraph.writeTools.length > 0 ? "warning" as const : "neutral" as const },
+                          { label: "High-risk tools", value: activeScopeGraph.highRiskTools.length, tone: activeScopeGraph.highRiskTools.length > 0 ? "critical" as const : "neutral" as const },
+                          { label: "Regression blocked", value: activeScopeGraph.failingSkills.length, tone: activeScopeGraph.failingSkills.length > 0 ? "critical" as const : "neutral" as const },
+                        ].map((signal) => (
+                          <span key={signal.label} className={`rounded-lg border px-3 py-2 text-[11px] font-semibold ${graphSignalTone(signal.tone)}`}>
+                            {signal.value} {signal.label}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-3">
+                      {activeScopeGraph.approvalHotspots.map((hotspot) => (
+                        <div key={`${hotspot.kind}:${hotspot.id}`} className="rounded-lg border border-red-200 bg-white p-3 dark:border-red-500/30 dark:bg-dark-surface">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500">{hotspot.count} pending approvals</p>
+                          <p className="mt-1 truncate text-xs font-semibold text-gray-900 dark:text-white">{hotspot.label}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <button
+                              onClick={() => {
+                                if (hotspot.kind === "tool") openCapabilityDetail({ kind: "tool", item: hotspot.item });
+                                if (hotspot.kind === "trajectory") openCapabilityDetail({ kind: "trajectory", item: hotspot.item });
+                                if (hotspot.kind === "skill") openCapabilityDetail({ kind: "skill", item: hotspot.item });
+                              }}
+                              className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+                            >
+                              Inspect
+                            </button>
+                            <button
+                              onClick={() => {
+                                if (hotspot.kind === "tool") openScopedApprovals({ toolId: hotspot.id });
+                                if (hotspot.kind === "trajectory") openScopedApprovals({ trajectoryId: hotspot.id });
+                                if (hotspot.kind === "skill") openScopedApprovals({ skillId: hotspot.id });
+                              }}
+                              className="inline-flex h-7 items-center rounded-lg border border-red-200 px-2.5 text-[11px] font-semibold text-red-600 hover:bg-red-50 dark:border-red-500/30 dark:text-red-300 dark:hover:bg-red-500/10"
+                            >
+                              Approvals
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {activeScopeGraph.failingSkills.slice(0, Math.max(0, 3 - activeScopeGraph.approvalHotspots.length)).map((skill) => (
+                        <div key={`failing:${skill.skillId}`} className="rounded-lg border border-red-200 bg-white p-3 dark:border-red-500/30 dark:bg-dark-surface">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500">Regression failed</p>
+                          <p className="mt-1 truncate text-xs font-semibold text-gray-900 dark:text-white">{skill.name}</p>
+                          <button
+                            onClick={() => openCapabilityDetail({ kind: "skill", item: skill })}
+                            className="mt-2 inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+                          >
+                            Inspect
+                          </button>
+                        </div>
+                      ))}
+                      {activeScopeGraph.approvalHotspots.length === 0 && activeScopeGraph.failingSkills.length === 0 && activeScopeGraph.highRiskTools.slice(0, 3).map((tool) => (
+                        <div key={`risk:${tool.toolId}`} className="rounded-lg border border-red-200 bg-white p-3 dark:border-red-500/30 dark:bg-dark-surface">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-red-500">High-risk tool</p>
+                          <p className="mt-1 truncate text-xs font-semibold text-gray-900 dark:text-white">{tool.displayName || tool.name}</p>
+                          <button
+                            onClick={() => openCapabilityDetail({ kind: "tool", item: tool })}
+                            className="mt-2 inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+                          >
+                            Inspect
+                          </button>
+                        </div>
+                      ))}
+                      {activeScopeGraph.approvalHotspots.length === 0 && activeScopeGraph.failingSkills.length === 0 && activeScopeGraph.highRiskTools.length === 0 && (
+                        <div className="rounded-lg border border-gray-200 bg-white p-3 text-xs text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400 lg:col-span-3">
+                          No pending approvals, failed regressions or high-risk tools are visible in this scope.
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
