@@ -1388,16 +1388,30 @@ class AutomataAssistantService:
             return "You do not have a company configured yet. I can help you start onboarding and create the company, connectors, tasks, and first agent."
         operating_state = snapshot.get("operatingState") if isinstance(snapshot.get("operatingState"), dict) else {}
         readiness = operating_state.get("readiness") if isinstance(operating_state.get("readiness"), dict) else {}
+        capability_map = operating_state.get("capabilityMap") if isinstance(operating_state.get("capabilityMap"), dict) else {}
+        work_orchestration = operating_state.get("workOrchestration") if isinstance(operating_state.get("workOrchestration"), dict) else {}
         next_actions = operating_state.get("recommendedNextActions") if isinstance(operating_state.get("recommendedNextActions"), list) else []
         score = readiness.get("score")
         score_text = f" Readiness is {int(float(score) * 100)}%." if isinstance(score, (int, float)) else ""
+        task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
+        skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
+        sla = work_orchestration.get("sla") if isinstance(work_orchestration.get("sla"), dict) else {}
+        coverage_text = ""
+        if task_contracts or skills:
+            coverage_text = (
+                f" Capability coverage: {task_contracts.get('ready', 0)}/{task_contracts.get('total', 0)} task contracts ready, "
+                f"{skills.get('hardened', 0)}/{skills.get('total', 0)} skills hardened."
+            )
+        work_text = ""
+        if sla:
+            work_text = f" Work attention items: {sla.get('needsAttention', 0)}."
         next_action = next_actions[0] if next_actions and isinstance(next_actions[0], dict) else {}
         next_text = f" Next: {next_action.get('action')}" if next_action.get("action") else " Tell me what you want to inspect or configure next."
         return (
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{next_text}"
+            f"{score_text}{coverage_text}{work_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:

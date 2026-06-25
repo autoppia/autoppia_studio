@@ -215,7 +215,15 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     companies = _Collection([{"email": "owner@example.com", "companyId": "company-1", "name": "Celeris"}])
     capabilities = _Collection(
         [
-            {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill", "name": "Approved skill"},
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "capabilityKind": "skill",
+                "name": "Approved skill",
+                "instructions": "Search the claim, draft the answer and stop before sending.",
+                "whenToUse": "Customer asks about claim status.",
+                "expectedArtifacts": ["draft_email"],
+            },
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
         ]
     )
@@ -223,8 +231,47 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     sessions = _Collection([{"email": "owner@example.com", "companyId": "company-1", "sessionId": "session-1"}])
     artifacts = _Collection([{"email": "owner@example.com", "companyId": "company-1", "artifactId": "artifact-1"}])
     eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
-    approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending"}])
+    approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending", "metadata": {"workItemId": "work-1"}}])
     trajectories = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "approved"}])
+    benchmark_tasks = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "metadata": {
+                    "businessIntent": "Respond to claim status",
+                    "allowedSystems": ["email", "insurance_erp"],
+                    "expectedArtifacts": ["draft_email"],
+                    "riskClass": "draft",
+                },
+            }
+        ]
+    )
+    published_tools = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "name": "erp.search_claims",
+                "inputEntities": ["Claim"],
+            }
+        ]
+    )
+    work_items = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "workItemId": "work-1",
+                "status": "REVIEW",
+                "triggerType": "scheduled",
+                "nextRunAt": "2000-01-01T00:00:00+00:00",
+                "maxBudgetCredits": 1,
+                "report": {"creditsSpent": 1.25},
+                "runHistory": [{"runId": "run-1"}, {"runId": "run-2"}],
+            }
+        ]
+    )
     empty = _Collection([])
     monkeypatch.setattr(assistant_tools, "companies_collection", companies)
     monkeypatch.setattr(assistant_tools, "agents_collection", empty)
@@ -232,9 +279,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     monkeypatch.setattr(assistant_tools, "credentials_collection", empty)
     monkeypatch.setattr(assistant_tools, "knowledge_documents_collection", empty)
     monkeypatch.setattr(assistant_tools, "capabilities_collection", capabilities)
-    monkeypatch.setattr(assistant_tools, "tools_collection", empty)
-    monkeypatch.setattr(assistant_tools, "benchmark_tasks_collection", empty)
-    monkeypatch.setattr(assistant_tools, "work_items_collection", empty)
+    monkeypatch.setattr(assistant_tools, "tools_collection", published_tools)
+    monkeypatch.setattr(assistant_tools, "benchmark_tasks_collection", benchmark_tasks)
+    monkeypatch.setattr(assistant_tools, "work_items_collection", work_items)
     monkeypatch.setattr(assistant_tools, "entities_collection", empty)
     monkeypatch.setattr(assistant_tools, "sessions_collection", sessions)
     monkeypatch.setattr(assistant_tools, "artifacts_collection", artifacts)
@@ -250,12 +297,27 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["counts"]["pendingApprovals"] == 1
     assert snapshot["operatingState"]["factory"]["connectedConnectors"] == 1
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["sla"]["needsAttention"] == 3
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
     assert snapshot["operatingState"]["runtime"]["sessions"] == 1
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert capabilities_payload["skills"] == [
-        {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill", "name": "Approved skill"}
+        {
+            "email": "owner@example.com",
+            "companyId": "company-1",
+            "capabilityKind": "skill",
+            "name": "Approved skill",
+            "instructions": "Search the claim, draft the answer and stop before sending.",
+            "whenToUse": "Customer asks about claim status.",
+            "expectedArtifacts": ["draft_email"],
+        }
     ]
     assert capabilities.last_find_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
 
@@ -511,12 +573,19 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
             "counts": {"companies": 1, "agents": 1, "connectors": 2, "tools": 3, "skills": 4},
             "operatingState": {
                 "readiness": {"score": 0.6},
+                "capabilityMap": {
+                    "taskContracts": {"ready": 2, "total": 5},
+                    "skills": {"hardened": 1, "total": 4},
+                },
+                "workOrchestration": {"sla": {"needsAttention": 3}},
                 "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
             },
         }
     )
 
     assert "Readiness is 60%" in reply
+    assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
+    assert "Work attention items: 3." in reply
     assert "Next: Create benchmark tasks for the top insurance workflows." in reply
 
 

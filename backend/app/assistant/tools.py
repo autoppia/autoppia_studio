@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime, timezone
 from typing import Any
 
 from bson import ObjectId
@@ -55,6 +56,64 @@ async def _to_list(cursor: Any, limit: int = 20) -> list[dict[str, Any]]:
     return [_clean_doc(doc) for doc in docs]
 
 
+def _list_values(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item or "").strip()]
+
+
+def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
+    return doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+
+
+def _task_contract_ready(task: dict[str, Any]) -> bool:
+    metadata = _metadata(task)
+    return bool(
+        str(metadata.get("businessIntent") or "").strip()
+        and _list_values(metadata.get("allowedSystems"))
+        and _list_values(metadata.get("expectedArtifacts"))
+        and str(metadata.get("riskClass") or "").strip()
+    )
+
+
+def _skill_hardened(skill: dict[str, Any]) -> bool:
+    return bool(
+        str(skill.get("instructions") or "").strip()
+        and (
+            str(skill.get("whenToUse") or skill.get("activationDescription") or "").strip()
+            or _list_values(skill.get("sourceTrajectoryIds"))
+        )
+        and (_list_values(skill.get("expectedArtifacts")) or _list_values(skill.get("preconditions")))
+    )
+
+
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _parse_iso_datetime(value: Any) -> datetime | None:
+    if not value:
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _work_retry_count(doc: dict[str, Any]) -> int:
+    history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
+    return max(0, len(history) - 1)
+
+
+def _work_credits_spent(doc: dict[str, Any]) -> float:
+    report = doc.get("report") if isinstance(doc.get("report"), dict) else {}
+    return _safe_float(report.get("creditsSpent"))
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -83,6 +142,11 @@ class AutomataAssistantTools:
         pending_approvals = await self._count(approvals_collection, {**scoped, "status": "pending"})
         scheduled_work = await self._count(work_items_collection, {**scoped, "triggerType": "scheduled"})
         running_work = await self._count(work_items_collection, {**scoped, "status": "RUNNING"})
+        skill_docs = await _to_list(capabilities_collection.find({**scoped, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", -1), 500)
+        tool_docs = await _to_list(tools_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
+        task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        work_docs = await _to_list(work_items_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        approval_docs = await _to_list(approvals_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         counts = {
             "companies": len(companies),
             "agents": await agents_collection.count_documents(scoped),
@@ -99,6 +163,40 @@ class AutomataAssistantTools:
             "workItems": await work_items_collection.count_documents(scoped),
             "pendingApprovals": pending_approvals,
         }
+        task_contracts_ready = sum(1 for task in task_docs if _task_contract_ready(task))
+        task_expected_artifacts = sorted({artifact for task in task_docs for artifact in _list_values(_metadata(task).get("expectedArtifacts"))})
+        task_allowed_systems = sorted({system for task in task_docs for system in _list_values(_metadata(task).get("allowedSystems"))})
+        hardened_skills = sum(1 for skill in skill_docs if _skill_hardened(skill))
+        skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
+        typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
+        now_dt = datetime.now(timezone.utc)
+        work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
+        pending_approval_work_item_ids = {
+            str(_metadata(approval).get("workItemId") or "")
+            for approval in approval_docs
+            if str(approval.get("status") or "") == "pending"
+        }
+        pending_approval_work_item_ids = {item for item in pending_approval_work_item_ids if item in work_item_ids}
+        scheduled_docs = [doc for doc in work_docs if str(doc.get("triggerType") or "manual") == "scheduled"]
+        scheduled_due = sum(
+            1
+            for doc in scheduled_docs
+            if (parsed := _parse_iso_datetime(doc.get("nextRunAt"))) is not None and parsed <= now_dt
+        )
+        budgeted_docs = [doc for doc in work_docs if _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun"))) > 0]
+        budget_exhausted = sum(
+            1
+            for doc in budgeted_docs
+            if _work_credits_spent(doc) >= _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun")))
+        )
+        review_blocked = sum(
+            1
+            for doc in work_docs
+            if str(doc.get("status") or "") == "REVIEW"
+            or str((doc.get("pendingApproval") if isinstance(doc.get("pendingApproval"), dict) else {}).get("approvalId") or "")
+            or str(doc.get("workItemId") or "") in pending_approval_work_item_ids
+        )
+        total_retries = sum(_work_retry_count(doc) for doc in work_docs)
         readiness_checks = [
             {"key": "company", "ready": bool(company_id), "label": "Company context selected", "nextAction": "Create or select the enterprise/company workspace."},
             {"key": "connectors", "ready": counts["connectors"] > 0, "label": "Systems mapped", "nextAction": "Add the ERP/CRM/email/document connectors that define the operating surface."},
@@ -119,6 +217,14 @@ class AutomataAssistantTools:
         ]
         if pending_approvals:
             recommended_actions.insert(0, {"area": "approvals", "action": "Review pending approvals before continuing automated work.", "reason": f"{pending_approvals} approval(s) are blocking execution."})
+        if scheduled_due:
+            recommended_actions.insert(0, {"area": "work", "action": "Run or reschedule due scheduled work items.", "reason": f"{scheduled_due} scheduled work item(s) are due."})
+        if budget_exhausted:
+            recommended_actions.insert(0, {"area": "work", "action": "Review exhausted work budgets before retrying jobs.", "reason": f"{budget_exhausted} work item(s) exhausted their budget."})
+        if counts["benchmarkTasks"] and task_contracts_ready == 0:
+            recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
+        if counts["skills"] and hardened_skills == 0:
+            recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
         if failing_runs:
             recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
         operating_state = {
@@ -141,6 +247,24 @@ class AutomataAssistantTools:
                 "skills": counts["skills"],
                 "approvedSkills": approved_skills,
             },
+            "capabilityMap": {
+                "taskContracts": {
+                    "total": counts["benchmarkTasks"],
+                    "ready": task_contracts_ready,
+                    "expectedArtifacts": task_expected_artifacts,
+                    "allowedSystems": task_allowed_systems,
+                },
+                "tools": {
+                    "total": counts["tools"],
+                    "typed": typed_tools,
+                },
+                "skills": {
+                    "total": counts["skills"],
+                    "approved": approved_skills,
+                    "hardened": hardened_skills,
+                    "expectedArtifacts": skill_expected_artifacts,
+                },
+            },
             "runtime": {
                 "agents": counts["agents"],
                 "sessions": counts["sessions"],
@@ -154,6 +278,32 @@ class AutomataAssistantTools:
                 "scheduled": scheduled_work,
                 "running": running_work,
                 "blockedByApprovals": pending_approvals,
+            },
+            "workOrchestration": {
+                "queues": {
+                    "total": counts["workItems"],
+                    "running": running_work,
+                    "reviewBlocked": review_blocked,
+                },
+                "triggers": {
+                    "scheduled": scheduled_work,
+                    "due": scheduled_due,
+                },
+                "budgets": {
+                    "budgetedItems": len(budgeted_docs),
+                    "exhaustedItems": budget_exhausted,
+                    "latestCreditsSpent": round(sum(_work_credits_spent(doc) for doc in work_docs), 4),
+                },
+                "retries": {
+                    "totalRetryCount": total_retries,
+                },
+                "approvalBoundary": {
+                    "pendingApprovals": pending_approvals,
+                    "linkedApprovalWorkItems": len(pending_approval_work_item_ids),
+                },
+                "sla": {
+                    "needsAttention": review_blocked + scheduled_due + budget_exhausted,
+                },
             },
             "recommendedNextActions": recommended_actions[:6],
         }
