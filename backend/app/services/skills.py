@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.database import agents_collection, capabilities_collection, trajectories_collection
+from app.services.runtime_policy import serialize_runtime_policy
 from app.services.trajectory_judges import build_trajectory_judge_context, get_trajectory_judge
 
 
@@ -18,6 +19,144 @@ def skill_slug(value: str) -> str:
     ascii_text = "".join(ch for ch in normalized if not unicodedata.combining(ch))
     text = re.sub(r"[^a-zA-Z0-9]+", "_", ascii_text).strip("_")
     return text or "skill"
+
+
+def _dedupe(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
+def _trajectory_actions(trajectory: dict[str, Any]) -> list[Any]:
+    for key in ("trajectory", "actions", "steps"):
+        value = trajectory.get(key)
+        if isinstance(value, list) and value:
+            return value
+    return []
+
+
+def _action_name(action: Any) -> str:
+    if isinstance(action, dict):
+        return str(action.get("name") or action.get("tool") or action.get("action") or "")
+    return str(action or "")
+
+
+def _side_effects_for_trajectory(trajectory: dict[str, Any]) -> str:
+    action_names = [_action_name(action).lower() for action in _trajectory_actions(trajectory)]
+    if any(token in name for name in action_names for token in ("send", "delete", "update", "create", "write", "draft")):
+        return "writes"
+    return "reads"
+
+
+def _lineage_for_skill(skill: dict[str, Any], trajectory: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "trajectoryIds": _dedupe([*(skill.get("trajectoryIds") or []), trajectory.get("trajectoryId")]),
+        "benchmarkIds": _dedupe([skill.get("benchmarkId"), trajectory.get("benchmarkId")]),
+        "evalIds": _dedupe([skill.get("evalId"), trajectory.get("evalId"), trajectory.get("taskId")]),
+        "connectorIds": _dedupe([*(skill.get("connectorIds") or []), *(trajectory.get("connectorIds") or [])]),
+        "toolIds": _dedupe([*(skill.get("toolIds") or []), *(trajectory.get("toolIds") or [])]),
+        "sources": _dedupe([skill.get("source"), trajectory.get("source")]),
+    }
+
+
+def _hardening_for_skill(skill: dict[str, Any], lineage: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "activation": bool(str(skill.get("whenToUse") or "").strip()),
+        "instructions": bool(str(skill.get("instructions") or "").strip()),
+        "riskPolicy": bool(str(skill.get("riskPolicy") or "").strip()),
+        "lineage": bool(lineage.get("trajectoryIds")),
+        "regression": bool(lineage.get("evalIds") or lineage.get("benchmarkIds")),
+        "publishableRegression": False,
+        "entities": bool((skill.get("inputEntities") or []) or str(skill.get("outputEntity") or "").strip()),
+        "artifacts": bool(skill.get("expectedArtifacts") or skill.get("outputCard")),
+    }
+    passed = sum(1 for ready in checks.values() if ready)
+    return {
+        "checks": checks,
+        "passedChecks": passed,
+        "totalChecks": len(checks),
+        "score": round(passed / len(checks), 3),
+        "state": "drafting",
+    }
+
+
+def _skill_package(skill: dict[str, Any], *, lineage: dict[str, Any], hardening: dict[str, Any], version_history: list[dict[str, Any]]) -> dict[str, Any]:
+    runtime_policy = serialize_runtime_policy(skill)
+    expected_artifacts = skill.get("expectedArtifacts") or []
+    preconditions = skill.get("preconditions") or []
+    io_contract = {
+        "inputs": {
+            "entities": skill.get("inputEntities") or [],
+            "preconditions": preconditions,
+        },
+        "outputs": {
+            "entity": skill.get("outputEntity", ""),
+            "artifacts": expected_artifacts,
+            "outputCard": skill.get("outputCard", {}),
+        },
+        "declared": bool(skill.get("inputEntities") or preconditions or skill.get("outputEntity") or expected_artifacts or skill.get("outputCard")),
+    }
+    return {
+        "format": "autoppia.agent_skill",
+        "manifestVersion": 1,
+        "packageId": skill.get("capabilityId", ""),
+        "metadata": {
+            "name": skill.get("name", ""),
+            "description": skill.get("description", ""),
+            "version": skill.get("version", 1),
+            "versionLabel": skill.get("versionLabel", "v1"),
+            "promotionStatus": skill.get("promotionStatus", "ready"),
+            "source": skill.get("source", ""),
+            "createdAt": skill.get("createdAt"),
+            "updatedAt": skill.get("updatedAt"),
+        },
+        "activation": {
+            "description": skill.get("whenToUse", ""),
+            "preconditions": preconditions,
+        },
+        "interface": {
+            "inputEntities": skill.get("inputEntities") or [],
+            "outputEntity": skill.get("outputEntity", ""),
+            "expectedArtifacts": expected_artifacts,
+            "outputCard": skill.get("outputCard", {}),
+            "ioContract": io_contract,
+        },
+        "ioContract": io_contract,
+        "execution": {
+            "instructions": skill.get("instructions", ""),
+            "connectorIds": lineage.get("connectorIds", []),
+            "toolIds": lineage.get("toolIds", []),
+            "trajectoryIds": lineage.get("trajectoryIds", []),
+            "runtimeRequirements": skill.get("runtimeRequirements", []),
+            "runtime": skill.get("runtime", ""),
+        },
+        "policies": {
+            "riskPolicy": skill.get("riskPolicy", ""),
+            "permissions": skill.get("permissions", {}),
+            "runtimePolicy": runtime_policy,
+        },
+        "evidence": {
+            "lineage": lineage,
+            "latestRegression": None,
+            "hardeningStatus": hardening,
+            "versionHistory": version_history,
+            "regressionSuite": {
+                "benchmarkIds": lineage.get("benchmarkIds", []),
+                "evalIds": lineage.get("evalIds", []),
+                "publishable": False,
+            },
+        },
+        "progressiveDisclosure": {
+            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
+            "fullFields": ["execution", "evidence"],
+        },
+    }
 
 
 async def judge_harvested_trajectory(*, trajectory: dict[str, Any]) -> dict[str, Any]:
@@ -53,53 +192,77 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
     )
     capability_id = str((existing or {}).get("capabilityId") or capability_id)
     metadata = trajectory.get("metadata") if isinstance(trajectory.get("metadata"), dict) else {}
+    trajectory_ids = _dedupe([*((existing or {}).get("trajectoryIds") or []), trajectory_id])
+    version = int((existing or {}).get("version") or 1)
+    version_label = str((existing or {}).get("versionLabel") or f"v{version}")
+    side_effects = _side_effects_for_trajectory(trajectory)
+    skill_doc = {
+        **(existing or {}),
+        "capabilityId": capability_id,
+        "capabilityKind": "skill",
+        "skillId": capability_id,
+        "agentId": agent_id,
+        "companyId": trajectory.get("companyId") or agent.get("companyId", ""),
+        "email": trajectory.get("email") or agent.get("email", ""),
+        "webId": trajectory.get("webId", ""),
+        "name": task_name,
+        "toolName": f"skill.{slug}",
+        "description": trajectory.get("prompt", ""),
+        "whenToUse": trajectory.get("prompt", ""),
+        "instructions": trajectory.get("prompt", ""),
+        "preconditions": (existing or {}).get("preconditions", []),
+        "expectedArtifacts": (existing or {}).get("expectedArtifacts", []),
+        "inputSchema": (existing or {}).get("inputSchema") or {"type": "object", "properties": {"instruction": {"type": "string"}}},
+        "connectorIds": _dedupe([*((existing or {}).get("connectorIds") or []), *(trajectory.get("connectorIds") or [])]),
+        "toolIds": _dedupe([*((existing or {}).get("toolIds") or []), *(trajectory.get("toolIds") or [])]),
+        "trajectoryIds": trajectory_ids,
+        "runtimeRequirements": _dedupe([*((existing or {}).get("runtimeRequirements") or []), *(trajectory.get("runtimeRequirements") or [])]),
+        "benchmarkId": (existing or {}).get("benchmarkId") or trajectory.get("benchmarkId", ""),
+        "evalId": (existing or {}).get("evalId") or trajectory.get("evalId") or trajectory.get("taskId") or "",
+        "inputEntities": (existing or {}).get("inputEntities") or trajectory.get("inputEntities", []),
+        "outputEntity": (existing or {}).get("outputEntity") or trajectory.get("outputEntity", ""),
+        "outputCard": (existing or {}).get("outputCard") or trajectory.get("outputCard", {}),
+        "sideEffects": side_effects,
+        "riskLevel": (existing or {}).get("riskLevel") or ("medium" if side_effects != "reads" else "low"),
+        "riskPolicy": (existing or {}).get("riskPolicy") or "human_approval_for_writes",
+        "permissions": (existing or {}).get("permissions") or {"approval": "always" if side_effects != "reads" else "auto"},
+        "runtime": (existing or {}).get("runtime") or "trajectory_replay_with_recovery",
+        "status": "ready",
+        "promotionStatus": "ready",
+        "source": trajectory.get("source") or "approved_trajectory",
+        "harvesterType": trajectory.get("harvester", {}).get("adapter", "")
+        if isinstance(trajectory.get("harvester"), dict)
+        else trajectory.get("harvesterType", ""),
+        "harvesterRunId": trajectory.get("harvesterRunId", ""),
+        "discovererName": metadata.get("discoveredBy", ""),
+        "discovererVersion": metadata.get("discovererVersion", ""),
+        "judge": judge or {},
+        "version": version,
+        "versionLabel": version_label,
+        "readyAt": (existing or {}).get("readyAt") or now,
+        "lastPromotedAt": now if not existing or (existing or {}).get("promotionStatus") != "ready" else (existing or {}).get("lastPromotedAt"),
+        "createdAt": (existing or {}).get("createdAt") or now,
+        "updatedAt": now,
+    }
+    lineage = _lineage_for_skill(skill_doc, trajectory)
+    hardening = _hardening_for_skill(skill_doc, lineage)
+    version_history = (existing or {}).get("versionHistory") if isinstance((existing or {}).get("versionHistory"), list) else []
+    version_event = {
+        "version": version,
+        "versionLabel": version_label,
+        "promotionStatus": "ready",
+        "reason": "trajectory_approved",
+        "createdAt": now,
+    }
+    if not version_history or any(version_event.get(key) != version_history[-1].get(key) for key in ("version", "promotionStatus", "reason")):
+        version_history = [*version_history, version_event][-25:]
+    skill_doc["lineage"] = lineage
+    skill_doc["hardeningStatus"] = hardening
+    skill_doc["versionHistory"] = version_history
+    skill_doc["skillPackage"] = _skill_package(skill_doc, lineage=lineage, hardening=hardening, version_history=version_history)
     await capabilities_collection.update_one(
         {"capabilityId": capability_id},
-        {
-            "$set": {
-                "capabilityKind": "skill",
-                "skillId": capability_id,
-                "agentId": agent_id,
-                "companyId": trajectory.get("companyId") or agent.get("companyId", ""),
-                "email": trajectory.get("email") or agent.get("email", ""),
-                "webId": trajectory.get("webId", ""),
-                "name": task_name,
-                "toolName": f"skill.{slug}",
-                "description": trajectory.get("prompt", ""),
-                "whenToUse": trajectory.get("prompt", ""),
-                "instructions": trajectory.get("prompt", ""),
-                "preconditions": [],
-                "expectedArtifacts": [],
-                "inputSchema": {"type": "object", "properties": {"instruction": {"type": "string"}}},
-                "connectorIds": trajectory.get("connectorIds", []),
-                "toolIds": trajectory.get("toolIds", []),
-                "runtimeRequirements": trajectory.get("runtimeRequirements", []),
-                "inputEntities": trajectory.get("inputEntities", []),
-                "outputEntity": trajectory.get("outputEntity", ""),
-                "outputCard": trajectory.get("outputCard", {}),
-                "sideEffects": "writes"
-                if any(
-                    "send" in str((tool.get("name") or tool.get("action") or tool) if isinstance(tool, dict) else tool).lower()
-                    for tool in (trajectory.get("trajectory") or trajectory.get("actions") or [])
-                )
-                else "reads",
-                "riskLevel": "medium",
-                "riskPolicy": "human_approval_for_writes",
-                "runtime": "trajectory_replay_with_recovery",
-                "status": "approved",
-                "source": trajectory.get("source") or "approved_trajectory",
-                "harvesterType": trajectory.get("harvester", {}).get("adapter", "")
-                if isinstance(trajectory.get("harvester"), dict)
-                else trajectory.get("harvesterType", ""),
-                "harvesterRunId": trajectory.get("harvesterRunId", ""),
-                "discovererName": metadata.get("discoveredBy", ""),
-                "discovererVersion": metadata.get("discovererVersion", ""),
-                "judge": judge or {},
-                "updatedAt": now,
-            },
-            "$addToSet": {"trajectoryIds": trajectory_id},
-            "$setOnInsert": {"createdAt": now},
-        },
+        {"$set": skill_doc},
         upsert=True,
     )
     await agents_collection.update_one({"agentId": agent_id}, {"$set": {"updatedAt": now, "trainingStatus": "verified"}})
