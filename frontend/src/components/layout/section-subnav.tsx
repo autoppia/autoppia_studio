@@ -17,9 +17,14 @@ export default function SectionSubNav() {
 
   return (
     <aside className="flex h-full w-52 flex-shrink-0 flex-col border-r border-gray-200 bg-white px-3 py-4 dark:border-dark-border dark:bg-dark-bg">
-      <div className="mb-2 flex items-center gap-2 px-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-        <FontAwesomeIcon icon={group.icon} className="text-[11px]" />
-        {group.label}
+      <div className="mb-3 px-2">
+        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
+          <FontAwesomeIcon icon={group.icon} className="text-[11px]" />
+          {group.label}
+        </div>
+        <p className="mt-2 text-[11px] leading-4 text-gray-500 dark:text-zinc-400">
+          {group.description}
+        </p>
       </div>
       <div className="flex flex-col gap-0.5">
         {group.items.map((item) => {

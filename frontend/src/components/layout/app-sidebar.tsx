@@ -7,13 +7,6 @@ import {
   faClock,
   faUser,
   faGear,
-  faClipboardCheck,
-  faClipboardList,
-  faRobot,
-  faCircleNodes,
-  faCube,
-  faDiagramProject,
-  faFileLines,
   faRoute,
   faXmark,
   faWallet,
@@ -23,6 +16,7 @@ import {
 import { HistoryItem } from "../../utils/types";
 import { getApiUrl } from "../../utils/api-url";
 import { getStoredPlan, planById, PLAN_CHANGED_EVENT } from "../../utils/plan";
+import { NAV_GROUPS } from "./nav-config";
 
 const apiUrl = getApiUrl();
 
@@ -170,14 +164,9 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
   const isOnHome = location.pathname === "/";
   const isOnSettings = location.pathname === "/settings";
   const isOnCanvas = location.pathname.startsWith("/canvas");
-  const isOnEvals = location.pathname.startsWith("/evals");
-  const isOnAgents = location.pathname.startsWith("/agents");
-  const isOnWork = location.pathname.startsWith("/work");
-  const isOnConnectors = location.pathname.startsWith("/connectors");
-  const isOnCapabilities = location.pathname.startsWith("/capabilities");
-  const isOnEntities = location.pathname.startsWith("/entities");
-  const isOnApprovals = location.pathname.startsWith("/approvals");
-  const isOnKnowledge = location.pathname.startsWith("/knowledge");
+  const navGroups = NAV_GROUPS.filter((group) => group.key !== "canvas");
+  const navItems = navGroups.flatMap((group) => group.items.map((item) => ({ ...item, groupLabel: group.label })));
+  const itemIsActive = (path: string) => location.pathname === path || location.pathname.startsWith(`${path}/`);
 
   return (
     <>
@@ -273,151 +262,50 @@ const AppSidebar = forwardRef<AppSidebarHandle, AppSidebarProps>(function AppSid
             </button>
           </div>
 
-          {/* Connectors button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/connectors")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnConnectors
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Connectors"
-            >
-              <FontAwesomeIcon icon={faCircleNodes} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Connectors</span>}
-            </button>
-          </div>
-
-          {/* Capabilities button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/capabilities")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnCapabilities
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Capabilities"
-            >
-              <FontAwesomeIcon icon={faDiagramProject} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Capabilities</span>}
-            </button>
-          </div>
-
-          {/* Entities button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/entities")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnEntities
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Entities"
-            >
-              <FontAwesomeIcon icon={faCube} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Entities</span>}
-            </button>
-          </div>
-
-          {/* Knowledge button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/knowledge")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnKnowledge
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Knowledge"
-            >
-              <FontAwesomeIcon icon={faFileLines} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Knowledge</span>}
-            </button>
-          </div>
-
-          {/* Agents button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/agents")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                  ${isOnAgents
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Agents"
-            >
-              <FontAwesomeIcon icon={faRobot} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Agents</span>}
-            </button>
-          </div>
-
-          {/* Operations category */}
-          <div className="mx-2 my-2 border-t border-gray-200 dark:border-zinc-800/80" />
-          {expanded && (
-            <div className="px-4 pb-1">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-                Operations
-              </span>
-            </div>
+          {expanded ? (
+            navGroups.map((group, index) => (
+              <div key={group.key}>
+                {index > 0 && <div className="mx-2 my-2 border-t border-gray-200 dark:border-zinc-800/80" />}
+                <div className="px-4 pb-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
+                    {group.label}
+                  </span>
+                </div>
+                {group.items.map((item) => (
+                  <div key={item.path} className="px-2 mb-1">
+                    <button
+                      onClick={() => navigate(item.path)}
+                      className={`flex items-center gap-2 rounded-lg transition-all duration-200 w-full px-3 py-2
+                        hover:bg-gray-100 dark:hover:bg-white/5
+                        ${itemIsActive(item.path)
+                          ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                          : "text-gray-700 dark:text-zinc-300"}`}
+                      title={item.label}
+                    >
+                      <FontAwesomeIcon icon={item.icon} className="text-sm" />
+                      <span className="text-sm font-medium">{item.label}</span>
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ))
+          ) : (
+            navItems.map((item) => (
+              <div key={item.path} className="px-2 mb-1 flex justify-center">
+                <button
+                  onClick={() => navigate(item.path)}
+                  className={`flex items-center gap-2 rounded-lg transition-all duration-200 w-9 h-9 justify-center
+                    hover:bg-gray-100 dark:hover:bg-white/5
+                    ${itemIsActive(item.path)
+                      ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
+                      : "text-gray-700 dark:text-zinc-300"}`}
+                  title={`${item.groupLabel} · ${item.label}`}
+                >
+                  <FontAwesomeIcon icon={item.icon} className="text-sm" />
+                </button>
+              </div>
+            ))
           )}
-
-          {/* Approvals button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/approvals")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnApprovals
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Approvals"
-            >
-              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Approvals</span>}
-            </button>
-          </div>
-
-          {/* Work button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/work")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnWork
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Work"
-            >
-              <FontAwesomeIcon icon={faClipboardList} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Work</span>}
-            </button>
-          </div>
-
-          {/* Benchmarks button */}
-          <div className={`px-2 mb-1 ${expanded ? "" : "flex justify-center"}`}>
-            <button
-              onClick={() => navigate("/evals")}
-              className={`flex items-center gap-2 rounded-lg transition-all duration-200
-                hover:bg-gray-100 dark:hover:bg-white/5
-                ${isOnEvals
-                  ? "text-gray-900 dark:text-white bg-gray-100 dark:bg-zinc-900/70"
-                  : "text-gray-700 dark:text-zinc-300"}
-                ${expanded ? "w-full px-3 py-2" : "w-9 h-9 justify-center"}`}
-              title="Benchmarks"
-            >
-              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
-              {expanded && <span className="text-sm font-medium">Benchmarks</span>}
-            </button>
-          </div>
 
           {/* History label (expanded only) */}
           {expanded && (

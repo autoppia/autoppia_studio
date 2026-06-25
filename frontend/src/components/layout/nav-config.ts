@@ -27,6 +27,7 @@ export interface NavItem {
 export interface NavGroup {
   key: string;
   label: string;
+  description: string;
   icon: IconDefinition;
   /** Direct landing path for groups with no sub-rail (e.g. Canvas, Settings). */
   path?: string;
@@ -42,10 +43,11 @@ export interface NavGroup {
  * Canvas is the home/center — it opens full-window with no rail.
  */
 export const NAV_GROUPS: NavGroup[] = [
-  { key: "canvas", label: "Canvas", icon: faDiagramProject, path: "/canvas", items: [] },
+  { key: "canvas", label: "Canvas", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [] },
   {
     key: "factory",
     label: "Factory",
+    description: "Systems, context, entities, benchmarks and capabilities become reusable business procedures here.",
     icon: faWandMagicSparkles,
     items: [
       { label: "Agents", path: "/agents", icon: faRobot },
@@ -60,6 +62,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: "runtime",
     label: "Runtime",
+    description: "Governed sessions, approvals and artifacts from live execution.",
     icon: faBolt,
     items: [
       { label: "Sessions", path: "/runtime", icon: faClockRotateLeft },
@@ -70,6 +73,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: "operations",
     label: "Operations",
+    description: "Queues, schedules, recurring jobs and operational follow-through.",
     icon: faListCheck,
     items: [
       { label: "Work Orchestration", path: "/work", icon: faBriefcase },
@@ -78,6 +82,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     key: "setup",
     label: "Setup",
+    description: "Company contract, credentials, embed controls and governance.",
     icon: faGear,
     items: [
       { label: "Company Setup", path: "/setup/company", icon: faBuilding },
