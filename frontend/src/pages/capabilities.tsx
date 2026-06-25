@@ -890,14 +890,14 @@ function CapabilityDetailModal({
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Trajectory coverage</p>
                 <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{lineageSummary.trajectories}</p>
                 <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                  {isTool ? "Trajectories linked to this action" : isSkill ? "Source traces behind this skill" : "Trace under inspection"}
+                  {isTool ? "Trajectories linked to this action" : isSkill ? "Source trajectories behind this skill" : "Trajectory under inspection"}
                 </p>
               </div>
               <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
                 <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{lineageSummary.skills}</p>
                 <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                  {isTool ? "Published skills that depend on this action" : isTrajectory ? "Skills promoted from this trace" : "This capability is production-ready"}
+                  {isTool ? "Published skills that depend on this action" : isTrajectory ? "Skills promoted from this trajectory" : "This capability is production-ready"}
                 </p>
               </div>
             </div>
@@ -1177,7 +1177,7 @@ function CapabilityDetailModal({
                           onClick={() => onOpenCapability({ kind: "trajectory", item: linkedTrajectory })}
                           className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface dark:text-red-200 dark:hover:bg-red-500/10"
                         >
-                          Review source trace
+                          Review source trajectory
                         </button>
                       )}
                       {benchmarkId && (
@@ -1697,7 +1697,7 @@ function CapabilityDetailModal({
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Source trajectories</p>
                 {skillCandidateTrajectories.length === 0 ? (
                   <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
-                    No related trajectories available yet. Promote or harvest more traces first.
+                    No related trajectories available yet. Promote or harvest more trajectories first.
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -4048,7 +4048,7 @@ export default function Capabilities(): React.ReactElement {
                             disabled={!row.connector?.connectorId}
                             className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-border"
                           >
-                            Open traces
+                            Open trajectories
                           </button>
                           <button
                             onClick={() => row.benchmark

@@ -277,15 +277,15 @@ export default function AgentDetail() {
           status: "draft",
         }),
       });
-      if (!res.ok) throw new Error(await responseMessage(res, "Could not add training trace."));
+      if (!res.ok) throw new Error(await responseMessage(res, "Could not add trajectory."));
       setTaskName("");
       setTaskPrompt("");
       setTaskCriteria("");
       await loadData();
-      showToast("Training trace added.", "success");
+      showToast("Trajectory added.", "success");
     } catch (err) {
       console.error("Failed to add trajectory:", err);
-      showToast(err instanceof Error ? err.message : "Could not add training trace.", "error");
+      showToast(err instanceof Error ? err.message : "Could not add trajectory.", "error");
     } finally {
       setSaving(false);
     }
@@ -296,12 +296,12 @@ export default function AgentDetail() {
     setSaving(true);
     try {
       const res = await fetch(`${apiUrl}/trajectories/${trajectoryId}/convert-to-skill`, { method: "POST" });
-      if (!res.ok) throw new Error(await responseMessage(res, "Could not convert trace to skill."));
+      if (!res.ok) throw new Error(await responseMessage(res, "Could not convert trajectory to skill."));
       await loadData();
-      showToast("Trace converted to skill.", "success");
+      showToast("Trajectory converted to skill.", "success");
     } catch (err) {
       console.error("Failed to approve trajectory:", err);
-      showToast(err instanceof Error ? err.message : "Could not convert trace to skill.", "error");
+      showToast(err instanceof Error ? err.message : "Could not convert trajectory to skill.", "error");
     } finally {
       setSaving(false);
     }
@@ -573,8 +573,8 @@ print(response.json()["result"])`;
         tone: "blue" as const,
         title: creationJob.status === "draft" ? "Validate the setup" : "Run the harvester",
         description: creationJob.status === "draft"
-          ? "Check connector readiness before collecting training traces."
-          : "Connector validation passed. Harvest traces from the benchmark tasks so the agent can become reusable.",
+          ? "Check connector readiness before collecting trajectories."
+          : "Connector validation passed. Harvest trajectories from the benchmark tasks so the agent can become reusable.",
         action: creationJob.status === "draft" ? "Validate setup" : "Run harvester",
         onClick: () => runCreationAction(creationJob.status === "draft" ? "validate" : "harvest"),
       };
@@ -583,15 +583,15 @@ print(response.json()["result"])`;
       return {
         tone: "blue" as const,
         title: "Harvester is running",
-        description: "Training traces are being collected in the background. The latest status loads automatically when you open this page.",
+        description: "Trajectories are being collected in the background. The latest status loads automatically when you open this page.",
       };
     }
     if (creationJob.status === "awaiting_review" || harvestedCount > 0) {
       return {
         tone: "amber" as const,
-        title: "Review harvested traces",
-        description: "Approve successful traces to turn them into reusable skills for this agent.",
-        action: "Review traces",
+        title: "Review harvested trajectories",
+        description: "Approve successful trajectories to turn them into reusable skills for this agent.",
+        action: "Review trajectories",
         onClick: () => {
           setActiveTab("skills");
           setSkillAssetTab("traces");
@@ -602,7 +602,7 @@ print(response.json()["result"])`;
       return {
         tone: "red" as const,
         title: "Harvesting needs attention",
-        description: blockedStep?.message || "The harvester did not produce successful traces. Adjust tasks or credentials, then run it again.",
+        description: blockedStep?.message || "The harvester did not produce successful trajectories. Adjust tasks or credentials, then run it again.",
         action: "Run harvester again",
         onClick: () => runCreationAction("harvest"),
       };
@@ -724,7 +724,7 @@ print(response.json()["result"])`;
                   { label: "Tools", value: allTools.length, icon: faWrench },
                   { label: "Skills", value: skills.length, icon: faCode },
                   { label: "Knowledge", value: knowledgeToolkits.length, icon: faBook },
-                  { label: "Training Traces", value: trajectories.length, icon: faRoute },
+                  { label: "Trajectories", value: trajectories.length, icon: faRoute },
                   { label: "Runs", value: runs.length, icon: faCircleNodes },
                 ].map((item) => (
                   <div key={item.label} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
@@ -781,7 +781,7 @@ print(response.json()["result"])`;
                     </button>
                   </div>
                   {skills.length === 0 ? (
-                    <Empty text="No skills yet. Approve a training trace to build a reusable workflow." />
+                    <Empty text="No skills yet. Approve a trajectory to build a reusable workflow." />
                   ) : (
                     <div className="space-y-2">
                       {skills.slice(0, 5).map((skill) => (
@@ -938,20 +938,20 @@ print(response.json()["result"])`;
             <div className="space-y-4">
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Skills & Training Traces</h2>
-                  <InfoIcon title="Tools, Skills, and Training Traces">
+                  <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Skills & Trajectories</h2>
+                  <InfoIcon title="Tools, Skills, and Trajectories">
                     <div className="space-y-3">
                       <p><strong>Tool</strong> means an atomic capability connected to a system, such as sending email, calling an API, reading a document, or clicking in a browser.</p>
                       <p><strong>Toolkit</strong> means a bundle of tools from one connector or runtime, such as Gmail Toolkit, Browser Toolkit, or Knowledge Toolkit.</p>
                       <p><strong>Skill</strong> means a learned reusable workflow that can call multiple tools, such as sending a client their latest invoice from Gmail and Holded.</p>
-                      <p><strong>Training Trace</strong> means an approved or recorded execution. A successful trace can be converted into a Skill.</p>
+                      <p><strong>Trajectory</strong> means an approved or recorded execution attempt. A successful trajectory can be promoted into a Skill.</p>
                     </div>
                   </InfoIcon>
                 </div>
                 <div className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-1">
                   {[
                     { key: "skills" as SkillAssetTab, label: "Skills" },
-                    { key: "traces" as SkillAssetTab, label: "Training Traces" },
+                    { key: "traces" as SkillAssetTab, label: "Trajectories" },
                   ].map((tab) => (
                     <button
                       key={tab.key}
@@ -976,10 +976,10 @@ print(response.json()["result"])`;
                         </div>
                       </div>
                       <p className="text-sm text-gray-600 dark:text-gray-300 mb-4">{skill.description || "No description"}</p>
-                      <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked training traces</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">{skill.trajectoryIds?.length || 0} linked trajectories</p>
                     </div>
                   ))}
-                  {skills.length === 0 && <Empty text="No skills yet. Approve a training trace to generate the first reusable workflow." />}
+                  {skills.length === 0 && <Empty text="No skills yet. Approve a trajectory to generate the first reusable workflow." />}
                 </div>
               )}
 
@@ -999,7 +999,7 @@ print(response.json()["result"])`;
                 />
                 <button onClick={addTrajectory} disabled={saving || !taskName.trim() || !taskPrompt.trim()} className="h-10 px-4 rounded-xl bg-gradient-primary text-white text-sm font-medium disabled:opacity-60">
                   <FontAwesomeIcon icon={saving ? faSpinner : faPlus} className={`mr-2 text-xs ${saving ? "animate-spin" : ""}`} />
-                  Add Training Trace
+                  Add Trajectory
                 </button>
               </div>
               {trajectories.map((trajectory) => (

@@ -959,7 +959,7 @@ export default function CelerisOnboarding({ companyId = "", companyName = "", co
           )}
           {ready && !finalizing && (
             <p className="text-center text-[11px] text-gray-400 -mt-1">
-              Next: validate credentials, harvest traces, and run the benchmark.
+              Next: validate credentials, harvest trajectories, and run the benchmark.
             </p>
           )}
         </div>
