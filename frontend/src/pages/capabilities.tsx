@@ -3148,6 +3148,8 @@ export default function Capabilities(): React.ReactElement {
                           const nodeApprovals = runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || [];
                           const nodeArtifacts = runtimeUsage.artifactsByTrajectoryId.get(trajectory.trajectoryId) || [];
                           const nodeWork = runtimeUsage.workItemsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const linkedSkills = filteredSkills.filter((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId)).slice(0, 3);
+                          const linkedTools = filteredTools.filter((tool) => (trajectory.toolIds || []).includes(tool.toolId)).slice(0, 4);
                           return (
                             <div key={trajectory.trajectoryId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
                               <button
@@ -3168,6 +3170,34 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                   </div>
+                                  {((linkedSkills.length > 0) || (linkedTools.length > 0)) && (
+                                    <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Linked skills</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {linkedSkills.length === 0 ? (
+                                            <span className="text-[10px] text-gray-400">No promoted skill yet.</span>
+                                          ) : linkedSkills.map((skill) => (
+                                            <button key={skill.skillId} onClick={() => openCapabilityDetail({ kind: "skill", item: skill })} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:bg-dark-border">
+                                              {skill.name}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Called tools</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {linkedTools.length === 0 ? (
+                                            <span className="text-[10px] text-gray-400">No typed tool references.</span>
+                                          ) : linkedTools.map((tool) => (
+                                            <button key={tool.toolId} onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:bg-dark-border">
+                                              {tool.name}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                   <div className="flex flex-wrap gap-2">
                                     <button onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
                                     <button onClick={() => openScopedRuntime({ sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
@@ -3198,6 +3228,8 @@ export default function Capabilities(): React.ReactElement {
                           const nodeApprovals = runtimeUsage.approvalsBySkillId.get(skill.skillId) || [];
                           const nodeArtifacts = runtimeUsage.artifactsBySkillId.get(skill.skillId) || [];
                           const nodeWork = runtimeUsage.workItemsBySkillId.get(skill.skillId) || [];
+                          const sourceTrajectories = (skill.trajectoryIds || []).map((trajectoryId) => trajectoriesById.get(trajectoryId)).filter(Boolean).slice(0, 3) as CompanyTrajectory[];
+                          const sourceTools = filteredTools.filter((tool) => (skill.toolIds || []).includes(tool.toolId)).slice(0, 4);
                           return (
                             <div key={skill.skillId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
                               <button
@@ -3223,6 +3255,34 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                   </div>
+                                  {((sourceTrajectories.length > 0) || (sourceTools.length > 0)) && (
+                                    <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Source trajectories</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {sourceTrajectories.length === 0 ? (
+                                            <span className="text-[10px] text-gray-400">No source trajectories attached.</span>
+                                          ) : sourceTrajectories.map((trajectory) => (
+                                            <button key={trajectory.trajectoryId} onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:bg-dark-border">
+                                              {trajectory.name || trajectory.trajectoryId}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div>
+                                        <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">Source tools</p>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {sourceTools.length === 0 ? (
+                                            <span className="text-[10px] text-gray-400">No typed tools attached.</span>
+                                          ) : sourceTools.map((tool) => (
+                                            <button key={tool.toolId} onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:bg-dark-border">
+                                              {tool.name}
+                                            </button>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )}
                                   <div className="flex flex-wrap gap-2">
                                     <button onClick={() => openCapabilityDetail({ kind: "skill", item: skill })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
                                     <button onClick={() => openScopedRuntime({ skillId: skill.skillId, sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
