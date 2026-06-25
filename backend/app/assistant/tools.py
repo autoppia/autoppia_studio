@@ -13,6 +13,7 @@ from app.database import (
     artifacts_collection,
     assistant_conversations_collection,
     assistant_memories_collection,
+    benchmarks_collection,
     benchmark_tasks_collection,
     capabilities_collection,
     companies_collection,
@@ -118,6 +119,103 @@ def _surface_status(ready: bool) -> str:
     return "ready" if ready else "needs_work"
 
 
+def _dedupe(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
+def _vertical_demo_summary(
+    *,
+    benchmarks: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    vertical_benchmarks = [
+        benchmark
+        for benchmark in benchmarks
+        if isinstance(_metadata(benchmark).get("verticalDemo"), dict) or isinstance(benchmark.get("verticalDemo"), dict)
+    ]
+    tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
+    skills_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills:
+        benchmark_id = str(skill.get("benchmarkId") or "")
+        if benchmark_id:
+            skills_by_benchmark.setdefault(benchmark_id, []).append(skill)
+    runs_by_eval = {str(run.get("evalId") or ""): str(run.get("label") or "").lower() for run in runs}
+    demos: list[dict[str, Any]] = []
+    for benchmark in vertical_benchmarks:
+        benchmark_id = str(benchmark.get("benchmarkId") or "")
+        metadata = _metadata(benchmark)
+        vertical_demo = metadata.get("verticalDemo") if isinstance(metadata.get("verticalDemo"), dict) else benchmark.get("verticalDemo")
+        benchmark_tasks = tasks_by_benchmark.get(benchmark_id, [])
+        benchmark_skills = skills_by_benchmark.get(benchmark_id, [])
+        task_metadata = [_metadata(task) for task in benchmark_tasks]
+        expected_tools = _dedupe([tool for metadata in task_metadata for tool in _list_values(metadata.get("expectedTools"))])
+        allowed_systems = _dedupe([system for metadata in task_metadata for system in _list_values(metadata.get("allowedSystems"))])
+        expected_artifacts = _dedupe([artifact for metadata in task_metadata for artifact in _list_values(metadata.get("expectedArtifacts"))])
+        approval_boundaries = _dedupe([
+            metadata.get("initialState", {}).get("approvalBoundary")
+            for metadata in task_metadata
+            if isinstance(metadata.get("initialState"), dict)
+        ])
+        risk_classes = _dedupe([metadata.get("riskClass") for metadata in task_metadata])
+        trajectory_ids = _dedupe([trajectory_id for skill in benchmark_skills for trajectory_id in _list_values(skill.get("trajectoryIds"))])
+        promoted_skills = [
+            skill
+            for skill in benchmark_skills
+            if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"published", "approved", "active", "production"} or skill.get("skillPackage")
+        ]
+        eval_ids = _dedupe([task.get("taskId") or task.get("evalId") for task in benchmark_tasks])
+        passing_runs = sum(1 for eval_id in eval_ids if runs_by_eval.get(eval_id) == "pass")
+        checks = {
+            "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & set(expected_tools)) or "email" in allowed_systems,
+            "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
+            "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
+            "draft_artifact": "draft_email" in expected_artifacts,
+            "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & set(expected_tools)) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
+            "benchmark": bool(benchmark_tasks),
+            "trajectory": bool(trajectory_ids),
+            "skill_promotion": bool(promoted_skills),
+            "runtime_replay": passing_runs > 0,
+        }
+        coverage = []
+        for item in (vertical_demo.get("coverage") if isinstance(vertical_demo, dict) else []):
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("key") or "")
+            coverage.append({"key": key, "label": str(item.get("label") or key), "ready": bool(checks.get(key))})
+        ready_count = sum(1 for item in coverage if item["ready"])
+        total = len(coverage)
+        demos.append({
+            "benchmarkId": benchmark_id,
+            "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
+            "objective": str((vertical_demo or {}).get("objective") or ""),
+            "runtimePath": str((vertical_demo or {}).get("runtimePath") or ""),
+            "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
+            "readyCount": ready_count,
+            "total": total,
+            "missing": [item["key"] for item in coverage if not item["ready"]],
+        })
+    ready = sum(1 for demo in demos if demo["state"] == "ready")
+    return {
+        "total": len(demos),
+        "ready": ready,
+        "partial": sum(1 for demo in demos if demo["state"] == "partial"),
+        "missing": sum(1 for demo in demos if demo["state"] == "missing"),
+        "demos": demos[:10],
+    }
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -148,7 +246,9 @@ class AutomataAssistantTools:
         running_work = await self._count(work_items_collection, {**scoped, "status": "RUNNING"})
         skill_docs = await _to_list(capabilities_collection.find({**scoped, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", -1), 500)
         tool_docs = await _to_list(tools_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
+        benchmark_docs = await _to_list(benchmarks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        eval_run_docs = await _to_list(eval_runs_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         work_docs = await _to_list(work_items_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         approval_docs = await _to_list(approvals_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         counts = {
@@ -173,6 +273,7 @@ class AutomataAssistantTools:
         hardened_skills = sum(1 for skill in skill_docs if _skill_hardened(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
+        vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
         pending_approval_work_item_ids = {
@@ -227,6 +328,9 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "work", "action": "Review exhausted work budgets before retrying jobs.", "reason": f"{budget_exhausted} work item(s) exhausted their budget."})
         if counts["benchmarkTasks"] and task_contracts_ready == 0:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
+        if vertical_demos["total"] and vertical_demos["ready"] < vertical_demos["total"]:
+            missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
+            recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
         if counts["skills"] and hardened_skills == 0:
             recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
         if failing_runs:
@@ -317,6 +421,7 @@ class AutomataAssistantTools:
                     "hardened": hardened_skills,
                     "expectedArtifacts": skill_expected_artifacts,
                 },
+                "verticalDemos": vertical_demos,
             },
             "runtime": {
                 "agents": counts["agents"],

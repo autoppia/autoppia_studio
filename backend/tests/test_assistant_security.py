@@ -238,11 +238,36 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             {
                 "email": "owner@example.com",
                 "companyId": "company-1",
+                "benchmarkId": "bench-insurance",
+                "taskId": "task-claim",
                 "metadata": {
                     "businessIntent": "Respond to claim status",
                     "allowedSystems": ["email", "insurance_erp"],
                     "expectedArtifacts": ["draft_email"],
                     "riskClass": "draft",
+                },
+            }
+        ]
+    )
+    benchmarks = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "benchmarkId": "bench-insurance",
+                "metadata": {
+                    "vertical": "insurance",
+                    "verticalDemo": {
+                        "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+                        "runtimePath": "hybrid_api_first",
+                        "coverage": [
+                            {"key": "email_read", "label": "Email read"},
+                            {"key": "erp_lookup", "label": "ERP lookup"},
+                            {"key": "draft_artifact", "label": "Draft artifact"},
+                            {"key": "trajectory", "label": "Trajectory"},
+                            {"key": "skill_promotion", "label": "Skill promotion"},
+                        ],
+                    },
                 },
             }
         ]
@@ -280,6 +305,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     monkeypatch.setattr(assistant_tools, "knowledge_documents_collection", empty)
     monkeypatch.setattr(assistant_tools, "capabilities_collection", capabilities)
     monkeypatch.setattr(assistant_tools, "tools_collection", published_tools)
+    monkeypatch.setattr(assistant_tools, "benchmarks_collection", benchmarks)
     monkeypatch.setattr(assistant_tools, "benchmark_tasks_collection", benchmark_tasks)
     monkeypatch.setattr(assistant_tools, "work_items_collection", work_items)
     monkeypatch.setattr(assistant_tools, "entities_collection", empty)
@@ -300,6 +326,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
     assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
