@@ -712,7 +712,19 @@ async def _latest_skill_regression(skill: dict[str, Any], trajectory_docs: list[
     }
 
 
+async def _skill_trajectory_docs(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]] | None = None) -> list[dict[str, Any]]:
+    if trajectory_docs is not None:
+        return trajectory_docs
+    docs: list[dict[str, Any]] = []
+    for trajectory_id in _dedupe_strings([str(value or "") for value in (skill.get("trajectoryIds") or [])]):
+        trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
+        if trajectory:
+            docs.append(trajectory)
+    return docs
+
+
 async def _assert_skill_publishable(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]] | None = None) -> None:
+    trajectory_docs = await _skill_trajectory_docs(skill, trajectory_docs)
     latest = await _latest_skill_regression(skill, trajectory_docs=trajectory_docs)
     if not latest:
         raise HTTPException(
@@ -723,6 +735,29 @@ async def _assert_skill_publishable(skill: dict[str, Any], trajectory_docs: list
         raise HTTPException(
             status_code=400,
             detail=f"Skill cannot be published because the latest benchmark run is {latest.get('label') or 'pending'}.",
+        )
+    hardening = _skill_hardening_status(skill, trajectory_docs=trajectory_docs, latest_regression=latest)
+    checks = hardening.get("checks") or {}
+    io_declared = bool(
+        skill.get("preconditions")
+        or skill.get("expectedArtifacts")
+        or skill.get("inputEntities")
+        or str(skill.get("outputEntity") or "").strip()
+        or skill.get("outputCard")
+    )
+    required = {
+        "activation": bool(checks.get("activation")),
+        "instructions": bool(checks.get("instructions")),
+        "riskPolicy": bool(checks.get("riskPolicy")),
+        "sourceTrajectory": bool(checks.get("lineage")),
+        "ioContract": io_declared,
+        "publishableRegression": bool(checks.get("publishableRegression")),
+    }
+    missing = [key for key, ready in required.items() if not ready]
+    if missing:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Skill cannot be published until hardening is complete. Missing: {', '.join(missing)}.",
         )
 
 

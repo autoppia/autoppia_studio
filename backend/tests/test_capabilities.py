@@ -428,14 +428,39 @@ async def test_publish_skill_allows_latest_passing_benchmark(monkeypatch):
                     "email": "user@example.com",
                     "companyId": "co-1",
                     "name": "Handle renewal",
+                    "whenToUse": "Use for renewal follow-up",
+                    "instructions": "Look up the policy, draft a customer response, and stop before sending.",
+                    "riskPolicy": "human_approval_for_writes",
+                    "preconditions": ["Customer identity verified"],
+                    "expectedArtifacts": ["draft_email"],
+                    "inputEntities": ["Customer", "Policy"],
+                    "outputEntity": "Draft email",
                     "status": "ready",
                     "benchmarkId": "bench-1",
                     "evalId": "eval-1",
+                    "trajectoryIds": ["traj-1"],
                 }
             ]
         ),
     )
-    monkeypatch.setattr(capabilities, "trajectories_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "trajectories_collection",
+        _Collection(
+            [
+                {
+                    "trajectoryId": "traj-1",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "benchmarkId": "bench-1",
+                    "evalId": "eval-1",
+                    "connectorIds": ["conn-1"],
+                    "toolIds": ["crm.search"],
+                    "runtimeRequirements": ["network"],
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
     monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
     monkeypatch.setattr(
@@ -460,6 +485,48 @@ async def test_publish_skill_allows_latest_passing_benchmark(monkeypatch):
     assert result["skill"]["versionLabel"] == "v2"
     assert result["skill"]["publishedAt"]
     assert result["skill"]["versionHistory"][-1]["reason"] == "promotion_status_change"
+    assert result["skill"]["hardeningStatus"]["state"] == "hardened"
+
+
+@pytest.mark.asyncio
+async def test_publish_skill_requires_hardening_after_passing_regression(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Handle renewal",
+                    "status": "ready",
+                    "benchmarkId": "bench-1",
+                    "evalId": "eval-1",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "trajectories_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "eval_runs_collection",
+        _Collection([{"runId": "run-1", "evalId": "eval-1", "label": "pass", "createdAt": "2026-06-25T12:00:00+00:00"}]),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await capabilities.update_company_skill(
+            "skill-1",
+            capabilities.SkillUpdateRequest(email="user@example.com", status="published"),
+        )
+
+    assert exc.value.status_code == 400
+    assert "hardening is complete" in exc.value.detail
+    assert "activation" in exc.value.detail
+    assert "sourceTrajectory" in exc.value.detail
 
 
 @pytest.mark.asyncio
