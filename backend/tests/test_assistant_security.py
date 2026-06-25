@@ -641,6 +641,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "taskContracts": {"ready": 2, "total": 5},
                     "skills": {"hardened": 1, "total": 4},
                 },
+                "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
                 "workOrchestration": {"sla": {"needsAttention": 3}},
                 "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
                 "automataGuidance": {
@@ -653,6 +654,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
 
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
+    assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Work attention items: 3." in reply
     assert "Automata sees 1 risk alert(s)." in reply
     assert "Next: Inspect failed traces before publishing." in reply

@@ -1389,6 +1389,7 @@ class AutomataAssistantService:
         operating_state = snapshot.get("operatingState") if isinstance(snapshot.get("operatingState"), dict) else {}
         readiness = operating_state.get("readiness") if isinstance(operating_state.get("readiness"), dict) else {}
         capability_map = operating_state.get("capabilityMap") if isinstance(operating_state.get("capabilityMap"), dict) else {}
+        resource_map = operating_state.get("resourceMap") if isinstance(operating_state.get("resourceMap"), dict) else {}
         work_orchestration = operating_state.get("workOrchestration") if isinstance(operating_state.get("workOrchestration"), dict) else {}
         next_actions = operating_state.get("recommendedNextActions") if isinstance(operating_state.get("recommendedNextActions"), list) else []
         guidance = operating_state.get("automataGuidance") if isinstance(operating_state.get("automataGuidance"), dict) else {}
@@ -1403,6 +1404,12 @@ class AutomataAssistantService:
                 f" Capability coverage: {task_contracts.get('ready', 0)}/{task_contracts.get('total', 0)} task contracts ready, "
                 f"{skills.get('hardened', 0)}/{skills.get('total', 0)} skills hardened."
             )
+        resource_text = ""
+        if resource_map:
+            resource_text = (
+                f" Resource grounding: {resource_map.get('indexed', 0)}/{resource_map.get('total', 0)} indexed, "
+                f"{resource_map.get('citable', 0)}/{resource_map.get('total', 0)} citable."
+            )
         work_text = ""
         if sla:
             work_text = f" Work attention items: {sla.get('needsAttention', 0)}."
@@ -1414,7 +1421,7 @@ class AutomataAssistantService:
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{coverage_text}{work_text}{risk_text}{next_text}"
+            f"{score_text}{coverage_text}{resource_text}{work_text}{risk_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:
