@@ -24,6 +24,7 @@ from app.harvesters.toolkit import ToolkitHarvester
 from app.connectors import execute_connector_tool
 from app.routes.connectors import connector_toolkit
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
 router = APIRouter()
@@ -507,13 +508,14 @@ def _capability_graph_coverage(
     edge_relations = {edge.get("relation") for edge in edges}
     ready_tools = sum(1 for tool in tool_docs if str(tool.get("status") or "").lower() == "ready")
     ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
+    reusable_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
     complete_tasks = sum(1 for task in task_docs if task_contract_ready(task))
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
         "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
-        "skills": {"total": len(skill_docs), "ready": ready_skills},
+        "skills": {"total": len(skill_docs), "ready": ready_skills, "reusable": reusable_skills},
         "promotionPath": {
             "hasTaskToTrajectory": "produced_trajectory" in edge_relations,
             "hasTrajectoryToSkill": "promoted_to" in edge_relations,

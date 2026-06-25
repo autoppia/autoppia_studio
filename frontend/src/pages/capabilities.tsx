@@ -2646,7 +2646,7 @@ export default function Capabilities(): React.ReactElement {
       totalTools: coverage.tools?.total || 0,
       taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
       totalTasks: coverage.benchmarks?.tasks || 0,
-      readySkills: coverage.skills?.ready || 0,
+      reusableSkills: coverage.skills?.reusable || 0,
       totalSkills: coverage.skills?.total || 0,
       hasPromotionPath: Boolean(
         coverage.promotionPath?.hasTaskToTrajectory
@@ -3398,8 +3398,8 @@ export default function Capabilities(): React.ReactElement {
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.taskContracts === backendGraphStats.totalTasks && backendGraphStats.totalTasks > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.taskContracts}/{backendGraphStats.totalTasks} task contracts
                         </span>
-                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
-                          {backendGraphStats.readySkills}/{backendGraphStats.totalSkills} ready skills
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath && backendGraphStats.reusableSkills > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.reusableSkills}/{backendGraphStats.totalSkills} reusable skills
                         </span>
                       </div>
                     </div>

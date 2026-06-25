@@ -1373,6 +1373,7 @@ export interface CapabilityGraphCoverage {
   skills?: {
     total?: number;
     ready?: number;
+    reusable?: number;
   };
   promotionPath?: {
     hasTaskToTrajectory?: boolean;

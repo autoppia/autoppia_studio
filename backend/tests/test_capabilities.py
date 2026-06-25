@@ -320,6 +320,9 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "inputEntities": ["Claim"],
                     "outputEntity": "Claim",
                     "riskPolicy": "human_approval_for_writes",
+                    "whenToUse": "Use when reviewing a claim status request.",
+                    "instructions": "Look up claim state and prepare a concise summary.",
+                    "expectedArtifacts": ["claim_summary"],
                 }
             ]
         ),
@@ -338,6 +341,8 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
     assert graph["coverage"]["tools"]["governed"] == 1
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
+    assert graph["coverage"]["skills"]["ready"] == 1
+    assert graph["coverage"]["skills"]["reusable"] == 1
     assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
     assert graph["coverage"]["promotionPath"]["hasTrajectoryToSkill"] is True
 
