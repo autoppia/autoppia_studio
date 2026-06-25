@@ -790,6 +790,12 @@ export interface CompanySkill {
   riskPolicy: string;
   runtime: string;
   status: string;
+  promotionStatus?: string;
+  version?: number;
+  versionLabel?: string;
+  publishedAt?: string;
+  readyAt?: string;
+  archivedAt?: string;
   source?: string;
   harvesterType?: string;
   harvesterRunId?: string;

@@ -241,6 +241,10 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["name"] == "Hardened renewal workflow"
     assert skill["riskPolicy"] == "human_approval_always"
     assert skill["status"] == "published"
+    assert skill["promotionStatus"] == "published"
+    assert skill["version"] == 2
+    assert skill["versionLabel"] == "v2"
+    assert skill["publishedAt"]
     assert skill["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["connectorIds"] == ["conn-1", "conn-2"]
     assert skill["toolIds"] == ["crm.search", "erp.update"]
@@ -362,6 +366,10 @@ async def test_publish_skill_allows_latest_passing_benchmark(monkeypatch):
     )
 
     assert result["skill"]["status"] == "published"
+    assert result["skill"]["promotionStatus"] == "published"
+    assert result["skill"]["version"] == 2
+    assert result["skill"]["versionLabel"] == "v2"
+    assert result["skill"]["publishedAt"]
 
 
 @pytest.mark.asyncio
@@ -496,6 +504,8 @@ async def test_custom_api_benchmark_harvest_generates_tools_and_skills(monkeypat
     assert result["run"]["discoveredTools"] > 0
     assert result["run"]["generatedSkills"] == 1
     assert result["skills"][0]["status"] == "draft"
+    assert result["skills"][0]["promotionStatus"] == "draft"
+    assert result["skills"][0]["version"] == 1
     assert result["skills"][0]["trajectoryIds"] == ["conn-1:ev-1:trajectory"]
 
 
@@ -634,6 +644,8 @@ async def test_custom_web_benchmark_harvest_generates_skills_without_tools(monke
     assert result["tools"] == []
     assert result["run"]["generatedSkills"] == 1
     assert result["skills"][0]["status"] == "needs_harvest"
+    assert result["skills"][0]["promotionStatus"] == "draft"
+    assert result["skills"][0]["version"] == 1
     assert result["skills"][0]["runtime"] == "web_trajectory_harvester"
 
 
@@ -671,6 +683,10 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     assert result["success"] is True
     assert result["skill"]["capabilityKind"] == "skill"
     assert result["skill"]["name"] == "Send latest invoice"
+    assert result["skill"]["promotionStatus"] == "ready"
+    assert result["skill"]["version"] == 1
+    assert result["skill"]["versionLabel"] == "v1"
+    assert result["skill"]["readyAt"]
 
     listed = await capabilities.list_company_capabilities("co-1")
     assert listed["skills"][0]["trajectoryIds"] == ["traj-1"]

@@ -59,12 +59,19 @@ async def _owned_agent(agent_id: str, api_key: dict[str, Any]) -> dict[str, Any]
 
 
 def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
+    try:
+        version = max(1, int(doc.get("version") or 1))
+    except (TypeError, ValueError):
+        version = 1
     return {
         "skillId": doc.get("skillId") or doc.get("capabilityId", ""),
         "capabilityId": doc.get("capabilityId", ""),
         "name": doc.get("name", ""),
         "description": doc.get("description", ""),
         "status": doc.get("status", ""),
+        "promotionStatus": doc.get("promotionStatus") or doc.get("status", "draft"),
+        "version": version,
+        "versionLabel": doc.get("versionLabel") or f"v{version}",
         "runtime": doc.get("runtime", ""),
         "toolName": doc.get("toolName", ""),
         "inputSchema": doc.get("inputSchema") or {"type": "object", "properties": {}},
@@ -77,6 +84,8 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "trajectoryCount": len(doc.get("trajectoryIds") or []),
         "trajectoryIds": doc.get("trajectoryIds") or [],
         "judge": doc.get("judge") or {},
+        "publishedAt": doc.get("publishedAt"),
+        "readyAt": doc.get("readyAt"),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }

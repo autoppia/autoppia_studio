@@ -137,6 +137,10 @@ function skillOriginLabel(skill: CompanySkill) {
   return "";
 }
 
+function skillPromotionLabel(skill: CompanySkill) {
+  return humanizeName(skill.promotionStatus || skill.status || "draft");
+}
+
 function trajectoryToolCalls(trajectory: CompanyTrajectory) {
   return trajectoryToolCallList(trajectory).length;
 }
@@ -697,6 +701,30 @@ function CapabilityDetailModal({
                   </div>
                 </div>
               )}
+            </section>
+          )}
+
+          {isSkill && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Skill lifecycle</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Version</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{detail.item.versionLabel || `v${detail.item.version || 1}`}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Promotion</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{skillPromotionLabel(detail.item)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Ready at</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{formatDate(detail.item.readyAt)}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Published at</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{formatDate(detail.item.publishedAt)}</p>
+                </div>
+              </div>
             </section>
           )}
 
@@ -2481,7 +2509,12 @@ export default function Capabilities(): React.ReactElement {
                                 </span>
                                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{skill.name}</p>
                               </div>
-                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(skill.status)}`}>{skill.status}</span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
+                                  {skill.versionLabel || `v${skill.version || 1}`}
+                                </span>
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(skill.promotionStatus || skill.status)}`}>{skillPromotionLabel(skill)}</span>
+                              </div>
                             </div>
                             <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{skill.whenToUse || skill.description || "No description."}</p>
                             <div className="flex flex-wrap items-center gap-1.5 mt-3">
@@ -2523,7 +2556,7 @@ export default function Capabilities(): React.ReactElement {
                               </div>
                             )}
                             <div className="flex items-center justify-between mt-auto pt-3 border-t border-gray-100 dark:border-dark-border">
-                              <span className="text-[11px] text-gray-400">{formatDate(skill.createdAt)}</span>
+                              <span className="text-[11px] text-gray-400">{formatDate(skill.publishedAt || skill.updatedAt || skill.createdAt)}</span>
                               <button onClick={(event) => { event.stopPropagation(); navigate("/agents"); }} className="inline-flex items-center h-7 px-2.5 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border">
                                 <FontAwesomeIcon icon={faRobot} className="mr-1.5 text-[10px]" />
                                 Use in agents

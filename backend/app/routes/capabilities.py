@@ -198,6 +198,8 @@ def _serialize_trajectory(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
+    status = str(doc.get("status", "draft") or "draft")
+    version = _skill_version(doc)
     return {
         "capabilityId": doc.get("capabilityId", ""),
         "capabilityKind": "skill",
@@ -219,7 +221,13 @@ def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "outputEntity": doc.get("outputEntity", ""),
         "outputCard": doc.get("outputCard", {}),
         "runtime": doc.get("runtime", ""),
-        "status": doc.get("status", "draft"),
+        "status": status,
+        "promotionStatus": _skill_promotion_status(doc),
+        "version": version,
+        "versionLabel": doc.get("versionLabel") or f"v{version}",
+        "publishedAt": doc.get("publishedAt"),
+        "readyAt": doc.get("readyAt"),
+        "archivedAt": doc.get("archivedAt"),
         "source": doc.get("source", ""),
         "harvesterType": doc.get("harvesterType", ""),
         "harvesterRunId": doc.get("harvesterRunId", ""),
@@ -273,8 +281,13 @@ async def _upsert_trajectory(doc: dict[str, Any]) -> dict[str, Any]:
 
 async def _upsert_skill(doc: dict[str, Any]) -> dict[str, Any]:
     existing = await capabilities_collection.find_one({"capabilityId": doc["capabilityId"]}, {"_id": 0})
-    doc["createdAt"] = existing.get("createdAt") if existing else doc.get("createdAt", _now())
-    doc["updatedAt"] = _now()
+    now = _now()
+    doc["createdAt"] = existing.get("createdAt") if existing else doc.get("createdAt", now)
+    doc["version"] = _skill_version(existing or doc)
+    doc["versionLabel"] = doc.get("versionLabel") or f"v{doc['version']}"
+    doc["promotionStatus"] = _skill_promotion_status(doc)
+    doc.update(_skill_lifecycle_fields(previous=existing or {}, next_doc=doc, now=now))
+    doc["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": doc["capabilityId"]}, {"$set": doc}, upsert=True)
     return _serialize_skill(doc)
 
@@ -289,6 +302,44 @@ def _dedupe_strings(values: list[str]) -> list[str]:
         seen.add(clean)
         deduped.append(clean)
     return deduped
+
+
+def _skill_version(doc: dict[str, Any]) -> int:
+    try:
+        value = int(doc.get("version") or 1)
+    except (TypeError, ValueError):
+        value = 1
+    return max(1, value)
+
+
+def _skill_promotion_status(doc: dict[str, Any]) -> str:
+    explicit = str(doc.get("promotionStatus") or "").strip().lower()
+    if explicit in {"draft", "ready", "published", "archived"}:
+        return explicit
+    status = str(doc.get("status") or "draft").strip().lower()
+    if status in {"draft", "ready", "published", "archived"}:
+        return status
+    if status in {"approved", "active", "completed"}:
+        return "published"
+    if status in {"needs_review", "needs_harvest"}:
+        return "draft"
+    return "draft"
+
+
+def _skill_lifecycle_fields(*, previous: dict[str, Any], next_doc: dict[str, Any], now: str) -> dict[str, Any]:
+    previous_status = _skill_promotion_status(previous)
+    next_status = _skill_promotion_status(next_doc)
+    update: dict[str, Any] = {"promotionStatus": next_status}
+    if next_status == "ready" and not next_doc.get("readyAt"):
+        update["readyAt"] = now
+    if next_status == "published":
+        update["publishedAt"] = next_doc.get("publishedAt") or now
+        update["readyAt"] = next_doc.get("readyAt") or previous.get("readyAt") or now
+    if next_status == "archived" and not next_doc.get("archivedAt"):
+        update["archivedAt"] = now
+    if previous_status != next_status:
+        update["lastPromotedAt"] = now
+    return update
 
 
 async def _skill_eval_ids(
@@ -767,6 +818,13 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
         await _assert_skill_publishable(candidate_skill, trajectory_docs=trajectory_docs)
 
     now = _now()
+    material_keys = {"name", "description", "whenToUse", "riskPolicy", "status", "inputEntities", "outputEntity", "outputCard", "trajectoryIds", "connectorIds", "toolIds", "runtimeRequirements", "benchmarkId", "evalId"}
+    if any(key in update and skill.get(key) != candidate_skill.get(key) for key in material_keys):
+        next_version = _skill_version(skill) + 1
+        update["version"] = next_version
+        update["versionLabel"] = f"v{next_version}"
+    candidate_skill = {**skill, **update}
+    update.update(_skill_lifecycle_fields(previous=skill, next_doc=candidate_skill, now=now))
     update["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": update})
     refreshed = {**skill, **update}
@@ -926,6 +984,11 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         "outputCard": body.outputCard or trajectory.get("outputCard", {}),
         "runtime": "trajectory_executor_with_recovery",
         "status": "ready",
+        "promotionStatus": "ready",
+        "version": 1,
+        "versionLabel": "v1",
+        "readyAt": now,
+        "lastPromotedAt": now,
         "source": "manual_promotion",
         "harvesterType": trajectory.get("harvester", {}).get("adapter", "") if isinstance(trajectory.get("harvester"), dict) else trajectory.get("harvesterType", ""),
         "harvesterRunId": trajectory.get("harvesterRunId", ""),
