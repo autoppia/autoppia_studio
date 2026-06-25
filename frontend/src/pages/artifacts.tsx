@@ -210,6 +210,8 @@ export default function Artifacts(): React.ReactElement {
   const selectedSkillId = String(selected?.metadata?.skillId || "");
   const selectedTrajectoryId = String(selected?.metadata?.trajectoryId || "");
   const selectedToolId = String(selected?.metadata?.toolId || "");
+  const selectedSessionId = selected?.sessionId ?? "";
+  const selectedWorkItemId = String(selected?.metadata?.workItemId || "");
 
   const loadArtifacts = useCallback(async () => {
     if (!user.email || !companyId) {
@@ -486,12 +488,28 @@ export default function Artifacts(): React.ReactElement {
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
-                  {selected?.sessionId && (
+                  {selectedSessionId && (
                     <button
-                      onClick={() => navigate(`/session/${selected.sessionId}`)}
+                      onClick={() => navigate(`/session/${selectedSessionId}`)}
                       className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
                     >
                       Open session
+                    </button>
+                  )}
+                  {selectedSessionId && (
+                    <button
+                      onClick={() => navigate(`/runtime?sessionIds=${encodeURIComponent(selectedSessionId)}`)}
+                      className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+                    >
+                      Open Runtime Lab
+                    </button>
+                  )}
+                  {selectedWorkItemId && (
+                    <button
+                      onClick={() => navigate(`/work?item=${encodeURIComponent(selectedWorkItemId)}`)}
+                      className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+                    >
+                      Open job
                     </button>
                   )}
                   {selectedSkillId && (

@@ -107,4 +107,36 @@ describe("Artifacts page", () => {
       expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&skillId=skill-9&trajectoryId=trajectory-4&toolId=tool-2"),
     );
   });
+
+  it("shows runtime and work links for a persisted artifact with operational metadata", async () => {
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        artifacts: [
+          {
+            artifactId: "artifact-1",
+            companyId: "company-1",
+            email: "demo@example.com",
+            title: "Draft reply",
+            artifactType: "markdown",
+            description: "",
+            content: "# Draft",
+            fileName: "draft-reply.md",
+            sessionId: "session-1",
+            metadata: {
+              workItemId: "work-1",
+              skillId: "skill-1",
+            },
+          },
+        ],
+      }),
+    }) as jest.Mock;
+
+    render(<Artifacts />);
+
+    expect(await screen.findByRole("button", { name: "Open session" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open job" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
+  });
 });
