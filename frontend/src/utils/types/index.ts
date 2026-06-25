@@ -1356,6 +1356,19 @@ export interface CapabilityGraphCoverage {
     total?: number;
     linked?: boolean;
   };
+  resources?: {
+    total?: number;
+    indexed?: number;
+    citable?: number;
+    withResourceContract?: number;
+    withReadTools?: number;
+    vectorStores?: number;
+    linkedVectorStores?: number;
+    linkedToConnectors?: boolean;
+    linkedToTools?: boolean;
+    linkedToTasks?: boolean;
+    linkedToSkills?: boolean;
+  };
   tools?: {
     total?: number;
     ready?: number;

@@ -2642,6 +2642,16 @@ export default function Capabilities(): React.ReactElement {
     return {
       nodeCount: backendCapabilityGraph?.nodes?.length || 0,
       edgeCount: backendCapabilityGraph?.edges?.length || 0,
+      indexedResources: coverage.resources?.indexed || 0,
+      totalResources: coverage.resources?.total || 0,
+      citableResources: coverage.resources?.citable || 0,
+      resourcesLinked: Boolean(
+        coverage.resources?.linkedVectorStores
+        || coverage.resources?.linkedToConnectors
+        || coverage.resources?.linkedToTools
+        || coverage.resources?.linkedToTasks
+        || coverage.resources?.linkedToSkills,
+      ),
       governedTools: coverage.tools?.governed || 0,
       totalTools: coverage.tools?.total || 0,
       taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
@@ -3408,6 +3418,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
                           {backendGraphStats.edgeCount} backend edges
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.resourcesLinked && backendGraphStats.indexedResources > 0 ? "border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-500/30 dark:bg-teal-500/10 dark:text-teal-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.indexedResources}/{backendGraphStats.totalResources} indexed resources · {backendGraphStats.citableResources} citable
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.governedTools === backendGraphStats.totalTools && backendGraphStats.totalTools > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
                           {backendGraphStats.governedTools}/{backendGraphStats.totalTools} governed tools

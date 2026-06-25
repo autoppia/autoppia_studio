@@ -17,9 +17,11 @@ from app.database import (
     eval_runs_collection,
     evals_collection,
     harvester_runs_collection,
+    knowledge_documents_collection,
     sessions_collection,
     tools_collection,
     trajectories_collection,
+    vector_databases_collection,
     work_items_collection,
 )
 from app.harvesters import harvest_connector_capabilities
@@ -651,9 +653,87 @@ def _work_item_payload(work_item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _resource_contract(resource: dict[str, Any]) -> dict[str, Any]:
+    contract = resource.get("resourceContract")
+    return contract if isinstance(contract, dict) else {}
+
+
+def _resource_indexing(resource: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(resource)
+    indexing = contract.get("indexing")
+    return indexing if isinstance(indexing, dict) else {}
+
+
+def _resource_governance(resource: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(resource)
+    governance = contract.get("governance")
+    return governance if isinstance(governance, dict) else {}
+
+
+def _resource_read_tools(resource: dict[str, Any]) -> list[str]:
+    contract = _resource_contract(resource)
+    raw = contract.get("readTools") or resource.get("readTools")
+    return _dedupe_strings([str(value or "") for value in raw]) if isinstance(raw, list) else []
+
+
+def _resource_indexed(resource: dict[str, Any]) -> bool:
+    indexing = _resource_indexing(resource)
+    status = str(resource.get("status") or indexing.get("status") or "").lower()
+    return bool(indexing.get("indexed")) or status in {"indexed", "ready", "active", "completed"}
+
+
+def _resource_citable(resource: dict[str, Any]) -> bool:
+    governance = _resource_governance(resource)
+    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+    return bool(citability.get("citable") or _resource_indexed(resource))
+
+
+def _resource_payload(resource: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(resource)
+    indexing = _resource_indexing(resource)
+    governance = _resource_governance(resource)
+    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+    return {
+        "resourceId": resource.get("resourceId") or resource.get("documentId", ""),
+        "documentId": resource.get("documentId", ""),
+        "resourceKind": resource.get("resourceKind") or contract.get("resourceKind") or "document",
+        "filename": resource.get("filename") or resource.get("name") or resource.get("title") or "",
+        "status": resource.get("status", "uploaded"),
+        "source": resource.get("source", "upload"),
+        "connectorId": resource.get("connectorId") or governance.get("connectorId") or "",
+        "vectorDatabaseId": resource.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "",
+        "vectorDatabaseName": resource.get("vectorDatabaseName") or indexing.get("vectorDatabaseName") or "",
+        "vectorCollectionName": resource.get("vectorCollectionName") or indexing.get("vectorCollectionName") or "",
+        "contentType": resource.get("contentType", ""),
+        "size": resource.get("size", 0),
+        "indexed": _resource_indexed(resource),
+        "citable": _resource_citable(resource),
+        "citationLabel": citability.get("citationLabel") or resource.get("filename") or "",
+        "readTools": _resource_read_tools(resource),
+        "resourceContract": contract,
+        "createdAt": resource.get("createdAt"),
+        "updatedAt": resource.get("updatedAt"),
+    }
+
+
+def _vector_store_payload(vector_store: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "vectorDatabaseId": vector_store.get("vectorDatabaseId", ""),
+        "name": vector_store.get("name", ""),
+        "provider": vector_store.get("provider", "local"),
+        "collectionName": vector_store.get("collectionName", ""),
+        "status": vector_store.get("status", "ready"),
+        "connectorId": vector_store.get("connectorId", ""),
+        "createdAt": vector_store.get("createdAt"),
+        "updatedAt": vector_store.get("updatedAt"),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
+    resource_docs: list[dict[str, Any]],
+    vector_store_docs: list[dict[str, Any]],
     tool_docs: list[dict[str, Any]],
     benchmark_docs: list[dict[str, Any]],
     task_docs: list[dict[str, Any]],
@@ -670,8 +750,27 @@ def _capability_graph_coverage(
     ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
     reusable_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
     complete_tasks = sum(1 for task in task_docs if task_contract_ready(task))
+    vector_store_ids = {str(store.get("vectorDatabaseId") or "") for store in vector_store_docs if str(store.get("vectorDatabaseId") or "")}
+    resource_vector_ids = {
+        str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
+        for resource in resource_docs
+        if str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
+    }
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
+        "resources": {
+            "total": len(resource_docs),
+            "indexed": sum(1 for resource in resource_docs if _resource_indexed(resource)),
+            "citable": sum(1 for resource in resource_docs if _resource_citable(resource)),
+            "withResourceContract": sum(1 for resource in resource_docs if bool(_resource_contract(resource))),
+            "withReadTools": sum(1 for resource in resource_docs if bool(_resource_read_tools(resource))),
+            "vectorStores": len(vector_store_docs),
+            "linkedVectorStores": len(resource_vector_ids & vector_store_ids) if vector_store_ids else 0,
+            "linkedToConnectors": "grounds_connector" in edge_relations,
+            "linkedToTools": "read_by_tool" in edge_relations,
+            "linkedToTasks": "grounds_task" in edge_relations,
+            "linkedToSkills": "grounds_skill" in edge_relations,
+        },
         "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
         "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
@@ -1419,6 +1518,8 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
 
     connector_docs = await connectors_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=500)
     entity_docs = await entities_collection.find(query, {"_id": 0}).sort("name", 1).to_list(length=500)
+    resource_docs = await knowledge_documents_collection.find(query, {"_id": 0, "storagePath": 0}).sort("createdAt", 1).to_list(length=1000)
+    vector_store_docs = await vector_databases_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=500)
     tool_docs = await tools_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     benchmark_docs = await benchmarks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=500)
     task_docs = await benchmark_tasks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
@@ -1433,6 +1534,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     edges: dict[str, dict[str, Any]] = {}
     entity_by_name = _entity_names(entity_docs)
     tool_by_ref = _tool_lookup(tool_docs)
+    resource_node_ids: list[str] = []
 
     for connector in connector_docs:
         connector_id = str(connector.get("connectorId") or "")
@@ -1453,6 +1555,29 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
         })
         connector_node = f"connector:{entity.get('sourceConnectorId')}"
         _add_edge(edges, connector_node, entity_node, "maps_entity", {"source": "entity.sourceConnectorId"})
+
+    for vector_store in vector_store_docs:
+        vector_store_id = str(vector_store.get("vectorDatabaseId") or "")
+        vector_node = _add_node(nodes, "vector_store", vector_store_id, str(vector_store.get("name") or vector_store.get("collectionName") or vector_store_id), _vector_store_payload(vector_store))
+        connector_id = str(vector_store.get("connectorId") or "")
+        if connector_id:
+            _add_edge(edges, f"connector:{connector_id}", vector_node, "backs_vector_store", {"source": "vector_store.connectorId"})
+
+    for resource in resource_docs:
+        resource_id = str(resource.get("resourceId") or resource.get("documentId") or "")
+        resource_node = _add_node(nodes, "resource", resource_id, str(resource.get("filename") or resource.get("name") or resource_id), _resource_payload(resource))
+        if resource_node:
+            resource_node_ids.append(resource_node)
+        vector_store_id = str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
+        connector_id = str(resource.get("connectorId") or _resource_governance(resource).get("connectorId") or "")
+        if vector_store_id:
+            _add_edge(edges, f"vector_store:{vector_store_id}", resource_node, "indexes_resource", {"source": "resource.vectorDatabaseId"})
+        if connector_id:
+            _add_edge(edges, f"connector:{connector_id}", resource_node, "grounds_connector", {"source": "resource.connectorId"})
+        for tool_ref in _resource_read_tools(resource):
+            tool = tool_by_ref.get(str(tool_ref))
+            tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
+            _add_edge(edges, resource_node, tool_node, "read_by_tool", {"source": "resource.readTools"})
 
     for tool in tool_docs:
         tool_id = str(tool.get("toolId") or "")
@@ -1496,6 +1621,9 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
         _add_edge(edges, f"benchmark:{task.get('benchmarkId')}", task_node, "contains_task", {"source": "benchmark_tasks"})
         if task.get("trajectoryId"):
             _add_edge(edges, task_node, f"trajectory:{task.get('trajectoryId')}", "produced_trajectory", {"source": "task.trajectoryId"})
+        if "knowledge" in {str(system or "").lower() for system in task_contract["allowedSystems"]}:
+            for resource_node in resource_node_ids:
+                _add_edge(edges, resource_node, task_node, "grounds_task", {"source": "task.allowedSystems"})
 
     for trajectory in trajectory_docs:
         trajectory_id = str(trajectory.get("trajectoryId") or "")
@@ -1519,6 +1647,9 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             tool = tool_by_ref.get(str(tool_ref))
             tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
             _add_edge(edges, tool_node, skill_node, "used_by_skill", {"source": "skill.toolIds"})
+            if str(tool_ref).startswith("knowledge."):
+                for resource_node in resource_node_ids:
+                    _add_edge(edges, resource_node, skill_node, "grounds_skill", {"source": "skill.toolIds"})
         for entity_name in skill.get("inputEntities") or []:
             entity = entity_by_name.get(str(entity_name).lower())
             entity_id = str((entity or {}).get("entityId") or entity_name)
@@ -1596,6 +1727,8 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             "edges": edge_list,
             "coverage": _capability_graph_coverage(
                 entity_docs=entity_docs,
+                resource_docs=resource_docs,
+                vector_store_docs=vector_store_docs,
                 tool_docs=tool_docs,
                 benchmark_docs=benchmark_docs,
                 task_docs=task_docs,

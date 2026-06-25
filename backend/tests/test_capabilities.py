@@ -215,7 +215,12 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     monkeypatch.setattr(
         capabilities,
         "connectors_collection",
-        _Collection([{"connectorId": "conn-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims ERP", "type": "api", "status": "connected"}]),
+        _Collection(
+            [
+                {"connectorId": "conn-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims ERP", "type": "api", "status": "connected"},
+                {"connectorId": "knowledge-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims Knowledge", "type": "knowledge", "status": "connected"},
+            ]
+        ),
     )
     monkeypatch.setattr(
         capabilities,
@@ -241,6 +246,63 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "inputEntities": ["Claim"],
                     "outputEntity": "Claim",
                     "toolContract": {"format": "autoppia.tool_contract"},
+                },
+                {
+                    "toolId": "tool-knowledge",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "connectorId": "knowledge-1",
+                    "name": "knowledge.claims.search",
+                    "status": "ready",
+                    "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}},
+                    "outputSchema": {"type": "object", "properties": {"citations": {"type": "array"}}},
+                    "sideEffects": "reads",
+                    "riskLevel": "low",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "vector_databases_collection",
+        _Collection(
+            [
+                {
+                    "vectorDatabaseId": "vector-claims",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "name": "Claims Knowledge",
+                    "collectionName": "claims-knowledge",
+                    "connectorId": "knowledge-1",
+                    "status": "ready",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "knowledge_documents_collection",
+        _Collection(
+            [
+                {
+                    "documentId": "doc-claims",
+                    "resourceId": "resource-claims",
+                    "resourceKind": "document",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "filename": "claims-handbook.md",
+                    "status": "indexed",
+                    "connectorId": "knowledge-1",
+                    "vectorDatabaseId": "vector-claims",
+                    "resourceContract": {
+                        "resourceId": "resource-claims",
+                        "resourceKind": "document",
+                        "surface": "knowledge_resource",
+                        "readOnly": True,
+                        "indexing": {"indexed": True, "vectorDatabaseId": "vector-claims", "vectorCollectionName": "claims-knowledge"},
+                        "governance": {"citability": {"citable": True, "citationLabel": "claims-handbook.md"}},
+                        "readTools": ["knowledge.claims.search"],
+                    },
                 }
             ]
         ),
@@ -295,7 +357,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "taskName": "Review claim",
                     "status": "approved",
                     "connectorIds": ["conn-1"],
-                    "toolIds": ["tool-claim"],
+                    "toolIds": ["tool-claim", "knowledge.claims.search"],
                 }
             ]
         ),
@@ -316,7 +378,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "status": "ready",
                     "promotionStatus": "ready",
                     "trajectoryIds": ["traj-1"],
-                    "toolIds": ["tool-claim"],
+                    "toolIds": ["tool-claim", "knowledge.claims.search"],
                     "inputEntities": ["Claim"],
                     "outputEntity": "Claim",
                     "riskPolicy": "human_approval_for_writes",
@@ -341,7 +403,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                         "runtimeKind": "api_runtime",
                         "matchedSkillId": "skill-1",
                         "trajectoryId": "traj-1",
-                        "toolIds": ["tool-claim"],
+                        "toolIds": ["tool-claim", "tool-knowledge"],
                     },
                     "traceIds": ["trace-1"],
                 }
@@ -418,15 +480,26 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     edge_relations = {edge["relation"] for edge in graph["edges"]}
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
-    assert {"connector:conn-1", "entity:entity-claim", "tool:tool-claim", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
+    assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
     assert {"session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
+    assert {"backs_vector_store", "indexes_resource", "grounds_connector", "read_by_tool", "grounds_task"} <= edge_relations
     assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
     assert {"scheduled_from_benchmark", "scheduled_from_task", "opened_session", "orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} <= edge_relations
     assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
     assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary"]
     assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
     assert graph["coverage"]["tools"]["governed"] == 1
+    assert graph["coverage"]["resources"]["total"] == 1
+    assert graph["coverage"]["resources"]["indexed"] == 1
+    assert graph["coverage"]["resources"]["citable"] == 1
+    assert graph["coverage"]["resources"]["withResourceContract"] == 1
+    assert graph["coverage"]["resources"]["withReadTools"] == 1
+    assert graph["coverage"]["resources"]["vectorStores"] == 1
+    assert graph["coverage"]["resources"]["linkedVectorStores"] == 1
+    assert graph["coverage"]["resources"]["linkedToConnectors"] is True
+    assert graph["coverage"]["resources"]["linkedToTools"] is True
+    assert graph["coverage"]["resources"]["linkedToTasks"] is True
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
     assert graph["coverage"]["skills"]["ready"] == 1
     assert graph["coverage"]["skills"]["reusable"] == 1
