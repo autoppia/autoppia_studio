@@ -1429,6 +1429,7 @@ export default function Capabilities(): React.ReactElement {
   }, [evals]);
   const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools]);
   const trajectoriesById = useMemo(() => new Map(trajectories.map((trajectory) => [trajectory.trajectoryId, trajectory])), [trajectories]);
+  const skillsById = useMemo(() => new Map(skills.map((skill) => [skill.skillId, skill])), [skills]);
 
   const regression = useMemo(() => {
     const evalIdsByBenchmarkId = new Map<string, Set<string>>();
@@ -1727,14 +1728,37 @@ export default function Capabilities(): React.ReactElement {
     ].map((artifact) => [artifact.artifactId, artifact])).values());
   }, [runtimeUsage.artifactsBySessionId]);
 
+  const openCapabilityRoute = useCallback((path: string) => {
+    const suffix = searchParams.toString();
+    navigate(suffix ? `${path}?${suffix}` : path);
+  }, [navigate, searchParams]);
+
   const openCapabilityDetail = useCallback((next: Exclude<CapabilityDetail, null>) => {
     const path = next.kind === "tool"
       ? `/capabilities/tool/${next.item.toolId}`
       : next.kind === "trajectory"
         ? `/capabilities/trajectory/${next.item.trajectoryId}`
         : `/capabilities/skill/${next.item.skillId}`;
-    navigate(path);
-  }, [navigate]);
+    openCapabilityRoute(path);
+  }, [openCapabilityRoute]);
+
+  const openCapabilityByRef = useCallback((kind: "trajectory" | "skill", id: string) => {
+    if (kind === "trajectory") {
+      const item = trajectoriesById.get(id);
+      if (item) {
+        openCapabilityDetail({ kind: "trajectory", item });
+        return;
+      }
+      openCapabilityRoute(`/capabilities/trajectory/${id}`);
+      return;
+    }
+    const item = skillsById.get(id);
+    if (item) {
+      openCapabilityDetail({ kind: "skill", item });
+      return;
+    }
+    openCapabilityRoute(`/capabilities/skill/${id}`);
+  }, [openCapabilityDetail, openCapabilityRoute, skillsById, trajectoriesById]);
 
   const setFactoryScope = useCallback((options: { view?: ViewKey; connectorId?: string; benchmarkId?: string; replace?: boolean }) => {
     const next = new URLSearchParams(searchParams);
@@ -1887,6 +1911,10 @@ export default function Capabilities(): React.ReactElement {
             || (skill.trajectoryIds || []).some((trajectoryId) => trajectoryIds.has(trajectoryId))
           : false,
       );
+      const promotableTrajectories = trajectories.filter((trajectory) =>
+        !skills.some((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId))
+        && trajectoryJudgeLabel(trajectory) === "pass",
+      );
       const audit = auditByBenchmark.get(spec.name);
       return {
         spec,
@@ -1897,6 +1925,8 @@ export default function Capabilities(): React.ReactElement {
         trajectories: trajectories.length,
         skills: skills.length,
         regressionReady: skills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "pass").length,
+        primarySkillId: skills[0]?.skillId || "",
+        primaryTrajectoryId: promotableTrajectories[0]?.trajectoryId || trajectories[0]?.trajectoryId || "",
       };
     });
   }, [benchmarks, connectorAuditReport?.rows, connectorBenchmarks, connectors, filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId]);
@@ -2001,6 +2031,9 @@ export default function Capabilities(): React.ReactElement {
         skillCount: benchmarkSkills.length,
         runCount: benchmarkRuns.length,
         runFailures: runFailures.length,
+        primarySkillId: benchmarkSkills[0]?.skillId || "",
+        primaryPromotableTrajectoryId: promotable[0]?.trajectoryId || "",
+        primaryTrajectoryId: benchmarkTrajectories[0]?.trajectoryId || "",
         stage,
         gaps,
       };
@@ -2446,6 +2479,16 @@ export default function Capabilities(): React.ReactElement {
                           )}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-dark-border">
+                          {(row.primarySkillId || row.primaryTrajectoryId) && (
+                            <button
+                              onClick={() => row.primarySkillId
+                                ? openCapabilityByRef("skill", row.primarySkillId)
+                                : openCapabilityByRef("trajectory", row.primaryTrajectoryId)}
+                              className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                            >
+                              {row.primarySkillId ? "Inspect skill" : "Inspect evidence"}
+                            </button>
+                          )}
                           <button
                             onClick={() => setFactoryScope({
                               view: "trajectories",
@@ -2575,6 +2618,16 @@ export default function Capabilities(): React.ReactElement {
                             </div>
                           )}
                           <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {(row.primarySkillId || row.primaryPromotableTrajectoryId || row.primaryTrajectoryId) && (
+                              <button
+                                onClick={() => row.primarySkillId
+                                  ? openCapabilityByRef("skill", row.primarySkillId)
+                                  : openCapabilityByRef("trajectory", row.primaryPromotableTrajectoryId || row.primaryTrajectoryId)}
+                                className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                              >
+                                {row.primarySkillId ? "Inspect skill" : row.primaryPromotableTrajectoryId ? "Inspect candidate" : "Inspect evidence"}
+                              </button>
+                            )}
                             <button
                               onClick={() => setFactoryScope({ view: "trajectories", benchmarkId: row.benchmarkId })}
                               className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
@@ -3029,7 +3082,9 @@ export default function Capabilities(): React.ReactElement {
               navigate(`/approvals?${params.toString()}`);
             }}
             onReload={loadCapabilities}
-            onClose={() => navigate(`/capabilities?view=${detail.kind === "tool" ? "tools" : detail.kind === "trajectory" ? "trajectories" : "skills"}`)}
+            onClose={() => setFactoryScope({
+              view: detail.kind === "tool" ? "tools" : detail.kind === "trajectory" ? "trajectories" : "skills",
+            })}
           />
         )}
     </div>
