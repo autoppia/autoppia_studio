@@ -292,19 +292,19 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
 
   const surfaceTiles: SurfaceTile[] = [
     {
-      label: "Factory",
-      hint: "Benchmarks, harvesters and capabilities",
+      label: "Capability Factory",
+      hint: "Benchmarks, trajectories and skills",
       actionUrl: "/capabilities",
       count: (status?.harvestersRunning || 0) + (status?.evalRunsPending || 0) + (status?.evalRunsFailed || 0),
     },
     {
-      label: "Runtime",
-      hint: "Live governed sessions",
+      label: "Runtime Lab",
+      hint: "Live sessions, approvals and artifacts",
       actionUrl: "/runtime",
       count: status?.activeSessions || 0,
     },
     {
-      label: "Work",
+      label: "Work Orchestration",
       hint: "Queues, schedules and jobs",
       actionUrl: "/work",
       count: (status?.runningTasks || 0) + (status?.queuedTasks || 0) + (status?.reviewTasks || 0),
@@ -393,7 +393,7 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Operating surfaces</p>
                   <button onClick={() => handleAction("/setup/company")} className="text-[11px] font-medium text-primary hover:underline">
-                    Setup
+                    Company Setup
                   </button>
                 </div>
                 <div className="grid grid-cols-2 gap-2">

@@ -18,8 +18,8 @@ describe("SectionSubNav", () => {
   it("shows the active group description and pages from nav config", () => {
     render(<SectionSubNav />);
 
-    expect(screen.getByText("Runtime")).toBeInTheDocument();
-    expect(screen.getByText("Governed sessions, approvals and artifacts from live execution.")).toBeInTheDocument();
+    expect(screen.getByText("Runtime Lab")).toBeInTheDocument();
+    expect(screen.getByText("Governed sessions, traces, skill routing, approvals, artifacts, cost and replay from live execution.")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Sessions" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Approvals" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Artifacts" })).toBeInTheDocument();

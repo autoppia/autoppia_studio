@@ -288,11 +288,11 @@ describe("ActivityCenter", () => {
     fireEvent.click(await screen.findByTitle("Activity"));
     expect(await screen.findByText("Operating surfaces")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /Factory/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Capability Factory/i }));
     expect(mockNavigate).toHaveBeenCalledWith("/capabilities");
 
     fireEvent.click(await screen.findByTitle("Activity"));
-    fireEvent.click(screen.getByRole("button", { name: /Setup/i }));
+    fireEvent.click(screen.getByRole("button", { name: /Company Setup/i }));
     expect(mockNavigate).toHaveBeenCalledWith("/setup/company");
   });
 });

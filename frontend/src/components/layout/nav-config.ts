@@ -46,8 +46,8 @@ export const NAV_GROUPS: NavGroup[] = [
   { key: "canvas", label: "Canvas", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [] },
   {
     key: "factory",
-    label: "Factory",
-    description: "Systems, context, entities, benchmarks and capabilities become reusable business procedures here.",
+    label: "Capability Factory",
+    description: "Connectors, resources, entities, tasks, benchmarks, trajectories and skills become reusable business capabilities here.",
     icon: faWandMagicSparkles,
     items: [
       { label: "Agents", path: "/agents", icon: faRobot },
@@ -61,8 +61,8 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     key: "runtime",
-    label: "Runtime",
-    description: "Governed sessions, approvals and artifacts from live execution.",
+    label: "Runtime Lab",
+    description: "Governed sessions, traces, skill routing, approvals, artifacts, cost and replay from live execution.",
     icon: faBolt,
     items: [
       { label: "Sessions", path: "/runtime", icon: faClockRotateLeft },
@@ -72,7 +72,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     key: "operations",
-    label: "Operations",
+    label: "Work Orchestration",
     description: "Queues, schedules, recurring jobs and operational follow-through.",
     icon: faListCheck,
     items: [
@@ -81,7 +81,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     key: "setup",
-    label: "Setup",
+    label: "Company Setup",
     description: "Company contract, credentials, embed controls and governance.",
     icon: faGear,
     items: [
