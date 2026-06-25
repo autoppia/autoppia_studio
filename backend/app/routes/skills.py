@@ -9,9 +9,199 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import skills_collection
+from app.services.runtime_policy import serialize_runtime_policy
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _dedupe(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
+def _legacy_skill_lineage(doc: dict[str, Any]) -> dict[str, Any]:
+    actions = doc.get("actions") if isinstance(doc.get("actions"), list) else []
+    tool_ids = []
+    for action in actions:
+        if isinstance(action, dict):
+            tool_ids.append(action.get("action") or action.get("name") or "")
+    return {
+        "trajectoryIds": _dedupe(doc.get("trajectoryIds") or []),
+        "benchmarkIds": _dedupe(doc.get("benchmarkIds") or []),
+        "evalIds": _dedupe(doc.get("evalIds") or []),
+        "connectorIds": _dedupe(doc.get("connectorIds") or []),
+        "toolIds": _dedupe(tool_ids),
+        "sources": _dedupe([doc.get("source") or "legacy_skills_api"]),
+        "recordedActions": len(actions),
+    }
+
+
+def _legacy_skill_hardening(doc: dict[str, Any], lineage: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "activation": bool(str(doc.get("goal") or doc.get("whenToUse") or "").strip()),
+        "instructions": bool(str(doc.get("instructions") or "").strip()),
+        "riskPolicy": bool(str(doc.get("riskPolicy") or "").strip()),
+        "lineage": bool(lineage.get("trajectoryIds") or lineage.get("recordedActions")),
+        "regression": False,
+        "publishableRegression": False,
+        "entities": bool(doc.get("inputEntities") or str(doc.get("outputEntity") or "").strip()),
+        "artifacts": bool(doc.get("expectedArtifacts") or doc.get("outputCard")),
+    }
+    passed = sum(1 for ready in checks.values() if ready)
+    return {
+        "checks": checks,
+        "passedChecks": passed,
+        "totalChecks": len(checks),
+        "score": round(passed / len(checks), 3),
+        "state": "drafting",
+    }
+
+
+def _legacy_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening: dict[str, Any]) -> dict[str, Any]:
+    parameters = doc.get("parameters") if isinstance(doc.get("parameters"), list) else []
+    input_entities = doc.get("inputEntities") if isinstance(doc.get("inputEntities"), list) else []
+    expected_artifacts = doc.get("expectedArtifacts") if isinstance(doc.get("expectedArtifacts"), list) else []
+    output_card = doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {}
+    io_contract = {
+        "inputs": {
+            "entities": input_entities,
+            "parameters": parameters,
+        },
+        "outputs": {
+            "entity": str(doc.get("outputEntity") or ""),
+            "artifacts": expected_artifacts,
+            "outputCard": output_card,
+        },
+        "declared": bool(input_entities or parameters or doc.get("outputEntity") or expected_artifacts or output_card),
+    }
+    return {
+        "format": "autoppia.agent_skill",
+        "manifestVersion": 1,
+        "packageId": doc.get("skillId", ""),
+        "metadata": {
+            "name": doc.get("name", ""),
+            "description": doc.get("goal", ""),
+            "version": doc.get("version", 1),
+            "versionLabel": doc.get("versionLabel", "v1"),
+            "promotionStatus": doc.get("promotionStatus", "draft"),
+            "source": doc.get("source", "legacy_skills_api"),
+            "createdAt": doc.get("createdAt"),
+            "updatedAt": doc.get("updatedAt"),
+        },
+        "activation": {
+            "description": doc.get("goal", ""),
+            "preconditions": doc.get("preconditions", []),
+        },
+        "interface": {
+            "parameters": parameters,
+            "inputEntities": input_entities,
+            "outputEntity": doc.get("outputEntity", ""),
+            "expectedArtifacts": expected_artifacts,
+            "outputCard": output_card,
+            "ioContract": io_contract,
+        },
+        "ioContract": io_contract,
+        "execution": {
+            "instructions": doc.get("instructions", ""),
+            "actions": doc.get("actions", []),
+            "trajectoryIds": lineage.get("trajectoryIds", []),
+            "connectorIds": lineage.get("connectorIds", []),
+            "toolIds": lineage.get("toolIds", []),
+        },
+        "policies": {
+            "riskPolicy": doc.get("riskPolicy", ""),
+            "permissions": doc.get("permissions", {}),
+            "runtimePolicy": serialize_runtime_policy(doc),
+        },
+        "evidence": {
+            "lineage": lineage,
+            "latestRegression": None,
+            "hardeningStatus": hardening,
+            "versionHistory": doc.get("versionHistory", []),
+            "regressionSuite": {
+                "benchmarkIds": lineage.get("benchmarkIds", []),
+                "evalIds": lineage.get("evalIds", []),
+                "publishable": False,
+            },
+        },
+        "progressiveDisclosure": {
+            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
+            "fullFields": ["execution", "evidence"],
+        },
+    }
+
+
+def _packaged_skill_doc(base: dict[str, Any], *, previous: dict[str, Any] | None = None, reason: str = "legacy_skill_saved") -> dict[str, Any]:
+    now = _now()
+    doc = {**(previous or {}), **base}
+    version = int((previous or {}).get("version") or doc.get("version") or 1)
+    promotion_status = str(doc.get("promotionStatus") or doc.get("status") or "draft")
+    doc.update(
+        {
+            "capabilityKind": "skill",
+            "skillId": doc.get("skillId", ""),
+            "status": promotion_status,
+            "promotionStatus": promotion_status,
+            "version": version,
+            "versionLabel": doc.get("versionLabel") or f"v{version}",
+            "riskPolicy": doc.get("riskPolicy") or "human_approval_for_writes",
+            "source": doc.get("source") or "legacy_skills_api",
+            "updatedAt": now,
+        }
+    )
+    doc.setdefault("createdAt", now)
+    history = doc.get("versionHistory") if isinstance(doc.get("versionHistory"), list) else []
+    if reason:
+        event = {
+            "version": version,
+            "versionLabel": doc["versionLabel"],
+            "promotionStatus": promotion_status,
+            "reason": reason,
+            "createdAt": now,
+        }
+        if not history or any(event.get(key) != history[-1].get(key) for key in ("version", "promotionStatus", "reason")):
+            history = [*history, event][-25:]
+    doc["versionHistory"] = history
+    lineage = _legacy_skill_lineage(doc)
+    hardening = _legacy_skill_hardening(doc, lineage)
+    doc["lineage"] = lineage
+    doc["hardeningStatus"] = hardening
+    doc["skillPackage"] = _legacy_skill_package(doc, lineage, hardening)
+    return doc
+
+
+def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "skillId": doc.get("skillId", ""),
+        "capabilityKind": doc.get("capabilityKind", "skill"),
+        "name": doc.get("name", ""),
+        "goal": doc.get("goal", ""),
+        "instructions": doc.get("instructions", ""),
+        "parameters": doc.get("parameters", []),
+        "actions": doc.get("actions", []),
+        "status": doc.get("status", "draft"),
+        "promotionStatus": doc.get("promotionStatus", "draft"),
+        "version": doc.get("version", 1),
+        "versionLabel": doc.get("versionLabel", "v1"),
+        "versionHistory": doc.get("versionHistory", []),
+        "lineage": doc.get("lineage", {}),
+        "hardeningStatus": doc.get("hardeningStatus", {}),
+        "skillPackage": doc.get("skillPackage", {}),
+        "createdAt": doc.get("createdAt"),
+        "updatedAt": doc.get("updatedAt"),
+    }
 
 
 class SkillParameter(BaseModel):
@@ -45,17 +235,7 @@ async def get_skills(email: str):
         cursor = skills_collection.find({"email": email}).sort("createdAt", -1)
         skills = []
         async for doc in cursor:
-            skills.append(
-                {
-                    "skillId": doc.get("skillId", ""),
-                    "name": doc.get("name", ""),
-                    "goal": doc.get("goal", ""),
-                    "instructions": doc.get("instructions", ""),
-                    "parameters": doc.get("parameters", []),
-                    "actions": doc.get("actions", []),
-                    "createdAt": doc.get("createdAt"),
-                }
-            )
+            skills.append(_serialize_skill(_packaged_skill_doc(doc, previous=doc, reason="")))
         return {"skills": skills}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -65,9 +245,8 @@ async def get_skills(email: str):
 async def create_skill(body: SkillCreateRequest):
     """Create a new skill."""
     try:
-        now = datetime.now(timezone.utc)
         skill_id = str(uuid.uuid4())
-        doc = {
+        doc = _packaged_skill_doc({
             "skillId": skill_id,
             "email": body.email,
             "name": body.name,
@@ -75,10 +254,11 @@ async def create_skill(body: SkillCreateRequest):
             "instructions": body.instructions,
             "parameters": [p.model_dump() for p in body.parameters],
             "actions": body.actions,
-            "createdAt": now,
-        }
+            "status": "draft",
+            "promotionStatus": "draft",
+        })
         await skills_collection.insert_one(doc)
-        return {"success": True, "skillId": skill_id}
+        return {"success": True, "skillId": skill_id, "skill": _serialize_skill(doc)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -105,21 +285,29 @@ async def parameterize_skill(body: SkillParameterizeRequest):
 async def update_skill(skill_id: str, body: SkillCreateRequest):
     """Update an existing skill."""
     try:
+        existing = await skills_collection.find_one({"skillId": skill_id}, {"_id": 0})
+        if not existing:
+            raise HTTPException(status_code=404, detail="Skill not found")
+        doc = _packaged_skill_doc(
+            {
+                "skillId": skill_id,
+                "email": body.email or existing.get("email", ""),
+                "name": body.name,
+                "goal": body.goal,
+                "instructions": body.instructions,
+                "parameters": [p.model_dump() for p in body.parameters],
+                "actions": body.actions,
+            },
+            previous=existing,
+            reason="legacy_skill_updated",
+        )
         result = await skills_collection.update_one(
             {"skillId": skill_id},
-            {
-                "$set": {
-                    "name": body.name,
-                    "goal": body.goal,
-                    "instructions": body.instructions,
-                    "parameters": [p.model_dump() for p in body.parameters],
-                    "actions": body.actions,
-                }
-            },
+            {"$set": doc},
         )
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="Skill not found")
-        return {"success": True}
+        return {"success": True, "skill": _serialize_skill(doc)}
     except HTTPException:
         raise
     except Exception as e:
