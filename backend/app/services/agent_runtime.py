@@ -384,6 +384,77 @@ def browser_runtime_policy(agent_config: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def enterprise_runtime_policy(
+    agent_config: dict[str, Any],
+    *,
+    tools: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    resources: list[dict[str, Any]],
+) -> dict[str, Any]:
+    runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
+    runtime_tools = runtime_spec.get("tools") if isinstance(runtime_spec.get("tools"), dict) else {}
+    capabilities = agent_config.get("runtimeCapabilities") if isinstance(agent_config.get("runtimeCapabilities"), dict) else {}
+    browser_policy = browser_runtime_policy(agent_config)
+    api_enabled = bool(capabilities.get("apiCalls", runtime_tools.get("connectors", True)))
+    browser_enabled = bool(browser_policy.get("enabled"))
+    if api_enabled and browser_enabled:
+        runtime_class = "hybrid"
+    elif browser_enabled:
+        runtime_class = "browser"
+    else:
+        runtime_class = "api"
+
+    boundaries = sorted({str(item.get("policyBoundary") or "read") for item in [*tools, *skills]})
+    approval_required_for = runtime_spec.get("approvalRequiredFor")
+    if not isinstance(approval_required_for, list) or not approval_required_for:
+        approval_required_for = ["write", "send"] if capabilities.get("humanApprovalForWrites", True) else []
+    approval_required_for = [str(item).strip() for item in approval_required_for if str(item).strip()]
+    approval_required_boundaries = sorted(
+        {
+            str(item.get("policyBoundary") or "read")
+            for item in [*tools, *skills]
+            if item.get("policyBoundary") in approval_required_for
+            or (isinstance(item.get("approvalPolicy"), dict) and item["approvalPolicy"].get("required"))
+        }
+    )
+    approval_required_tools = [
+        str(item.get("name") or "")
+        for item in tools
+        if isinstance(item.get("approvalPolicy"), dict) and item["approvalPolicy"].get("required")
+    ]
+    return {
+        "runtimeClass": runtime_class,
+        "runtimeType": f"{runtime_class}_runtime",
+        "runtimeTypes": [f"{runtime_class}_runtime"] if runtime_class != "hybrid" else ["api_runtime", "browser_runtime", "hybrid_runtime"],
+        "browser": {
+            **browser_policy,
+            "requiresSandbox": browser_enabled,
+            "leastPrivilege": True,
+        },
+        "api": {
+            "enabled": api_enabled,
+            "connectorToolsEnabled": bool(runtime_tools.get("connectors", True)),
+            "toolCount": len(tools),
+        },
+        "approvals": {
+            "humanApprovalForWrites": bool(capabilities.get("humanApprovalForWrites", True)),
+            "requiredFor": approval_required_for,
+            "requiredBoundaries": approval_required_boundaries,
+            "requiredTools": approval_required_tools,
+        },
+        "budgets": {
+            "maxCreditsPerRun": runtime_spec.get("maxCreditsPerRun", 5.0),
+            "maxSteps": runtime_spec.get("maxSteps"),
+        },
+        "policyBoundaries": boundaries,
+        "resources": {
+            "total": len(resources),
+            "indexed": sum(1 for item in resources if item.get("indexed")),
+            "citable": sum(1 for item in resources if item.get("citable")),
+        },
+    }
+
+
 async def _entity_context(company_id: str, callables: list[dict[str, Any]]) -> dict[str, Any]:
     names = _callable_entity_names(callables)
     if not names:
@@ -442,6 +513,12 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
         "browserPolicy": browser_runtime_policy(agent_config),
+        "enterpriseRuntime": enterprise_runtime_policy(
+            agent_config,
+            tools=tool_callables,
+            skills=skill_callables,
+            resources=resources,
+        ),
         "entities": context.get("entities") if isinstance(context.get("entities"), dict) else {},
         "resources": resources,
         "resourceGrounding": {

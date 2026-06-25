@@ -63,6 +63,12 @@ class _FakeAgentsCollection:
             "websiteUrl": "https://example.com",
             "baseRuntimeEndpoint": "http://runtime.local",
             "runtimeCapabilities": {"humanApprovalForWrites": True},
+            "runtimeSpec": {
+                "allowedDomains": ["example.com"],
+                "approvalRequiredFor": ["write", "send"],
+                "maxCreditsPerRun": 7.5,
+                "tools": {"browser": True, "connectors": True, "skills": True, "knowledge": True},
+            },
             "tasks": [{"name": "Test Skill", "prompt": "Use test skill"}],
         }
 
@@ -78,6 +84,12 @@ class _FakeAgentsCollection:
                 "websiteUrl": "https://example.com",
                 "baseRuntimeEndpoint": "http://runtime.local",
                 "runtimeCapabilities": {"humanApprovalForWrites": True},
+                "runtimeSpec": {
+                    "allowedDomains": ["example.com"],
+                    "approvalRequiredFor": ["write", "send"],
+                    "maxCreditsPerRun": 7.5,
+                    "tools": {"browser": True, "connectors": True, "skills": True, "knowledge": True},
+                },
                 "tasks": [{"name": "Test Skill", "prompt": "Use test skill"}],
             }
         ])
@@ -279,6 +291,9 @@ async def test_agent_step_injects_agent_config_and_records_runtime_events(monkey
     assert agent_config["schemaVersion"] == "agent_config/v1"
     assert agent_config["agentId"] == "agent-1"
     assert agent_config["memory"] == {"seen": 1}
+    assert agent_config["runtimeSpec"]["allowedDomains"] == ["example.com"]
+    assert agent_config["runtimeSpec"]["approvalRequiredFor"] == ["write", "send"]
+    assert agent_config["runtimeSpec"]["maxCreditsPerRun"] == 7.5
     assert any(item["name"] == "skill.test_skill" for item in agent_config["skills"])
     assert any(item["name"] == "telegram.send_message" for item in agent_config["tools"])
     telegram_tool = next(item for item in agent_config["tools"] if item["name"] == "telegram.send_message")
@@ -400,6 +415,16 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["toolGovernance"]["approvalRequiredTools"] == ["telegram.send_message"]
     assert contract["toolGovernance"]["riskCounts"]["medium"] == 1
     assert contract["toolGovernance"]["policyBoundaries"] == ["write"]
+    assert contract["enterpriseRuntime"]["runtimeClass"] == "api"
+    assert contract["enterpriseRuntime"]["runtimeType"] == "api_runtime"
+    assert contract["enterpriseRuntime"]["browser"]["requiresSandbox"] is False
+    assert contract["enterpriseRuntime"]["browser"]["allowedDomains"] == ["example.com"]
+    assert contract["enterpriseRuntime"]["api"]["enabled"] is False
+    assert contract["enterpriseRuntime"]["approvals"]["requiredFor"] == ["write", "send"]
+    assert contract["enterpriseRuntime"]["approvals"]["requiredBoundaries"] == ["write"]
+    assert contract["enterpriseRuntime"]["approvals"]["requiredTools"] == ["telegram.send_message"]
+    assert contract["enterpriseRuntime"]["budgets"]["maxCreditsPerRun"] == 5.0
+    assert contract["enterpriseRuntime"]["resources"]["citable"] == 1
 
 
 @pytest.mark.asyncio

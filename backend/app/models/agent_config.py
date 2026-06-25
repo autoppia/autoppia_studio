@@ -16,6 +16,12 @@ class RuntimeCapabilities(BaseModel):
 class RuntimeSpec(BaseModel):
     browserEnabled: bool = True
     browserMode: Literal["visible", "headless"] = "visible"
+    allowedDomains: list[str] = Field(default_factory=list)
+    browserAllowedDomains: list[str] = Field(default_factory=list)
+    browserRestrictedByDomain: bool = False
+    browserDefaultUse: str = "exception"
+    approvalRequiredFor: list[str] = Field(default_factory=lambda: ["write", "send"])
+    runtimeClasses: list[str] = Field(default_factory=list)
     maxCreditsPerRun: float = 5.0
     tools: dict[str, bool] = Field(
         default_factory=lambda: {

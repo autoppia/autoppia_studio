@@ -388,6 +388,7 @@ export interface RuntimeSpec {
   browserDefaultUse?: string;
   approvalRequiredFor?: string[];
   runtimeClasses?: string[];
+  maxSteps?: number;
   maxCreditsPerRun?: number;
   tools?: {
     browser?: boolean;
@@ -395,6 +396,77 @@ export interface RuntimeSpec {
     skills?: boolean;
     knowledge?: boolean;
   };
+}
+
+export interface EnterpriseRuntimePolicy {
+  runtimeClass: "api" | "browser" | "hybrid" | string;
+  runtimeType: string;
+  runtimeTypes: string[];
+  browser: {
+    enabled?: boolean;
+    mode?: string;
+    allowedDomains?: string[];
+    restrictedByDomain?: boolean;
+    defaultUse?: string;
+    riskLevel?: string;
+    notes?: string;
+    requiresSandbox?: boolean;
+    leastPrivilege?: boolean;
+  };
+  api: {
+    enabled?: boolean;
+    connectorToolsEnabled?: boolean;
+    toolCount?: number;
+  };
+  approvals: {
+    humanApprovalForWrites?: boolean;
+    requiredFor?: string[];
+    requiredBoundaries?: string[];
+    requiredTools?: string[];
+  };
+  budgets: {
+    maxCreditsPerRun?: number;
+    maxSteps?: number;
+  };
+  policyBoundaries: string[];
+  resources: {
+    total?: number;
+    indexed?: number;
+    citable?: number;
+  };
+}
+
+export interface AgentRuntimeContract {
+  runtimeCapabilities?: RuntimeCapabilities;
+  runtimeSpec?: RuntimeSpec;
+  browserPolicy?: EnterpriseRuntimePolicy["browser"];
+  enterpriseRuntime?: EnterpriseRuntimePolicy;
+  entities?: Record<string, any>;
+  resources?: Record<string, any>[];
+  resourceGrounding?: {
+    total?: number;
+    indexed?: number;
+    citable?: number;
+    readTools?: string[];
+  };
+  toolGovernance?: {
+    total?: number;
+    governed?: number;
+    approvalRequiredTools?: string[];
+    riskCounts?: Record<string, number>;
+    policyBoundaries?: string[];
+  };
+  tools?: AgentCallable[];
+  skills?: AgentCallable[];
+  toolCalls?: string[];
+  unavailableToolCalls?: Array<{
+    name?: string;
+    runtimeAvailability?: {
+      required?: string[];
+      available?: boolean;
+      unavailable?: string[];
+    };
+  }>;
 }
 
 export interface ToolApprovalPolicy {
