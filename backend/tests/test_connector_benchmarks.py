@@ -76,6 +76,7 @@ def test_connector_benchmark_catalog_includes_email_business_flows():
     assert email["runtimeType"] == "local_email_agent"
     assert {"smtp", "gmail"} <= set(email["connectorTypes"])
     task_keys = {task["key"] for task in email["tasks"]}
+    insurance = next(item for item in catalog if item["key"] == "insurance_claims")
     assert {
         "search_recent_topic",
         "search_accented_topic",
@@ -83,6 +84,10 @@ def test_connector_benchmark_catalog_includes_email_business_flows():
         "draft_reply_no_send",
         "send_requires_approval",
     } <= task_keys
+    assert insurance["auditEnabled"] is False
+    assert insurance["vertical"] == "insurance"
+    assert insurance["tasks"][0]["allowedSystems"] == ["email", "insurance_erp", "knowledge"]
+    assert insurance["tasks"][0]["riskClass"] == "draft"
 
 
 @pytest.mark.asyncio
@@ -220,6 +225,48 @@ async def test_audit_connector_benchmark_matrix_reports_blocked_auth_and_pass(mo
     assert telegram_row["status"] == "blocked_auth"
     assert report["summary"]["pass"] == 1
     assert report["summary"]["blocked"] == 1
+    assert "insurance_claims" not in {row["benchmark"] for row in report["rows"]}
+
+
+@pytest.mark.asyncio
+async def test_seed_insurance_claims_vertical_benchmark_creates_full_task_contract(monkeypatch):
+    connectors = _Collection(
+        [
+            {
+                "connectorId": "smtp-1",
+                "companyId": "co-1",
+                "email": "user@example.com",
+                "name": "SMTP",
+                "type": "smtp",
+                "status": "connected",
+                "config": {"email": "claims@example.com"},
+            }
+        ]
+    )
+    monkeypatch.setattr(connector_benchmarks, "connectors_collection", connectors)
+    monkeypatch.setattr(connector_benchmarks, "agents_collection", _Collection())
+    monkeypatch.setattr(connector_benchmarks, "benchmarks_collection", _Collection())
+    monkeypatch.setattr(connector_benchmarks, "benchmark_tasks_collection", _Collection())
+    monkeypatch.setattr(connector_benchmarks, "tools_collection", _Collection())
+
+    result = await connector_benchmarks.seed_connector_benchmark(
+        benchmark_key="insurance_claims",
+        email="user@example.com",
+        company_id="co-1",
+        connector_id="smtp-1",
+        publish_tools=False,
+    )
+
+    first_task = result["tasks"][0]
+    assert result["benchmark"]["metadata"]["vertical"] == "insurance"
+    assert result["benchmark"]["metadata"]["auditEnabled"] is False
+    assert result["agent"]["runtimeType"] == "hybrid_runtime"
+    assert first_task["metadata"]["businessIntent"].startswith("Responder a un cliente")
+    assert first_task["metadata"]["allowedSystems"] == ["email", "insurance_erp", "knowledge"]
+    assert first_task["metadata"]["expectedArtifacts"] == ["draft_email", "claim_summary"]
+    assert first_task["metadata"]["riskClass"] == "draft"
+    assert first_task["metadata"]["initialState"]["approvalBoundary"] == "send_requires_human_approval"
+    assert first_task["metadata"]["expectedTools"] == ["imap.search_emails", "erp.search_claims", "knowledge.search", "smtp.draft_email"]
 
 
 @pytest.mark.asyncio

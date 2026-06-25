@@ -87,6 +87,9 @@ interface ConnectorBenchmarkTaskSpec {
   name: string;
   expectedTools: string[];
   expectedArtifacts?: string[];
+  businessIntent?: string;
+  allowedSystems?: string[];
+  riskClass?: string;
   requiresApproval?: boolean;
   requiresBrowser?: boolean;
   runtimeExpectation?: string;
@@ -98,6 +101,8 @@ interface ConnectorBenchmarkSpec {
   description: string;
   connectorTypes: string[];
   runtimeType: string;
+  auditEnabled?: boolean;
+  vertical?: string;
   tasks: ConnectorBenchmarkTaskSpec[];
 }
 
@@ -1027,15 +1032,21 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
 
                   {selectedConnectorBenchmark && (
                     <div className="mt-3 flex flex-wrap gap-2">
+                      {selectedConnectorBenchmark.auditEnabled === false && (
+                        <span className="inline-flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                          <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px]" />
+                          manual vertical smoke{selectedConnectorBenchmark.vertical ? ` · ${selectedConnectorBenchmark.vertical}` : ""}
+                        </span>
+                      )}
                       {selectedConnectorBenchmark.tasks.map((task) => (
                         <span
                           key={task.key}
                           className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"
-                          title={task.expectedTools.join(", ")}
+                          title={[task.businessIntent, ...(task.allowedSystems || []), ...task.expectedTools].filter(Boolean).join(" · ")}
                         >
                           {task.requiresBrowser && <FontAwesomeIcon icon={faGlobe} className="text-[10px] text-sky-500" />}
                           {task.requiresApproval && <FontAwesomeIcon icon={faTriangleExclamation} className="text-[10px] text-amber-500" />}
-                          {task.name}
+                          {task.name}{task.riskClass ? ` · ${task.riskClass}` : ""}
                         </span>
                       ))}
                     </div>

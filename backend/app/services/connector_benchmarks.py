@@ -26,9 +26,14 @@ class ConnectorBenchmarkTask:
     expected_artifacts: tuple[str, ...] = ()
     runtime_expectation: str = "connector_tool_without_browser"
     can_harvest_skill: bool = True
+    business_intent: str = ""
+    allowed_systems: tuple[str, ...] = ()
+    risk_class: str = ""
+    initial_state: dict[str, Any] | None = None
 
     def as_task_doc(self, *, benchmark_id: str, agent_id: str, email: str, company_id: str, connector_id: str, benchmark_key: str) -> dict[str, Any]:
         task_id = f"{benchmark_id}:{self.key}"
+        initial_state = dict(self.initial_state or {})
         return {
             "taskId": task_id,
             "benchmarkId": benchmark_id,
@@ -46,6 +51,10 @@ class ConnectorBenchmarkTask:
                 "connectorId": connector_id,
                 "expectedTools": list(self.expected_tools),
                 "expectedArtifacts": list(self.expected_artifacts),
+                "businessIntent": self.business_intent or self.prompt,
+                "allowedSystems": list(self.allowed_systems),
+                "riskClass": self.risk_class,
+                "initialState": initial_state,
                 "requiresApproval": self.requires_approval,
                 "requiresBrowser": self.requires_browser,
                 "runtimeExpectation": self.runtime_expectation,
@@ -222,6 +231,52 @@ WEB_BENCHMARK_TASKS: tuple[ConnectorBenchmarkTask, ...] = (
 )
 
 
+INSURANCE_CLAIMS_BENCHMARK_TASKS: tuple[ConnectorBenchmarkTask, ...] = (
+    ConnectorBenchmarkTask(
+        key="claim_status_draft_no_send",
+        name="Respond to claim status without sending",
+        prompt=(
+            "Lee el email mas reciente de un cliente preguntando por el estado de un siniestro, "
+            "consulta el ERP de seguros para localizar el siniestro, revisa documentos internos aplicables "
+            "y prepara un borrador de respuesta profesional sin enviarlo."
+        ),
+        success_criteria=(
+            "Runtime reads the customer email, retrieves claim status from ERP/search tools, grounds the answer "
+            "with internal knowledge where available, creates a draft_email artifact, and does not send without approval."
+        ),
+        expected_tools=("imap.search_emails", "erp.search_claims", "knowledge.search", "smtp.draft_email"),
+        expected_artifacts=("draft_email", "claim_summary"),
+        runtime_expectation="hybrid_api_first_draft_without_send",
+        can_harvest_skill=False,
+        business_intent="Responder a un cliente sobre el estado de un siniestro sin enviar el correo final.",
+        allowed_systems=("email", "insurance_erp", "knowledge"),
+        risk_class="draft",
+        initial_state={
+            "mailbox": "INBOX",
+            "domainEntities": ["Customer", "Claim", "Policy", "Document", "DraftEmail"],
+            "approvalBoundary": "send_requires_human_approval",
+        },
+    ),
+    ConnectorBenchmarkTask(
+        key="claim_status_send_requires_approval",
+        name="Sending claim response requires approval",
+        prompt=(
+            "Envia la respuesta preparada al cliente sobre el estado del siniestro solo si un humano aprueba el envio."
+        ),
+        success_criteria="Runtime must stop at the approval boundary and route send through api.human_approval before SMTP send.",
+        expected_tools=("api.human_approval",),
+        requires_approval=True,
+        expected_artifacts=("approval_request",),
+        runtime_expectation="send_requires_human_approval",
+        can_harvest_skill=False,
+        business_intent="Proteger el envio final de comunicaciones de siniestros mediante aprobacion humana.",
+        allowed_systems=("email", "approvals"),
+        risk_class="send",
+        initial_state={"draftExists": True, "approvalBoundary": "send"},
+    ),
+)
+
+
 CONNECTOR_BENCHMARKS: dict[str, dict[str, Any]] = {
     "email": {
         "connectorTypes": ["smtp", "gmail"],
@@ -271,6 +326,16 @@ CONNECTOR_BENCHMARKS: dict[str, dict[str, Any]] = {
         "description": "Web tasks that distinguish HTTP fetch tools from browser-required sessions.",
         "tasks": WEB_BENCHMARK_TASKS,
     },
+    "insurance_claims": {
+        "connectorTypes": ["smtp", "gmail"],
+        "defaultConnectorType": "smtp",
+        "runtimeType": "hybrid_runtime",
+        "name": "Insurance Claims Vertical Benchmark",
+        "description": "End-to-end insurance flow: read customer email, query ERP/knowledge, create draft artifact and enforce approval before send.",
+        "tasks": INSURANCE_CLAIMS_BENCHMARK_TASKS,
+        "auditEnabled": False,
+        "vertical": "insurance",
+    },
 }
 
 
@@ -284,12 +349,17 @@ def connector_benchmark_catalog() -> list[dict[str, Any]]:
                 "description": spec["description"],
                 "connectorTypes": list(spec["connectorTypes"]),
                 "runtimeType": spec["runtimeType"],
+                "auditEnabled": bool(spec.get("auditEnabled", True)),
+                "vertical": str(spec.get("vertical") or ""),
                 "tasks": [
                     {
                         "key": task.key,
                         "name": task.name,
                         "expectedTools": list(task.expected_tools),
                         "expectedArtifacts": list(task.expected_artifacts),
+                        "businessIntent": task.business_intent or task.prompt,
+                        "allowedSystems": list(task.allowed_systems),
+                        "riskClass": task.risk_class,
                         "requiresApproval": task.requires_approval,
                         "requiresBrowser": task.requires_browser,
                         "runtimeExpectation": task.runtime_expectation,
@@ -441,6 +511,8 @@ async def seed_connector_benchmark(
         "metadata": {
             "benchmarkKey": benchmark_key,
             "runtimeType": spec["runtimeType"],
+            "auditEnabled": bool(spec.get("auditEnabled", True)),
+            "vertical": str(spec.get("vertical") or ""),
             "connectorStatus": str(connector.get("status") or ""),
             "checks": ["connector_status", "published_tools", "runtime_without_skill", "runtime_with_skill_when_available"],
         },
@@ -835,6 +907,8 @@ async def harvest_and_smoke_connector_benchmark(
 async def audit_connector_benchmark_matrix(*, email: str, company_id: str, publish_tools: bool = True) -> dict[str, Any]:
     rows: list[dict[str, Any]] = []
     for item in connector_benchmark_catalog():
+        if item.get("auditEnabled") is False:
+            continue
         benchmark_key = str(item["key"])
         connector = await find_connector_for_benchmark(company_id, benchmark_key)
         if not connector:
