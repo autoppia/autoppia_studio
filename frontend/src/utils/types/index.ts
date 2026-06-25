@@ -357,10 +357,12 @@ export interface WorkItem {
     approvalCount?: number;
     pendingApprovalCount?: number;
     latestArtifactCount?: number;
+    persistedArtifactCount?: number;
     latestToolCallCount?: number;
     latestMatchedSkillIds?: string[];
     latestMatchedSkillNames?: string[];
     latestSessionIds?: string[];
+    latestCreditsSpent?: number;
     reviewBlocked?: boolean;
   };
   lastRunId?: string;

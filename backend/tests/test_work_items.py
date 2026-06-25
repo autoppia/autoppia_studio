@@ -133,6 +133,44 @@ class _Sessions:
         return None
 
 
+class _Artifacts:
+    def __init__(self):
+        self.docs = {}
+
+    def find(self, query, projection=None):
+        docs = []
+        for doc in self.docs.values():
+            matched = True
+            for key, value in query.items():
+                actual = _nested(doc, key)
+                if isinstance(value, dict) and "$in" in value:
+                    if actual not in value["$in"]:
+                        matched = False
+                        break
+                elif actual != value:
+                    matched = False
+                    break
+            if matched:
+                docs.append(dict(doc))
+        return _Cursor(docs)
+
+    async def find_one(self, query, projection=None):
+        for doc in self.docs.values():
+            if all(_nested(doc, key) == value for key, value in query.items()):
+                return dict(doc)
+        return None
+
+    async def insert_one(self, doc):
+        self.docs[doc["artifactId"]] = dict(doc)
+
+    async def update_one(self, query, update):
+        doc = await self.find_one(query)
+        if not doc:
+            return
+        stored = self.docs[doc["artifactId"]]
+        stored.update(update.get("$set", {}))
+
+
 class _Agents:
     def __init__(self):
         self.docs = [
@@ -166,10 +204,12 @@ async def test_create_and_list_work_items(monkeypatch):
     boards = _Boards()
     approvals = _Approvals()
     sessions = _Sessions()
+    artifacts = _Artifacts()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", sessions)
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -200,11 +240,13 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     agents = _Agents()
     approvals = _Approvals()
     sessions = _Sessions()
+    artifacts = _Artifacts()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", sessions)
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     notifications = []
 
@@ -217,6 +259,7 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
             "done": True,
             "content": "Completed task",
             "tool_calls": [],
+            "artifacts": [{"artifactType": "markdown", "title": "Draft reply", "content": "Hello client"}],
             "state_out": {"memory": {"ok": True}},
         }
 
@@ -227,7 +270,7 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
         return {"jobId": "job-1", "type": job_type, "payload": payload}
 
     async def fake_run_credits_spent(run_id):
-        return 0.0
+        return 0.42
 
     monkeypatch.setattr(work_items, "agent_step_result", fake_agent_step_result)
     monkeypatch.setattr(work_items, "enqueue_job", fake_enqueue_job)
@@ -255,6 +298,7 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     await work_items._run_work_item(work_item_id, started["runId"])
     refreshed = await collection.find_one({"workItemId": work_item_id})
     session_doc = await sessions.find_one({"sessionId": started["sessionId"]})
+    persisted_artifacts = await artifacts.find({"metadata.workItemId": work_item_id}).to_list()
 
     assert started["workItem"]["status"] == "RUNNING"
     assert started["sessionId"]
@@ -264,8 +308,12 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     assert refreshed["runHistory"][0]["runId"] == started["runId"]
     assert refreshed["runHistory"][0]["sessionId"] == started["sessionId"]
     assert refreshed["report"]["sessionId"] == started["sessionId"]
+    assert refreshed["report"]["creditsSpent"] == 0.42
     assert session_doc["provider"] == "work_orchestration"
     assert session_doc["runtimeState"]["runId"] == started["runId"]
+    assert session_doc["runtimeState"]["creditsSpent"] == 0.42
+    assert len(persisted_artifacts) == 1
+    assert persisted_artifacts[0]["sessionId"] == started["sessionId"]
     assert [item["title"] for item in notifications] == ["Work item started", "Work item done"]
     assert jobs[0][0] == "work_run"
 
@@ -312,11 +360,13 @@ async def test_run_work_item_pauses_on_human_approval(monkeypatch):
     agents = _Agents()
     approvals = _Approvals()
     sessions = _Sessions()
+    artifacts = _Artifacts()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", sessions)
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     async def fake_create_notification(**kwargs):
         return kwargs
@@ -388,10 +438,12 @@ async def test_scheduled_work_item_gets_next_run(monkeypatch):
     boards = _Boards()
     approvals = _Approvals()
     sessions = _Sessions()
+    artifacts = _Artifacts()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", sessions)
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -417,10 +469,12 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     boards = _Boards()
     approvals = _Approvals()
     sessions = _Sessions()
+    artifacts = _Artifacts()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", sessions)
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -477,10 +531,17 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
             "metadata": {"workItemId": "work-1"},
         },
     ])
+    artifacts = _Artifacts()
+    artifacts.docs["artifact-1"] = {
+        "artifactId": "artifact-1",
+        "sessionId": "session-1",
+        "metadata": {"workItemId": "work-1"},
+    }
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", _Sessions())
+    monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
 
     collection.docs["work-1"] = {
         "workItemId": "work-1",
@@ -504,6 +565,7 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
         "pendingApproval": {"approvalId": "approval-1"},
         "report": {
             "runId": "run-1",
+            "creditsSpent": 0.42,
             "resultCount": 1,
             "results": [
                 {
@@ -536,4 +598,6 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["latestToolCallCount"] == 1
     assert operational["latestMatchedSkillIds"] == ["skill-1"]
     assert operational["latestMatchedSkillNames"] == ["Resolve claim"]
+    assert operational["latestCreditsSpent"] == 0.42
+    assert operational["persistedArtifactCount"] == 1
     assert operational["reviewBlocked"] is True

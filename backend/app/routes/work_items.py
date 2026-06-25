@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, field_validator
 
-from app.database import agents_collection, approvals_collection, sessions_collection, work_boards_collection, work_items_collection
+from app.database import agents_collection, approvals_collection, artifacts_collection, sessions_collection, work_boards_collection, work_items_collection
 from app.repositories import WorkBoardRepository, WorkItemRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.notifications import create_notification
@@ -277,6 +277,8 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
         "latestMatchedSkillIds": matched_skill_ids,
         "latestMatchedSkillNames": matched_skill_names,
         "latestSessionIds": session_ids,
+        "latestCreditsSpent": float((doc.get("report") if isinstance(doc.get("report"), dict) else {}).get("creditsSpent") or 0.0),
+        "persistedArtifactCount": 0,
         "reviewBlocked": review_blocked,
     }
 
@@ -291,6 +293,12 @@ async def _serialized_work_items_with_operational_data(docs: list[dict[str, Any]
             {"metadata.workItemId": {"$in": work_item_ids}},
             {"_id": 0, "metadata.workItemId": 1, "status": 1},
         ).to_list(length=2000)
+    artifact_docs: list[dict[str, Any]] = []
+    if work_item_ids:
+        artifact_docs = await artifacts_collection.find(
+            {"metadata.workItemId": {"$in": work_item_ids}},
+            {"_id": 0, "metadata.workItemId": 1},
+        ).to_list(length=2000)
     approvals_by_work_item: dict[str, list[dict[str, Any]]] = {}
     for approval in approval_docs:
         metadata = approval.get("metadata") if isinstance(approval.get("metadata"), dict) else {}
@@ -298,11 +306,19 @@ async def _serialized_work_items_with_operational_data(docs: list[dict[str, Any]
         if not work_item_id:
             continue
         approvals_by_work_item.setdefault(work_item_id, []).append(approval)
+    artifact_count_by_work_item: dict[str, int] = {}
+    for artifact in artifact_docs:
+        metadata = artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}
+        work_item_id = str(metadata.get("workItemId") or "")
+        if not work_item_id:
+            continue
+        artifact_count_by_work_item[work_item_id] = artifact_count_by_work_item.get(work_item_id, 0) + 1
 
     serialized: list[dict[str, Any]] = []
     for doc in docs:
         item = _serialize(doc)
         item["operational"] = _work_operational_summary(doc, approvals_by_work_item.get(item["workItemId"], []))
+        item["operational"]["persistedArtifactCount"] = artifact_count_by_work_item.get(item["workItemId"], 0)
         serialized.append(item)
     return serialized
 
@@ -472,6 +488,68 @@ def _session_runtime_state(item: dict[str, Any], run_id: str, results: list[dict
     if judge:
         runtime_state["workJudge"] = judge
     return runtime_state
+
+
+def _artifact_title(artifact: dict[str, Any]) -> str:
+    for key in ("title", "name", "fileName", "url"):
+        value = str(artifact.get(key) or "").strip()
+        if value:
+            return value[:160]
+    return "Artifact"
+
+
+def _artifact_type(artifact: dict[str, Any]) -> str:
+    clean = str(artifact.get("artifactType") or artifact.get("kind") or artifact.get("contentType") or "text").strip().lower()
+    if "/" in clean:
+        clean = clean.split("/", 1)[-1]
+    return clean or "text"
+
+
+def _result_artifacts(results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    artifacts: list[dict[str, Any]] = []
+    for result in results:
+        payload = result.get("result") if isinstance(result.get("result"), dict) else {}
+        raw_artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), list) else []
+        for artifact in raw_artifacts:
+            if isinstance(artifact, dict):
+                artifacts.append(artifact)
+    return artifacts
+
+
+async def _persist_work_run_artifacts(item: dict[str, Any], *, run_id: str, session_id: str, artifacts: list[dict[str, Any]]) -> None:
+    if not artifacts:
+        return
+    now = _now()
+    for artifact in artifacts:
+        title = _artifact_title(artifact)
+        artifact_id = str(artifact.get("artifactId") or uuid.uuid4())
+        doc = {
+            "artifactId": artifact_id,
+            "sessionId": session_id,
+            "companyId": str(item.get("companyId") or ""),
+            "email": str(item.get("email") or ""),
+            "title": title,
+            "name": str(artifact.get("name") or title),
+            "artifactType": _artifact_type(artifact),
+            "content": str(artifact.get("content") or ""),
+            "url": str(artifact.get("url") or ""),
+            "fileName": str(artifact.get("fileName") or ""),
+            "sourceTool": str(artifact.get("sourceTool") or artifact.get("tool") or "work_runtime"),
+            "metadata": {
+                **(artifact.get("metadata") if isinstance(artifact.get("metadata"), dict) else {}),
+                "workItemId": str(item.get("workItemId") or ""),
+                "runId": run_id,
+                "sessionId": session_id,
+                "sourceKind": "work",
+            },
+            "createdAt": str(artifact.get("createdAt") or now),
+            "updatedAt": now,
+        }
+        existing = await artifacts_collection.find_one({"artifactId": artifact_id}, {"_id": 0})
+        if existing:
+            await artifacts_collection.update_one({"artifactId": artifact_id}, {"$set": doc})
+        else:
+            await artifacts_collection.insert_one(doc)
 
 
 async def _save_work_run_session(
@@ -714,8 +792,13 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         if waiting:
             pending = waiting.get("pendingApproval") if isinstance(waiting.get("pendingApproval"), dict) else {}
             action_history = _session_action_history(results)
-            runtime_state = _session_runtime_state(item, run_id, results, pending_approval=pending)
+            credits_spent = await run_credits_spent(run_id)
+            runtime_state = {
+                **_session_runtime_state(item, run_id, results, pending_approval=pending),
+                "creditsSpent": credits_spent,
+            }
             last_url = str(waiting.get("finalUrl") or "")
+            await _persist_work_run_artifacts(item, run_id=run_id, session_id=session_id, artifacts=_result_artifacts(results))
             await _save_work_run_session(
                 item,
                 run_id=run_id,
@@ -734,6 +817,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                         "report": {
                             "runId": run_id,
                             "sessionId": session_id,
+                            "creditsSpent": credits_spent,
                             "target": item.get("runTarget", "selected"),
                             "resultCount": len(results),
                             "results": results,
@@ -758,8 +842,13 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         judge = await _judge_result(item, results)
         next_status = "DONE" if judge["label"] == "success" else "REVIEW" if judge["label"] == "needs_review" else "FAILED"
         action_history = _session_action_history(results)
-        runtime_state = _session_runtime_state(item, run_id, results, judge=judge)
+        credits_spent = await run_credits_spent(run_id)
+        runtime_state = {
+            **_session_runtime_state(item, run_id, results, judge=judge),
+            "creditsSpent": credits_spent,
+        }
         last_url = next((str(result.get("finalUrl") or "") for result in reversed(results) if str(result.get("finalUrl") or "")), "")
+        await _persist_work_run_artifacts(item, run_id=run_id, session_id=session_id, artifacts=_result_artifacts(results))
         await _save_work_run_session(
             item,
             run_id=run_id,
@@ -772,6 +861,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
         report = {
             "runId": run_id,
             "sessionId": session_id,
+            "creditsSpent": credits_spent,
             "target": item.get("runTarget", "selected"),
             "resultCount": len(results),
             "results": results,
@@ -808,7 +898,12 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
     except Exception as exc:
         judge = {"label": "failed", "reason": str(getattr(exc, "detail", exc)), "judgeType": "deterministic_runtime_result"}
         action_history = _session_action_history(results)
-        runtime_state = _session_runtime_state(item, run_id, results, judge=judge)
+        credits_spent = await run_credits_spent(run_id)
+        runtime_state = {
+            **_session_runtime_state(item, run_id, results, judge=judge),
+            "creditsSpent": credits_spent,
+        }
+        await _persist_work_run_artifacts(item, run_id=run_id, session_id=session_id, artifacts=_result_artifacts(results))
         await _save_work_run_session(
             item,
             run_id=run_id,
@@ -824,7 +919,7 @@ async def _run_work_item(work_item_id: str, run_id: str) -> None:
                 "$set": {
                     "status": "FAILED",
                     "currentSessionId": session_id,
-                    "report": {"runId": run_id, "sessionId": session_id, "results": results, "summary": judge["reason"]},
+                    "report": {"runId": run_id, "sessionId": session_id, "creditsSpent": credits_spent, "results": results, "summary": judge["reason"]},
                     "judge": judge,
                     "nextRunAt": _next_run_at(
                         frequency=str(item.get("scheduleFrequency") or "none"),

@@ -781,7 +781,12 @@ export default function Work() {
                               )}
                               {(item.operational?.latestArtifactCount || 0) > 0 && (
                                 <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
-                                  {item.operational?.latestArtifactCount} artifacts
+                                  {item.operational?.persistedArtifactCount || item.operational?.latestArtifactCount} artifacts
+                                </span>
+                              )}
+                              {(item.operational?.latestCreditsSpent || 0) > 0 && (
+                                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                                  {(item.operational?.latestCreditsSpent || 0).toFixed(2)} cr spent
                                 </span>
                               )}
                               {matchedSkillSummary(item) && (
@@ -1085,9 +1090,10 @@ export default function Work() {
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime evidence</p>
                     <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
                       <p>Tool calls: {selectedItem.operational.latestToolCallCount || 0}</p>
-                      <p>Artifacts: {selectedItem.operational.latestArtifactCount || 0}</p>
+                      <p>Artifacts: {selectedItem.operational.persistedArtifactCount || selectedItem.operational.latestArtifactCount || 0}</p>
                       <p>Approvals: {selectedItem.operational.approvalCount || 0}</p>
                       <p>Pending approvals: {selectedItem.operational.pendingApprovalCount || 0}</p>
+                      <p>Credits spent: {(selectedItem.operational.latestCreditsSpent || 0).toFixed(2)}</p>
                     </div>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
@@ -1206,12 +1212,20 @@ export default function Work() {
               )}
 
               {latestWorkSessionId(selectedItem) && (
-                <button
-                  onClick={() => navigate(`/session/${latestWorkSessionId(selectedItem)}`)}
-                  className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
-                >
-                  Open latest runtime session
-                </button>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <button
+                    onClick={() => navigate(`/session/${latestWorkSessionId(selectedItem)}`)}
+                    className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                  >
+                    Open latest runtime session
+                  </button>
+                  <button
+                    onClick={() => navigate(`/artifacts?sessionId=${encodeURIComponent(latestWorkSessionId(selectedItem))}`)}
+                    className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                  >
+                    Open runtime artifacts
+                  </button>
+                </div>
               )}
 
               {selectedItem.judge?.label && (
