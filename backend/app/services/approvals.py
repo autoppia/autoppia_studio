@@ -24,6 +24,22 @@ def stable_approval_key(name: str, index: int, arguments: dict[str, Any]) -> str
     return f"{name}:{index}:{digest}"
 
 
+def _approval_action_url(*, session_id: str = "", work_item_id: str = "", skill_id: str = "", trajectory_id: str = "", tool_id: str = "") -> str:
+    params: list[tuple[str, str]] = [("status", "pending")]
+    if session_id:
+        params.append(("sessionId", session_id))
+    if work_item_id:
+        params.append(("workItemId", work_item_id))
+    if skill_id:
+        params.append(("skillId", skill_id))
+    if trajectory_id:
+        params.append(("trajectoryId", trajectory_id))
+    if tool_id:
+        params.append(("toolId", tool_id))
+    query = "&".join(f"{key}={value}" for key, value in params if value)
+    return f"/approvals?{query}" if query else "/approvals"
+
+
 def serialize_approval(doc: dict[str, Any]) -> dict[str, Any]:
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
     proposed_action = doc.get("proposedAction") if isinstance(doc.get("proposedAction"), dict) else {}
@@ -101,6 +117,10 @@ async def create_pending_approval(
     session_id = str(metadata.get("sessionId") or "")
     work_item_id = str(metadata.get("workItemId") or "")
     run_id = str(run_id or metadata.get("runId") or "")
+    source_kind = str(metadata.get("sourceKind") or ("work" if work_item_id else "session" if session_id else "runtime"))
+    skill_id = str(metadata.get("skillId") or "")
+    trajectory_id = str(metadata.get("trajectoryId") or "")
+    tool_id = str(metadata.get("toolId") or "")
     if session_id:
         existing_query["metadata.sessionId"] = session_id
     elif work_item_id:
@@ -151,8 +171,24 @@ async def create_pending_approval(
         source="approval",
         entity_type="approval",
         entity_id=doc["approvalId"],
-        action_url="/approvals",
-        metadata={"approvalId": doc["approvalId"], "approvalKey": approval_key},
+        action_url=_approval_action_url(
+            session_id=session_id,
+            work_item_id=work_item_id,
+            skill_id=skill_id,
+            trajectory_id=trajectory_id,
+            tool_id=tool_id,
+        ),
+        metadata={
+            "approvalId": doc["approvalId"],
+            "approvalKey": approval_key,
+            "sessionId": session_id,
+            "workItemId": work_item_id,
+            "runId": run_id,
+            "sourceKind": source_kind,
+            "skillId": skill_id,
+            "trajectoryId": trajectory_id,
+            "toolId": tool_id,
+        },
     )
     await record_runtime_event(
         agent_id=agent_id,

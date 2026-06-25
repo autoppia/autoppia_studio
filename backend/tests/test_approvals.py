@@ -66,8 +66,10 @@ async def test_create_list_and_approve_approval(monkeypatch):
     collection = _Collection()
     monkeypatch.setattr(approvals, "approvals_collection", collection)
     monkeypatch.setattr(approvals_route, "approvals_collection", collection)
+    notifications = []
 
     async def fake_create_notification(**kwargs):
+        notifications.append(kwargs)
         return {"notificationId": "notification-1"}
 
     async def fake_record_runtime_event(**kwargs):
@@ -109,6 +111,10 @@ async def test_create_list_and_approve_approval(monkeypatch):
     assert listed["approvals"][0]["toolName"] == "telegram.send_message"
     assert listed["approvals"][0]["sourceKind"] == "runtime"
     assert listed["approvals"][0]["auditTrail"][0]["event"] == "requested"
+    assert notifications[0]["action_url"] == "/approvals?status=pending"
+    assert notifications[0]["metadata"]["approvalId"] == created["approvalId"]
+    assert notifications[0]["metadata"]["approvalKey"] == created["approvalKey"]
+    assert notifications[0]["metadata"]["sourceKind"] == "runtime"
     assert approved["approval"]["status"] == "approved"
     assert approved["approval"]["auditTrail"][-1]["event"] == "approved"
     assert approved["statePatch"] == {"approvedConnectorToolCalls": ["telegram.send_message:0:abc"]}
@@ -119,8 +125,10 @@ async def test_create_list_and_approve_approval(monkeypatch):
 async def test_pending_approval_idempotency_is_scoped_to_session(monkeypatch):
     collection = _Collection()
     monkeypatch.setattr(approvals, "approvals_collection", collection)
+    notifications = []
 
     async def fake_create_notification(**kwargs):
+        notifications.append(kwargs)
         return {"notificationId": "notification-1"}
 
     async def fake_record_runtime_event(**kwargs):
@@ -163,6 +171,8 @@ async def test_pending_approval_idempotency_is_scoped_to_session(monkeypatch):
     assert same_session["approvalId"] == first["approvalId"]
     assert second_session["approvalId"] != first["approvalId"]
     assert len(collection.docs) == 2
+    assert notifications[0]["action_url"] == "/approvals?status=pending&sessionId=session-1"
+    assert notifications[1]["action_url"] == "/approvals?status=pending&sessionId=session-2"
 
 
 @pytest.mark.asyncio
@@ -170,8 +180,10 @@ async def test_approving_session_approval_returns_resume_contract(monkeypatch):
     collection = _Collection()
     monkeypatch.setattr(approvals, "approvals_collection", collection)
     monkeypatch.setattr(approvals_route, "approvals_collection", collection)
+    notifications = []
 
     async def fake_create_notification(**kwargs):
+        notifications.append(kwargs)
         return {}
 
     async def fake_record_runtime_event(**kwargs):
@@ -206,6 +218,9 @@ async def test_approving_session_approval_returns_resume_contract(monkeypatch):
     assert approved["sessionResume"]["sessionId"] == "session-1"
     assert approved["sessionResume"]["socketEvent"] == "continue-task"
     assert approved["sessionResume"]["runtimeStatePatch"]["approvedConnectorToolCalls"] == ["smtp.send_email:0:abc"]
+    assert notifications[0]["metadata"]["sessionId"] == "session-1"
+    assert notifications[0]["metadata"]["sourceKind"] == "session"
+    assert notifications[0]["action_url"] == "/approvals?status=pending&sessionId=session-1"
 
 
 @pytest.mark.asyncio
@@ -215,8 +230,10 @@ async def test_approving_work_item_approval_restarts_work_item(monkeypatch):
     monkeypatch.setattr(approvals, "approvals_collection", approvals_collection)
     monkeypatch.setattr(approvals_route, "approvals_collection", approvals_collection)
     monkeypatch.setattr(approvals_route, "work_items_collection", work_collection)
+    notifications = []
 
     async def fake_create_notification(**kwargs):
+        notifications.append(kwargs)
         return {}
 
     async def fake_record_runtime_event(**kwargs):
@@ -274,6 +291,9 @@ async def test_approving_work_item_approval_restarts_work_item(monkeypatch):
     assert refreshed["pendingApproval"]["statePatch"]["automata_trajectory_progress"]["traj-1"]["approvalPending"] is False
     assert jobs[0][0] == "work_run"
     assert jobs[0][1]["workItemId"] == "work-1"
+    assert notifications[0]["metadata"]["workItemId"] == "work-1"
+    assert notifications[0]["metadata"]["sourceKind"] == "work"
+    assert notifications[0]["action_url"] == "/approvals?status=pending&workItemId=work-1"
 
 
 def test_stable_approval_key_is_deterministic_and_redacted():
