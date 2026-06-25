@@ -16,6 +16,7 @@ from app.database import (
 )
 from app.services.eval_judge import judge_eval_run
 from app.services.connector_benchmarks import audit_connector_benchmark_matrix, connector_benchmark_catalog, harvest_and_smoke_connector_benchmark, run_connector_runtime_smoke, seed_connector_benchmark
+from app.services.task_contracts import task_contract_from_record
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -122,15 +123,7 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
     metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
     benchmark_doc = benchmark or {}
     initial_url = metadata.get("startUrl") or metadata.get("iwaStartUrl") or benchmark_doc.get("websiteUrl") or ""
-    task_contract = {
-        "businessIntent": metadata.get("businessIntent") or task.get("businessIntent") or task.get("prompt", ""),
-        "initialState": metadata.get("initialState") if isinstance(metadata.get("initialState"), dict) else {},
-        "initialUrl": initial_url,
-        "allowedSystems": [str(item) for item in metadata.get("allowedSystems") or [] if item],
-        "expectedArtifacts": [str(item) for item in metadata.get("expectedArtifacts") or [] if item],
-        "successCriteria": task.get("successCriteria", ""),
-        "riskClass": str(metadata.get("riskClass") or ""),
-    }
+    task_contract = task_contract_from_record({**task, "initialUrl": task.get("initialUrl") or initial_url})
     task_contract["completeness"] = _task_contract_completeness(task_contract)
     judge_type = _clean_judge_type(task.get("judgeType"))
     return {
@@ -382,15 +375,16 @@ def _vertical_demo_readiness(
     if not vertical_demo:
         return None
     task_metadata = _task_metadata_list(tasks)
+    task_contracts = [task_contract_from_record(task) for task in tasks]
     expected_tools = _dedupe_strings([tool for metadata in task_metadata for tool in (metadata.get("expectedTools") or [])])
-    allowed_systems = _dedupe_strings([system for metadata in task_metadata for system in (metadata.get("allowedSystems") or [])])
-    expected_artifacts = _dedupe_strings([artifact for metadata in task_metadata for artifact in (metadata.get("expectedArtifacts") or [])])
+    allowed_systems = _dedupe_strings([system for contract in task_contracts for system in (contract.get("allowedSystems") or [])])
+    expected_artifacts = _dedupe_strings([artifact for contract in task_contracts for artifact in (contract.get("expectedArtifacts") or [])])
     approval_boundaries = _dedupe_strings([
         metadata.get("initialState", {}).get("approvalBoundary")
         for metadata in task_metadata
         if isinstance(metadata.get("initialState"), dict)
     ])
-    risk_classes = _dedupe_strings([metadata.get("riskClass") for metadata in task_metadata])
+    risk_classes = _dedupe_strings([contract.get("riskClass") for contract in task_contracts])
     skill_ids = _dedupe_strings([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
     trajectory_ids = _dedupe_strings([trajectory_id for skill in skills for trajectory_id in (skill.get("trajectoryIds") or [])])
     labels = [str(run.get("label") or "pending").lower() for run in runs]

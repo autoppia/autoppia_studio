@@ -24,6 +24,7 @@ from app.harvesters.toolkit import ToolkitHarvester
 from app.connectors import execute_connector_tool
 from app.routes.connectors import connector_toolkit
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
 router = APIRouter()
 
@@ -493,28 +494,6 @@ def _tool_lookup(tool_docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return result
 
 
-def _task_contract(doc: dict[str, Any]) -> dict[str, Any]:
-    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    nested = metadata.get("taskContract") if isinstance(metadata.get("taskContract"), dict) else {}
-    return {
-        "businessIntent": doc.get("businessIntent") or metadata.get("businessIntent") or nested.get("businessIntent") or "",
-        "allowedSystems": doc.get("allowedSystems") or metadata.get("allowedSystems") or nested.get("allowedSystems") or [],
-        "expectedArtifacts": doc.get("expectedArtifacts") or metadata.get("expectedArtifacts") or nested.get("expectedArtifacts") or [],
-        "riskClass": doc.get("riskClass") or metadata.get("riskClass") or nested.get("riskClass") or "",
-        "successCriteria": doc.get("successCriteria") or metadata.get("successCriteria") or nested.get("successCriteria") or "",
-    }
-
-
-def _task_contract_ready(doc: dict[str, Any]) -> bool:
-    contract = _task_contract(doc)
-    return bool(
-        str(contract.get("businessIntent") or "").strip()
-        and any(str(item or "").strip() for item in contract.get("allowedSystems") or [])
-        and any(str(item or "").strip() for item in contract.get("expectedArtifacts") or [])
-        and str(contract.get("riskClass") or "").strip()
-    )
-
-
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -528,7 +507,7 @@ def _capability_graph_coverage(
     edge_relations = {edge.get("relation") for edge in edges}
     ready_tools = sum(1 for tool in tool_docs if str(tool.get("status") or "").lower() == "ready")
     ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
-    complete_tasks = sum(1 for task in task_docs if _task_contract_ready(task))
+    complete_tasks = sum(1 for task in task_docs if task_contract_ready(task))
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
@@ -1320,7 +1299,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
 
     for task in task_docs:
         task_id = str(task.get("taskId") or "")
-        task_contract = _task_contract(task)
+        task_contract = task_contract_from_record(task)
         task_node = _add_node(nodes, "task", task_id, str(task.get("name") or task.get("taskName") or task_id), {
             "taskId": task_id,
             "benchmarkId": task.get("benchmarkId", ""),
