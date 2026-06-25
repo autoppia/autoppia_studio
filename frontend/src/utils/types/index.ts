@@ -703,6 +703,35 @@ export interface CompanySetupContract {
     entities: number;
     typedTools: number;
   };
+  systemFactory?: {
+    connectorMap: {
+      total: number;
+      entityMapped: number;
+      entitySourceReady: number;
+      entityPending: number;
+      typedToolReady: number;
+      toolSynthesisPending: number;
+      candidateTasksReady: number;
+      ingestionReady: number;
+      ingestionBlocked: number;
+      readyStages: number;
+      totalStages: number;
+      sample: Array<{
+        connectorId: string;
+        name: string;
+        entityMapping: string;
+        businessObjects: string[];
+        readyForToolBinding: boolean;
+        typedToolCount: number;
+        governedToolCount: number;
+        candidateTasksRecommended: boolean;
+        ingestionState: string;
+        readyStages: number;
+        totalStages: number;
+      }>;
+      gaps: Array<{ key: string; label: string; target: string }>;
+    };
+  };
   resourceMap?: {
     documents: {
       total: number;

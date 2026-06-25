@@ -331,6 +331,23 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "provider": "custom",
                     "config": {"baseUrl": "https://erp.example.com/api"},
                     "runtimeRequirements": ["network", "api_credentials"],
+                    "capabilityDiscovery": {
+                        "entityMapping": {
+                            "status": "mapped",
+                            "businessObjects": ["Claim", "Policy"],
+                            "readyForToolBinding": True,
+                        },
+                        "toolSynthesis": {
+                            "typedToolCount": 3,
+                            "governedToolCount": 3,
+                        },
+                        "candidateTasks": {"recommended": True},
+                        "ingestionPipeline": {
+                            "state": "ready",
+                            "readyStages": 5,
+                            "totalStages": 5,
+                        },
+                    },
                 },
                 {
                     "connectorId": "connector-web",
@@ -344,6 +361,17 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "authRequired": True,
                     "config": {"startUrl": "https://portal.example.com/login"},
                     "runtimeRequirements": ["browser_or_http"],
+                    "capabilityDiscovery": {
+                        "entityMapping": {"status": "pending", "businessObjects": [], "readyForToolBinding": False},
+                        "toolSynthesis": {"typedToolCount": 0, "governedToolCount": 0},
+                        "candidateTasks": {"recommended": False},
+                        "ingestionPipeline": {
+                            "state": "blocked",
+                            "readyStages": 1,
+                            "totalStages": 5,
+                            "nextStage": {"label": "Authenticate portal", "summary": "Connector needs browser credentials"},
+                        },
+                    },
                 },
             ]
         ),
@@ -558,6 +586,13 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["company"]["name"] == "Celeris"
     assert result["contract"]["systems"]["summary"]["totalConnectors"] == 2
     assert result["contract"]["systems"]["summary"]["connectedConnectors"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["entityMapped"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["typedToolReady"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["candidateTasksReady"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["ingestionBlocked"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["readyStages"] == 6
+    assert result["contract"]["systemFactory"]["connectorMap"]["totalStages"] == 10
+    assert result["contract"]["systemFactory"]["connectorMap"]["sample"][0]["businessObjects"] == ["Claim", "Policy"]
     assert result["contract"]["context"]["typedTools"] == 1
     assert result["contract"]["factory"]["readySkills"] == 2
     assert result["contract"]["runtime"]["sessions"] == 2

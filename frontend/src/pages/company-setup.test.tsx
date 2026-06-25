@@ -55,6 +55,52 @@ describe("Company Setup page", () => {
                 connectors: [],
               },
               context: { resources: 5, vectorStores: 1, entities: 4, typedTools: 8 },
+              systemFactory: {
+                connectorMap: {
+                  total: 4,
+                  entityMapped: 2,
+                  entitySourceReady: 1,
+                  entityPending: 1,
+                  typedToolReady: 2,
+                  toolSynthesisPending: 1,
+                  candidateTasksReady: 2,
+                  ingestionReady: 2,
+                  ingestionBlocked: 1,
+                  readyStages: 14,
+                  totalStages: 20,
+                  sample: [
+                    {
+                      connectorId: "connector-erp",
+                      name: "Insurance ERP",
+                      entityMapping: "mapped",
+                      businessObjects: ["Claim", "Policy"],
+                      readyForToolBinding: true,
+                      typedToolCount: 4,
+                      governedToolCount: 4,
+                      candidateTasksRecommended: true,
+                      ingestionState: "ready",
+                      readyStages: 5,
+                      totalStages: 5,
+                    },
+                    {
+                      connectorId: "connector-portal",
+                      name: "Broker Portal",
+                      entityMapping: "pending",
+                      businessObjects: [],
+                      readyForToolBinding: false,
+                      typedToolCount: 0,
+                      governedToolCount: 0,
+                      candidateTasksRecommended: false,
+                      ingestionState: "blocked",
+                      readyStages: 1,
+                      totalStages: 5,
+                    },
+                  ],
+                  gaps: [
+                    { key: "ingestion", label: "Broker Portal: Connector needs browser credentials.", target: "connectors" },
+                  ],
+                },
+              },
               resourceMap: {
                 documents: {
                   total: 5,
@@ -294,6 +340,13 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("5/7")).toBeInTheDocument();
     expect(await screen.findByText("6.5 credits")).toBeInTheDocument();
     expect(await screen.findByText("Domain restricted · 4 browser sessions")).toBeInTheDocument();
+    expect(await screen.findByText("System factory pipeline")).toBeInTheDocument();
+    expect(await screen.findByText("1 source ready, 1 pending")).toBeInTheDocument();
+    expect(await screen.findByText("1 pending synthesis")).toBeInTheDocument();
+    expect(await screen.findByText("Connector access is becoming evaluable work")).toBeInTheDocument();
+    expect(await screen.findByText("1 blocked connectors")).toBeInTheDocument();
+    expect(await screen.findByText("Insurance ERP: mapped, 4 typed tools, ready")).toBeInTheDocument();
+    expect(await screen.findByText("Broker Portal: Connector needs browser credentials.")).toBeInTheDocument();
     expect(await screen.findByText("Runtime gate")).toBeInTheDocument();
     expect((await screen.findAllByText("4/5")).length).toBeGreaterThan(0);
     expect(await screen.findByText("acl 1")).toBeInTheDocument();

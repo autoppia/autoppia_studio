@@ -253,6 +253,7 @@ export default function CompanySetup(): React.ReactElement {
   const integration = contract.integration;
   const capabilityMap = contract.capabilityMap;
   const skillPackages = capabilityMap?.skills.packages;
+  const connectorMap = contract.systemFactory?.connectorMap;
   const resourceMap = contract.resourceMap;
   const runtimePolicyMap = contract.runtimePolicyMap;
   const workOrchestration = contract.workOrchestration;
@@ -515,6 +516,65 @@ export default function CompanySetup(): React.ReactElement {
                     <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">Eval runs: <span className="font-semibold text-gray-900 dark:text-white">{integration.compliance.auditEvidence.evalRuns}</span></p>
                   </div>
                 </div>
+              </div>
+            )}
+            {connectorMap && (
+              <div className="mt-5 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">System factory pipeline</p>
+                <div className="mt-3 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entity mapping</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      Mapped: <span className="font-semibold text-gray-900 dark:text-white">{connectorMap.entityMapped}/{connectorMap.total}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{connectorMap.entitySourceReady} source ready, {connectorMap.entityPending} pending</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Tool synthesis</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      Typed: <span className="font-semibold text-gray-900 dark:text-white">{connectorMap.typedToolReady}/{connectorMap.total}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{connectorMap.toolSynthesisPending} pending synthesis</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Candidate tasks</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      Ready: <span className="font-semibold text-gray-900 dark:text-white">{connectorMap.candidateTasksReady}/{connectorMap.total}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Connector access is becoming evaluable work</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Ingestion</p>
+                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                      Stages: <span className="font-semibold text-gray-900 dark:text-white">{connectorMap.readyStages}/{connectorMap.totalStages}</span>
+                    </p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{connectorMap.ingestionBlocked} blocked connectors</p>
+                  </div>
+                </div>
+                {connectorMap.sample.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {connectorMap.sample.slice(0, 4).map((item) => (
+                      <span key={item.connectorId || item.name} className="inline-flex rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                        {item.name || "Connector"}: {item.entityMapping}, {item.typedToolCount} typed tools, {item.ingestionState}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {connectorMap.gaps.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {connectorMap.gaps.slice(0, 2).map((gap, index) => (
+                      <button
+                        key={`${gap.key}-${index}`}
+                        type="button"
+                        onClick={() => navigate(gapPath(gap.target))}
+                        className="flex w-full items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                      >
+                        <span>{gap.label}</span>
+                        <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
