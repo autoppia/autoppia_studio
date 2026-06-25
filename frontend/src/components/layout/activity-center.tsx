@@ -47,6 +47,40 @@ type PanelKey = "none" | "activity" | "notifications";
 
 type StatTile = { label: string; value: number; color: string };
 
+function workRunSessionId(workItemId?: string, runId?: string): string {
+  if (!workItemId || !runId) return "";
+  return `work-${workItemId}-${runId}`;
+}
+
+function runtimeActionUrl(args: { sessionId?: string; workItemId?: string; runId?: string }): string {
+  const derivedSessionId = workRunSessionId(args.workItemId, args.runId);
+  if (args.sessionId || derivedSessionId) {
+    return `/runtime?sessionIds=${encodeURIComponent(args.sessionId || derivedSessionId)}`;
+  }
+  if (args.workItemId) {
+    return `/runtime?workItemId=${encodeURIComponent(args.workItemId)}`;
+  }
+  return "";
+}
+
+function notificationActionUrl(notification: AppNotification): string {
+  const metadata = notification.metadata && typeof notification.metadata === "object" ? notification.metadata : {};
+  const sessionId = String(
+    (metadata as Record<string, any>).sessionId ||
+    (metadata as Record<string, any>).runtimeSessionId ||
+    "",
+  );
+  const workItemId = String(
+    (metadata as Record<string, any>).workItemId ||
+    (notification.entityType === "work_item" ? notification.entityId || "" : "") ||
+    "",
+  );
+  const runId = String((metadata as Record<string, any>).runId || "");
+  const runtimeUrl = runtimeActionUrl({ sessionId, workItemId, runId });
+  if (runtimeUrl) return runtimeUrl;
+  return notification.actionUrl || "";
+}
+
 export default function ActivityCenter({ showActivity = true }: { showActivity?: boolean }) {
   const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
@@ -223,7 +257,7 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
 
   const onNotificationClick = (notification: AppNotification) => {
     markRead(notification);
-    handleAction(notification.actionUrl);
+    handleAction(notificationActionUrl(notification));
   };
 
   if (!user.isAuthenticated) return null;
@@ -297,7 +331,7 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
                     {runningItems.map((item) => (
                       <button
                         key={item.workItemId}
-                        onClick={() => handleAction("/work")}
+                        onClick={() => handleAction(runtimeActionUrl({ workItemId: item.workItemId, runId: item.lastRunId }))}
                         className="w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                       >
                         <FontAwesomeIcon icon={faSpinner} className="text-[11px] text-primary animate-spin shrink-0" />
