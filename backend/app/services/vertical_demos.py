@@ -1,0 +1,183 @@
+from __future__ import annotations
+
+from typing import Any
+
+from app.services.task_contracts import task_contract_from_record
+
+
+def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
+    metadata = doc.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _list_values(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(item).strip() for item in values if str(item or "").strip()]
+
+
+def _dedupe(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def vertical_demo_spec(benchmark: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = _metadata(benchmark)
+    vertical_demo = metadata.get("verticalDemo")
+    if isinstance(vertical_demo, dict):
+        return vertical_demo
+    vertical_demo = benchmark.get("verticalDemo")
+    return vertical_demo if isinstance(vertical_demo, dict) else None
+
+
+def vertical_demo_payload(
+    *,
+    benchmark: dict[str, Any],
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    metadata = _metadata(benchmark)
+    vertical_demo = vertical_demo_spec(benchmark)
+    if not vertical_demo:
+        return None
+
+    task_metadata = [_metadata(task) for task in tasks]
+    task_contracts = [task_contract_from_record(task) for task in tasks]
+    expected_tools = _dedupe(
+        [
+            tool
+            for task, task_meta in zip(tasks, task_metadata, strict=False)
+            for tool in [
+                *_list_values(task_meta.get("expectedTools")),
+                *_list_values(task.get("expectedTools")),
+            ]
+        ]
+    )
+    allowed_systems = _dedupe([system for contract in task_contracts for system in _list_values(contract.get("allowedSystems"))])
+    expected_artifacts = _dedupe([artifact for contract in task_contracts for artifact in _list_values(contract.get("expectedArtifacts"))])
+    approval_boundaries = _dedupe(
+        [
+            task_meta.get("initialState", {}).get("approvalBoundary")
+            for task_meta in task_metadata
+            if isinstance(task_meta.get("initialState"), dict)
+        ]
+    )
+    risk_classes = _dedupe([contract.get("riskClass") for contract in task_contracts])
+    skill_ids = _dedupe([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
+    trajectory_ids = _dedupe([trajectory_id for skill in skills for trajectory_id in _list_values(skill.get("trajectoryIds"))])
+    labels = [str(run.get("label") or "pending").lower() for run in runs]
+    promoted_statuses = {"published", "approved", "active", "production"}
+    promoted_skills = [
+        skill
+        for skill in skills
+        if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in promoted_statuses or skill.get("skillPackage")
+    ]
+
+    expected_tool_set = set(expected_tools)
+    checks = {
+        "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & expected_tool_set) or "email" in allowed_systems,
+        "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
+        "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
+        "draft_artifact": "draft_email" in expected_artifacts,
+        "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & expected_tool_set) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
+        "benchmark": bool(tasks),
+        "trajectory": bool(trajectory_ids),
+        "skill_promotion": bool(promoted_skills),
+        "runtime_replay": labels.count("pass") > 0,
+    }
+
+    coverage: list[dict[str, Any]] = []
+    for item in vertical_demo.get("coverage") or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        ready = bool(checks.get(key))
+        coverage.append(
+            {
+                "key": key,
+                "label": str(item.get("label") or key),
+                "expectedEvidence": str(item.get("evidence") or ""),
+                "ready": ready,
+                "status": "ready" if ready else "missing",
+            }
+        )
+    total = len(coverage)
+    ready_count = sum(1 for item in coverage if item.get("ready"))
+    missing = [str(item.get("key") or "") for item in coverage if not item.get("ready")]
+    return {
+        "benchmarkId": str(benchmark.get("benchmarkId") or ""),
+        "objective": str(vertical_demo.get("objective") or ""),
+        "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
+        "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
+        "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
+        "readyCount": ready_count,
+        "total": total,
+        "missing": missing,
+        "coverage": coverage,
+        "evidence": {
+            "expectedTools": expected_tools,
+            "allowedSystems": allowed_systems,
+            "expectedArtifacts": expected_artifacts,
+            "approvalBoundaries": approval_boundaries,
+            "riskClasses": risk_classes,
+            "skillIds": skill_ids,
+            "trajectoryIds": trajectory_ids,
+            "passingRuns": labels.count("pass"),
+        },
+        "nextActions": [
+            f"Complete vertical demo evidence for: {', '.join(missing)}."
+            if missing
+            else "Vertical demo has benchmark, skill and runtime replay evidence."
+        ],
+    }
+
+
+def summarize_vertical_demos(
+    *,
+    benchmarks: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+    limit: int = 10,
+) -> dict[str, Any]:
+    tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
+    skills_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills:
+        benchmark_id = str(skill.get("benchmarkId") or "")
+        if benchmark_id:
+            skills_by_benchmark.setdefault(benchmark_id, []).append(skill)
+    runs_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        benchmark_id = str(run.get("benchmarkId") or "")
+        if benchmark_id:
+            runs_by_benchmark.setdefault(benchmark_id, []).append(run)
+
+    demos = [
+        payload
+        for benchmark in benchmarks
+        if (
+            payload := vertical_demo_payload(
+                benchmark=benchmark,
+                tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), runs),
+            )
+        )
+    ]
+    return {
+        "total": len(demos),
+        "ready": sum(1 for demo in demos if demo.get("state") == "ready"),
+        "partial": sum(1 for demo in demos if demo.get("state") == "partial"),
+        "missing": sum(1 for demo in demos if demo.get("state") == "missing"),
+        "demos": demos[:limit],
+    }

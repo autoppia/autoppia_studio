@@ -43,6 +43,7 @@ from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.vertical_demos import summarize_vertical_demos
 from app.services.work_orchestration import summarize_work_orchestration_contracts
 
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api[_-]?key|refresh|credential)", re.IGNORECASE)
@@ -115,103 +116,6 @@ def _work_credits_spent(doc: dict[str, Any]) -> float:
 
 def _surface_status(ready: bool) -> str:
     return "ready" if ready else "needs_work"
-
-
-def _dedupe(values: list[Any]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        clean = str(value or "").strip()
-        if not clean or clean in seen:
-            continue
-        seen.add(clean)
-        result.append(clean)
-    return result
-
-
-def _vertical_demo_summary(
-    *,
-    benchmarks: list[dict[str, Any]],
-    tasks: list[dict[str, Any]],
-    skills: list[dict[str, Any]],
-    runs: list[dict[str, Any]],
-) -> dict[str, Any]:
-    vertical_benchmarks = [
-        benchmark
-        for benchmark in benchmarks
-        if isinstance(_metadata(benchmark).get("verticalDemo"), dict) or isinstance(benchmark.get("verticalDemo"), dict)
-    ]
-    tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
-    for task in tasks:
-        tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
-    skills_by_benchmark: dict[str, list[dict[str, Any]]] = {}
-    for skill in skills:
-        benchmark_id = str(skill.get("benchmarkId") or "")
-        if benchmark_id:
-            skills_by_benchmark.setdefault(benchmark_id, []).append(skill)
-    runs_by_eval = {str(run.get("evalId") or ""): str(run.get("label") or "").lower() for run in runs}
-    demos: list[dict[str, Any]] = []
-    for benchmark in vertical_benchmarks:
-        benchmark_id = str(benchmark.get("benchmarkId") or "")
-        metadata = _metadata(benchmark)
-        vertical_demo = metadata.get("verticalDemo") if isinstance(metadata.get("verticalDemo"), dict) else benchmark.get("verticalDemo")
-        benchmark_tasks = tasks_by_benchmark.get(benchmark_id, [])
-        benchmark_skills = skills_by_benchmark.get(benchmark_id, [])
-        task_metadata = [_metadata(task) for task in benchmark_tasks]
-        expected_tools = _dedupe([tool for metadata in task_metadata for tool in _list_values(metadata.get("expectedTools"))])
-        allowed_systems = _dedupe([system for metadata in task_metadata for system in _list_values(metadata.get("allowedSystems"))])
-        expected_artifacts = _dedupe([artifact for metadata in task_metadata for artifact in _list_values(metadata.get("expectedArtifacts"))])
-        approval_boundaries = _dedupe([
-            metadata.get("initialState", {}).get("approvalBoundary")
-            for metadata in task_metadata
-            if isinstance(metadata.get("initialState"), dict)
-        ])
-        risk_classes = _dedupe([metadata.get("riskClass") for metadata in task_metadata])
-        trajectory_ids = _dedupe([trajectory_id for skill in benchmark_skills for trajectory_id in _list_values(skill.get("trajectoryIds"))])
-        promoted_skills = [
-            skill
-            for skill in benchmark_skills
-            if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"published", "approved", "active", "production"} or skill.get("skillPackage")
-        ]
-        eval_ids = _dedupe([task.get("taskId") or task.get("evalId") for task in benchmark_tasks])
-        passing_runs = sum(1 for eval_id in eval_ids if runs_by_eval.get(eval_id) == "pass")
-        checks = {
-            "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & set(expected_tools)) or "email" in allowed_systems,
-            "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
-            "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
-            "draft_artifact": "draft_email" in expected_artifacts,
-            "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & set(expected_tools)) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
-            "benchmark": bool(benchmark_tasks),
-            "trajectory": bool(trajectory_ids),
-            "skill_promotion": bool(promoted_skills),
-            "runtime_replay": passing_runs > 0,
-        }
-        coverage = []
-        for item in (vertical_demo.get("coverage") if isinstance(vertical_demo, dict) else []):
-            if not isinstance(item, dict):
-                continue
-            key = str(item.get("key") or "")
-            coverage.append({"key": key, "label": str(item.get("label") or key), "ready": bool(checks.get(key))})
-        ready_count = sum(1 for item in coverage if item["ready"])
-        total = len(coverage)
-        demos.append({
-            "benchmarkId": benchmark_id,
-            "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
-            "objective": str((vertical_demo or {}).get("objective") or ""),
-            "runtimePath": str((vertical_demo or {}).get("runtimePath") or ""),
-            "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
-            "readyCount": ready_count,
-            "total": total,
-            "missing": [item["key"] for item in coverage if not item["ready"]],
-        })
-    ready = sum(1 for demo in demos if demo["state"] == "ready")
-    return {
-        "total": len(demos),
-        "ready": ready,
-        "partial": sum(1 for demo in demos if demo["state"] == "partial"),
-        "missing": sum(1 for demo in demos if demo["state"] == "missing"),
-        "demos": demos[:10],
-    }
 
 
 def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
@@ -343,7 +247,7 @@ class AutomataAssistantTools:
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
-        vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
+        vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = summarize_resource_governance(knowledge_docs)
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
