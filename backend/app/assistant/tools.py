@@ -88,6 +88,100 @@ def _skill_hardened(skill: dict[str, Any]) -> bool:
     )
 
 
+def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = doc.get("resourceContract")
+    return contract if isinstance(contract, dict) else {}
+
+
+def _resource_indexing(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(doc)
+    indexing = contract.get("indexing")
+    return indexing if isinstance(indexing, dict) else {}
+
+
+def _resource_governance(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(doc)
+    governance = contract.get("governance")
+    return governance if isinstance(governance, dict) else {}
+
+
+def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
+    contract = _resource_contract(doc)
+    return _list_values(contract.get("readTools") or doc.get("readTools"))
+
+
+def _resource_status(doc: dict[str, Any]) -> str:
+    return str(doc.get("status") or _resource_contract(doc).get("status") or "unknown").strip().lower()
+
+
+def _resource_indexed(doc: dict[str, Any]) -> bool:
+    indexing = _resource_indexing(doc)
+    if isinstance(indexing.get("indexed"), bool):
+        return indexing["indexed"]
+    return _resource_status(doc) in {"indexed", "ready", "active", "completed"}
+
+
+def _resource_citable(doc: dict[str, Any]) -> bool:
+    governance = _resource_governance(doc)
+    citability = governance.get("citability")
+    if isinstance(citability, dict) and isinstance(citability.get("citable"), bool):
+        return citability["citable"]
+    return _resource_indexed(doc)
+
+
+def _resource_vector_id(doc: dict[str, Any]) -> str:
+    indexing = _resource_indexing(doc)
+    return str(doc.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "").strip()
+
+
+def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    read_tools = _dedupe([tool for doc in docs for tool in _resource_read_tools(doc)])
+    sample = []
+    for doc in docs[:8]:
+        governance = _resource_governance(doc)
+        freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
+        citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+        sample.append({
+            "documentId": str(doc.get("documentId") or ""),
+            "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
+            "name": str(doc.get("filename") or doc.get("name") or "Untitled resource"),
+            "status": _resource_status(doc),
+            "indexed": _resource_indexed(doc),
+            "citable": _resource_citable(doc),
+            "freshnessStatus": str(freshness.get("status") or ("current" if _resource_indexed(doc) else "indexing")),
+            "citationLabel": str(citability.get("citationLabel") or doc.get("filename") or ""),
+            "vectorDatabaseId": _resource_vector_id(doc),
+            "readTools": _resource_read_tools(doc)[:8],
+        })
+    total = len(docs)
+    indexed = sum(1 for doc in docs if _resource_indexed(doc))
+    citable = sum(1 for doc in docs if _resource_citable(doc))
+    with_contract = sum(1 for doc in docs if _resource_contract(doc))
+    with_vector_store = sum(1 for doc in docs if _resource_vector_id(doc))
+    gaps = [
+        gap
+        for gap in [
+            {"key": "resource_contracts", "label": "Knowledge documents exist but are not exposed as governed resources.", "target": "knowledge"} if total and with_contract == 0 else None,
+            {"key": "resource_indexing", "label": "Knowledge resources exist but none are indexed for retrieval.", "target": "knowledge"} if total and indexed == 0 else None,
+            {"key": "resource_citations", "label": "Knowledge resources are not citable yet, so answers cannot cite source evidence.", "target": "knowledge"} if total and citable == 0 else None,
+            {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before AgentRuntimes can ground work in them.", "target": "knowledge"} if total and not read_tools else None,
+            {"key": "vector_store", "label": "Knowledge resources are not linked to vector stores.", "target": "knowledge"} if total and with_vector_store == 0 else None,
+        ]
+        if gap
+    ]
+    return {
+        "total": total,
+        "indexed": indexed,
+        "citable": citable,
+        "withResourceContract": with_contract,
+        "withVectorStore": with_vector_store,
+        "readTools": read_tools[:20],
+        "sample": sample,
+        "ready": bool(total and indexed == total and citable == total and with_contract == total and with_vector_store == total and read_tools),
+        "gaps": gaps,
+    }
+
+
 def _safe_float(value: Any) -> float:
     try:
         return float(value or 0.0)
@@ -249,6 +343,7 @@ class AutomataAssistantTools:
         benchmark_docs = await _to_list(benchmarks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         eval_run_docs = await _to_list(eval_runs_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        knowledge_docs = await _to_list(knowledge_documents_collection.find(scoped, {"_id": 0, "storagePath": 0}).sort("createdAt", -1), 1000)
         work_docs = await _to_list(work_items_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         approval_docs = await _to_list(approvals_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         counts = {
@@ -274,6 +369,7 @@ class AutomataAssistantTools:
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
+        resource_map = _resource_governance_summary(knowledge_docs)
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
         pending_approval_work_item_ids = {
@@ -328,6 +424,9 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "work", "action": "Review exhausted work budgets before retrying jobs.", "reason": f"{budget_exhausted} work item(s) exhausted their budget."})
         if counts["benchmarkTasks"] and task_contracts_ready == 0:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
+        if resource_map["total"] and not resource_map["ready"]:
+            first_gap = resource_map["gaps"][0]["label"] if resource_map["gaps"] else "Knowledge resources are not ready for governed runtime grounding."
+            recommended_actions.insert(0, {"area": "knowledge", "action": "Finish resource governance before relying on knowledge grounding in skills.", "reason": first_gap})
         if vertical_demos["total"] and vertical_demos["ready"] < vertical_demos["total"]:
             missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
@@ -342,6 +441,7 @@ class AutomataAssistantTools:
                 {"area": "evals", "severity": "high", "message": f"{failing_runs} failing eval run(s) need trace review before skill promotion."} if failing_runs else None,
                 {"area": "work", "severity": "medium", "message": f"{scheduled_due} scheduled work item(s) are due."} if scheduled_due else None,
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
+                {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
@@ -423,6 +523,7 @@ class AutomataAssistantTools:
                 },
                 "verticalDemos": vertical_demos,
             },
+            "resourceMap": resource_map,
             "runtime": {
                 "agents": counts["agents"],
                 "sessions": counts["sessions"],

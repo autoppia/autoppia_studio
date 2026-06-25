@@ -297,12 +297,37 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             }
         ]
     )
+    knowledge_docs = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "documentId": "doc-1",
+                "resourceId": "doc-1",
+                "filename": "claims-policy.md",
+                "status": "indexing",
+                "vectorDatabaseId": "vector-1",
+                "resourceContract": {
+                    "resourceId": "doc-1",
+                    "resourceKind": "document",
+                    "readOnly": True,
+                    "status": "indexing",
+                    "indexing": {"indexed": False, "vectorDatabaseId": "vector-1"},
+                    "governance": {
+                        "freshness": {"status": "indexing"},
+                        "citability": {"citable": False, "citationLabel": "claims-policy.md"},
+                    },
+                    "readTools": ["knowledge.claims.search", "knowledge.claims.read_document"],
+                },
+            }
+        ]
+    )
     empty = _Collection([])
     monkeypatch.setattr(assistant_tools, "companies_collection", companies)
     monkeypatch.setattr(assistant_tools, "agents_collection", empty)
     monkeypatch.setattr(assistant_tools, "connectors_collection", connectors)
     monkeypatch.setattr(assistant_tools, "credentials_collection", empty)
-    monkeypatch.setattr(assistant_tools, "knowledge_documents_collection", empty)
+    monkeypatch.setattr(assistant_tools, "knowledge_documents_collection", knowledge_docs)
     monkeypatch.setattr(assistant_tools, "capabilities_collection", capabilities)
     monkeypatch.setattr(assistant_tools, "tools_collection", published_tools)
     monkeypatch.setattr(assistant_tools, "benchmarks_collection", benchmarks)
@@ -329,6 +354,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
+    assert snapshot["operatingState"]["resourceMap"]["total"] == 1
+    assert snapshot["operatingState"]["resourceMap"]["indexed"] == 0
+    assert snapshot["operatingState"]["resourceMap"]["citable"] == 0
+    assert snapshot["operatingState"]["resourceMap"]["withResourceContract"] == 1
+    assert snapshot["operatingState"]["resourceMap"]["readTools"] == ["knowledge.claims.search", "knowledge.claims.read_document"]
+    assert snapshot["operatingState"]["resourceMap"]["gaps"][0]["key"] == "resource_indexing"
     assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
