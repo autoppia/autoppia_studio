@@ -2,6 +2,7 @@ from typing import Any
 
 from app.harvesters.base import BaseHarvester, connector_surface, now_iso, risk_from_side_effects, slug
 from app.routes.connectors import connector_toolkit
+from app.services.tool_contracts import apply_tool_contract
 
 
 class ToolkitHarvester(BaseHarvester):
@@ -34,6 +35,14 @@ class ToolkitHarvester(BaseHarvester):
             runtime_requirements = list(raw_tool.get("runtimeRequirements") or toolkit.get("runtimeRequirements") or [])
             if execution_type == "browser_action" and "browser" not in runtime_requirements:
                 runtime_requirements.append("browser")
+            contracted_tool = apply_tool_contract(
+                raw_tool,
+                connector=connector,
+                toolkit=toolkit,
+                execution_type=execution_type,
+                surface=surface,
+                runtime_requirements=runtime_requirements,
+            )
             tools.append(
                 {
                     "toolId": tool_id,
@@ -44,20 +53,21 @@ class ToolkitHarvester(BaseHarvester):
                     "name": tool_name,
                     "displayName": tool_name.split(".")[-1].replace("_", " ").title(),
                     "description": raw_tool.get("description", ""),
-                    "inputSchema": raw_tool.get("inputSchema") or {"type": "object", "properties": {}},
-                    "outputSchema": raw_tool.get("outputSchema") or {"type": "object", "additionalProperties": True},
+                    "inputSchema": contracted_tool["inputSchema"],
+                    "outputSchema": contracted_tool["outputSchema"],
                     "executionType": execution_type,
                     "surface": surface,
-                    "runtimeRequirements": runtime_requirements,
-                    "sideEffects": side_effects,
-                    "inputEntities": list(raw_tool.get("inputEntities") or []),
-                    "outputEntity": str(raw_tool.get("outputEntity") or ""),
+                    "runtimeRequirements": contracted_tool["runtimeRequirements"],
+                    "sideEffects": contracted_tool["sideEffects"],
+                    "policyBoundary": contracted_tool["policyBoundary"],
+                    "inputEntities": contracted_tool["inputEntities"],
+                    "outputEntity": contracted_tool["outputEntity"],
                     "outputCard": raw_tool.get("outputCard") if isinstance(raw_tool.get("outputCard"), dict) else {},
-                    "permissions": {
-                        "connectorId": connector_id,
-                        "requiresApproval": "write" in side_effects.lower(),
-                    },
-                    "riskLevel": risk_from_side_effects(side_effects),
+                    "permissions": contracted_tool["permissions"],
+                    "approvalPolicy": contracted_tool["approvalPolicy"],
+                    "scopes": contracted_tool["scopes"],
+                    "riskLevel": contracted_tool.get("riskLevel") or risk_from_side_effects(side_effects),
+                    "toolContract": contracted_tool["toolContract"],
                     "status": "ready" if connector.get("status") == "connected" or not toolkit.get("authFields") else "needs_connector_auth",
                     "source": self.source,
                     "harvesterType": self.harvester_type,

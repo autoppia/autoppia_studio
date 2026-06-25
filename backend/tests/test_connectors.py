@@ -60,6 +60,12 @@ def test_custom_api_toolkit_exposes_docs_generation_tools():
         "api.generate_toolkit",
         "api.call",
     ]
+    api_call = next(tool for tool in toolkit["tools"] if tool["name"] == "api.call")
+    assert api_call["toolContract"]["format"] == "autoppia.tool_contract"
+    assert api_call["policyBoundary"] == "write"
+    assert api_call["approvalPolicy"]["required"] is True
+    assert api_call["permissions"]["approval"] == "always"
+    assert api_call["toolContract"]["schema"]["typed"] is True
 
 
 def test_connector_serializer_exposes_capability_discovery_contract():
@@ -89,6 +95,9 @@ def test_connector_serializer_exposes_capability_discovery_contract():
     assert discovery["auth"]["configuredFields"] == 0
     assert discovery["toolSynthesis"]["toolCount"] == 2
     assert discovery["toolSynthesis"]["typedToolCount"] == 0
+    assert discovery["toolSynthesis"]["governedToolCount"] == 2
+    assert discovery["toolSynthesis"]["approvalRequiredTools"] == ["api.call"]
+    assert discovery["toolSynthesis"]["riskCounts"]["medium"] == 1
     assert discovery["candidateTasks"]["recommended"] is True
     assert discovery["ingestionPipeline"]["state"] == "blocked"
     assert discovery["ingestionPipeline"]["readyStages"] == 0
@@ -102,6 +111,28 @@ def test_connector_serializer_exposes_capability_discovery_contract():
         "candidate_tasks",
     ]
     assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
+
+
+def test_email_toolkit_marks_send_as_governed_human_approval_tool():
+    toolkit = connectors_route.connector_toolkit(
+        {
+            "connectorId": "smtp-1",
+            "name": "SMTP",
+            "type": "smtp",
+            "category": "email",
+            "status": "connected",
+            "provider": "official",
+            "config": {},
+        }
+    )
+
+    send_tool = next(tool for tool in toolkit["tools"] if tool["name"] == "smtp.send_email")
+
+    assert send_tool["toolContract"]["policyBoundary"] == "send"
+    assert send_tool["toolContract"]["riskLevel"] == "high"
+    assert send_tool["toolContract"]["approvalPolicy"]["required"] is True
+    assert send_tool["toolContract"]["permissions"]["requiresApproval"] is True
+    assert send_tool["toolContract"]["schema"]["typed"] is True
 
 
 @pytest.mark.parametrize(

@@ -108,6 +108,9 @@ async def test_task_scoped_discovery_publishes_tools_without_skills(monkeypatch)
     assert result["tools"][0]["discoveryScope"] == "task_scoped"
     assert result["tools"][0]["discoveryRelevance"]["reason"] == "matches_latest_pdf_task"
     assert result["tools"][0]["discoveryEvidence"][0]["kind"] == "connector_toolkit"
+    assert result["tools"][0]["toolContract"]["format"] == "autoppia.tool_contract"
+    assert result["tools"][0]["toolContract"]["policyBoundary"] == "read"
+    assert result["tools"][0]["toolContract"]["permissions"]["requiresApproval"] is False
     assert result["targetTasks"][0]["name"] == "Download latest PDF"
     assert result["skills"] == []
     assert trajectories.docs == []

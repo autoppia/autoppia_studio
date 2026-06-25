@@ -12,6 +12,7 @@ from app.database import companies_collection, connectors_collection
 from app.repositories import ConnectorRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.credentials import create_credential_record, resolve_secret_refs
+from app.services.tool_contracts import apply_tool_contract
 
 router = APIRouter()
 SECRET_PLACEHOLDER = "__configured__"
@@ -307,6 +308,17 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
         ]
         if config.get("openApiUrl") or config.get("docsUrl"):
             tools.insert(1, {"name": "api.generate_toolkit", "description": "Generate typed tools from the provided API documentation.", "sideEffects": "none", "inputSchema": {"type": "object", "properties": {"connectorId": {"type": "string"}}}})
+    surface = connector.get("surface") or ("browser" if connector_type == "web" else "api" if connector_type == "api" else connector_type)
+    normalized_tools = [
+        apply_tool_contract(
+            tool,
+            connector=connector,
+            toolkit={"runtimeRequirements": runtime_requirements},
+            surface=str(surface),
+            runtime_requirements=tool.get("runtimeRequirements") or runtime_requirements,
+        )
+        for tool in tools
+    ]
     return {
         "toolkitId": toolkit_id,
         "connectorId": connector.get("connectorId", ""),
@@ -317,7 +329,7 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
         "runtimeRequirements": runtime_requirements,
         "authFields": auth_fields,
         "configFields": config_fields,
-        "tools": tools,
+        "tools": normalized_tools,
     }
 
 
@@ -384,6 +396,16 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
         for tool in tool_specs
         if str(tool.get("sideEffects") or "").lower() in {"write", "writes", "send", "mutates"}
     ]
+    governed_tools = [tool for tool in tool_specs if isinstance(tool.get("toolContract"), dict)]
+    approval_tools = [
+        tool.get("name", "")
+        for tool in tool_specs
+        if isinstance(tool.get("approvalPolicy"), dict) and tool["approvalPolicy"].get("required")
+    ]
+    risk_counts: dict[str, int] = {}
+    for tool in tool_specs:
+        risk = str(tool.get("riskLevel") or (tool.get("toolContract") or {}).get("riskLevel") or "unknown").lower()
+        risk_counts[risk] = risk_counts.get(risk, 0) + 1
     discovery_gaps = []
     if provider == "custom" and connector_type == "api" and not docs_urls:
         discovery_gaps.append({"key": "docs", "label": "Add OpenAPI or documentation URL.", "target": "config.openApiUrl"})
@@ -462,9 +484,12 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
         "toolSynthesis": {
             "toolCount": len(tool_specs),
             "typedToolCount": len(typed_tools),
+            "governedToolCount": len(governed_tools),
             "typedTools": typed_tools,
             "writeToolCount": len(write_tools),
             "writeTools": write_tools,
+            "approvalRequiredTools": approval_tools,
+            "riskCounts": risk_counts,
             "runtimeRequirements": toolkit.get("runtimeRequirements", []),
         },
         "candidateTasks": {
