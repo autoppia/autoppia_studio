@@ -46,7 +46,7 @@ import {
   setLiveUrl,
 } from "../redux/socketSlice";
 import { AppDispatch } from "../redux/store";
-import { ChatItem, HistoryItem, KnowledgeDocument, SessionArtifact, SessionDocument } from "../utils/types";
+import { ChatItem, HistoryItem, KnowledgeDocument, SessionArtifact, SessionDocument, SessionItem } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
 
 const IDLE_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes
@@ -261,6 +261,7 @@ function Session(): React.ReactElement {
   const [documentsLoading, setDocumentsLoading] = useState(false);
   const [documentsUploading, setDocumentsUploading] = useState(false);
   const [documentsError, setDocumentsError] = useState("");
+  const [loadedSession, setLoadedSession] = useState<SessionItem | null>(null);
 
   const chats = useSelector((state: any) => state.chat.chats);
   const completed = useSelector((state: any) => state.chat.completed);
@@ -494,6 +495,7 @@ function Session(): React.ReactElement {
     dispatch(resetChat());
     dispatch(resetSocket());
     setHistorySaved(false);
+    setLoadedSession(null);
     loadedSessionRef.current = sessionId;
 
     const loadSession = async () => {
@@ -511,6 +513,7 @@ function Session(): React.ReactElement {
         const data = await res.json();
         const session = data.session;
         if (!session) return;
+        setLoadedSession(session);
 
         dispatch(
           setSessionInfo({
@@ -703,16 +706,16 @@ function Session(): React.ReactElement {
   const browserAvailable = Boolean(initialUrl || lastUrl || hasBrowserContent || hasBrowserActions);
   const connectorActionCount = runtimeTimeline.filter((step) => step.activity === "tool").length;
   const browserActionCount = runtimeTimeline.filter((step) => step.activity === "browser").length;
-  const matchedSkillName = String(runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
-  const matchedSkillId = String(runtimeState?.matchedSkillId || locationState?.skillId || "");
+  const matchedSkillName = String(loadedSession?.matchedSkillName || runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
+  const matchedSkillId = String(loadedSession?.matchedSkillId || runtimeState?.matchedSkillId || locationState?.skillId || "");
   const benchmarkId = String(locationState?.benchmarkId || "");
   const benchmarkRunId = String(locationState?.benchmarkRunId || "");
-  const pendingConnectorApproval = String(runtimeState?.pendingConnectorApproval || "");
+  const pendingConnectorApproval = String(loadedSession?.pendingConnectorApproval || runtimeState?.pendingConnectorApproval || "");
   const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
-  const sourceKind = String(runtimeState?.sourceKind || "");
-  const workItemId = String(runtimeState?.workItemId || "");
-  const runId = String(runtimeState?.runId || "");
-  const creditsLabel = formatCredits(runtimeState?.creditsSpent);
+  const sourceKind = String(loadedSession?.sourceKind || runtimeState?.sourceKind || "");
+  const workItemId = String(loadedSession?.workItemId || runtimeState?.workItemId || "");
+  const runId = String(loadedSession?.runId || runtimeState?.runId || "");
+  const creditsLabel = formatCredits(loadedSession?.creditsSpent ?? runtimeState?.creditsSpent);
   const runtimeKind = browserActionCount > 0 && connectorActionCount > 0
     ? "Hybrid runtime"
     : browserActionCount > 0

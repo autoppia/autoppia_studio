@@ -261,28 +261,20 @@ async def get_session(session_id: str, email: str = "", companyId: str = ""):
             raise HTTPException(status_code=403, detail="Session belongs to another user")
         if companyId and doc.get("companyId", "") != companyId:
             raise HTTPException(status_code=404, detail="Session not found")
+        summary = _serialize_session_summary(doc)
+        scoped_email = email or str(doc.get("email") or "")
+        artifact_query = {"sessionId": session_id, "email": scoped_email}
+        pending_approval_query = {"sessionId": session_id, "email": scoped_email, "status": "pending"}
         return {
             "session": {
-                "sessionId": doc.get("sessionId", ""),
-                "email": doc["email"],
-                "companyId": doc.get("companyId", ""),
+                **summary,
                 "socketioPath": doc.get("socketioPath", ""),
-                "prompt": doc["prompt"],
-                "initialUrl": doc.get("initialUrl", ""),
                 "sessionPath": doc.get("sessionPath", ""),
-                "createdAt": doc.get("createdAt"),
                 "chatHistory": doc.get("chatHistory", []),
-                "lastUrl": doc.get("lastUrl", ""),
                 "actionHistory": doc.get("actionHistory", []),
-                "runtimeState": doc.get("runtimeState", {}),
                 "contextId": doc.get("contextId", ""),
-                "provider": doc.get("provider", "autoppia"),
-                "agentId": doc.get("agentId", ""),
-                "agentName": doc.get("agentName", ""),
-                "sourceKind": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("sourceKind") or ""),
-                "workItemId": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("workItemId") or ""),
-                "runId": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("runId") or ""),
-                "creditsSpent": float(((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("creditsSpent") or 0.0)),
+                "artifactCount": await artifacts_collection.count_documents(artifact_query),
+                "pendingApprovalCount": await approvals_collection.count_documents(pending_approval_query),
             }
         }
     except HTTPException:

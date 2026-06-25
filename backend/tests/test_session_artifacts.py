@@ -206,6 +206,83 @@ async def test_get_session_rejects_wrong_company(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_get_session_exposes_runtime_summary(monkeypatch):
+    monkeypatch.setattr(
+        session_routes,
+        "artifacts_collection",
+        _Collection(
+            [
+                {"artifactId": "artifact-1", "sessionId": "session-1", "email": "user@example.com"},
+                {"artifactId": "artifact-2", "sessionId": "session-1", "email": "user@example.com"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        session_routes,
+        "approvals_collection",
+        _Collection(
+            [
+                {"approvalId": "approval-1", "sessionId": "session-1", "email": "user@example.com", "status": "pending"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        session_routes,
+        "sessions_collection",
+        _Collection(
+            [
+                {
+                    "sessionId": "session-1",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "prompt": "Review claim status",
+                    "initialUrl": "https://erp.example.com/claims/1",
+                    "lastUrl": "https://erp.example.com/claims/1/summary",
+                    "createdAt": "2026-06-19T10:00:00Z",
+                    "agentId": "agent-1",
+                    "agentName": "Claims Agent",
+                    "provider": "autoppia",
+                    "chatHistory": [{"role": "user"}, {"role": "assistant"}],
+                    "actionHistory": [
+                        {"action": "browser.navigate"},
+                        {"action": "imap.search_emails"},
+                    ],
+                    "runtimeState": {
+                        "sourceKind": "work",
+                        "workItemId": "work-42",
+                        "runId": "run-9",
+                        "creditsSpent": 2.5,
+                        "matchedSkillId": "skill-1",
+                        "matchedSkillName": "Handle claim summary",
+                        "pendingConnectorApproval": "smtp.send_email:0:abc",
+                        "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+                    },
+                }
+            ]
+        ),
+    )
+
+    result = await session_routes.get_session("session-1", email="user@example.com", companyId="company-1")
+
+    session = result["session"]
+    assert session["agentName"] == "Claims Agent"
+    assert session["chatCount"] == 2
+    assert session["actionCount"] == 2
+    assert session["hasBrowserActivity"] is True
+    assert session["hasConnectorActivity"] is True
+    assert session["matchedSkillId"] == "skill-1"
+    assert session["matchedSkillName"] == "Handle claim summary"
+    assert session["approvedConnectorToolCallCount"] == 1
+    assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
+    assert session["artifactCount"] == 2
+    assert session["pendingApprovalCount"] == 1
+    assert session["sourceKind"] == "work"
+    assert session["workItemId"] == "work-42"
+    assert session["runId"] == "run-9"
+    assert session["creditsSpent"] == 2.5
+
+
+@pytest.mark.asyncio
 async def test_session_artifact_create_list_and_download(monkeypatch):
     monkeypatch.setattr(
         session_routes,
