@@ -658,6 +658,39 @@ export default function CompanySetup(): React.ReactElement {
                   {contract.runtime.runtimeKinds.length === 0 ? <span className="text-sm text-gray-500 dark:text-gray-400">No runtime sessions yet.</span> : contract.runtime.runtimeKinds.map((item) => <CountPill key={`runtime-${item.name}`} label={item.name.replace(/_/g, " ")} count={item.count} />)}
                 </div>
               </div>
+              {contract.runtime.sessionContracts && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Session contracts</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Contracted</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Sessions: <span className="font-semibold text-gray-900 dark:text-white">{contract.runtime.sessionContracts.withContract}/{contract.runtime.sessionContracts.total}</span>
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill usage</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Selected: <span className="font-semibold text-gray-900 dark:text-white">{contract.runtime.sessionContracts.selectedSkill}</span>
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Evidence</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Traces: <span className="font-semibold text-gray-900 dark:text-white">{contract.runtime.sessionContracts.traceIds}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{contract.runtime.sessionContracts.artifactOutputs} artifacts</p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Approvals / cost</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Pending: <span className="font-semibold text-gray-900 dark:text-white">{contract.runtime.sessionContracts.pendingApprovals}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{contract.runtime.sessionContracts.creditsSpent} credits</p>
+                    </div>
+                  </div>
+                </div>
+              )}
               {runtimePolicyMap && (
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Runtime policy map</p>

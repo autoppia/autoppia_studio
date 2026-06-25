@@ -88,6 +88,11 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
 
 
 def _session_runtime_kind(doc: dict[str, Any]) -> str:
+    contract = doc.get("sessionContract") if isinstance(doc.get("sessionContract"), dict) else {}
+    runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
+    runtime_kind = str(runtime.get("runtimeKind") or doc.get("runtimeKind") or "").strip()
+    if runtime_kind:
+        return f"{runtime_kind}_runtime" if runtime_kind in {"api", "browser", "hybrid"} else runtime_kind
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     has_browser = any(str(item.get("action") or "").startswith("browser.") for item in action_history if isinstance(item, dict))
     has_connector = any(
@@ -100,6 +105,49 @@ def _session_runtime_kind(doc: dict[str, Any]) -> str:
     if has_browser:
         return "browser_runtime"
     return "api_runtime"
+
+
+def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    with_contract = 0
+    selected_skill = 0
+    pending_approvals = 0
+    artifact_outputs = 0
+    replay_ready = 0
+    total_credits = 0.0
+    trace_count = 0
+    runtime_kinds: list[str] = []
+    for doc in docs:
+        contract = doc.get("sessionContract") if isinstance(doc.get("sessionContract"), dict) else {}
+        runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
+        skill = contract.get("selectedSkill") if isinstance(contract.get("selectedSkill"), dict) else {}
+        approvals = contract.get("approvalState") if isinstance(contract.get("approvalState"), dict) else {}
+        artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
+        cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
+        trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
+        if contract:
+            with_contract += 1
+        runtime_kinds.append(str(runtime.get("runtimeKind") or doc.get("runtimeKind") or _session_runtime_kind(doc)).replace("_runtime", "") or "unknown")
+        skill_id = str(skill.get("skillId") or doc.get("matchedSkillId") or "").strip()
+        if skill.get("matched") or skill_id:
+            selected_skill += 1
+        pending_approvals += int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0)
+        artifact_outputs += int(artifacts.get("count") or doc.get("artifactCount") or 0)
+        total_credits += _safe_float(cost.get("creditsSpent") or doc.get("creditsSpent"))
+        traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else doc.get("traceIds") if isinstance(doc.get("traceIds"), list) else []
+        trace_count += len(_normalized_list(traces))
+        if trace.get("replayReady"):
+            replay_ready += 1
+    return {
+        "total": len(docs),
+        "withContract": with_contract,
+        "selectedSkill": selected_skill,
+        "pendingApprovals": pending_approvals,
+        "artifactOutputs": artifact_outputs,
+        "traceIds": trace_count,
+        "replayReady": replay_ready,
+        "creditsSpent": round(total_credits, 4),
+        "runtimeKinds": _sorted_counts(runtime_kinds),
+    }
 
 
 def _connector_domains(connector: dict[str, Any]) -> list[str]:
@@ -525,6 +573,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         browser_policy_count = sum(1 for policy in all_runtime_policies if policy.get("browserRuntime"))
         api_policy_count = sum(1 for policy in all_runtime_policies if policy.get("runtimeClass") == "api")
         browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime"})
+        session_contracts = _session_contract_summary(sessions)
         browser_allowlisted = bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins"))
         runtime_policy_gaps = [
             gap
@@ -723,6 +772,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "runtime": {
                 "sessions": counts["sessions"],
                 "runtimeKinds": _sorted_counts(runtime_kinds),
+                "sessionContracts": session_contracts,
                 "artifacts": counts["artifacts"],
                 "pendingApprovals": counts["pendingApprovals"],
                 "approvedApprovals": counts["approvedApprovals"],

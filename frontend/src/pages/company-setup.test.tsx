@@ -113,6 +113,17 @@ describe("Company Setup page", () => {
               runtime: {
                 sessions: 7,
                 runtimeKinds: [{ name: "hybrid_runtime", count: 4 }],
+                sessionContracts: {
+                  total: 7,
+                  withContract: 5,
+                  selectedSkill: 3,
+                  pendingApprovals: 2,
+                  artifactOutputs: 4,
+                  traceIds: 9,
+                  replayReady: 2,
+                  creditsSpent: 6.5,
+                  runtimeKinds: [{ name: "hybrid", count: 4 }],
+                },
                 artifacts: 5,
                 pendingApprovals: 2,
                 approvedApprovals: 4,
@@ -249,6 +260,9 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("Capability map")).toBeInTheDocument();
     expect(await screen.findByText("Resource map")).toBeInTheDocument();
     expect(await screen.findByText("Runtime policy map")).toBeInTheDocument();
+    expect(await screen.findByText("Session contracts")).toBeInTheDocument();
+    expect(await screen.findByText("5/7")).toBeInTheDocument();
+    expect(await screen.findByText("6.5 credits")).toBeInTheDocument();
     expect(await screen.findByText("Domain restricted · 4 browser sessions")).toBeInTheDocument();
     expect(await screen.findByText("Runtime gate")).toBeInTheDocument();
     expect((await screen.findAllByText("4/5")).length).toBeGreaterThan(0);

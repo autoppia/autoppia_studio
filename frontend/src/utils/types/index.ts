@@ -745,6 +745,17 @@ export interface CompanySetupContract {
   runtime: {
     sessions: number;
     runtimeKinds: CompanySetupCount[];
+    sessionContracts?: {
+      total: number;
+      withContract: number;
+      selectedSkill: number;
+      pendingApprovals: number;
+      artifactOutputs: number;
+      traceIds: number;
+      replayReady: number;
+      creditsSpent: number;
+      runtimeKinds: CompanySetupCount[];
+    };
     artifacts: number;
     pendingApprovals: number;
     approvedApprovals: number;

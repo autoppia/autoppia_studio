@@ -477,7 +477,20 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         _Collection(
             [
                 {"sessionId": "session-api", "companyId": "company-1", "email": "owner@example.com", "actionHistory": [{"action": "holded.search_invoices"}]},
-                {"sessionId": "session-browser", "companyId": "company-1", "email": "owner@example.com", "actionHistory": [{"action": "browser.navigate"}]},
+                {
+                    "sessionId": "session-browser",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "actionHistory": [{"action": "browser.navigate"}],
+                    "sessionContract": {
+                        "agentRuntime": {"runtimeKind": "browser", "sourceKind": "work"},
+                        "selectedSkill": {"matched": True, "skillId": "skill-1"},
+                        "approvalState": {"pending": 1, "requiredFor": ["send"], "hasHumanBoundary": True},
+                        "artifactState": {"count": 1, "hasBusinessOutput": True},
+                        "costState": {"creditsSpent": 1.5},
+                        "traceState": {"traceIds": ["trace-1", "trace-2"], "replayReady": False},
+                    },
+                },
             ]
         ),
     )
@@ -544,6 +557,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["context"]["typedTools"] == 1
     assert result["contract"]["factory"]["readySkills"] == 2
     assert result["contract"]["runtime"]["sessions"] == 2
+    assert result["contract"]["runtime"]["sessionContracts"]["withContract"] == 1
+    assert result["contract"]["runtime"]["sessionContracts"]["selectedSkill"] == 1
+    assert result["contract"]["runtime"]["sessionContracts"]["pendingApprovals"] == 1
+    assert result["contract"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
+    assert result["contract"]["runtime"]["sessionContracts"]["traceIds"] == 2
+    assert result["contract"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.5
     assert result["contract"]["runtime"]["pendingApprovals"] == 2
     assert result["contract"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert result["contract"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
