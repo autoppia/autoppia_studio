@@ -503,6 +503,23 @@ def test_assistant_exposes_core_action_tools():
     assert "operating state" in snapshot_tool["description"]
 
 
+def test_assistant_snapshot_reply_surfaces_operating_next_action():
+    service = AutomataAssistantService(AssistantContext(email="owner@example.com", company_id="company-1"))
+
+    reply = service._snapshot_reply(
+        {
+            "counts": {"companies": 1, "agents": 1, "connectors": 2, "tools": 3, "skills": 4},
+            "operatingState": {
+                "readiness": {"score": 0.6},
+                "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
+            },
+        }
+    )
+
+    assert "Readiness is 60%" in reply
+    assert "Next: Create benchmark tasks for the top insurance workflows." in reply
+
+
 @pytest.mark.asyncio
 async def test_assistant_executes_memory_rebuild_tool(monkeypatch):
     from app.assistant import service as assistant_service
