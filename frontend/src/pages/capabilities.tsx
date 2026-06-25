@@ -2562,6 +2562,92 @@ export default function Capabilities(): React.ReactElement {
         return a.entity.localeCompare(b.entity);
       });
   }, [filteredSkills, filteredTools, regression.bySkillId, runtimeUsage.sessionsBySkillId, trajectories]);
+  const activeScopeGraph = useMemo(() => {
+    if (!benchmarkFilter && !entityFilter) return null;
+
+    const connectorIds = new Set<string>();
+    for (const tool of filteredTools) {
+      if (tool.connectorId) connectorIds.add(tool.connectorId);
+    }
+    for (const trajectory of filteredTrajectories) {
+      for (const connectorId of trajectory.connectorIds || []) {
+        if (connectorId) connectorIds.add(connectorId);
+      }
+    }
+    for (const skill of filteredSkills) {
+      for (const connectorId of skill.connectorIds || []) {
+        if (connectorId) connectorIds.add(connectorId);
+      }
+    }
+
+    const connectorNames = Array.from(connectorIds)
+      .map((connectorId) => connectorsById.get(connectorId)?.name || connectorId)
+      .filter(Boolean)
+      .sort((a, b) => a.localeCompare(b));
+
+    const sessionMap = new Map<string, SessionItem>();
+    const approvalMap = new Map<string, ApprovalRequest>();
+    const artifactMap = new Map<string, Artifact>();
+    const workMap = new Map<string, WorkItem>();
+
+    for (const skill of filteredSkills) {
+      for (const session of runtimeUsage.sessionsBySkillId.get(skill.skillId) || []) sessionMap.set(session.sessionId, session);
+      for (const approval of runtimeUsage.approvalsBySkillId.get(skill.skillId) || []) approvalMap.set(approval.approvalId, approval);
+      for (const artifact of runtimeUsage.artifactsBySkillId.get(skill.skillId) || []) artifactMap.set(artifact.artifactId, artifact);
+      for (const item of runtimeUsage.workItemsBySkillId.get(skill.skillId) || []) workMap.set(item.workItemId, item);
+    }
+    for (const trajectory of filteredTrajectories) {
+      for (const session of runtimeUsage.sessionsByTrajectoryId.get(trajectory.trajectoryId) || []) sessionMap.set(session.sessionId, session);
+      for (const approval of runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || []) approvalMap.set(approval.approvalId, approval);
+      for (const artifact of runtimeUsage.artifactsByTrajectoryId.get(trajectory.trajectoryId) || []) artifactMap.set(artifact.artifactId, artifact);
+      for (const item of runtimeUsage.workItemsByTrajectoryId.get(trajectory.trajectoryId) || []) workMap.set(item.workItemId, item);
+    }
+    for (const tool of filteredTools) {
+      for (const session of runtimeUsage.sessionsByToolId.get(tool.toolId) || []) sessionMap.set(session.sessionId, session);
+      for (const approval of runtimeUsage.approvalsByToolId.get(tool.toolId) || []) approvalMap.set(approval.approvalId, approval);
+      for (const artifact of runtimeUsage.artifactsByToolId.get(tool.toolId) || []) artifactMap.set(artifact.artifactId, artifact);
+      for (const item of runtimeUsage.workItemsByToolId.get(tool.toolId) || []) workMap.set(item.workItemId, item);
+    }
+
+    return {
+      title: filteredBenchmark ? filteredBenchmark.name : filteredEntity,
+      subtitle: filteredBenchmark
+        ? "Benchmark-scoped graph from tasks and evidence through reusable skills and runtime proof."
+        : "Entity-scoped graph from typed actions through reusable skills and runtime proof.",
+      connectors: connectorNames,
+      tools: filteredTools.slice(0, 4),
+      trajectories: filteredTrajectories.slice(0, 4),
+      skills: filteredSkills.slice(0, 4),
+      sessionCount: sessionMap.size,
+      approvalCount: approvalMap.size,
+      artifactCount: artifactMap.size,
+      workCount: workMap.size,
+      regressionReadySkills: filteredSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "pass").length,
+      blockedSkills: filteredSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "fail").length,
+    };
+  }, [
+    benchmarkFilter,
+    connectorsById,
+    entityFilter,
+    filteredBenchmark,
+    filteredEntity,
+    filteredSkills,
+    filteredTools,
+    filteredTrajectories,
+    regression.bySkillId,
+    runtimeUsage.approvalsBySkillId,
+    runtimeUsage.approvalsByToolId,
+    runtimeUsage.approvalsByTrajectoryId,
+    runtimeUsage.artifactsBySkillId,
+    runtimeUsage.artifactsByToolId,
+    runtimeUsage.artifactsByTrajectoryId,
+    runtimeUsage.sessionsBySkillId,
+    runtimeUsage.sessionsByToolId,
+    runtimeUsage.sessionsByTrajectoryId,
+    runtimeUsage.workItemsBySkillId,
+    runtimeUsage.workItemsByToolId,
+    runtimeUsage.workItemsByTrajectoryId,
+  ]);
 
   // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
   // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
@@ -2902,6 +2988,136 @@ export default function Capabilities(): React.ReactElement {
                   hint="Passing trajectories ready to harden into skills."
                 />
               </div>
+
+              {activeScopeGraph && (
+                <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Factory Graph</p>
+                      <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{activeScopeGraph.title}</p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{activeScopeGraph.subtitle}</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {filteredBenchmark && (
+                        <button
+                          onClick={() => navigate(`/eval-runs?benchmark=${encodeURIComponent(filteredBenchmark.benchmarkId)}`)}
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                        >
+                          Recent runs
+                        </button>
+                      )}
+                      {filteredEntity && (
+                        <button
+                          onClick={() => navigate(`/entities`)}
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                        >
+                          Entity map
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
+                    {[
+                      { label: "Connectors", value: activeScopeGraph.connectors.length },
+                      { label: "Tools", value: filteredTools.length },
+                      { label: "Trajectories", value: filteredTrajectories.length },
+                      { label: "Skills", value: filteredSkills.length },
+                      { label: "Sessions", value: activeScopeGraph.sessionCount },
+                      { label: "Approvals", value: activeScopeGraph.approvalCount },
+                      { label: "Artifacts", value: activeScopeGraph.artifactCount },
+                      { label: "Jobs", value: activeScopeGraph.workCount },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>
+                        <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{item.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-4">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Connectors</p>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {activeScopeGraph.connectors.length === 0 ? (
+                          <span className="text-xs text-gray-400">No connector evidence in scope.</span>
+                        ) : activeScopeGraph.connectors.map((name) => (
+                          <span key={name} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                            {name}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Tools</p>
+                        <button onClick={() => setFactoryScope({ view: "tools" })} className="text-[11px] font-semibold text-primary">Open</button>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {activeScopeGraph.tools.length === 0 ? (
+                          <span className="text-xs text-gray-400">No tools in this scope.</span>
+                        ) : activeScopeGraph.tools.map((tool) => (
+                          <button key={tool.toolId} onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
+                            <p className="truncate font-semibold text-gray-900 dark:text-white">{tool.name}</p>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{tool.connectorName || connectorsById.get(tool.connectorId)?.name || "Connector"}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Trajectories</p>
+                        <button onClick={() => setFactoryScope({ view: "trajectories" })} className="text-[11px] font-semibold text-primary">Open</button>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {activeScopeGraph.trajectories.length === 0 ? (
+                          <span className="text-xs text-gray-400">No trajectory evidence in this scope.</span>
+                        ) : activeScopeGraph.trajectories.map((trajectory) => (
+                          <button key={trajectory.trajectoryId} onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
+                            <p className="truncate font-semibold text-gray-900 dark:text-white">{trajectory.name || trajectory.trajectoryId}</p>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{trajectory.intent || trajectory.description || "No intent"}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Skills</p>
+                        <button onClick={() => setFactoryScope({ view: "skills" })} className="text-[11px] font-semibold text-primary">Open</button>
+                      </div>
+                      <div className="mt-2 space-y-2">
+                        {activeScopeGraph.skills.length === 0 ? (
+                          <span className="text-xs text-gray-400">No reusable skills in this scope.</span>
+                        ) : activeScopeGraph.skills.map((skill) => (
+                          <button key={skill.skillId} onClick={() => openCapabilityDetail({ kind: "skill", item: skill })} className="block w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-left text-xs transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-surface">
+                            <div className="flex items-center justify-between gap-2">
+                              <p className="truncate font-semibold text-gray-900 dark:text-white">{skill.name}</p>
+                              <span className={`rounded-md border px-1.5 py-0.5 text-[10px] font-medium ${regressionTone(skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel)}`}>
+                                {skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel || "n/a"}
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">{skill.whenToUse || skill.description || "No activation guidance"}</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone(activeScopeGraph.regressionReadySkills > 0 ? "pass" : "")}`}>
+                      {activeScopeGraph.regressionReadySkills} regression-ready skills
+                    </span>
+                    {activeScopeGraph.blockedSkills > 0 && (
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone("fail")}`}>
+                        {activeScopeGraph.blockedSkills} regression-blocked skills
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
 
               <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                 <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
