@@ -446,7 +446,16 @@ async def test_session_artifact_create_list_and_download(monkeypatch):
             title="Renewal report",
             artifactType="markdown",
             content="# Renewals\n\n- Policy A",
-            metadata={"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1", "workItemId": "work-1"},
+            metadata={
+                "skillId": "skill-1",
+                "trajectoryId": "trajectory-1",
+                "toolId": "tool-1",
+                "workItemId": "work-1",
+                "approvalId": "approval-1",
+                "approvalKey": "smtp.send_email:0:abc",
+                "approvalState": "pending",
+                "approvalBoundary": "send",
+            },
         ),
     )
     listed = await session_routes.list_session_artifacts("session-1", email="user@example.com")
@@ -460,8 +469,13 @@ async def test_session_artifact_create_list_and_download(monkeypatch):
     assert created["artifact"]["companyId"] == "company-1"
     assert created["artifact"]["skillId"] == "skill-1"
     assert created["artifact"]["capabilityRefs"]["linked"] is True
+    assert created["artifact"]["approvalRelation"]["linked"] is True
+    assert created["artifact"]["approvalRelation"]["approvalId"] == "approval-1"
+    assert created["artifact"]["approvalRelation"]["approvalKey"] == "smtp.send_email:0:abc"
+    assert created["artifact"]["approvalRelation"]["boundary"] == "send"
     assert listed["artifacts"][0]["title"] == "Renewal report"
     assert listed["artifacts"][0]["trajectoryId"] == "trajectory-1"
+    assert listed["artifacts"][0]["approvalRelation"]["state"] == "pending"
     assert downloaded.body == b"# Renewals\n\n- Policy A"
     assert downloaded.media_type.startswith("text/markdown")
 

@@ -234,6 +234,7 @@ export default function Artifacts(): React.ReactElement {
   const selectedToolId = artifactToolId(selected);
   const selectedSessionId = selected?.sessionId ?? "";
   const selectedWorkItemId = artifactWorkItemId(selected);
+  const selectedApprovalRelation = selected?.approvalRelation || selected?.artifactContract?.governance?.approvalRelation;
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -555,6 +556,11 @@ export default function Artifacts(): React.ReactElement {
                       {selected.artifactContract.governance?.knowledgeReady && (
                         <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
                           resource-ready
+                        </span>
+                      )}
+                      {selectedApprovalRelation?.linked && (
+                        <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                          approval {selectedApprovalRelation.state || "linked"}{selectedApprovalRelation.boundary ? ` · ${selectedApprovalRelation.boundary}` : ""}
                         </span>
                       )}
                     </div>

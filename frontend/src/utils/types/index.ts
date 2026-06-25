@@ -205,6 +205,15 @@ export interface ChatItem {
   reasoning?: string;
 }
 
+export interface ArtifactApprovalRelation {
+  linked?: boolean;
+  approvalId?: string;
+  approvalKey?: string;
+  state?: string;
+  boundary?: string;
+  requiresReview?: boolean;
+}
+
 export interface SessionArtifact {
   artifactId: string;
   name: string;
@@ -217,6 +226,7 @@ export interface SessionArtifact {
   contentType?: string;
   size?: number | string;
   sourceTool?: string;
+  approvalRelation?: ArtifactApprovalRelation;
   metadata?: Record<string, any>;
 }
 
@@ -1878,6 +1888,7 @@ export interface Artifact {
     governance?: {
       approvalState?: string;
       requiresReview?: boolean;
+      approvalRelation?: ArtifactApprovalRelation;
       knowledgeReady?: boolean;
     };
     nextActions?: string[];
@@ -1888,6 +1899,7 @@ export interface Artifact {
   content: string;
   fileName: string;
   sourceTool?: string;
+  approvalRelation?: ArtifactApprovalRelation;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

@@ -112,7 +112,16 @@ async def test_artifact_listing_supports_capability_filters(monkeypatch):
             "artifactType": "markdown",
             "content": "# Skill",
             "sessionId": "session-1",
-            "metadata": {"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1", "workItemId": "work-1"},
+            "metadata": {
+                "skillId": "skill-1",
+                "trajectoryId": "trajectory-1",
+                "toolId": "tool-1",
+                "workItemId": "work-1",
+                "approvalId": "approval-1",
+                "approvalKey": "smtp.send_email:0:abc",
+                "approvalState": "pending",
+                "approvalBoundary": "send",
+            },
             "updatedAt": "2026-06-25T10:00:00+00:00",
         },
         {
@@ -145,3 +154,9 @@ async def test_artifact_listing_supports_capability_filters(monkeypatch):
     assert artifact["toolId"] == "tool-1"
     assert artifact["workItemId"] == "work-1"
     assert artifact["capabilityRefs"]["linked"] is True
+    assert artifact["approvalRelation"]["linked"] is True
+    assert artifact["approvalRelation"]["approvalId"] == "approval-1"
+    assert artifact["approvalRelation"]["approvalKey"] == "smtp.send_email:0:abc"
+    assert artifact["approvalRelation"]["state"] == "pending"
+    assert artifact["approvalRelation"]["boundary"] == "send"
+    assert artifact["artifactContract"]["governance"]["approvalRelation"]["requiresReview"] is True

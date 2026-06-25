@@ -85,10 +85,27 @@ def _capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
     return refs
 
 
+def _approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
+    approval_id = str(metadata.get("approvalId") or "")
+    approval_key = str(metadata.get("approvalKey") or "")
+    approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
+    boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
+    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
+    return {
+        "linked": bool(approval_id or approval_key or requires_review),
+        "approvalId": approval_id,
+        "approvalKey": approval_key,
+        "state": approval_state or ("pending" if requires_review else "not_required"),
+        "boundary": boundary,
+        "requiresReview": requires_review,
+    }
+
+
 def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     artifact_type = _clean_type(doc.get("artifactType"))
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
     capability_refs = _capability_refs(metadata)
+    approval_relation = _approval_relation(metadata)
     session_id = str(doc.get("sessionId", ""))
     source_tool = str(doc.get("sourceTool", ""))
     artifact_contract = {
@@ -108,8 +125,9 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
             "workItemId": capability_refs["workItemId"],
         },
         "governance": {
-            "approvalState": metadata.get("approvalState") or metadata.get("approvalStatus") or "not_required",
-            "requiresReview": bool(metadata.get("requiresReview") or metadata.get("approvalId")),
+            "approvalState": approval_relation["state"],
+            "requiresReview": approval_relation["requiresReview"],
+            "approvalRelation": approval_relation,
             "knowledgeReady": artifact_type in {"markdown", "text", "html", "pdf", "csv", "json"},
         },
         "nextActions": [
@@ -138,6 +156,7 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "toolId": capability_refs["toolId"],
         "workItemId": capability_refs["workItemId"],
         "capabilityRefs": capability_refs,
+        "approvalRelation": approval_relation,
         "artifactContract": artifact_contract,
         "metadata": metadata,
         "createdAt": doc.get("createdAt"),

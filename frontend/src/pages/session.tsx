@@ -1216,6 +1216,7 @@ function Session(): React.ReactElement {
             </div>
           ) : sessionArtifacts.map((artifact) => {
             const active = selectedArtifact?.artifactId === artifact.artifactId;
+            const approvalRelation = artifact.approvalRelation;
             return (
               <button
                 key={artifact.artifactId || artifact.url || artifact.name}
@@ -1236,6 +1237,11 @@ function Session(): React.ReactElement {
                   <span className="mt-0.5 block truncate text-[11px] text-gray-400">
                     {artifact.artifactType || artifact.kind || "artifact"}{artifact.sourceTool ? ` · ${artifact.sourceTool}` : ""}
                   </span>
+                  {approvalRelation?.linked && (
+                    <span className="mt-1 inline-flex rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                      approval {approvalRelation.state || "linked"}{approvalRelation.boundary ? ` · ${approvalRelation.boundary}` : ""}
+                    </span>
+                  )}
                 </span>
               </button>
             );

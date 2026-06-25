@@ -80,11 +80,28 @@ def _artifact_capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
     return refs
 
 
+def _artifact_approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
+    approval_id = str(metadata.get("approvalId") or "")
+    approval_key = str(metadata.get("approvalKey") or "")
+    approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
+    boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
+    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
+    return {
+        "linked": bool(approval_id or approval_key or requires_review),
+        "approvalId": approval_id,
+        "approvalKey": approval_key,
+        "state": approval_state or ("pending" if requires_review else "not_required"),
+        "boundary": boundary,
+        "requiresReview": requires_review,
+    }
+
+
 def _serialize_session_artifact(doc: dict) -> dict:
     artifact_type = _clean_artifact_type(doc.get("artifactType") or doc.get("kind"))
     content_type, _ = ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
     capability_refs = _artifact_capability_refs(metadata)
+    approval_relation = _artifact_approval_relation(metadata)
     return {
         "artifactId": doc.get("artifactId", ""),
         "sessionId": doc.get("sessionId", ""),
@@ -104,6 +121,7 @@ def _serialize_session_artifact(doc: dict) -> dict:
         "toolId": capability_refs["toolId"],
         "workItemId": capability_refs["workItemId"],
         "capabilityRefs": capability_refs,
+        "approvalRelation": approval_relation,
         "metadata": metadata,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
