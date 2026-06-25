@@ -1752,6 +1752,14 @@ export interface CompanySkill {
       permissions?: Record<string, any>;
       runtimePolicy?: RuntimePolicy;
     };
+    productionGate?: {
+      state?: "publishable" | "blocked" | "needs_regression" | string;
+      canPublish?: boolean;
+      blockers?: string[];
+      nextActions?: string[];
+      checks?: Record<string, boolean>;
+      latestRegression?: CompanySkill["latestRegression"];
+    };
     evidence?: {
       lineage?: CompanySkill["lineage"];
       sourceTrajectories?: Array<{

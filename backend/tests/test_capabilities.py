@@ -775,6 +775,11 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeType"] == "hybrid_runtime"
+    assert skill["skillPackage"]["productionGate"]["state"] == "publishable"
+    assert skill["skillPackage"]["productionGate"]["canPublish"] is True
+    assert skill["skillPackage"]["productionGate"]["blockers"] == []
+    assert skill["skillPackage"]["productionGate"]["checks"]["ioContract"] is True
+    assert skill["skillPackage"]["productionGate"]["checks"]["publishableRegression"] is True
     assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["trajectoryId"] == "traj-1"
     assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["actionCount"] == 1
     assert skill["skillPackage"]["evidence"]["sourceTrajectories"][1]["toolIds"] == ["erp.update"]
@@ -1306,6 +1311,10 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     assert result["skill"]["hardeningStatus"]["checks"]["regression"] is False
     assert result["skill"]["skillPackage"]["manifestVersion"] == 1
     assert result["skill"]["skillPackage"]["metadata"]["promotionStatus"] == "ready"
+    assert result["skill"]["skillPackage"]["productionGate"]["state"] == "needs_regression"
+    assert result["skill"]["skillPackage"]["productionGate"]["canPublish"] is False
+    assert result["skill"]["skillPackage"]["productionGate"]["blockers"] == ["publishableRegression"]
+    assert "Run a linked benchmark regression." in result["skill"]["skillPackage"]["productionGate"]["nextActions"]
     assert result["skill"]["skillPackage"]["execution"]["connectorIds"] == ["gmail", "holded"]
     assert result["skill"]["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is False
 

@@ -619,6 +619,7 @@ function CapabilityDetailModal({
   const skillPackage = isSkill ? detail.item.skillPackage : null;
   const packageRegressionSuite = skillPackage?.evidence?.regressionSuite;
   const packageIoContract = skillPackage?.ioContract || skillPackage?.interface?.ioContract;
+  const packageProductionGate = skillPackage?.productionGate;
   const versionHistory = isSkill ? detail.item.versionHistory || skillPackage?.evidence?.versionHistory || [] : [];
   const hardeningChecklist = isSkill ? [
     { key: "activation", label: "Activation" },
@@ -1139,6 +1140,32 @@ function CapabilityDetailModal({
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{skillPackage.progressiveDisclosure?.fullFields?.join(", ") || "execution, evidence"}</p>
                 </div>
               </div>
+              {packageProductionGate && (
+                <div className={`mt-3 rounded-xl border px-3 py-3 ${
+                  packageProductionGate.canPublish
+                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                    : "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/10"
+                }`}>
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400">Production gate</p>
+                      <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                        {packageProductionGate.canPublish ? "Publishable" : packageProductionGate.state || "Blocked"}
+                      </p>
+                    </div>
+                    <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${
+                      packageProductionGate.canPublish
+                        ? "border-emerald-200 bg-white text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                        : "border-amber-200 bg-white text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                    }`}>
+                      {(packageProductionGate.blockers || []).length} blockers
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[11px] text-gray-600 dark:text-gray-300">
+                    {(packageProductionGate.nextActions || [])[0] || "Activation, instructions, policy, lineage, IO contract and passing regression are complete."}
+                  </p>
+                </div>
+              )}
               <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
                 <JsonBlock
                   value={{
@@ -1146,6 +1173,7 @@ function CapabilityDetailModal({
                     interface: skillPackage.interface || {},
                     ioContract: packageIoContract || {},
                     policies: skillPackage.policies || {},
+                    productionGate: packageProductionGate || {},
                   }}
                 />
                 <JsonBlock
