@@ -137,6 +137,44 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
+def _normalized_list(values: Any) -> list[str]:
+    if not isinstance(values, list):
+        return []
+    return [str(item).strip() for item in values if str(item or "").strip()]
+
+
+def _task_metadata(task: dict[str, Any]) -> dict[str, Any]:
+    return task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
+
+
+def _task_contract_ready(task: dict[str, Any]) -> bool:
+    metadata = _task_metadata(task)
+    return bool(
+        str(metadata.get("businessIntent") or "").strip()
+        and _normalized_list(metadata.get("allowedSystems"))
+        and _normalized_list(metadata.get("expectedArtifacts"))
+        and str(metadata.get("riskClass") or "").strip()
+    )
+
+
+def _skill_hardening_ready(skill: dict[str, Any]) -> bool:
+    return bool(
+        str(skill.get("instructions") or "").strip()
+        and (
+            str(skill.get("whenToUse") or skill.get("activationDescription") or "").strip()
+            or _normalized_list(skill.get("sourceTrajectoryIds"))
+        )
+        and (_normalized_list(skill.get("expectedArtifacts")) or _normalized_list(skill.get("preconditions")))
+    )
+
+
+def _top_named_items(items: list[dict[str, Any]], *, name_key: str, count_key: str = "count", limit: int = 8) -> list[dict[str, Any]]:
+    return [
+        {"name": str(item.get(name_key) or "unknown"), count_key: int(item.get(count_key) or 0)}
+        for item in items[:limit]
+    ]
+
+
 async def _ensure_default_company(email: str) -> dict[str, Any]:
     existing = await companies_collection.find_one({"email": email})
     if existing:
@@ -285,6 +323,9 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         connectors = await connectors_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
         sessions = await sessions_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
         skills = await capabilities_collection.find({"companyId": company_id, "capabilityKind": "skill"}, {"_id": 0}).to_list(length=500)
+        tools = await tools_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
+        benchmarks = await benchmarks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
+        benchmark_tasks = await benchmark_tasks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
 
         runtime_kinds = [_session_runtime_kind(doc) for doc in sessions]
         connected_connectors = [doc for doc in connectors if str(doc.get("status") or "") == "connected"]
@@ -294,6 +335,23 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         category_counts = _sorted_counts([str(doc.get("category") or "uncategorized") for doc in connectors])
         surface_counts = _sorted_counts([connector_surface(doc) for doc in connectors])
         policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
+        task_contracts_ready = sum(1 for task in benchmark_tasks if _task_contract_ready(task))
+        task_artifacts = sorted({artifact for task in benchmark_tasks for artifact in _normalized_list(_task_metadata(task).get("expectedArtifacts"))})
+        task_allowed_systems = sorted({system for task in benchmark_tasks for system in _normalized_list(_task_metadata(task).get("allowedSystems"))})
+        task_business_intents = [str(_task_metadata(task).get("businessIntent") or task.get("name") or task.get("agentTaskName") or "").strip() for task in benchmark_tasks]
+        task_risks = [str(_task_metadata(task).get("riskClass") or "unspecified") for task in benchmark_tasks]
+        benchmark_verticals = _sorted_counts([str(doc.get("vertical") or "general") for doc in benchmarks])
+        skill_artifacts = sorted({artifact for skill in skills for artifact in _normalized_list(skill.get("expectedArtifacts"))})
+        hardened_skills = sum(1 for skill in skills if _skill_hardening_ready(skill))
+        side_effects = _sorted_counts([str(tool.get("sideEffects") or tool.get("sideEffect") or "unknown") for tool in tools])
+        tool_entities = sorted(
+            {
+                entity
+                for tool in tools
+                for entity in [*_normalized_list(tool.get("inputEntities")), str(tool.get("outputEntity") or "").strip()]
+                if entity
+            }
+        )
 
         counts = {
             "connectors": len(connectors),
@@ -305,7 +363,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "vectorStores": await _count({"companyId": company_id, "email": email}, vector_databases_collection),
             "entities": await _count({"companyId": company_id, "email": email}, entities_collection),
             "agents": await _count({"companyId": company_id, "email": email}, agents_collection),
-            "tools": await _count({"companyId": company_id, "email": email}, tools_collection),
+            "tools": len(tools),
             "typedTools": await _count(
                 {
                     "companyId": company_id,
@@ -317,8 +375,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 },
                 tools_collection,
             ),
-            "benchmarks": await _count({"companyId": company_id, "email": email}, benchmarks_collection),
-            "benchmarkTasks": await _count({"companyId": company_id, "email": email}, benchmark_tasks_collection),
+            "benchmarks": len(benchmarks),
+            "benchmarkTasks": len(benchmark_tasks),
             "evalRuns": await _count({"companyId": company_id, "email": email}, eval_runs_collection),
             "evals": await _count({"companyId": company_id, "email": email}, evals_collection),
             "trajectories": await _count({"companyId": company_id, "email": email}, trajectories_collection),
@@ -340,6 +398,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "context": counts["resources"] > 0 or counts["entities"] > 0,
             "typedTools": counts["typedTools"] > 0,
             "benchmarks": counts["benchmarkTasks"] > 0,
+            "capabilityCoverage": task_contracts_ready > 0 and hardened_skills > 0,
             "skills": counts["readySkills"] > 0,
             "runtime": counts["sessions"] > 0,
             "approvals": counts["pendingApprovals"] > 0 or counts["approvedApprovals"] > 0,
@@ -356,8 +415,12 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             readiness_gaps.append({"key": "typed_tools", "label": "Publish typed tools with entity mapping and side-effect metadata.", "target": "capabilities"})
         if not readiness_checks["benchmarks"]:
             readiness_gaps.append({"key": "benchmarks", "label": "Create benchmark tasks with success criteria and expected artifacts.", "target": "evals"})
+        if counts["benchmarkTasks"] > 0 and task_contracts_ready == 0:
+            readiness_gaps.append({"key": "task_contracts", "label": "Add business intent, allowed systems, risk class and expected artifacts to benchmark tasks.", "target": "evals"})
         if not readiness_checks["skills"]:
             readiness_gaps.append({"key": "skills", "label": "Promote at least one hardened, ready skill.", "target": "capabilities"})
+        if counts["skills"] > 0 and hardened_skills == 0:
+            readiness_gaps.append({"key": "skill_hardening", "label": "Harden skills with activation guidance, instructions, preconditions or expected artifacts.", "target": "capabilities"})
         if not readiness_checks["runtime"]:
             readiness_gaps.append({"key": "runtime", "label": "Run at least one governed runtime session.", "target": "runtime"})
         if not readiness_checks["domainAllowlist"]:
@@ -459,6 +522,48 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                         "evalRuns": counts["evalRuns"],
                     },
                 },
+            },
+            "capabilityMap": {
+                "taskContracts": {
+                    "total": counts["benchmarkTasks"],
+                    "ready": task_contracts_ready,
+                    "coverageRatio": round(task_contracts_ready / counts["benchmarkTasks"], 3) if counts["benchmarkTasks"] else 0.0,
+                    "businessIntents": _top_named_items(_sorted_counts([intent for intent in task_business_intents if intent]), name_key="name"),
+                    "allowedSystems": task_allowed_systems,
+                    "expectedArtifacts": task_artifacts,
+                    "riskClasses": _sorted_counts(task_risks),
+                },
+                "benchmarks": {
+                    "total": counts["benchmarks"],
+                    "verticals": benchmark_verticals,
+                    "tasks": counts["benchmarkTasks"],
+                    "evalRuns": counts["evalRuns"],
+                },
+                "tools": {
+                    "total": counts["tools"],
+                    "typed": counts["typedTools"],
+                    "typedRatio": round(counts["typedTools"] / counts["tools"], 3) if counts["tools"] else 0.0,
+                    "sideEffects": side_effects,
+                    "mappedEntities": tool_entities[:20],
+                },
+                "skills": {
+                    "total": counts["skills"],
+                    "ready": counts["readySkills"],
+                    "hardened": hardened_skills,
+                    "hardenedRatio": round(hardened_skills / counts["skills"], 3) if counts["skills"] else 0.0,
+                    "expectedArtifacts": skill_artifacts,
+                    "policies": policy_counts,
+                },
+                "gaps": [
+                    gap
+                    for gap in [
+                        {"key": "task_contracts", "label": "No benchmark task has a complete business contract.", "target": "evals"} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
+                        {"key": "skill_hardening", "label": "Skills exist but none expose enough reusable package metadata.", "target": "capabilities"} if counts["skills"] and hardened_skills == 0 else None,
+                        {"key": "tool_entities", "label": "Typed tool/entity mapping is missing or thin.", "target": "capabilities"} if counts["tools"] and counts["typedTools"] == 0 else None,
+                        {"key": "expected_artifacts", "label": "No expected business artifacts are declared for task coverage.", "target": "evals"} if counts["benchmarkTasks"] and not task_artifacts else None,
+                    ]
+                    if gap
+                ],
             },
             "readiness": {
                 "score": readiness_score,

@@ -358,13 +358,32 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         "tools_collection",
         _Collection(
             [
-                {"toolId": "tool-1", "companyId": "company-1", "email": "owner@example.com", "inputEntities": ["Policy"], "outputEntity": ""},
-                {"toolId": "tool-2", "companyId": "company-1", "email": "owner@example.com", "inputEntities": [], "outputEntity": ""},
+                {"toolId": "tool-1", "companyId": "company-1", "email": "owner@example.com", "inputEntities": ["Policy"], "outputEntity": "Claim", "sideEffects": "read"},
+                {"toolId": "tool-2", "companyId": "company-1", "email": "owner@example.com", "inputEntities": [], "outputEntity": "", "sideEffects": "write"},
             ]
         ),
     )
-    monkeypatch.setattr(companies, "benchmarks_collection", _Collection([{"benchmarkId": "bench-1", "companyId": "company-1", "email": "owner@example.com"}]))
-    monkeypatch.setattr(companies, "benchmark_tasks_collection", _Collection([{"taskId": "task-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "benchmarks_collection", _Collection([{"benchmarkId": "bench-1", "companyId": "company-1", "email": "owner@example.com", "vertical": "insurance"}]))
+    monkeypatch.setattr(
+        companies,
+        "benchmark_tasks_collection",
+        _Collection(
+            [
+                {
+                    "taskId": "task-1",
+                    "name": "Draft claim status response",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "metadata": {
+                        "businessIntent": "Respond to a customer about claim status",
+                        "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                        "expectedArtifacts": ["draft_email", "claim_summary"],
+                        "riskClass": "draft",
+                    },
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(companies, "evals_collection", _Collection([{"evalId": "eval-1", "companyId": "company-1", "email": "owner@example.com"}]))
     monkeypatch.setattr(companies, "eval_runs_collection", _Collection([{"runId": "eval-run-1", "companyId": "company-1", "email": "owner@example.com"}]))
     monkeypatch.setattr(
@@ -382,7 +401,17 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         "capabilities_collection",
         _Collection(
             [
-                {"capabilityId": "skill-1", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "human_approval_for_writes", "status": "approved"},
+                {
+                    "capabilityId": "skill-1",
+                    "companyId": "company-1",
+                    "capabilityKind": "skill",
+                    "riskPolicy": "human_approval_for_writes",
+                    "status": "approved",
+                    "instructions": "Search claim state, cite policy knowledge, draft the customer reply and stop before sending.",
+                    "whenToUse": "Customer asks about claim status.",
+                    "expectedArtifacts": ["draft_email", "claim_summary"],
+                    "preconditions": ["claim id known"],
+                },
                 {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "always", "status": "ready"},
             ]
         ),
@@ -437,7 +466,17 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert "portal.example.com" in result["contract"]["integration"]["domainAllowlist"]
     assert result["contract"]["integration"]["approvalBoundary"]["pending"] == 1
     assert result["contract"]["integration"]["compliance"]["auditEvidence"]["sessions"] == 2
+    assert result["contract"]["capabilityMap"]["taskContracts"]["ready"] == 1
+    assert result["contract"]["capabilityMap"]["taskContracts"]["coverageRatio"] == 1
+    assert "insurance_erp" in result["contract"]["capabilityMap"]["taskContracts"]["allowedSystems"]
+    assert "claim_summary" in result["contract"]["capabilityMap"]["taskContracts"]["expectedArtifacts"]
+    assert result["contract"]["capabilityMap"]["benchmarks"]["verticals"] == [{"name": "insurance", "count": 1}]
+    assert result["contract"]["capabilityMap"]["tools"]["typed"] == 1
+    assert "Claim" in result["contract"]["capabilityMap"]["tools"]["mappedEntities"]
+    assert result["contract"]["capabilityMap"]["skills"]["hardened"] == 1
+    assert "draft_email" in result["contract"]["capabilityMap"]["skills"]["expectedArtifacts"]
     assert result["contract"]["readiness"]["checks"]["systems"] is True
+    assert result["contract"]["readiness"]["checks"]["capabilityCoverage"] is True
     assert result["contract"]["readiness"]["checks"]["credentials"] is True
     assert result["contract"]["readiness"]["checks"]["runtime"] is True
     assert any(gap["key"] == "auth" for gap in result["contract"]["readiness"]["gaps"])

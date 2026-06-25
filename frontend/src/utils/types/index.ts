@@ -430,6 +430,39 @@ export interface CompanySetupContract {
       };
     };
   };
+  capabilityMap?: {
+    taskContracts: {
+      total: number;
+      ready: number;
+      coverageRatio: number;
+      businessIntents: CompanySetupCount[];
+      allowedSystems: string[];
+      expectedArtifacts: string[];
+      riskClasses: CompanySetupCount[];
+    };
+    benchmarks: {
+      total: number;
+      verticals: CompanySetupCount[];
+      tasks: number;
+      evalRuns: number;
+    };
+    tools: {
+      total: number;
+      typed: number;
+      typedRatio: number;
+      sideEffects: CompanySetupCount[];
+      mappedEntities: string[];
+    };
+    skills: {
+      total: number;
+      ready: number;
+      hardened: number;
+      hardenedRatio: number;
+      expectedArtifacts: string[];
+      policies: CompanySetupCount[];
+    };
+    gaps: Array<{ key: string; label: string; target: string }>;
+  };
   readiness?: {
     score: number;
     passed: number;

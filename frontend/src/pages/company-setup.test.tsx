@@ -85,6 +85,39 @@ describe("Company Setup page", () => {
                 discoveredDomains: ["erp.celeris.example"],
                 skillPolicies: [{ name: "approval_required", count: 2 }],
               },
+              capabilityMap: {
+                taskContracts: {
+                  total: 2,
+                  ready: 1,
+                  coverageRatio: 0.5,
+                  businessIntents: [{ name: "Respond to claim status", count: 1 }],
+                  allowedSystems: ["email", "insurance_erp", "knowledge"],
+                  expectedArtifacts: ["draft_email", "claim_summary"],
+                  riskClasses: [{ name: "draft", count: 1 }],
+                },
+                benchmarks: {
+                  total: 1,
+                  verticals: [{ name: "insurance", count: 1 }],
+                  tasks: 2,
+                  evalRuns: 10,
+                },
+                tools: {
+                  total: 8,
+                  typed: 6,
+                  typedRatio: 0.75,
+                  sideEffects: [{ name: "read", count: 4 }],
+                  mappedEntities: ["Claim", "Policy"],
+                },
+                skills: {
+                  total: 3,
+                  ready: 2,
+                  hardened: 1,
+                  hardenedRatio: 0.333,
+                  expectedArtifacts: ["draft_email"],
+                  policies: [{ name: "human_approval_for_writes", count: 1 }],
+                },
+                gaps: [],
+              },
             },
           }),
         });
@@ -102,6 +135,8 @@ describe("Company Setup page", () => {
     render(<CompanySetup />);
 
     expect(await screen.findByText("Operating Graph")).toBeInTheDocument();
+    expect(await screen.findByText("Capability map")).toBeInTheDocument();
+    expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
     expect(await screen.findByText("Capability Factory")).toBeInTheDocument();
     expect(await screen.findByText("Work Orchestration")).toBeInTheDocument();
     expect(await screen.findByText("Approval Surface")).toBeInTheDocument();
