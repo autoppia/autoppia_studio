@@ -32,6 +32,7 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.entity_mapper import propose_entities_from_openapi_url
+from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
@@ -664,6 +665,7 @@ class AutomataAssistantTools:
         connector_map = _connector_factory_summary(connector_docs)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
+        skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = _session_contract_summary(session_docs)
@@ -732,6 +734,10 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
         if counts["skills"] and skill_package_summary["publishable"] == 0:
             recommended_actions.append({"area": "capabilities", "action": "Complete skill packages with IO contracts and passing regression evidence before publishing.", "reason": "No skill package is publishable yet."})
+        if counts["skills"] and skill_eval_gate["missing"]:
+            recommended_actions.append({"area": "evals", "action": "Link promoted skills to benchmark regressions before treating them as production capabilities.", "reason": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."})
+        if counts["skills"] and skill_eval_gate["blockedByRegression"]:
+            recommended_actions.insert(0, {"area": "evals", "action": "Resolve regression-blocked skills before publishing or widening runtime access.", "reason": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."})
         if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
             recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
         if failing_runs:
@@ -747,6 +753,8 @@ class AutomataAssistantTools:
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
+                {"area": "evals", "severity": "high", "message": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."} if skill_eval_gate["blockedByRegression"] else None,
+                {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "work", "severity": "medium", "message": "Some work items are missing normalized orchestration contracts."} if counts["workItems"] and work_contracts["withContract"] < counts["workItems"] else None,
@@ -831,6 +839,7 @@ class AutomataAssistantTools:
                     "productionGate": skill_gate_summary,
                     "packages": skill_package_summary,
                 },
+                "evalGate": skill_eval_gate,
                 "verticalDemos": vertical_demos,
             },
             "resourceMap": resource_map,

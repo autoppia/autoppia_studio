@@ -1397,6 +1397,7 @@ class AutomataAssistantService:
         score_text = f" Readiness is {int(float(score) * 100)}%." if isinstance(score, (int, float)) else ""
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
+        eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
         sla = work_orchestration.get("sla") if isinstance(work_orchestration.get("sla"), dict) else {}
         coverage_text = ""
         if task_contracts or skills:
@@ -1409,6 +1410,11 @@ class AutomataAssistantService:
                 coverage_text += (
                     f" Skill packages: {packages.get('publishable', 0)}/{packages.get('total', skills.get('total', 0))} publishable, "
                     f"{packages.get('ioContracts', 0)} with IO contracts, {packages.get('regressionSuites', 0)} with regressions."
+                )
+            if eval_gate:
+                coverage_text += (
+                    f" Eval gates: {eval_gate.get('passing', 0)} passing, "
+                    f"{eval_gate.get('blockedByRegression', 0)} blocked, {eval_gate.get('missing', 0)} missing regression."
                 )
         resource_text = ""
         if resource_map:

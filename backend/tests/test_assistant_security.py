@@ -442,6 +442,10 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["regressionSuites"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["publishable"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["versioned"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["totalSkills"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["passing"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["missing"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
@@ -760,6 +764,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "total": 4,
                         "packages": {"publishable": 1, "total": 4, "ioContracts": 2, "regressionSuites": 1},
                     },
+                    "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
                 },
                 "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
                 "workOrchestration": {
@@ -778,6 +783,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
+    assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Work attention items: 3." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
