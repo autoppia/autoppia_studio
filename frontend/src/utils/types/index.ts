@@ -411,6 +411,31 @@ export interface CompanySetupContract {
     entities: number;
     typedTools: number;
   };
+  resourceMap?: {
+    documents: {
+      total: number;
+      indexed: number;
+      withResourceContract: number;
+      withVectorStore: number;
+      status: CompanySetupCount[];
+      readTools: string[];
+      sample: Array<{
+        documentId: string;
+        resourceId: string;
+        name: string;
+        resourceKind: string;
+        status: string;
+        vectorDatabaseId: string;
+        readTools: string[];
+      }>;
+    };
+    vectorStores: {
+      total: number;
+      linked: number;
+      collections: string[];
+    };
+    gaps: Array<{ key: string; label: string; target: string }>;
+  };
   factory: {
     agents: number;
     tools: number;

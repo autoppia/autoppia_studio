@@ -202,6 +202,28 @@ def _work_retry_count(doc: dict[str, Any]) -> int:
     return max(0, len(history) - 1)
 
 
+def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = doc.get("resourceContract")
+    return contract if isinstance(contract, dict) else {}
+
+
+def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
+    contract = _resource_contract(doc)
+    return _normalized_list(contract.get("readTools") or doc.get("readTools"))
+
+
+def _resource_vector_id(doc: dict[str, Any]) -> str:
+    contract = _resource_contract(doc)
+    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
+    return str(doc.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "").strip()
+
+
+def _resource_status(doc: dict[str, Any]) -> str:
+    contract = _resource_contract(doc)
+    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
+    return str(doc.get("status") or contract.get("status") or indexing.get("status") or "unknown")
+
+
 async def _ensure_default_company(email: str) -> dict[str, Any]:
     existing = await companies_collection.find_one({"email": email})
     if existing:
@@ -355,6 +377,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         benchmark_tasks = await benchmark_tasks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         work_items = await work_items_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         approvals = await approvals_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
+        knowledge_docs = await knowledge_documents_collection.find({"companyId": company_id, "email": email}, {"_id": 0, "storagePath": 0}).to_list(length=1000)
+        vector_stores = await vector_databases_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
 
         runtime_kinds = [_session_runtime_kind(doc) for doc in sessions]
         connected_connectors = [doc for doc in connectors if str(doc.get("status") or "") == "connected"]
@@ -381,6 +405,23 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 if entity
             }
         )
+        resource_read_tools = sorted({tool for doc in knowledge_docs for tool in _resource_read_tools(doc)})
+        resource_statuses = [_resource_status(doc) for doc in knowledge_docs]
+        resource_vector_ids = {_resource_vector_id(doc) for doc in knowledge_docs if _resource_vector_id(doc)}
+        vector_store_ids = {str(doc.get("vectorDatabaseId") or "").strip() for doc in vector_stores if str(doc.get("vectorDatabaseId") or "").strip()}
+        docs_with_contract = sum(1 for doc in knowledge_docs if _resource_contract(doc))
+        docs_with_vector_store = sum(1 for doc in knowledge_docs if _resource_vector_id(doc))
+        indexed_docs = sum(1 for status in resource_statuses if str(status).lower() in {"indexed", "ready", "active", "completed"})
+        resource_gaps = [
+            gap
+            for gap in [
+                {"key": "resource_contracts", "label": "Knowledge documents exist but no resource contracts are exposed.", "target": "knowledge"} if knowledge_docs and docs_with_contract == 0 else None,
+                {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before they can support skills.", "target": "knowledge"} if knowledge_docs and not resource_read_tools else None,
+                {"key": "vector_index", "label": "Knowledge resources are not linked to vector stores.", "target": "knowledge"} if knowledge_docs and docs_with_vector_store == 0 else None,
+                {"key": "vector_store", "label": "Create a vector store for indexed business context.", "target": "knowledge"} if knowledge_docs and not vector_stores else None,
+            ]
+            if gap
+        ]
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_items if str(doc.get("workItemId") or "")}
         approval_work_item_ids = {
@@ -422,8 +463,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "connectorsNeedingAuth": len(needs_auth_connectors),
             "customConnectors": len(custom_connectors),
             "credentials": await _count({"companyId": company_id, "email": email}, credentials_collection),
-            "resources": await _count({"companyId": company_id, "email": email}, knowledge_documents_collection),
-            "vectorStores": await _count({"companyId": company_id, "email": email}, vector_databases_collection),
+            "resources": len(knowledge_docs),
+            "vectorStores": len(vector_stores),
             "entities": await _count({"companyId": company_id, "email": email}, entities_collection),
             "agents": await _count({"companyId": company_id, "email": email}, agents_collection),
             "tools": len(tools),
@@ -530,6 +571,37 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "vectorStores": counts["vectorStores"],
                 "entities": counts["entities"],
                 "typedTools": counts["typedTools"],
+            },
+            "resourceMap": {
+                "documents": {
+                    "total": counts["resources"],
+                    "indexed": indexed_docs,
+                    "withResourceContract": docs_with_contract,
+                    "withVectorStore": docs_with_vector_store,
+                    "status": _sorted_counts(resource_statuses),
+                    "readTools": resource_read_tools[:20],
+                    "sample": [
+                        {
+                            "documentId": str(doc.get("documentId") or ""),
+                            "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
+                            "name": str(doc.get("filename") or doc.get("name") or doc.get("title") or "Untitled resource"),
+                            "resourceKind": str(doc.get("resourceKind") or _resource_contract(doc).get("resourceKind") or "document"),
+                            "status": _resource_status(doc),
+                            "vectorDatabaseId": _resource_vector_id(doc),
+                            "readTools": _resource_read_tools(doc)[:8],
+                        }
+                        for doc in knowledge_docs[:8]
+                    ],
+                },
+                "vectorStores": {
+                    "total": counts["vectorStores"],
+                    "linked": len(resource_vector_ids & vector_store_ids) if vector_store_ids else len(resource_vector_ids),
+                    "collections": [
+                        str(doc.get("collectionName") or doc.get("name") or doc.get("vectorDatabaseId") or "unknown")
+                        for doc in vector_stores[:8]
+                    ],
+                },
+                "gaps": resource_gaps,
             },
             "factory": {
                 "agents": counts["agents"],

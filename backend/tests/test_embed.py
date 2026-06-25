@@ -349,8 +349,36 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         ),
     )
     monkeypatch.setattr(companies, "credentials_collection", _Collection([{"credentialId": "cred-1", "companyId": "company-1", "email": "owner@example.com"}]))
-    monkeypatch.setattr(companies, "knowledge_documents_collection", _Collection([{"documentId": "doc-1", "companyId": "company-1", "email": "owner@example.com"}]))
-    monkeypatch.setattr(companies, "vector_databases_collection", _Collection([{"vectorDatabaseId": "vec-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "knowledge_documents_collection",
+        _Collection(
+            [
+                {
+                    "documentId": "doc-1",
+                    "resourceId": "resource-1",
+                    "resourceKind": "document",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "filename": "claims-policy.pdf",
+                    "status": "indexed",
+                    "vectorDatabaseId": "vec-1",
+                    "resourceContract": {
+                        "resourceId": "resource-1",
+                        "resourceKind": "document",
+                        "readOnly": True,
+                        "indexing": {"vectorDatabaseId": "vec-1"},
+                        "readTools": ["knowledge.claims.search", "knowledge.claims.read_document"],
+                    },
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        companies,
+        "vector_databases_collection",
+        _Collection([{"vectorDatabaseId": "vec-1", "companyId": "company-1", "email": "owner@example.com", "collectionName": "claims-knowledge"}]),
+    )
     monkeypatch.setattr(companies, "entities_collection", _Collection([{"entityId": "entity-1", "companyId": "company-1", "email": "owner@example.com"}]))
     monkeypatch.setattr(companies, "agents_collection", _Collection([{"agentId": "agent-1", "companyId": "company-1", "email": "owner@example.com"}]))
     monkeypatch.setattr(
@@ -499,6 +527,14 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert "portal.example.com" in result["contract"]["integration"]["domainAllowlist"]
     assert result["contract"]["integration"]["approvalBoundary"]["pending"] == 2
     assert result["contract"]["integration"]["compliance"]["auditEvidence"]["sessions"] == 2
+    assert result["contract"]["resourceMap"]["documents"]["total"] == 1
+    assert result["contract"]["resourceMap"]["documents"]["indexed"] == 1
+    assert result["contract"]["resourceMap"]["documents"]["withResourceContract"] == 1
+    assert result["contract"]["resourceMap"]["documents"]["withVectorStore"] == 1
+    assert "knowledge.claims.search" in result["contract"]["resourceMap"]["documents"]["readTools"]
+    assert result["contract"]["resourceMap"]["vectorStores"]["total"] == 1
+    assert result["contract"]["resourceMap"]["vectorStores"]["linked"] == 1
+    assert result["contract"]["resourceMap"]["gaps"] == []
     assert result["contract"]["workOrchestration"]["queues"]["total"] == 2
     assert result["contract"]["workOrchestration"]["queues"]["blockedByApproval"] == 1
     assert result["contract"]["workOrchestration"]["triggers"]["scheduled"] == 1

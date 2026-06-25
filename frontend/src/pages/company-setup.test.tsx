@@ -55,6 +55,33 @@ describe("Company Setup page", () => {
                 connectors: [],
               },
               context: { resources: 5, vectorStores: 1, entities: 4, typedTools: 8 },
+              resourceMap: {
+                documents: {
+                  total: 5,
+                  indexed: 4,
+                  withResourceContract: 5,
+                  withVectorStore: 4,
+                  status: [{ name: "indexed", count: 4 }],
+                  readTools: ["knowledge.claims.search", "knowledge.claims.read_document"],
+                  sample: [
+                    {
+                      documentId: "doc-1",
+                      resourceId: "resource-1",
+                      name: "claims-policy.pdf",
+                      resourceKind: "document",
+                      status: "indexed",
+                      vectorDatabaseId: "vec-1",
+                      readTools: ["knowledge.claims.search"],
+                    },
+                  ],
+                },
+                vectorStores: {
+                  total: 1,
+                  linked: 1,
+                  collections: ["claims-knowledge"],
+                },
+                gaps: [],
+              },
               factory: {
                 agents: 2,
                 tools: 8,
@@ -174,6 +201,8 @@ describe("Company Setup page", () => {
 
     expect(await screen.findByText("Operating Graph")).toBeInTheDocument();
     expect(await screen.findByText("Capability map")).toBeInTheDocument();
+    expect(await screen.findByText("Resource map")).toBeInTheDocument();
+    expect(await screen.findByText("knowledge.claims.search, knowledge.claims.read_document")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();
     expect(await screen.findByText("1 due now")).toBeInTheDocument();
