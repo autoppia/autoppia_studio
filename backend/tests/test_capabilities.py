@@ -335,7 +335,46 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
         _Collection([{"runId": "run-1", "evalId": "eval-2", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"}]),
     )
     monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
-    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "benchmark_tasks_collection",
+        _Collection(
+            [
+                {
+                    "taskId": "task-1",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "benchmarkId": "bench-1",
+                    "name": "Find renewal status",
+                    "businessIntent": "Confirm policy renewal state",
+                    "successCriteria": "Policy renewal state is reflected in the draft",
+                    "riskClass": "medium",
+                    "metadata": {
+                        "taskContract": {
+                            "expectedArtifacts": ["draft_email"],
+                            "allowedSystems": ["crm", "erp"],
+                        }
+                    },
+                },
+                {
+                    "taskId": "task-2",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "benchmarkId": "bench-2",
+                    "name": "Draft renewal email",
+                    "businessIntent": "Prepare customer-facing renewal response",
+                    "successCriteria": "Draft email is prepared but not sent",
+                    "riskClass": "high",
+                    "metadata": {
+                        "taskContract": {
+                            "expectedArtifacts": ["draft_email", "renewal_summary"],
+                            "allowedSystems": ["email", "erp"],
+                        }
+                    },
+                },
+            ]
+        ),
+    )
     monkeypatch.setattr(
         capabilities,
         "trajectories_collection",
@@ -347,9 +386,13 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
                     "companyId": "co-1",
                     "benchmarkId": "bench-1",
                     "evalId": "eval-1",
+                    "taskId": "task-1",
+                    "taskName": "Find renewal status",
                     "connectorIds": ["conn-1"],
                     "toolIds": ["crm.search"],
                     "runtimeRequirements": ["network"],
+                    "steps": [{"action": "crm.search"}],
+                    "judge": {"label": "pass"},
                 },
                 {
                     "trajectoryId": "traj-2",
@@ -357,9 +400,13 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
                     "companyId": "co-1",
                     "benchmarkId": "bench-2",
                     "evalId": "eval-2",
+                    "taskId": "task-2",
+                    "taskName": "Draft renewal email",
                     "connectorIds": ["conn-2"],
                     "toolIds": ["erp.update"],
                     "runtimeRequirements": ["browser"],
+                    "steps": [{"action": "erp.update"}, {"action": "smtp.draft_email"}],
+                    "judge": {"label": "pass"},
                 },
             ]
         ),
@@ -456,7 +503,12 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeType"] == "hybrid_runtime"
+    assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["trajectoryId"] == "traj-1"
+    assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["actionCount"] == 1
+    assert skill["skillPackage"]["evidence"]["sourceTrajectories"][1]["toolIds"] == ["erp.update"]
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
+    assert [case["taskId"] for case in skill["skillPackage"]["evidence"]["regressionSuite"]["cases"]] == ["task-1", "task-2"]
+    assert skill["skillPackage"]["evidence"]["regressionSuite"]["cases"][1]["expectedArtifacts"] == ["draft_email", "renewal_summary"]
     assert skill["skillPackage"]["evidence"]["versionHistory"][-1]["versionLabel"] == "v2"
 
 

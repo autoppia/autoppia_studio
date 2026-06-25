@@ -1601,12 +1601,38 @@ export interface CompanySkill {
     };
     evidence?: {
       lineage?: CompanySkill["lineage"];
+      sourceTrajectories?: Array<{
+        trajectoryId?: string;
+        taskId?: string;
+        benchmarkId?: string;
+        evalId?: string;
+        name?: string;
+        status?: string;
+        judgeLabel?: string;
+        connectorIds?: string[];
+        toolIds?: string[];
+        actionCount?: number;
+        createdAt?: string;
+        updatedAt?: string;
+      }>;
       latestRegression?: CompanySkill["latestRegression"];
       hardeningStatus?: CompanySkill["hardeningStatus"];
       versionHistory?: CompanySkill["versionHistory"];
       regressionSuite?: {
         benchmarkIds?: string[];
         evalIds?: string[];
+        cases?: Array<{
+          source?: string;
+          taskId?: string;
+          evalId?: string;
+          benchmarkId?: string;
+          name?: string;
+          businessIntent?: string;
+          successCriteria?: string;
+          riskClass?: string;
+          expectedArtifacts?: string[];
+          allowedSystems?: string[];
+        }>;
         publishable?: boolean;
       };
     };

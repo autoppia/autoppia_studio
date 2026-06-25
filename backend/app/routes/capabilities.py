@@ -290,15 +290,18 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
     trajectory_ids = _dedupe_strings([str(value or "") for value in doc.get("trajectoryIds", [])])
     trajectory_docs: list[dict[str, Any]] = []
     latest_regression: dict[str, Any] | None = None
+    regression_cases: list[dict[str, Any]] = []
     try:
         for trajectory_id in trajectory_ids:
             trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
             if trajectory:
                 trajectory_docs.append(trajectory)
         latest_regression = await _latest_skill_regression(doc, trajectory_docs=trajectory_docs)
+        regression_cases = await _skill_regression_cases(doc, trajectory_docs=trajectory_docs)
     except Exception:
         trajectory_docs = []
         latest_regression = None
+        regression_cases = []
     lineage = _skill_lineage(doc, trajectory_docs)
     hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
     runtime_policy = serialize_runtime_policy(doc)
@@ -311,6 +314,8 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         lineage=lineage,
         hardening=hardening,
         latest_regression=latest_regression,
+        source_trajectories=_source_trajectory_evidence(trajectory_docs),
+        regression_cases=regression_cases,
         version_history=version_history,
     )
     return {
@@ -623,6 +628,8 @@ def _skill_package_manifest(
     lineage: dict[str, Any],
     hardening: dict[str, Any],
     latest_regression: dict[str, Any] | None,
+    source_trajectories: list[dict[str, Any]],
+    regression_cases: list[dict[str, Any]],
     version_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
@@ -684,12 +691,14 @@ def _skill_package_manifest(
         },
         "evidence": {
             "lineage": lineage,
+            "sourceTrajectories": source_trajectories,
             "latestRegression": latest_regression,
             "hardeningStatus": hardening,
             "versionHistory": version_history,
             "regressionSuite": {
                 "benchmarkIds": lineage.get("benchmarkIds", []),
                 "evalIds": lineage.get("evalIds", []),
+                "cases": regression_cases,
                 "publishable": bool(latest_regression and latest_regression.get("label") == "pass"),
             },
         },
@@ -698,6 +707,31 @@ def _skill_package_manifest(
             "fullFields": ["execution", "evidence"],
         },
     }
+
+
+def _source_trajectory_evidence(trajectory_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    evidence: list[dict[str, Any]] = []
+    for trajectory in trajectory_docs:
+        actions = trajectory.get("steps") or trajectory.get("trajectory") or trajectory.get("actions") or []
+        judge = trajectory.get("judge") if isinstance(trajectory.get("judge"), dict) else {}
+        review = trajectory.get("review") if isinstance(trajectory.get("review"), dict) else {}
+        evidence.append(
+            {
+                "trajectoryId": trajectory.get("trajectoryId", ""),
+                "taskId": trajectory.get("taskId", ""),
+                "benchmarkId": trajectory.get("benchmarkId", ""),
+                "evalId": trajectory.get("evalId", ""),
+                "name": trajectory.get("name") or trajectory.get("taskName", ""),
+                "status": trajectory.get("status", ""),
+                "judgeLabel": judge.get("label") or review.get("label") or "",
+                "connectorIds": _dedupe_strings([str(value or "") for value in trajectory.get("connectorIds") or []]),
+                "toolIds": _dedupe_strings([str(value or "") for value in trajectory.get("toolIds") or []]),
+                "actionCount": len(actions) if isinstance(actions, list) else 0,
+                "createdAt": trajectory.get("createdAt"),
+                "updatedAt": trajectory.get("updatedAt"),
+            }
+        )
+    return evidence
 
 
 def _skill_lineage(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]]) -> dict[str, Any]:
@@ -723,6 +757,72 @@ def _skill_lineage(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]])
         "toolIds": _dedupe_strings(tool_ids),
         "sources": _dedupe_strings(sources),
     }
+
+
+def _regression_case_key(case: dict[str, Any]) -> str:
+    return str(case.get("taskId") or case.get("evalId") or f"{case.get('source')}:{case.get('benchmarkId')}:{case.get('name')}")
+
+
+def _serialize_regression_case(doc: dict[str, Any], *, source: str) -> dict[str, Any]:
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    task_contract = metadata.get("taskContract") if isinstance(metadata.get("taskContract"), dict) else {}
+    expected_artifacts = doc.get("expectedArtifacts") or task_contract.get("expectedArtifacts") or []
+    allowed_systems = doc.get("allowedSystems") or task_contract.get("allowedSystems") or []
+    return {
+        "source": source,
+        "taskId": doc.get("taskId", ""),
+        "evalId": doc.get("evalId", ""),
+        "benchmarkId": doc.get("benchmarkId", ""),
+        "name": doc.get("name") or doc.get("taskName") or doc.get("agentTaskName") or "",
+        "businessIntent": doc.get("businessIntent") or task_contract.get("businessIntent") or "",
+        "successCriteria": doc.get("successCriteria") or task_contract.get("successCriteria") or "",
+        "riskClass": doc.get("riskClass") or task_contract.get("riskClass") or "",
+        "expectedArtifacts": expected_artifacts if isinstance(expected_artifacts, list) else [],
+        "allowedSystems": allowed_systems if isinstance(allowed_systems, list) else [],
+    }
+
+
+async def _skill_regression_cases(skill: dict[str, Any], *, trajectory_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    company_id = str(skill.get("companyId") or "")
+    email = str(skill.get("email") or "")
+    task_ids = _dedupe_strings([str(trajectory.get("taskId") or "") for trajectory in trajectory_docs])
+    benchmark_ids = _dedupe_strings(
+        [
+            str(skill.get("benchmarkId") or ""),
+            *[str(trajectory.get("benchmarkId") or "") for trajectory in trajectory_docs],
+        ]
+    )
+    eval_ids = _dedupe_strings(
+        [
+            str(skill.get("evalId") or ""),
+            *[str(trajectory.get("evalId") or "") for trajectory in trajectory_docs],
+        ]
+    )
+
+    cases_by_key: dict[str, dict[str, Any]] = {}
+
+    async def collect(collection: Any, query: dict[str, Any], source: str, limit: int = 100) -> None:
+        if company_id:
+            query["companyId"] = company_id
+        if email:
+            query["email"] = email
+        docs = await collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=limit)
+        for doc in docs:
+            case = _serialize_regression_case(doc, source=source)
+            key = _regression_case_key(case)
+            if key:
+                cases_by_key.setdefault(key, case)
+
+    if task_ids:
+        await collect(benchmark_tasks_collection, {"taskId": {"$in": task_ids}}, "benchmark_task")
+    if benchmark_ids:
+        await collect(benchmark_tasks_collection, {"benchmarkId": {"$in": benchmark_ids}}, "benchmark_task")
+    if eval_ids:
+        await collect(evals_collection, {"evalId": {"$in": eval_ids}}, "legacy_eval")
+    if benchmark_ids:
+        await collect(evals_collection, {"benchmarkId": {"$in": benchmark_ids}}, "legacy_eval")
+
+    return list(cases_by_key.values())[:100]
 
 
 def _skill_hardening_status(
