@@ -1404,6 +1404,12 @@ class AutomataAssistantService:
                 f" Capability coverage: {task_contracts.get('ready', 0)}/{task_contracts.get('total', 0)} task contracts ready, "
                 f"{skills.get('hardened', 0)}/{skills.get('total', 0)} skills hardened."
             )
+            packages = skills.get("packages") if isinstance(skills.get("packages"), dict) else {}
+            if packages:
+                coverage_text += (
+                    f" Skill packages: {packages.get('publishable', 0)}/{packages.get('total', skills.get('total', 0))} publishable, "
+                    f"{packages.get('ioContracts', 0)} with IO contracts, {packages.get('regressionSuites', 0)} with regressions."
+                )
         resource_text = ""
         if resource_map:
             resource_text = (
@@ -1413,6 +1419,12 @@ class AutomataAssistantService:
         work_text = ""
         if sla:
             work_text = f" Work attention items: {sla.get('needsAttention', 0)}."
+            contracts = work_orchestration.get("contracts") if isinstance(work_orchestration.get("contracts"), dict) else {}
+            if contracts:
+                work_text += (
+                    f" Work contracts: {contracts.get('withContract', 0)}/{contracts.get('total', 0)} normalized, "
+                    f"{contracts.get('slaTracked', 0)} SLA-tracked, {contracts.get('auditTrails', 0)} with audit trails."
+                )
         next_action = guidance.get("primaryNextAction") if isinstance(guidance.get("primaryNextAction"), dict) else next_actions[0] if next_actions and isinstance(next_actions[0], dict) else {}
         risks = guidance.get("riskAlerts") if isinstance(guidance.get("riskAlerts"), list) else []
         risk_text = f" Automata sees {len(risks)} risk alert(s)." if risks else ""

@@ -244,6 +244,13 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _parse_iso_datetime(value: Any) -> datetime | None:
     if not value:
         return None
@@ -455,6 +462,139 @@ def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _skill_package_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    manifest_ready = 0
+    io_contracts = 0
+    expected_artifacts = 0
+    regression_suites = 0
+    publishable = 0
+    versioned = 0
+    samples: list[dict[str, Any]] = []
+    for doc in docs:
+        package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
+        activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
+        policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
+        evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
+        regression = evidence.get("regressionSuite") if isinstance(evidence.get("regressionSuite"), dict) else {}
+        io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
+        outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
+        has_activation = bool(str(doc.get("whenToUse") or activation.get("description") or "").strip())
+        has_instructions = bool(str(doc.get("instructions") or "").strip())
+        has_policy = bool(str(doc.get("riskPolicy") or policies.get("riskPolicy") or "").strip() or policies.get("runtimePolicy") or doc.get("runtimePolicy"))
+        has_lineage = bool(_list_values(doc.get("trajectoryIds")) or _list_values(evidence.get("sourceTrajectoryIds")) or evidence.get("sourceTrajectories"))
+        has_io = bool(io_contract.get("declared") or _list_values(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip())
+        has_artifacts = bool(_list_values(doc.get("expectedArtifacts")) or _list_values(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard"))
+        has_regression = bool(regression.get("cases") or _list_values(regression.get("benchmarkIds")) or _list_values(regression.get("evalIds")) or evidence.get("latestRegression"))
+        can_publish = bool(regression.get("publishable") or (isinstance(evidence.get("latestRegression"), dict) and str(evidence["latestRegression"].get("label") or "").lower() == "pass"))
+        ready = has_activation and has_instructions and has_policy and has_lineage and has_io
+        if ready:
+            manifest_ready += 1
+        if has_io:
+            io_contracts += 1
+        if has_artifacts:
+            expected_artifacts += 1
+        if has_regression:
+            regression_suites += 1
+        if ready and can_publish:
+            publishable += 1
+        if doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion"):
+            versioned += 1
+        if len(samples) < 5:
+            samples.append({
+                "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
+                "name": str(doc.get("name") or ""),
+                "manifestReady": ready,
+                "ioContract": has_io,
+                "regressionSuite": has_regression,
+                "publishable": ready and can_publish,
+            })
+    return {
+        "total": len(docs),
+        "manifestReady": manifest_ready,
+        "ioContracts": io_contracts,
+        "expectedArtifacts": expected_artifacts,
+        "regressionSuites": regression_suites,
+        "publishable": publishable,
+        "versioned": versioned,
+        "sample": samples,
+    }
+
+
+def _work_orchestration_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    with_contract = 0
+    budgeted = 0
+    retry_configured = 0
+    sla_tracked = 0
+    sla_needs_attention = 0
+    approval_gates = 0
+    audit_trails = 0
+    browser_policies = 0
+    browser_allowlists = 0
+    unattended_ready = 0
+    run_attempts = 0
+    samples: list[dict[str, Any]] = []
+    for doc in docs:
+        operational = doc.get("operational") if isinstance(doc.get("operational"), dict) else {}
+        orchestration = operational.get("orchestration") if isinstance(operational.get("orchestration"), dict) else {}
+        budget = orchestration.get("budget") if isinstance(orchestration.get("budget"), dict) else {}
+        retry = orchestration.get("retry") if isinstance(orchestration.get("retry"), dict) else {}
+        schedule = orchestration.get("schedule") if isinstance(orchestration.get("schedule"), dict) else {}
+        sla = orchestration.get("sla") if isinstance(orchestration.get("sla"), dict) else {}
+        approval = orchestration.get("approval") if isinstance(orchestration.get("approval"), dict) else {}
+        audit = orchestration.get("auditTrail") if isinstance(orchestration.get("auditTrail"), dict) else {}
+        browser = orchestration.get("browserPolicy") if isinstance(orchestration.get("browserPolicy"), dict) else {}
+        automation_gate = orchestration.get("automationGate") if isinstance(orchestration.get("automationGate"), dict) else {}
+        history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
+        allowed_domains = _list_values(browser.get("allowedDomains")) or _list_values(doc.get("allowedDomains"))
+        has_contract = bool(orchestration)
+        attempts = _safe_int(retry.get("runAttempts") or len(history) or 0)
+        if has_contract:
+            with_contract += 1
+        if budget or _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun"))) > 0:
+            budgeted += 1
+        if retry or _safe_int(doc.get("maxSteps")) > 0:
+            retry_configured += 1
+        if sla or schedule.get("dueAt") or doc.get("nextRunAt"):
+            sla_tracked += 1
+        if sla.get("needsAttention") or str(sla.get("state") or "").lower() in {"blocked", "overdue"}:
+            sla_needs_attention += 1
+        if approval or operational.get("reviewBlocked") or operational.get("pendingApprovalCount") or str(doc.get("status") or "") == "REVIEW":
+            approval_gates += 1
+        if audit.get("uniform") or audit.get("eventCount") or audit.get("events"):
+            audit_trails += 1
+        if browser or doc.get("browserEnabled"):
+            browser_policies += 1
+        if allowed_domains:
+            browser_allowlists += 1
+        if automation_gate.get("canRunUnattended"):
+            unattended_ready += 1
+        run_attempts += attempts
+        if len(samples) < 5:
+            samples.append({
+                "workItemId": str(doc.get("workItemId") or ""),
+                "title": str(doc.get("title") or ""),
+                "contract": has_contract,
+                "slaState": str(sla.get("state") or ""),
+                "approvalGate": bool(approval or operational.get("reviewBlocked") or str(doc.get("status") or "") == "REVIEW"),
+                "runAttempts": attempts,
+            })
+    return {
+        "total": len(docs),
+        "withContract": with_contract,
+        "budgeted": budgeted,
+        "retryConfigured": retry_configured,
+        "runAttempts": run_attempts,
+        "slaTracked": sla_tracked,
+        "slaNeedsAttention": sla_needs_attention,
+        "approvalGates": approval_gates,
+        "auditTrails": audit_trails,
+        "browserPolicies": browser_policies,
+        "browserAllowlists": browser_allowlists,
+        "unattendedReady": unattended_ready,
+        "sample": samples,
+    }
+
+
 def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     with_contract = 0
     selected_skill = 0
@@ -580,9 +720,11 @@ class AutomataAssistantTools:
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         connector_map = _connector_factory_summary(connector_docs)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
+        skill_package_summary = _skill_package_summary(skill_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = _session_contract_summary(session_docs)
+        work_contracts = _work_orchestration_contract_summary(work_docs)
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
         pending_approval_work_item_ids = {
@@ -645,6 +787,10 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
         if counts["skills"] and hardened_skills == 0:
             recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
+        if counts["skills"] and skill_package_summary["publishable"] == 0:
+            recommended_actions.append({"area": "capabilities", "action": "Complete skill packages with IO contracts and passing regression evidence before publishing.", "reason": "No skill package is publishable yet."})
+        if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
+            recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
         if failing_runs:
             recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
         risk_alerts = [
@@ -658,7 +804,9 @@ class AutomataAssistantTools:
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
+                {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
+                {"area": "work", "severity": "medium", "message": "Some work items are missing normalized orchestration contracts."} if counts["workItems"] and work_contracts["withContract"] < counts["workItems"] else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
             if alert
@@ -738,6 +886,7 @@ class AutomataAssistantTools:
                     "hardened": hardened_skills,
                     "expectedArtifacts": skill_expected_artifacts,
                     "productionGate": skill_gate_summary,
+                    "packages": skill_package_summary,
                 },
                 "verticalDemos": vertical_demos,
             },
@@ -782,6 +931,7 @@ class AutomataAssistantTools:
                 "sla": {
                     "needsAttention": review_blocked + scheduled_due + budget_exhausted,
                 },
+                "contracts": work_contracts,
             },
             "recommendedNextActions": recommended_actions[:6],
             "automataGuidance": automata_guidance,

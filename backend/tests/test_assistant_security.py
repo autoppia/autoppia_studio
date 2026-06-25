@@ -225,6 +225,21 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "expectedArtifacts": ["draft_email"],
                 "riskPolicy": "human_approval_for_writes",
                 "trajectoryIds": ["traj-1"],
+                "inputEntities": ["Claim"],
+                "outputEntity": "Draft email",
+                "version": 2,
+                "skillPackage": {
+                    "manifestVersion": 1,
+                    "activation": {"description": "Customer asks about claim status."},
+                    "ioContract": {
+                        "declared": True,
+                        "outputs": {"entity": "Draft email", "artifacts": ["draft_email"]},
+                    },
+                    "policies": {"riskPolicy": "human_approval_for_writes"},
+                    "evidence": {
+                        "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
+                    },
+                },
             },
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
         ]
@@ -332,6 +347,22 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "maxBudgetCredits": 1,
                 "report": {"creditsSpent": 1.25},
                 "runHistory": [{"runId": "run-1"}, {"runId": "run-2"}],
+                "operational": {
+                    "reviewBlocked": True,
+                    "pendingApprovalCount": 1,
+                    "orchestration": {
+                        "queueState": "REVIEW",
+                        "triggerType": "scheduled",
+                        "schedule": {"deadlineState": "overdue", "dueAt": "2000-01-01T00:00:00+00:00"},
+                        "budget": {"maxBudgetCredits": 1, "latestCreditsSpent": 1.25, "remainingCredits": 0, "exhausted": True},
+                        "retry": {"runAttempts": 2, "maxSteps": 8},
+                        "approval": {"reviewBlocked": True, "pendingApprovalCount": 1},
+                        "sla": {"state": "blocked", "deadlineState": "overdue", "needsAttention": True},
+                        "automationGate": {"state": "blocked", "canRunUnattended": False, "blockers": ["pending_approval", "budget_exhausted"]},
+                        "browserPolicy": {"state": "restricted", "enabled": True, "allowedDomains": ["claims.example.com"]},
+                        "auditTrail": {"uniform": True, "eventCount": 4},
+                    },
+                },
             }
         ]
     )
@@ -406,6 +437,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["manifestReady"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["ioContracts"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["regressionSuites"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["publishable"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["versioned"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
@@ -431,6 +467,15 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["sla"]["needsAttention"] == 3
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["withContract"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["budgeted"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["retryConfigured"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["runAttempts"] == 2
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["slaTracked"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["slaNeedsAttention"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["approvalGates"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["auditTrails"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["browserAllowlists"] == 1
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
     assert snapshot["operatingState"]["runtime"]["sessions"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["withContract"] == 1
@@ -447,19 +492,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
-    assert capabilities_payload["skills"] == [
-        {
-            "email": "owner@example.com",
-            "companyId": "company-1",
-            "capabilityKind": "skill",
-            "name": "Approved skill",
-            "instructions": "Search the claim, draft the answer and stop before sending.",
-            "whenToUse": "Customer asks about claim status.",
-            "expectedArtifacts": ["draft_email"],
-            "riskPolicy": "human_approval_for_writes",
-            "trajectoryIds": ["traj-1"],
-        }
-        ]
+    assert len(capabilities_payload["skills"]) == 1
+    listed_skill = capabilities_payload["skills"][0]
+    assert listed_skill["name"] == "Approved skill"
+    assert listed_skill["expectedArtifacts"] == ["draft_email"]
+    assert listed_skill["trajectoryIds"] == ["traj-1"]
+    assert listed_skill["inputEntities"] == ["Claim"]
+    assert listed_skill["skillPackage"]["ioContract"]["declared"] is True
     assert capabilities.last_find_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
 
 
@@ -716,10 +755,17 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 "readiness": {"score": 0.6},
                 "capabilityMap": {
                     "taskContracts": {"ready": 2, "total": 5},
-                    "skills": {"hardened": 1, "total": 4},
+                    "skills": {
+                        "hardened": 1,
+                        "total": 4,
+                        "packages": {"publishable": 1, "total": 4, "ioContracts": 2, "regressionSuites": 1},
+                    },
                 },
                 "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
-                "workOrchestration": {"sla": {"needsAttention": 3}},
+                "workOrchestration": {
+                    "sla": {"needsAttention": 3},
+                    "contracts": {"withContract": 2, "total": 4, "slaTracked": 3, "auditTrails": 2},
+                },
                 "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
                 "automataGuidance": {
                     "primaryNextAction": {"area": "evals", "action": "Inspect failed traces before publishing."},
@@ -731,8 +777,10 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
 
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
+    assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Work attention items: 3." in reply
+    assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automata sees 1 risk alert(s)." in reply
     assert "Next: Inspect failed traces before publishing." in reply
 
