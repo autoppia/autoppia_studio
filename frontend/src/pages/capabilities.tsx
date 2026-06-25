@@ -32,6 +32,7 @@ import {
   CompanyTrajectory,
   Connector,
   EvalItem,
+  EvalRun,
   HarvesterRun,
   SessionItem,
 } from "../utils/types";
@@ -48,6 +49,16 @@ type CapabilityDetail =
   | { kind: "trajectory"; item: CompanyTrajectory }
   | { kind: "skill"; item: CompanySkill }
   | null;
+
+type RegressionSummary = {
+  evalCount: number;
+  totalRuns: number;
+  passCount: number;
+  failCount: number;
+  pendingCount: number;
+  latestLabel: "pass" | "fail" | "pending" | "";
+  latestCreatedAt?: string;
+};
 
 function isViewKey(value?: string | null): value is ViewKey {
   return value === "tools" || value === "trajectories" || value === "skills" || value === "runs";
@@ -72,6 +83,13 @@ function judgeTone(label?: string) {
   const s = (label || "").toLowerCase();
   if (s === "pass") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
   if (s === "fail") return "bg-red-50 dark:bg-red-500/10 text-red-600 dark:text-red-400 border-red-200 dark:border-red-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function regressionTone(label?: string) {
+  if (label === "pass") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (label === "fail") return "bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/30";
+  if (label === "pending") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
@@ -387,6 +405,7 @@ function CapabilityDetailModal({
   trajectoriesById,
   connectorsById,
   benchmarkNamesById,
+  regression,
   lineage,
   runtimeUsage,
   userEmail,
@@ -401,6 +420,10 @@ function CapabilityDetailModal({
   trajectoriesById: Map<string, CompanyTrajectory>;
   connectorsById: Map<string, Connector>;
   benchmarkNamesById: Map<string, string>;
+  regression: {
+    bySkillId: Map<string, RegressionSummary>;
+    byTrajectoryId: Map<string, RegressionSummary>;
+  };
   lineage: {
     trajectoryCountByToolId: Map<string, number>;
     skillCountByToolId: Map<string, number>;
@@ -445,6 +468,11 @@ function CapabilityDetailModal({
   const recentSessions = runtimeUsage.sessions.slice(0, 4);
   const recentApprovals = runtimeUsage.approvals.slice(0, 4);
   const recentArtifacts = runtimeUsage.artifacts.slice(0, 4);
+  const regressionSummary = isSkill
+    ? regression.bySkillId.get(detail.item.skillId)
+    : isTrajectory
+      ? regression.byTrajectoryId.get(detail.item.trajectoryId)
+      : null;
   const lineageSummary = isTool
     ? {
         trajectories: lineage.trajectoryCountByToolId.get(detail.item.toolId) || 0,
@@ -626,6 +654,51 @@ function CapabilityDetailModal({
               </div>
             </div>
           </section>
+
+          {(isSkill || isTrajectory) && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Benchmark gating</p>
+              {!regressionSummary || regressionSummary.evalCount === 0 ? (
+                <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 text-xs text-gray-400">
+                  No benchmark-linked eval runs are associated with this {isSkill ? "skill" : "trajectory"} yet.
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Eval tasks</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{regressionSummary.evalCount}</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Run history</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{regressionSummary.totalRuns}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{regressionSummary.passCount} pass · {regressionSummary.failCount} fail</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Latest regression</p>
+                    <div className="mt-1 flex items-center gap-2">
+                      <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-medium ${regressionTone(regressionSummary.latestLabel)}`}>
+                        {regressionSummary.latestLabel || "unknown"}
+                      </span>
+                    </div>
+                    {regressionSummary.latestCreatedAt && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{formatDate(regressionSummary.latestCreatedAt)}</p>}
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Gate status</p>
+                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                      {regressionSummary.latestLabel === "pass" ? "Ready" : regressionSummary.latestLabel === "fail" ? "Blocked" : "Pending"}
+                    </p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      {regressionSummary.latestLabel === "pass"
+                        ? "Latest benchmark evidence is passing."
+                        : regressionSummary.latestLabel === "fail"
+                          ? "Latest benchmark evidence is failing."
+                          : "Benchmark evidence has not converged yet."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           <section>
             <div className="flex items-center justify-between gap-3 mb-2">
@@ -1060,6 +1133,7 @@ export default function Capabilities(): React.ReactElement {
   const [runs, setRuns] = useState<HarvesterRun[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [evals, setEvals] = useState<EvalItem[]>([]);
+  const [evalRuns, setEvalRuns] = useState<EvalRun[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
@@ -1087,6 +1161,7 @@ export default function Capabilities(): React.ReactElement {
       setRuns([]);
       setConnectors([]);
       setEvals([]);
+      setEvalRuns([]);
       setSessions([]);
       setApprovals([]);
       setArtifacts([]);
@@ -1098,11 +1173,12 @@ export default function Capabilities(): React.ReactElement {
       const params = new URLSearchParams({ email: user.email });
       const connectorParams = new URLSearchParams({ email: user.email, companyId });
       const approvalParams = new URLSearchParams({ email: user.email, companyId, includeRuntime: "true", status: "" });
-      const [capRes, runsRes, connectorsRes, evalsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
+      const [capRes, runsRes, connectorsRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/harvester-runs?${params.toString()}`),
         fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
         fetch(`${apiUrl}/evals?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/eval-runs?${connectorParams.toString()}`),
         fetch(`${apiUrl}/sessions?${connectorParams.toString()}`),
         fetch(`${apiUrl}/approvals?${approvalParams.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`),
@@ -1124,6 +1200,10 @@ export default function Capabilities(): React.ReactElement {
       if (evalsRes.ok) {
         const data = await evalsRes.json();
         setEvals(data.evals || []);
+      }
+      if (evalRunsRes.ok) {
+        const data = await evalRunsRes.json();
+        setEvalRuns(data.runs || []);
       }
       if (sessionsRes.ok) {
         const data = await sessionsRes.json();
@@ -1238,6 +1318,65 @@ export default function Capabilities(): React.ReactElement {
     }
     return Array.from(grouped.values());
   }, [evals]);
+  const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools]);
+  const trajectoriesById = useMemo(() => new Map(trajectories.map((trajectory) => [trajectory.trajectoryId, trajectory])), [trajectories]);
+
+  const regression = useMemo(() => {
+    const evalIdsByBenchmarkId = new Map<string, Set<string>>();
+    for (const item of evals) {
+      const benchmarkId = String(item.benchmarkId || "");
+      const evalId = String(item.evalId || "");
+      if (!benchmarkId || !evalId) continue;
+      if (!evalIdsByBenchmarkId.has(benchmarkId)) evalIdsByBenchmarkId.set(benchmarkId, new Set());
+      evalIdsByBenchmarkId.get(benchmarkId)!.add(evalId);
+    }
+
+    const summarize = (candidateEvalIds: Set<string>): RegressionSummary => {
+      const relatedRuns = evalRuns
+        .filter((run) => candidateEvalIds.has(String(run.evalId || "")))
+        .sort((left, right) => new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime());
+      const latest = relatedRuns[0];
+      return {
+        evalCount: candidateEvalIds.size,
+        totalRuns: relatedRuns.length,
+        passCount: relatedRuns.filter((run) => run.label === "pass").length,
+        failCount: relatedRuns.filter((run) => run.label === "fail").length,
+        pendingCount: relatedRuns.filter((run) => run.label === "pending").length,
+        latestLabel: latest?.label || "",
+        latestCreatedAt: latest?.createdAt,
+      };
+    };
+
+    const byTrajectoryId = new Map<string, RegressionSummary>();
+    for (const trajectory of trajectories) {
+      const candidateEvalIds = new Set<string>();
+      if (trajectory.evalId) candidateEvalIds.add(trajectory.evalId);
+      if (trajectory.benchmarkId && evalIdsByBenchmarkId.has(trajectory.benchmarkId)) {
+        for (const evalId of Array.from(evalIdsByBenchmarkId.get(trajectory.benchmarkId) || [])) candidateEvalIds.add(evalId);
+      }
+      byTrajectoryId.set(trajectory.trajectoryId, summarize(candidateEvalIds));
+    }
+
+    const bySkillId = new Map<string, RegressionSummary>();
+    for (const skill of skills) {
+      const candidateEvalIds = new Set<string>();
+      if (skill.evalId) candidateEvalIds.add(skill.evalId);
+      if (skill.benchmarkId && evalIdsByBenchmarkId.has(skill.benchmarkId)) {
+        for (const evalId of Array.from(evalIdsByBenchmarkId.get(skill.benchmarkId) || [])) candidateEvalIds.add(evalId);
+      }
+      for (const trajectoryId of skill.trajectoryIds || []) {
+        const trajectory = trajectoriesById.get(trajectoryId);
+        if (!trajectory) continue;
+        if (trajectory.evalId) candidateEvalIds.add(trajectory.evalId);
+        if (trajectory.benchmarkId && evalIdsByBenchmarkId.has(trajectory.benchmarkId)) {
+          for (const evalId of Array.from(evalIdsByBenchmarkId.get(trajectory.benchmarkId) || [])) candidateEvalIds.add(evalId);
+        }
+      }
+      bySkillId.set(skill.skillId, summarize(candidateEvalIds));
+    }
+
+    return { bySkillId, byTrajectoryId };
+  }, [evalRuns, evals, skills, trajectories, trajectoriesById]);
 
   const runGeneration = async () => {
     if (!generateConnector || generating || !companyId) return;
@@ -1329,8 +1468,6 @@ export default function Capabilities(): React.ReactElement {
   };
 
   const toolsCount = filteredTools.length;
-  const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools]);
-  const trajectoriesById = useMemo(() => new Map(trajectories.map((trajectory) => [trajectory.trajectoryId, trajectory])), [trajectories]);
   const skillTrajectoryIds = useMemo(() => new Set(filteredSkills.flatMap((skill) => skill.trajectoryIds || [])), [filteredSkills]);
   const runtimeUsage = useMemo(() => {
     const sessionsBySkillId = new Map<string, SessionItem[]>();
@@ -1536,16 +1673,19 @@ export default function Capabilities(): React.ReactElement {
       const trajectory = trajectoriesById.get(trajectoryId);
       return Boolean(trajectory?.benchmarkId || trajectory?.evalId);
     }))).length;
+    const regressionPassingSkills = filteredSkills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "pass").length;
     return {
       typedTools,
       benchmarkBackedTrajectories,
       benchmarkBackedSkills,
+      regressionPassingSkills,
       promotableTrajectories: skillCandidates.length,
     };
-  }, [filteredSkills, filteredTools, filteredTrajectories, skillCandidates.length, trajectoriesById]);
+  }, [filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId, skillCandidates.length, trajectoriesById]);
   const factoryGaps = useMemo(() => {
     const failedRuns = filteredRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
     const untypedTools = filteredTools.filter((tool) => (tool.inputEntities || []).length === 0 && !tool.outputEntity);
+    const regressionBlockedSkills = filteredSkills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "fail");
     const benchmarkIdsWithTrajectories = new Set(
       filteredTrajectories
         .map((trajectory) => trajectory.benchmarkId || "")
@@ -1579,6 +1719,14 @@ export default function Capabilities(): React.ReactElement {
         actionLabel: "Open Benchmarks",
       },
       {
+        key: "regressions",
+        label: "Skills failing regressions",
+        count: regressionBlockedSkills.length,
+        hint: "Skills exist, but the latest benchmark evidence is failing and should block rollout.",
+        action: () => setFactoryView("skills"),
+        actionLabel: "Inspect skills",
+      },
+      {
         key: "entities",
         label: "Untyped tools",
         count: untypedTools.length,
@@ -1587,7 +1735,7 @@ export default function Capabilities(): React.ReactElement {
         actionLabel: "Open tools",
       },
     ].filter((item) => item.count > 0);
-  }, [benchmarks, filteredRuns, filteredTools, filteredTrajectories, navigate, setFactoryView, skillCandidates.length]);
+  }, [benchmarks, filteredRuns, filteredSkills, filteredTools, filteredTrajectories, navigate, regression.bySkillId, setFactoryView, skillCandidates.length]);
   const benchmarkPipeline = useMemo(() => {
     const rows = benchmarks.map((benchmark) => {
       const benchmarkEvalIds = new Set((benchmark.tasks || []).map((task) => task.evalId).filter(Boolean));
@@ -1929,7 +2077,7 @@ export default function Capabilities(): React.ReactElement {
                 </div>
               </div>
 
-              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <CoverageCard
                   label="Typed Tools"
                   value={`${coverage.typedTools}/${toolsCount}`}
@@ -1944,6 +2092,11 @@ export default function Capabilities(): React.ReactElement {
                   label="Benchmarked Skills"
                   value={`${coverage.benchmarkBackedSkills}/${skills.length}`}
                   hint="Reusable skills linked to benchmarked evidence."
+                />
+                <CoverageCard
+                  label="Regression Ready"
+                  value={`${coverage.regressionPassingSkills}/${skills.length}`}
+                  hint="Skills whose latest benchmark run is passing."
                 />
                 <CoverageCard
                   label="Promotable"
@@ -2219,6 +2372,7 @@ export default function Capabilities(): React.ReactElement {
                           const trajectoryApprovals = runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || [];
                           const trajectoryArtifacts = mergeArtifacts(runtimeUsage.artifactsByTrajectoryId.get(trajectory.trajectoryId) || [], trajectorySessions);
                           const pendingTrajectoryApprovals = trajectoryApprovals.filter((approval) => approval.status === "pending").length;
+                          const trajectoryRegression = regression.byTrajectoryId.get(trajectory.trajectoryId);
                           return (
                             <div
                               key={trajectory.trajectoryId}
@@ -2245,6 +2399,11 @@ export default function Capabilities(): React.ReactElement {
                                 )}
                                 {approved && (
                                   <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30">skill ready</span>
+                                )}
+                                {trajectoryRegression && trajectoryRegression.evalCount > 0 && (
+                                  <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${regressionTone(trajectoryRegression.latestLabel)}`}>
+                                    regression {trajectoryRegression.latestLabel || "unknown"}
+                                  </span>
                                 )}
                                 {trajectory.harvester?.adapter && (
                                   <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{humanizeName(trajectory.harvester.adapter)}</span>
@@ -2305,6 +2464,7 @@ export default function Capabilities(): React.ReactElement {
                           const skillApprovals = runtimeUsage.approvalsBySkillId.get(skill.skillId) || [];
                           const skillArtifacts = mergeArtifacts(runtimeUsage.artifactsBySkillId.get(skill.skillId) || [], skillSessions);
                           const pendingSkillApprovals = skillApprovals.filter((approval) => approval.status === "pending").length;
+                          const skillRegression = regression.bySkillId.get(skill.skillId);
                           return (
                           <div
                             key={skill.skillId}
@@ -2331,6 +2491,11 @@ export default function Capabilities(): React.ReactElement {
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(skill))}`}>
                                 {approvalLabel(approvalMode(skill))}
                               </span>
+                              {skillRegression && skillRegression.evalCount > 0 && (
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${regressionTone(skillRegression.latestLabel)}`}>
+                                  regression {skillRegression.latestLabel || "unknown"}
+                                </span>
+                              )}
                             </div>
                             <CapabilityRuntimeSignals
                               sessionsCount={skillSessions.length}
@@ -2444,8 +2609,9 @@ export default function Capabilities(): React.ReactElement {
           trajectoriesById={trajectoriesById}
           connectorsById={connectorsById}
           benchmarkNamesById={benchmarkNamesById}
-            lineage={lineage}
-            runtimeUsage={
+          regression={regression}
+          lineage={lineage}
+          runtimeUsage={
               detail.kind === "tool"
                 ? {
                     sessions: runtimeUsage.sessionsByToolId.get(detail.item.toolId) || [],
