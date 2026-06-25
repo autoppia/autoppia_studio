@@ -139,6 +139,27 @@ class _FakeCapabilitiesCollection:
                 "riskPolicy": "autonomous",
                 "runtimeRequirements": ["browser"],
                 "trajectoryIds": ["traj-skill-1"],
+                "whenToUse": "Use when a customer asks about claim status.",
+                "instructions": "Search the claim and draft a response without sending.",
+                "expectedArtifacts": ["draft_email"],
+                "version": 2,
+                "skillPackage": {
+                    "manifestVersion": 1,
+                    "activation": {"description": "Use when a customer asks about claim status."},
+                    "ioContract": {
+                        "declared": True,
+                        "outputs": {"entity": "Draft email", "artifacts": ["draft_email"]},
+                    },
+                    "policies": {"riskPolicy": "human_approval_for_writes"},
+                    "productionGate": {"state": "publishable", "canPublish": True, "blockers": []},
+                    "evidence": {
+                        "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
+                    },
+                    "progressiveDisclosure": {
+                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "fullFields": ["execution", "evidence"],
+                    },
+                },
                 "tasks": [{"name": "Test Skill", "prompt": "Execute approved test skill workflow safely"}],
             }
         ])
@@ -425,6 +446,14 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["enterpriseRuntime"]["approvals"]["requiredTools"] == ["telegram.send_message"]
     assert contract["enterpriseRuntime"]["budgets"]["maxCreditsPerRun"] == 5.0
     assert contract["enterpriseRuntime"]["resources"]["citable"] == 1
+    assert contract["skillPackages"]["total"] == 1
+    assert contract["skillPackages"]["manifestReady"] == 1
+    assert contract["skillPackages"]["publishable"] == 1
+    assert contract["skillPackages"]["withIoContract"] == 1
+    assert contract["skillPackages"]["withRegressionSuite"] == 1
+    assert contract["skillPackages"]["blocked"] == 0
+    assert contract["skillPackages"]["packages"][0]["checks"]["expectedArtifacts"] is True
+    assert contract["skillPackages"]["packages"][0]["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "ioContract"]
 
 
 @pytest.mark.asyncio

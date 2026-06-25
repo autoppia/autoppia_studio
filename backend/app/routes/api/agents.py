@@ -135,6 +135,7 @@ async def runtime_contract(agent_id: str, api_key: dict[str, Any] = Depends(veri
         "unavailableToolCalls": runtime_contract["unavailableToolCalls"],
         "tools": runtime_contract["tools"],
         "skills": runtime_contract["skills"],
+        "skillPackages": runtime_contract.get("skillPackages", {}),
         "example": {
             "request": {"prompt": "Summarize latest BOPA labor updates.", "url": "about:blank", "step_index": 0, "state_in": {}},
             "response": {"tool_calls": [{"name": "browser.navigate", "arguments": {"url": "https://www.bopa.ad/"}}], "done": False, "state_out": {}},
