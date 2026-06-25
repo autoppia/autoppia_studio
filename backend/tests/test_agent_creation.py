@@ -147,6 +147,8 @@ async def test_start_harvester_enqueues_agent_harvest_job(monkeypatch):
         ),
     )
     monkeypatch.setattr(agent_creation, "harvester_runs_collection", _Collection())
+    benchmark_tasks = _Collection([{"agentId": agent_id, "taskId": "task-1", "status": "needs_harvest"}])
+    monkeypatch.setattr(agent_creation, "benchmark_tasks_collection", benchmark_tasks)
     monkeypatch.setattr(agent_creation, "trajectories_collection", _Collection())
     monkeypatch.setattr(agent_creation, "get_official_agent_harvester", lambda: _Harvester())
 
@@ -164,3 +166,4 @@ async def test_start_harvester_enqueues_agent_harvest_job(monkeypatch):
     assert jobs[0][1]["jobId"] == "creation-1"
     assert jobs[0][1]["harvesterName"] == "test_harvester"
     assert jobs[0][2]["dedupe_key"].startswith("agent_harvest:agent-1:")
+    assert benchmark_tasks.docs[0]["status"] == "harvester_pending"

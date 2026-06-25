@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import (
+    benchmark_tasks_collection,
     capabilities_collection,
     evals_collection,
     agent_webs_collection,
@@ -18,6 +19,7 @@ from app.routes.agent_creation import ensure_agent_creation_job
 from app.repositories import AgentConfigRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.agent_runtime import agent_step_result
+from app.services.task_contracts import task_metadata_with_contract
 
 router = APIRouter()
 
@@ -290,6 +292,78 @@ async def _ensure_agent_evals(
     return eval_ids
 
 
+async def _ensure_agent_benchmark_tasks(
+    *,
+    email: str,
+    company_id: str,
+    agent_id: str,
+    benchmark_id: str,
+    website_url: str,
+    web_id: str,
+    tasks: list[dict[str, Any]],
+    source: str = "agent_config",
+) -> list[str]:
+    task_ids: list[str] = []
+    now = datetime.now(timezone.utc).isoformat()
+    for task in tasks:
+        prompt = str(task.get("prompt") or "").strip()
+        if not prompt:
+            continue
+        task_id = str(task.get("taskId") or uuid.uuid4())
+        task_name = str(task.get("name") or task.get("taskName") or "").strip()
+        metadata = task_metadata_with_contract(
+            task,
+            website_url=website_url,
+            allowed_systems=[website_url] if website_url else [],
+        )
+        result = await benchmark_tasks_collection.update_one(
+            {
+                "email": email,
+                "agentId": agent_id,
+                "benchmarkId": benchmark_id,
+                "prompt": prompt,
+            },
+            {
+                "$set": {
+                    "companyId": company_id,
+                    "webId": web_id,
+                    "name": task_name,
+                    "taskName": task_name,
+                    "prompt": prompt,
+                    "successCriteria": str(task.get("successCriteria") or ""),
+                    "metadata": metadata,
+                    "businessIntent": metadata["businessIntent"],
+                    "initialState": metadata["initialState"],
+                    "allowedSystems": metadata["allowedSystems"],
+                    "expectedArtifacts": metadata["expectedArtifacts"],
+                    "riskClass": metadata["riskClass"],
+                    "status": "needs_harvest",
+                    "trajectoryId": str(task.get("trajectoryId") or ""),
+                    "source": source,
+                    "updatedAt": now,
+                },
+                "$setOnInsert": {
+                    "taskId": task_id,
+                    "email": email,
+                    "agentId": agent_id,
+                    "benchmarkId": benchmark_id,
+                    "createdAt": now,
+                },
+            },
+            upsert=True,
+        )
+        if result.upserted_id is not None:
+            task_ids.append(task_id)
+        else:
+            existing = await benchmark_tasks_collection.find_one(
+                {"email": email, "agentId": agent_id, "benchmarkId": benchmark_id, "prompt": prompt},
+                {"_id": 0, "taskId": 1},
+            )
+            if existing and existing.get("taskId"):
+                task_ids.append(str(existing["taskId"]))
+    return task_ids
+
+
 async def _ensure_autocinema_assets(*, email: str, agent_id: str) -> dict[str, Any]:
     now = datetime.now(timezone.utc).isoformat()
     web_id = f"autocinema-{agent_id}"
@@ -406,7 +480,7 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
             "baseRuntimeEndpoint": DEFAULT_AGENT_RUNTIME_ENDPOINT,
             "runtimeType": DEFAULT_AGENT_RUNTIME_TYPE if DEFAULT_AGENT_RUNTIME_ENDPOINT else "pending",
             "status": "ready" if DEFAULT_AGENT_RUNTIME_ENDPOINT else "draft",
-            "trainingStatus": "needs_trajectories",
+            "trainingStatus": "needs_harvest",
             "harvester": "Automata Agent",
             "runtimeCapabilities": {
                 "browser": body.browserEnabled,
@@ -452,27 +526,6 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
                 "updatedAt": now.isoformat(),
             }
         )
-        for task in body.tasks:
-            if not task.prompt.strip():
-                continue
-            trajectory_id = str(uuid.uuid4())
-            await trajectories_collection.insert_one(
-                {
-                    "trajectoryId": trajectory_id,
-                    "agentId": agent_id,
-                    "email": email,
-                    "webId": web_id,
-                    "taskName": task.name,
-                    "prompt": task.prompt,
-                    "successCriteria": task.successCriteria,
-                    "source": "user_prompt",
-                    "status": "needs_harvest",
-                    "actions": [],
-                    "screenshots": [],
-                    "createdAt": now.isoformat(),
-                    "updatedAt": now.isoformat(),
-                }
-            )
         eval_ids = await _ensure_agent_evals(
             email=email,
             agent_id=agent_id,
@@ -480,7 +533,24 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
             website_url=body.websiteUrl,
             tasks=[task.model_dump() for task in body.tasks],
         )
-        return {"success": True, "agentId": agent_id, "agentConfigId": agent_id, "evalIds": eval_ids}
+        task_ids = await _ensure_agent_benchmark_tasks(
+            email=email,
+            company_id=body.companyId,
+            agent_id=agent_id,
+            benchmark_id=f"agent-{agent_id}",
+            website_url=body.websiteUrl,
+            web_id=web_id,
+            tasks=[task.model_dump() for task in body.tasks],
+            source="user_prompt",
+        )
+        return {
+            "success": True,
+            "agentId": agent_id,
+            "agentConfigId": agent_id,
+            "evalIds": eval_ids,
+            "taskIds": task_ids,
+            "trajectoryIds": [],
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

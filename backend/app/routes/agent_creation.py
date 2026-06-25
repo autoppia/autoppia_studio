@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 
 from app.database import (
     agent_creation_jobs_collection,
+    benchmark_tasks_collection,
     harvester_runs_collection,
     connectors_collection,
     agents_collection,
@@ -171,6 +172,21 @@ async def start_harvester(agent_id: str) -> dict[str, Any]:
             "createdAt": _now(),
             "updatedAt": _now(),
         }
+    )
+    task_queue_update = {
+        "$set": {
+            "status": "harvester_pending",
+            "updatedAt": _now(),
+            "harvester": {
+                "adapter": harvester.name,
+                "status": "queued",
+                "message": f"{harvester.name} harvester is queued.",
+            },
+        }
+    }
+    await benchmark_tasks_collection.update_many(
+        {"agentId": agent_id, "status": {"$in": ["needs_harvest", "draft"]}},
+        task_queue_update,
     )
     await trajectories_collection.update_many(
         {"agentId": agent_id, "status": {"$in": ["needs_harvest", "draft"]}},

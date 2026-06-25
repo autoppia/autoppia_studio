@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.database import (
     benchmarks_collection,
@@ -19,10 +19,10 @@ from app.database import (
     onboarding_sessions_collection,
     agent_webs_collection,
     agents_collection,
-    trajectories_collection,
 )
 from app.routes.agent_creation import start_harvester
 from app.services.capability_discovery import run_capability_discovery
+from app.services.task_contracts import task_metadata_with_contract
 
 router = APIRouter()
 
@@ -1903,36 +1903,21 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
     )
 
     eval_ids = []
-    trajectory_ids = []
+    task_ids = []
     for task in tasks:
-        trajectory_id = str(uuid.uuid4())
-        trajectory_ids.append(trajectory_id)
         task_metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
-        task_metadata = {**task_metadata, "capabilityDiscovery": capability_discovery}
-        await trajectories_collection.insert_one(
-            {
-                "trajectoryId": trajectory_id,
-                "agentId": agent_id,
-                "companyId": company_id,
-                "email": body.email,
-                "webId": web_id,
-                "benchmarkId": benchmark_id,
-                "taskName": task["name"],
-                "prompt": task["prompt"],
-                "successCriteria": task.get("successCriteria", ""),
-                "metadata": task_metadata,
-                "source": "onboarding_agent",
-                "status": "needs_harvest",
-                "actions": [],
-                "screenshots": [],
-                "createdAt": now,
-                "updatedAt": now,
-            }
+        task_metadata = task_metadata_with_contract(
+            {**task, "metadata": task_metadata},
+            website_url=website_url,
+            allowed_systems=[website_url],
+            extra_metadata={"capabilityDiscovery": capability_discovery},
         )
+        task_id = str(uuid.uuid4())
+        task_ids.append(task_id)
         await benchmark_tasks_collection.insert_one(
             {
-                "taskId": str(uuid.uuid4()),
-                "candidateTrajectoryId": trajectory_id,
+                "taskId": task_id,
+                "candidateTrajectoryId": "",
                 "email": body.email,
                 "companyId": company_id,
                 "agentId": agent_id,
@@ -1942,6 +1927,11 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
                 "prompt": task["prompt"],
                 "successCriteria": task.get("successCriteria", ""),
                 "metadata": task_metadata,
+                "businessIntent": task_metadata["businessIntent"],
+                "initialState": task_metadata["initialState"],
+                "allowedSystems": task_metadata["allowedSystems"],
+                "expectedArtifacts": task_metadata["expectedArtifacts"],
+                "riskClass": task_metadata["riskClass"],
                 "status": "needs_harvest",
                 "trajectoryId": "",
                 "source": "onboarding_agent",
@@ -1977,7 +1967,8 @@ async def finalize_onboarding(session_id: str, body: OnboardingFinalizeRequest):
         "company": company,
         "agentId": agent_id,
         "connectorIds": [connector["connectorId"] for connector in connectors],
-        "trajectoryIds": trajectory_ids,
+        "taskIds": task_ids,
+        "trajectoryIds": [],
         "evalIds": eval_ids,
         "capabilityDiscovery": discovery_result,
     }
