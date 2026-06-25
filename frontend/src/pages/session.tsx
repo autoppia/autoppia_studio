@@ -7,11 +7,13 @@ import {
   faBars,
   faBolt,
   faBuilding,
+  faClipboardCheck,
   faCloudArrowUp,
   faDownload,
   faExpand,
   faFileLines,
   faGlobe,
+  faPlay,
   faRobot,
   faShieldHalved,
   faShapes,
@@ -227,6 +229,9 @@ function Session(): React.ReactElement {
     evalMode?: boolean;
     evalId?: string;
     runId?: string;
+    benchmarkMode?: boolean;
+    benchmarkId?: string;
+    benchmarkRunId?: string;
     agentId?: string;
     agentName?: string;
   } | null;
@@ -700,6 +705,8 @@ function Session(): React.ReactElement {
   const browserActionCount = runtimeTimeline.filter((step) => step.activity === "browser").length;
   const matchedSkillName = String(runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
   const matchedSkillId = String(runtimeState?.matchedSkillId || locationState?.skillId || "");
+  const benchmarkId = String(locationState?.benchmarkId || "");
+  const benchmarkRunId = String(locationState?.benchmarkRunId || "");
   const pendingConnectorApproval = String(runtimeState?.pendingConnectorApproval || "");
   const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
   const sourceKind = String(runtimeState?.sourceKind || "");
@@ -796,6 +803,31 @@ function Session(): React.ReactElement {
               <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
               Open skill
             </button>
+          )}
+          {benchmarkId && (
+            <>
+              <button
+                type="button"
+                onClick={() => navigate(`/evals?benchmark=${encodeURIComponent(benchmarkId)}`)}
+                className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+              >
+                <FontAwesomeIcon icon={faClipboardCheck} className="text-[10px]" />
+                Open benchmark
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams();
+                  params.set("benchmark", benchmarkId);
+                  if (benchmarkRunId) params.set("runGroup", benchmarkRunId);
+                  navigate(`/eval-runs?${params.toString()}`);
+                }}
+                className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+              >
+                <FontAwesomeIcon icon={faPlay} className="text-[10px]" />
+                Open recent runs
+              </button>
+            </>
           )}
         </div>
       </div>
