@@ -248,6 +248,9 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["version"] == 2
     assert skill["versionLabel"] == "v2"
     assert skill["publishedAt"]
+    assert [event["version"] for event in skill["versionHistory"]] == [1, 2]
+    assert skill["versionHistory"][-1]["promotionStatus"] == "published"
+    assert skill["versionHistory"][-1]["reason"] == "promotion_status_change"
     assert skill["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["connectorIds"] == ["conn-1", "conn-2"]
     assert skill["toolIds"] == ["crm.search", "erp.update"]
@@ -277,6 +280,7 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
+    assert skill["skillPackage"]["evidence"]["versionHistory"][-1]["versionLabel"] == "v2"
 
 
 @pytest.mark.asyncio
@@ -396,6 +400,7 @@ async def test_publish_skill_allows_latest_passing_benchmark(monkeypatch):
     assert result["skill"]["version"] == 2
     assert result["skill"]["versionLabel"] == "v2"
     assert result["skill"]["publishedAt"]
+    assert result["skill"]["versionHistory"][-1]["reason"] == "promotion_status_change"
 
 
 @pytest.mark.asyncio

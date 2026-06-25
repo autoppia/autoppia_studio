@@ -976,6 +976,14 @@ export interface CompanySkill {
   publishedAt?: string;
   readyAt?: string;
   archivedAt?: string;
+  lastPromotedAt?: string;
+  versionHistory?: {
+    version?: number;
+    versionLabel?: string;
+    promotionStatus?: string;
+    reason?: string;
+    createdAt?: string;
+  }[];
   source?: string;
   harvesterType?: string;
   harvesterRunId?: string;
@@ -1042,6 +1050,7 @@ export interface CompanySkill {
       lineage?: CompanySkill["lineage"];
       latestRegression?: CompanySkill["latestRegression"];
       hardeningStatus?: CompanySkill["hardeningStatus"];
+      versionHistory?: CompanySkill["versionHistory"];
       regressionSuite?: {
         benchmarkIds?: string[];
         evalIds?: string[];

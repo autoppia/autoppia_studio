@@ -610,6 +610,7 @@ function CapabilityDetailModal({
   const hardeningChecks = hardeningStatus?.checks || {};
   const skillPackage = isSkill ? detail.item.skillPackage : null;
   const packageRegressionSuite = skillPackage?.evidence?.regressionSuite;
+  const versionHistory = isSkill ? detail.item.versionHistory || skillPackage?.evidence?.versionHistory || [] : [];
   const hardeningChecklist = isSkill ? [
     { key: "activation", label: "Activation" },
     { key: "instructions", label: "Instructions" },
@@ -937,6 +938,30 @@ function CapabilityDetailModal({
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Published at</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{formatDate(detail.item.publishedAt)}</p>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {isSkill && versionHistory.length > 0 && (
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Version history</p>
+                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                  {versionHistory.length} events
+                </span>
+              </div>
+              <div className="space-y-2">
+                {versionHistory.slice(-5).reverse().map((event, index) => (
+                  <div key={`${event.versionLabel || event.version || index}-${event.createdAt || index}`} className="flex items-start justify-between gap-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 dark:border-dark-border dark:bg-dark-bg">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        {event.versionLabel || `v${event.version || "?"}`} · {(event.promotionStatus || "draft").replace(/_/g, " ")}
+                      </p>
+                      <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{(event.reason || "updated").replace(/_/g, " ")}</p>
+                    </div>
+                    <p className="shrink-0 text-[11px] text-gray-400">{formatDate(event.createdAt)}</p>
+                  </div>
+                ))}
               </div>
             </section>
           )}

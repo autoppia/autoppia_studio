@@ -222,6 +222,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
     lineage = _skill_lineage(doc, trajectory_docs)
     hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
     runtime_policy = serialize_runtime_policy(doc)
+    version_history = _skill_version_history(doc, version=version, promotion_status=_skill_promotion_status(doc))
     package = _skill_package_manifest(
         doc,
         version=version,
@@ -230,6 +231,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         lineage=lineage,
         hardening=hardening,
         latest_regression=latest_regression,
+        version_history=version_history,
     )
     return {
         "capabilityId": doc.get("capabilityId", ""),
@@ -263,6 +265,8 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "publishedAt": doc.get("publishedAt"),
         "readyAt": doc.get("readyAt"),
         "archivedAt": doc.get("archivedAt"),
+        "lastPromotedAt": doc.get("lastPromotedAt"),
+        "versionHistory": version_history,
         "source": doc.get("source", ""),
         "harvesterType": doc.get("harvesterType", ""),
         "harvesterRunId": doc.get("harvesterRunId", ""),
@@ -326,6 +330,7 @@ async def _upsert_skill(doc: dict[str, Any]) -> dict[str, Any]:
     doc["versionLabel"] = doc.get("versionLabel") or f"v{doc['version']}"
     doc["promotionStatus"] = _skill_promotion_status(doc)
     doc.update(_skill_lifecycle_fields(previous=existing or {}, next_doc=doc, now=now))
+    doc["versionHistory"] = _append_skill_version_event(existing or {}, doc, now=now, reason="upserted")
     doc["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": doc["capabilityId"]}, {"$set": doc}, upsert=True)
     return await _serialize_skill(doc)
@@ -381,6 +386,66 @@ def _skill_lifecycle_fields(*, previous: dict[str, Any], next_doc: dict[str, Any
     return update
 
 
+def _skill_version_history(doc: dict[str, Any], *, version: int, promotion_status: str) -> list[dict[str, Any]]:
+    history = doc.get("versionHistory") if isinstance(doc.get("versionHistory"), list) else []
+    normalized = []
+    for event in history:
+        if not isinstance(event, dict):
+            continue
+        try:
+            event_version = max(1, int(event.get("version") or 1))
+        except (TypeError, ValueError):
+            event_version = 1
+        normalized.append(
+            {
+                "version": event_version,
+                "versionLabel": str(event.get("versionLabel") or f"v{event_version}"),
+                "promotionStatus": str(event.get("promotionStatus") or event.get("status") or "draft"),
+                "reason": str(event.get("reason") or "updated"),
+                "createdAt": event.get("createdAt") or event.get("updatedAt") or doc.get("updatedAt") or doc.get("createdAt"),
+            }
+        )
+    if normalized:
+        return sorted(normalized, key=lambda item: (item.get("version") or 1, str(item.get("createdAt") or "")))
+    return [
+        {
+            "version": version,
+            "versionLabel": doc.get("versionLabel") or f"v{version}",
+            "promotionStatus": promotion_status,
+            "reason": "initial_package",
+            "createdAt": doc.get("createdAt") or doc.get("updatedAt"),
+        }
+    ]
+
+
+def _append_skill_version_event(
+    previous: dict[str, Any],
+    next_doc: dict[str, Any],
+    *,
+    now: str,
+    reason: str,
+) -> list[dict[str, Any]]:
+    history = [] if not previous else _skill_version_history(
+        previous,
+        version=_skill_version(previous),
+        promotion_status=_skill_promotion_status(previous),
+    )
+    version = _skill_version(next_doc)
+    event = {
+        "version": version,
+        "versionLabel": next_doc.get("versionLabel") or f"v{version}",
+        "promotionStatus": _skill_promotion_status(next_doc),
+        "reason": reason,
+        "createdAt": now,
+    }
+    if not history or any(
+        event.get(key) != history[-1].get(key)
+        for key in ("version", "promotionStatus", "reason")
+    ):
+        history.append(event)
+    return history[-25:]
+
+
 def _skill_package_manifest(
     skill: dict[str, Any],
     *,
@@ -390,6 +455,7 @@ def _skill_package_manifest(
     lineage: dict[str, Any],
     hardening: dict[str, Any],
     latest_regression: dict[str, Any] | None,
+    version_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
     return {
@@ -433,6 +499,7 @@ def _skill_package_manifest(
             "lineage": lineage,
             "latestRegression": latest_regression,
             "hardeningStatus": hardening,
+            "versionHistory": version_history,
             "regressionSuite": {
                 "benchmarkIds": lineage.get("benchmarkIds", []),
                 "evalIds": lineage.get("evalIds", []),
@@ -983,12 +1050,24 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
 
     now = _now()
     material_keys = {"name", "description", "whenToUse", "instructions", "preconditions", "expectedArtifacts", "riskPolicy", "status", "inputEntities", "outputEntity", "outputCard", "trajectoryIds", "connectorIds", "toolIds", "runtimeRequirements", "benchmarkId", "evalId"}
-    if any(key in update and skill.get(key) != candidate_skill.get(key) for key in material_keys):
+    material_changed = any(key in update and skill.get(key) != candidate_skill.get(key) for key in material_keys)
+    previous_promotion_status = _skill_promotion_status(skill)
+    if material_changed:
         next_version = _skill_version(skill) + 1
         update["version"] = next_version
         update["versionLabel"] = f"v{next_version}"
     candidate_skill = {**skill, **update}
     update.update(_skill_lifecycle_fields(previous=skill, next_doc=candidate_skill, now=now))
+    candidate_skill = {**skill, **update}
+    next_promotion_status = _skill_promotion_status(candidate_skill)
+    if material_changed or previous_promotion_status != next_promotion_status:
+        event_reason = "promotion_status_change" if previous_promotion_status != next_promotion_status else "material_update"
+        update["versionHistory"] = _append_skill_version_event(
+            skill,
+            candidate_skill,
+            now=now,
+            reason=event_reason,
+        )
     update["updatedAt"] = now
     await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": update})
     refreshed = {**skill, **update}
@@ -1154,6 +1233,15 @@ async def promote_trajectory_to_skill(trajectory_id: str, body: PromoteTrajector
         "promotionStatus": "ready",
         "version": 1,
         "versionLabel": "v1",
+        "versionHistory": [
+            {
+                "version": 1,
+                "versionLabel": "v1",
+                "promotionStatus": "ready",
+                "reason": "promoted_from_trajectory",
+                "createdAt": now,
+            }
+        ],
         "readyAt": now,
         "lastPromotedAt": now,
         "source": "manual_promotion",
