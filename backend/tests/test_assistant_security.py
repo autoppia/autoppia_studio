@@ -360,8 +360,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["resourceMap"]["indexed"] == 0
     assert snapshot["operatingState"]["resourceMap"]["citable"] == 0
     assert snapshot["operatingState"]["resourceMap"]["withResourceContract"] == 1
+    assert snapshot["operatingState"]["resourceMap"]["acl"]["withAcl"] == 0
+    assert snapshot["operatingState"]["resourceMap"]["acl"]["visibility"] == [{"name": "unspecified", "count": 1}]
+    assert snapshot["operatingState"]["resourceMap"]["sample"][0]["aclVisibility"] == "unspecified"
     assert snapshot["operatingState"]["resourceMap"]["readTools"] == ["knowledge.claims.search", "knowledge.claims.read_document"]
-    assert snapshot["operatingState"]["resourceMap"]["gaps"][0]["key"] == "resource_indexing"
+    assert snapshot["operatingState"]["resourceMap"]["gaps"][0]["key"] == "resource_acl"
     assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
@@ -372,6 +375,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
+    assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert capabilities_payload["skills"] == [

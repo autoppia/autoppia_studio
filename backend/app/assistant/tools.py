@@ -86,6 +86,18 @@ def _resource_governance(doc: dict[str, Any]) -> dict[str, Any]:
     return governance if isinstance(governance, dict) else {}
 
 
+def _resource_acl(doc: dict[str, Any]) -> dict[str, Any]:
+    governance = _resource_governance(doc)
+    acl = governance.get("acl") if isinstance(governance.get("acl"), dict) else doc.get("acl") if isinstance(doc.get("acl"), dict) else {}
+    visibility = str(acl.get("visibility") or "").strip()
+    return {
+        "explicit": bool(acl),
+        "visibility": visibility or "unspecified",
+        "allowedRoles": _list_values(acl.get("allowedRoles")),
+        "allowedUsers": _list_values(acl.get("allowedUsers")),
+    }
+
+
 def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
     contract = _resource_contract(doc)
     return _list_values(contract.get("readTools") or doc.get("readTools"))
@@ -132,6 +144,7 @@ def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
             "freshnessStatus": str(freshness.get("status") or ("current" if _resource_indexed(doc) else "indexing")),
             "citationLabel": str(citability.get("citationLabel") or doc.get("filename") or ""),
             "vectorDatabaseId": _resource_vector_id(doc),
+            "aclVisibility": _resource_acl(doc)["visibility"],
             "readTools": _resource_read_tools(doc)[:8],
         })
     total = len(docs)
@@ -139,10 +152,17 @@ def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     citable = sum(1 for doc in docs if _resource_citable(doc))
     with_contract = sum(1 for doc in docs if _resource_contract(doc))
     with_vector_store = sum(1 for doc in docs if _resource_vector_id(doc))
+    resource_acls = [_resource_acl(doc) for doc in docs]
+    with_acl = sum(1 for acl in resource_acls if acl.get("explicit"))
+    visibility_counts: dict[str, int] = {}
+    for acl in resource_acls:
+        visibility = str(acl.get("visibility") or "unspecified")
+        visibility_counts[visibility] = visibility_counts.get(visibility, 0) + 1
     gaps = [
         gap
         for gap in [
             {"key": "resource_contracts", "label": "Knowledge documents exist but are not exposed as governed resources.", "target": "knowledge"} if total and with_contract == 0 else None,
+            {"key": "resource_acl", "label": "Knowledge resources need explicit ACL visibility before runtime grounding.", "target": "knowledge"} if total and with_acl < total else None,
             {"key": "resource_indexing", "label": "Knowledge resources exist but none are indexed for retrieval.", "target": "knowledge"} if total and indexed == 0 else None,
             {"key": "resource_citations", "label": "Knowledge resources are not citable yet, so answers cannot cite source evidence.", "target": "knowledge"} if total and citable == 0 else None,
             {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before AgentRuntimes can ground work in them.", "target": "knowledge"} if total and not read_tools else None,
@@ -156,9 +176,15 @@ def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
         "citable": citable,
         "withResourceContract": with_contract,
         "withVectorStore": with_vector_store,
+        "acl": {
+            "withAcl": with_acl,
+            "companyVisible": visibility_counts.get("company", 0),
+            "restricted": sum(count for visibility, count in visibility_counts.items() if visibility not in {"company", "unspecified"}),
+            "visibility": [{"name": key, "count": visibility_counts[key]} for key in sorted(visibility_counts, key=lambda item: (-visibility_counts[item], item))],
+        },
         "readTools": read_tools[:20],
         "sample": sample,
-        "ready": bool(total and indexed == total and citable == total and with_contract == total and with_vector_store == total and read_tools),
+        "ready": bool(total and indexed == total and citable == total and with_contract == total and with_vector_store == total and with_acl == total and read_tools),
         "gaps": gaps,
     }
 
@@ -423,6 +449,7 @@ class AutomataAssistantTools:
                 {"area": "evals", "severity": "high", "message": f"{failing_runs} failing eval run(s) need trace review before skill promotion."} if failing_runs else None,
                 {"area": "work", "severity": "medium", "message": f"{scheduled_due} scheduled work item(s) are due."} if scheduled_due else None,
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
+                {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
