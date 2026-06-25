@@ -455,6 +455,68 @@ def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
+    with_contract = 0
+    selected_skill = 0
+    pending_approvals = 0
+    artifact_outputs = 0
+    replay_ready = 0
+    total_credits = 0.0
+    runtime_kinds: dict[str, int] = {}
+    trace_count = 0
+    samples: list[dict[str, Any]] = []
+    for doc in docs:
+        contract = doc.get("sessionContract") if isinstance(doc.get("sessionContract"), dict) else {}
+        runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
+        skill = contract.get("selectedSkill") if isinstance(contract.get("selectedSkill"), dict) else {}
+        approvals = contract.get("approvalState") if isinstance(contract.get("approvalState"), dict) else {}
+        artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
+        cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
+        trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
+        if contract:
+            with_contract += 1
+        runtime_kind = str(runtime.get("runtimeKind") or doc.get("runtimeKind") or "unknown").strip() or "unknown"
+        runtime_kinds[runtime_kind] = runtime_kinds.get(runtime_kind, 0) + 1
+        skill_id = str(skill.get("skillId") or doc.get("matchedSkillId") or "").strip()
+        if skill.get("matched") or skill_id:
+            selected_skill += 1
+        approval_count = int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0)
+        pending_approvals += approval_count
+        artifact_count = int(artifacts.get("count") or doc.get("artifactCount") or 0)
+        artifact_outputs += artifact_count
+        credits = _safe_float(cost.get("creditsSpent") or doc.get("creditsSpent"))
+        total_credits += credits
+        traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else doc.get("traceIds") if isinstance(doc.get("traceIds"), list) else []
+        trace_count += len(_list_values(traces))
+        if trace.get("replayReady"):
+            replay_ready += 1
+        if len(samples) < 5:
+            samples.append(
+                {
+                    "sessionId": str(doc.get("sessionId") or contract.get("sessionId") or ""),
+                    "runtimeKind": runtime_kind,
+                    "skillId": skill_id,
+                    "pendingApprovals": approval_count,
+                    "artifacts": artifact_count,
+                    "creditsSpent": round(credits, 4),
+                    "traceCount": len(_list_values(traces)),
+                    "replayReady": bool(trace.get("replayReady")),
+                }
+            )
+    return {
+        "total": len(docs),
+        "withContract": with_contract,
+        "selectedSkill": selected_skill,
+        "pendingApprovals": pending_approvals,
+        "artifactOutputs": artifact_outputs,
+        "traceIds": trace_count,
+        "replayReady": replay_ready,
+        "creditsSpent": round(total_credits, 4),
+        "runtimeKinds": [{"name": key, "count": runtime_kinds[key]} for key in sorted(runtime_kinds, key=lambda item: (-runtime_kinds[item], item))],
+        "sample": samples,
+    }
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -490,6 +552,7 @@ class AutomataAssistantTools:
         task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         eval_run_docs = await _to_list(eval_runs_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         knowledge_docs = await _to_list(knowledge_documents_collection.find(scoped, {"_id": 0, "storagePath": 0}).sort("createdAt", -1), 1000)
+        session_docs = await _to_list(sessions_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         work_docs = await _to_list(work_items_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         approval_docs = await _to_list(approvals_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         counts = {
@@ -519,6 +582,7 @@ class AutomataAssistantTools:
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
+        session_contracts = _session_contract_summary(session_docs)
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
         pending_approval_work_item_ids = {
@@ -681,6 +745,7 @@ class AutomataAssistantTools:
             "runtime": {
                 "agents": counts["agents"],
                 "sessions": counts["sessions"],
+                "sessionContracts": session_contracts,
                 "artifacts": counts["artifacts"],
                 "passingEvalRuns": passing_runs,
                 "failingEvalRuns": failing_runs,

@@ -249,7 +249,24 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             }
         ]
     )
-    sessions = _Collection([{"email": "owner@example.com", "companyId": "company-1", "sessionId": "session-1"}])
+    sessions = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "sessionId": "session-1",
+                "sessionContract": {
+                    "sessionId": "session-1",
+                    "agentRuntime": {"runtimeKind": "hybrid", "sourceKind": "work", "workItemId": "work-1", "runId": "run-1"},
+                    "selectedSkill": {"matched": True, "skillId": "skill-1", "skillName": "Approved skill"},
+                    "approvalState": {"pending": 1, "requiredFor": ["send"], "hasHumanBoundary": True},
+                    "artifactState": {"count": 1, "hasBusinessOutput": True},
+                    "costState": {"creditsSpent": 1.25, "durationSeconds": 3.0},
+                    "traceState": {"traceIds": ["run-1", "trace-1"], "traceCount": 2, "timelineSteps": 4, "replayReady": False},
+                },
+            }
+        ]
+    )
     artifacts = _Collection([{"email": "owner@example.com", "companyId": "company-1", "artifactId": "artifact-1"}])
     eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
     approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending", "metadata": {"workItemId": "work-1"}}])
@@ -416,6 +433,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["workOrchestration"]["sla"]["needsAttention"] == 3
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
     assert snapshot["operatingState"]["runtime"]["sessions"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["withContract"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["selectedSkill"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["pendingApprovals"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
