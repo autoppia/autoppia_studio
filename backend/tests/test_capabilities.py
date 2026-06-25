@@ -377,13 +377,14 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
                     "companyId": "co-1",
                     "benchmarkId": "bench-2",
                     "name": "Draft renewal email",
-                    "businessIntent": "Prepare customer-facing renewal response",
                     "successCriteria": "Draft email is prepared but not sent",
-                    "riskClass": "high",
                     "metadata": {
                         "taskContract": {
+                            "businessIntent": "Prepare customer-facing renewal response",
                             "expectedArtifacts": ["draft_email", "renewal_summary"],
                             "allowedSystems": ["email", "erp"],
+                            "riskClass": "high",
+                            "successCriteria": "Draft email is prepared but not sent",
                         }
                     },
                 },

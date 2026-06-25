@@ -765,21 +765,18 @@ def _regression_case_key(case: dict[str, Any]) -> str:
 
 
 def _serialize_regression_case(doc: dict[str, Any], *, source: str) -> dict[str, Any]:
-    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    task_contract = metadata.get("taskContract") if isinstance(metadata.get("taskContract"), dict) else {}
-    expected_artifacts = doc.get("expectedArtifacts") or task_contract.get("expectedArtifacts") or []
-    allowed_systems = doc.get("allowedSystems") or task_contract.get("allowedSystems") or []
+    task_contract = task_contract_from_record(doc)
     return {
         "source": source,
         "taskId": doc.get("taskId", ""),
         "evalId": doc.get("evalId", ""),
         "benchmarkId": doc.get("benchmarkId", ""),
         "name": doc.get("name") or doc.get("taskName") or doc.get("agentTaskName") or "",
-        "businessIntent": doc.get("businessIntent") or task_contract.get("businessIntent") or "",
-        "successCriteria": doc.get("successCriteria") or task_contract.get("successCriteria") or "",
-        "riskClass": doc.get("riskClass") or task_contract.get("riskClass") or "",
-        "expectedArtifacts": expected_artifacts if isinstance(expected_artifacts, list) else [],
-        "allowedSystems": allowed_systems if isinstance(allowed_systems, list) else [],
+        "businessIntent": task_contract.get("businessIntent") or "",
+        "successCriteria": task_contract.get("successCriteria") or "",
+        "riskClass": task_contract.get("riskClass") or "",
+        "expectedArtifacts": task_contract.get("expectedArtifacts") or [],
+        "allowedSystems": task_contract.get("allowedSystems") or [],
     }
 
 
