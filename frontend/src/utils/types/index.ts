@@ -217,6 +217,8 @@ export interface RuntimeCapabilities {
 export interface RuntimeSpec {
   browserEnabled?: boolean;
   browserMode?: "visible" | "headless";
+  allowedDomains?: string[];
+  browserAllowedDomains?: string[];
   maxCreditsPerRun?: number;
   tools?: {
     browser?: boolean;

@@ -254,6 +254,41 @@ def _entity_graph_payload(docs: list[dict[str, Any]]) -> dict[str, Any]:
     return {"nodes": nodes, "edges": edges}
 
 
+def _host_from_url(value: str) -> str:
+    if not value:
+        return ""
+    try:
+        from urllib.parse import urlparse
+
+        return (urlparse(value).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def browser_runtime_policy(agent_config: dict[str, Any]) -> dict[str, Any]:
+    runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
+    raw_domains = (
+        runtime_spec.get("allowedDomains")
+        or runtime_spec.get("browserAllowedDomains")
+        or runtime_spec.get("allowedOrigins")
+        or []
+    )
+    domains = [str(item).strip().lower() for item in raw_domains if str(item).strip()] if isinstance(raw_domains, list) else []
+    website_host = _host_from_url(str(agent_config.get("websiteUrl") or ""))
+    if website_host and website_host not in domains:
+        domains.append(website_host)
+    restricted = bool(domains)
+    return {
+        "enabled": _browser_enabled(agent_config),
+        "mode": str(runtime_spec.get("browserMode") or agent_config.get("browserMode") or "visible"),
+        "allowedDomains": domains,
+        "restrictedByDomain": restricted,
+        "defaultUse": "exception",
+        "riskLevel": "medium" if restricted else "high",
+        "notes": "Browser runtime should be used only when API/connectors cannot cover the task.",
+    }
+
+
 async def _entity_context(company_id: str, callables: list[dict[str, Any]]) -> dict[str, Any]:
     names = _callable_entity_names(callables)
     if not names:
@@ -300,6 +335,7 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
     return {
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
+        "browserPolicy": browser_runtime_policy(agent_config),
         "entities": context.get("entities") if isinstance(context.get("entities"), dict) else {},
         "tools": tool_callables,
         "skills": skill_callables,

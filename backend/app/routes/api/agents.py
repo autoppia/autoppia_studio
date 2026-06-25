@@ -107,6 +107,7 @@ async def runtime_contract(agent_id: str, api_key: dict[str, Any] = Depends(veri
         "auth": {"header": "x-api-key"},
         "runtimeCapabilities": runtime_contract["runtimeCapabilities"],
         "runtimeSpec": runtime_contract["runtimeSpec"],
+        "browserPolicy": runtime_contract.get("browserPolicy", {}),
         "request": {
             "requiredOneOf": ["prompt", "task"],
             "properties": {

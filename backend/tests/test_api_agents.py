@@ -295,6 +295,9 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert "browser.navigate" in unavailable
     assert "telegram.send_message" in unavailable
     assert unavailable["telegram.send_message"]["runtimeAvailability"]["unavailable"] == ["network"]
+    assert contract["browserPolicy"]["enabled"] is False
+    assert contract["browserPolicy"]["defaultUse"] == "exception"
+    assert contract["browserPolicy"]["allowedDomains"] == ["example.com"]
 
 
 @pytest.mark.asyncio
