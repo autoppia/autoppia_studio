@@ -104,14 +104,13 @@ function SessionCard({
 }) {
   const initialHost = hostLabel(session.initialUrl);
   const lastHost = hostLabel(session.lastUrl);
-  const runtimeState = session.runtimeState || {};
-  const matchedSkillId = String(session.matchedSkillId || runtimeState.matchedSkillId || "");
-  const matchedSkillName = String(session.matchedSkillName || runtimeState.matchedSkillName || runtimeState.matchedSkill || "");
+  const matchedSkillId = String(session.matchedSkillId || "");
+  const matchedSkillName = String(session.matchedSkillName || "");
   const kind = runtimeKind(session);
-  const workItemId = String(session.workItemId || runtimeState.workItemId || "");
-  const runId = String(session.runId || runtimeState.runId || "");
-  const sourceKind = String(session.sourceKind || runtimeState.sourceKind || "");
-  const creditsLabel = formatCredits(session.creditsSpent ?? runtimeState.creditsSpent);
+  const workItemId = String(session.workItemId || "");
+  const runId = String(session.runId || "");
+  const sourceKind = String(session.sourceKind || "");
+  const creditsLabel = formatCredits(session.creditsSpent);
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -324,10 +323,10 @@ export default function Runtime(): React.ReactElement {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return sessions.filter((session) => {
-      const matchedSkillId = String(session.matchedSkillId || session.runtimeState?.matchedSkillId || "");
+      const matchedSkillId = String(session.matchedSkillId || "");
       if (skillFilter && matchedSkillId !== skillFilter) return false;
       if (workItemFilter) {
-        const sessionWorkItemId = String(session.workItemId || session.runtimeState?.workItemId || "");
+        const sessionWorkItemId = String(session.workItemId || "");
         if (sessionWorkItemId !== workItemFilter) return false;
       }
       if (sessionIdsFilter.size > 0 && !sessionIdsFilter.has(session.sessionId)) return false;
