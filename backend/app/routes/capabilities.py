@@ -46,6 +46,19 @@ class CapabilityApprovalUpdateRequest(BaseModel):
     approval: str
 
 
+class SkillUpdateRequest(BaseModel):
+    email: str = ""
+    name: str | None = None
+    description: str | None = None
+    whenToUse: str | None = None
+    riskPolicy: str | None = None
+    status: str | None = None
+    inputEntities: list[str] | None = None
+    outputEntity: str | None = None
+    outputCard: dict[str, Any] | None = None
+    trajectoryIds: list[str] | None = None
+
+
 class CompanyTrajectoryCreateRequest(BaseModel):
     email: str
     name: str
@@ -263,6 +276,18 @@ async def _upsert_skill(doc: dict[str, Any]) -> dict[str, Any]:
     doc["updatedAt"] = _now()
     await capabilities_collection.update_one({"capabilityId": doc["capabilityId"]}, {"$set": doc}, upsert=True)
     return _serialize_skill(doc)
+
+
+def _dedupe_strings(values: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        deduped.append(clean)
+    return deduped
 
 
 async def _create_capability_run(
@@ -608,6 +633,70 @@ async def update_skill_approval(skill_id: str, body: CapabilityApprovalUpdateReq
     updated = {**permissions, "approval": _clean_approval_mode(body.approval)}
     await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": {"permissions": updated, "updatedAt": _now()}})
     return {"success": True, "skill": _serialize_skill({**skill, "permissions": updated, "updatedAt": _now()})}
+
+
+@router.patch("/skills/{skill_id}")
+async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
+    skill = await capabilities_collection.find_one({"capabilityId": skill_id, "capabilityKind": "skill"}, {"_id": 0})
+    if not skill:
+        raise HTTPException(status_code=404, detail="Skill not found")
+    if body.email and skill.get("email") != body.email:
+        raise HTTPException(status_code=404, detail="Skill not found")
+
+    update: dict[str, Any] = {}
+    trajectory_docs: list[dict[str, Any]] | None = None
+    if body.name is not None:
+        update["name"] = body.name.strip() or skill.get("name", "") or "Skill"
+    if body.description is not None:
+        update["description"] = body.description.strip()
+    if body.whenToUse is not None:
+        update["whenToUse"] = body.whenToUse.strip()
+    if body.riskPolicy is not None:
+        update["riskPolicy"] = body.riskPolicy.strip() or skill.get("riskPolicy", "")
+    if body.status is not None:
+        update["status"] = body.status.strip() or skill.get("status", "")
+    if body.inputEntities is not None:
+        update["inputEntities"] = _dedupe_strings(body.inputEntities)
+    if body.outputEntity is not None:
+        update["outputEntity"] = body.outputEntity.strip()
+    if body.outputCard is not None:
+        update["outputCard"] = body.outputCard
+    if body.trajectoryIds is not None:
+        trajectory_ids = _dedupe_strings(body.trajectoryIds)
+        trajectory_docs = []
+        for trajectory_id in trajectory_ids:
+            trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
+            if not trajectory:
+                raise HTTPException(status_code=404, detail=f"Trajectory not found: {trajectory_id}")
+            if trajectory.get("companyId") != skill.get("companyId"):
+                raise HTTPException(status_code=400, detail="Trajectory does not belong to this company")
+            trajectory_docs.append(trajectory)
+        update["trajectoryIds"] = trajectory_ids
+        update["connectorIds"] = _dedupe_strings([
+            connector_id
+            for trajectory in trajectory_docs
+            for connector_id in (trajectory.get("connectorIds") or [])
+        ]) or skill.get("connectorIds", [])
+        update["toolIds"] = _dedupe_strings([
+            tool_id
+            for trajectory in trajectory_docs
+            for tool_id in (trajectory.get("toolIds") or [])
+        ]) or skill.get("toolIds", [])
+        update["runtimeRequirements"] = _dedupe_strings([
+            requirement
+            for trajectory in trajectory_docs
+            for requirement in (trajectory.get("runtimeRequirements") or [])
+        ]) or skill.get("runtimeRequirements", [])
+        benchmark_ids = _dedupe_strings([str(trajectory.get("benchmarkId") or "") for trajectory in trajectory_docs])
+        eval_ids = _dedupe_strings([str(trajectory.get("evalId") or "") for trajectory in trajectory_docs])
+        update["benchmarkId"] = benchmark_ids[0] if benchmark_ids else skill.get("benchmarkId", "")
+        update["evalId"] = eval_ids[0] if eval_ids else skill.get("evalId", "")
+
+    now = _now()
+    update["updatedAt"] = now
+    await capabilities_collection.update_one({"capabilityId": skill_id}, {"$set": update})
+    refreshed = {**skill, **update}
+    return {"success": True, "skill": _serialize_skill(refreshed)}
 
 
 @router.post("/tools/{tool_id}/test")

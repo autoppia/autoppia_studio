@@ -162,6 +162,87 @@ async def test_update_tool_and_skill_approval_modes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "trajectories_collection",
+        _Collection(
+            [
+                {
+                    "trajectoryId": "traj-1",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "benchmarkId": "bench-1",
+                    "evalId": "eval-1",
+                    "connectorIds": ["conn-1"],
+                    "toolIds": ["crm.search"],
+                    "runtimeRequirements": ["network"],
+                },
+                {
+                    "trajectoryId": "traj-2",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "benchmarkId": "bench-2",
+                    "evalId": "eval-2",
+                    "connectorIds": ["conn-2"],
+                    "toolIds": ["erp.update"],
+                    "runtimeRequirements": ["browser"],
+                },
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Handle renewal",
+                    "description": "Old description",
+                    "whenToUse": "Old when-to-use",
+                    "riskPolicy": "human_approval_for_writes",
+                    "status": "ready",
+                    "trajectoryIds": ["traj-1"],
+                    "connectorIds": ["conn-1"],
+                    "toolIds": ["crm.search"],
+                    "runtimeRequirements": ["network"],
+                }
+            ]
+        ),
+    )
+
+    result = await capabilities.update_company_skill(
+        "skill-1",
+        capabilities.SkillUpdateRequest(
+            email="user@example.com",
+            name="Hardened renewal workflow",
+            description="Reusable renewal workflow",
+            whenToUse="Use for customer renewal follow-up",
+            riskPolicy="human_approval_always",
+            status="published",
+            inputEntities=["Customer", "Policy"],
+            outputEntity="Draft email",
+            trajectoryIds=["traj-1", "traj-2"],
+        ),
+    )
+
+    skill = result["skill"]
+    assert skill["name"] == "Hardened renewal workflow"
+    assert skill["riskPolicy"] == "human_approval_always"
+    assert skill["status"] == "published"
+    assert skill["trajectoryIds"] == ["traj-1", "traj-2"]
+    assert skill["connectorIds"] == ["conn-1", "conn-2"]
+    assert skill["toolIds"] == ["crm.search", "erp.update"]
+    assert skill["runtimeRequirements"] == ["network", "browser"]
+    assert skill["benchmarkId"] == "bench-1"
+    assert skill["evalId"] == "eval-1"
+
+
+@pytest.mark.asyncio
 async def test_update_approval_rejects_invalid_mode(monkeypatch):
     monkeypatch.setattr(
         capabilities,

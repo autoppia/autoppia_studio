@@ -144,6 +144,13 @@ const RISK_POLICIES = [
   { value: "autonomous", label: "Fully autonomous" },
 ];
 
+const SKILL_STATUSES = [
+  { value: "draft", label: "Draft" },
+  { value: "ready", label: "Ready" },
+  { value: "published", label: "Published" },
+  { value: "archived", label: "Archived" },
+];
+
 function RequirementChips({ values }: { values?: string[] }) {
   const items = (values || []).filter(Boolean);
   if (items.length === 0) return <span className="text-xs text-gray-400">No runtime requirements declared.</span>;
@@ -376,6 +383,7 @@ function PromoteModal({
 function CapabilityDetailModal({
   detail,
   toolsByName,
+  trajectories,
   trajectoriesById,
   connectorsById,
   benchmarkNamesById,
@@ -389,6 +397,7 @@ function CapabilityDetailModal({
 }: {
   detail: Exclude<CapabilityDetail, null>;
   toolsByName: Map<string, CompanyTool>;
+  trajectories: CompanyTrajectory[];
   trajectoriesById: Map<string, CompanyTrajectory>;
   connectorsById: Map<string, Connector>;
   benchmarkNamesById: Map<string, string>;
@@ -415,6 +424,14 @@ function CapabilityDetailModal({
   const isSkill = detail.kind === "skill";
   const configurableApprovalItem: CompanyTool | CompanySkill | null = isTool ? detail.item : isSkill ? detail.item : null;
   const [selectedApproval, setSelectedApproval] = useState<ApprovalMode>(approvalMode(configurableApprovalItem || undefined));
+  const [skillName, setSkillName] = useState(isSkill ? detail.item.name || "" : "");
+  const [skillDescription, setSkillDescription] = useState(isSkill ? detail.item.description || "" : "");
+  const [skillWhenToUse, setSkillWhenToUse] = useState(isSkill ? detail.item.whenToUse || "" : "");
+  const [skillRiskPolicy, setSkillRiskPolicy] = useState(isSkill ? detail.item.riskPolicy || RISK_POLICIES[0].value : RISK_POLICIES[0].value);
+  const [skillStatus, setSkillStatus] = useState(isSkill ? detail.item.status || "draft" : "draft");
+  const [skillInputEntities, setSkillInputEntities] = useState(isSkill ? (detail.item.inputEntities || []).join(", ") : "");
+  const [skillOutputEntity, setSkillOutputEntity] = useState(isSkill ? detail.item.outputEntity || "" : "");
+  const [selectedTrajectoryIds, setSelectedTrajectoryIds] = useState<string[]>(isSkill ? detail.item.trajectoryIds || [] : []);
   const title = isTool ? detail.item.name : detail.item.name || (isTrajectory ? detail.item.trajectoryId : detail.item.skillId);
   const icon = isTool ? faWrench : isTrajectory ? faRoute : faWandMagicSparkles;
   const kindLabel = isTool ? "Atomic action" : isTrajectory ? "Concrete attempt" : "Reusable procedure";
@@ -442,6 +459,27 @@ function CapabilityDetailModal({
           trajectories: (detail.item.trajectoryIds || []).length,
           skills: 1,
         };
+  const skillCandidateTrajectories = useMemo(() => {
+    if (!isSkill) return [] as CompanyTrajectory[];
+    return trajectories.filter((trajectory) => {
+      const selected = selectedTrajectoryIds.includes(trajectory.trajectoryId);
+      const sharedConnector = (trajectory.connectorIds || []).some((connectorId) => (detail.item.connectorIds || []).includes(connectorId));
+      const sharedBenchmark = Boolean(detail.item.benchmarkId) && trajectory.benchmarkId === detail.item.benchmarkId;
+      return selected || sharedConnector || sharedBenchmark;
+    });
+  }, [detail.item, isSkill, selectedTrajectoryIds, trajectories]);
+
+  useEffect(() => {
+    if (!isSkill) return;
+    setSkillName(detail.item.name || "");
+    setSkillDescription(detail.item.description || "");
+    setSkillWhenToUse(detail.item.whenToUse || "");
+    setSkillRiskPolicy(detail.item.riskPolicy || RISK_POLICIES[0].value);
+    setSkillStatus(detail.item.status || "draft");
+    setSkillInputEntities((detail.item.inputEntities || []).join(", "));
+    setSkillOutputEntity(detail.item.outputEntity || "");
+    setSelectedTrajectoryIds(detail.item.trajectoryIds || []);
+  }, [detail, isSkill]);
 
   const updateApprovalMode = async (mode: ApprovalMode) => {
     if (!configurableApprovalItem || busyAction || mode === selectedApproval) return;
@@ -503,6 +541,37 @@ function CapabilityDetailModal({
       await onReload();
     } catch (err: any) {
       setActionResult({ success: false, error: err?.message || "Review failed." });
+    } finally {
+      setBusyAction("");
+    }
+  };
+
+  const saveSkillHardening = async () => {
+    if (!isSkill || busyAction) return;
+    setBusyAction("save-skill");
+    setActionResult(null);
+    try {
+      const res = await fetch(`${apiUrl}/skills/${detail.item.skillId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: userEmail,
+          name: skillName.trim(),
+          description: skillDescription.trim(),
+          whenToUse: skillWhenToUse.trim(),
+          riskPolicy: skillRiskPolicy,
+          status: skillStatus,
+          inputEntities: skillInputEntities.split(",").map((item) => item.trim()).filter(Boolean),
+          outputEntity: skillOutputEntity.trim(),
+          trajectoryIds: selectedTrajectoryIds,
+        }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail || "Could not save skill hardening.");
+      setActionResult(data);
+      await onReload();
+    } catch (err: any) {
+      setActionResult({ success: false, error: err?.message || "Could not save skill hardening." });
     } finally {
       setBusyAction("");
     }
@@ -866,6 +935,94 @@ function CapabilityDetailModal({
                   </div>
                 )}
                 {detail.item.review && Object.keys(detail.item.review).length > 0 && <JsonBlock value={detail.item.review} />}
+              </div>
+            </section>
+          )}
+
+          {isSkill && (
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Skill hardening</p>
+                <button
+                  type="button"
+                  onClick={saveSkillHardening}
+                  disabled={busyAction === "save-skill"}
+                  className="inline-flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white disabled:opacity-60"
+                >
+                  {busyAction === "save-skill" ? <FontAwesomeIcon icon={faSpinner} className="animate-spin text-[10px]" /> : <FontAwesomeIcon icon={faCheck} className="text-[10px]" />}
+                  Save skill
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <label className="block md:col-span-1">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Skill name</span>
+                  <input value={skillName} onChange={(e) => setSkillName(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" />
+                </label>
+                <label className="block md:col-span-1">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Status</span>
+                  <SelectDropdown value={skillStatus} onChange={(value) => setSkillStatus(value)} options={SKILL_STATUSES} />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">When to use</span>
+                  <textarea value={skillWhenToUse} onChange={(e) => setSkillWhenToUse(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Description</span>
+                  <textarea value={skillDescription} onChange={(e) => setSkillDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Risk policy</span>
+                  <SelectDropdown value={skillRiskPolicy} onChange={(value) => setSkillRiskPolicy(value)} options={RISK_POLICIES} />
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Output entity</span>
+                  <input value={skillOutputEntity} onChange={(e) => setSkillOutputEntity(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="Draft email, Updated claim, Policy note..." />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Input entities</span>
+                  <input value={skillInputEntities} onChange={(e) => setSkillInputEntities(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="Policy, Customer, Claim" />
+                </label>
+              </div>
+              <div className="mt-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Source trajectories</p>
+                {skillCandidateTrajectories.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
+                    No related trajectories available yet. Promote or harvest more traces first.
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {skillCandidateTrajectories.map((trajectory) => {
+                      const checked = selectedTrajectoryIds.includes(trajectory.trajectoryId);
+                      const benchmarkLabel = trajectory.benchmarkId ? benchmarkNamesById.get(trajectory.benchmarkId) || trajectory.benchmarkId : "";
+                      return (
+                        <label key={trajectory.trajectoryId} className="flex items-start gap-3 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={(event) => {
+                              setSelectedTrajectoryIds((current) => event.target.checked
+                                ? Array.from(new Set([...current, trajectory.trajectoryId]))
+                                : current.filter((item) => item !== trajectory.trajectoryId));
+                            }}
+                            className="mt-0.5 h-4 w-4 accent-primary"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{trajectory.name || trajectory.trajectoryId}</p>
+                              <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${statusTone(trajectory.status || "")}`}>{trajectory.status || "draft"}</span>
+                            </div>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">{trajectory.intent || trajectory.description || "No trajectory intent."}</p>
+                            <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-gray-400">
+                              {benchmarkLabel && <span>{benchmarkLabel}</span>}
+                              {trajectory.evalId && <span className="font-mono">{trajectory.evalId}</span>}
+                              {(trajectory.toolIds || []).length > 0 && <span>{trajectory.toolIds.length} tools</span>}
+                            </div>
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </section>
           )}
@@ -2280,12 +2437,13 @@ export default function Capabilities(): React.ReactElement {
         />
       )}
         {detail && (
-          <CapabilityDetailModal
-            detail={detail}
-            toolsByName={toolsByName}
-            trajectoriesById={trajectoriesById}
-            connectorsById={connectorsById}
-            benchmarkNamesById={benchmarkNamesById}
+        <CapabilityDetailModal
+          detail={detail}
+          toolsByName={toolsByName}
+          trajectories={trajectories}
+          trajectoriesById={trajectoriesById}
+          connectorsById={connectorsById}
+          benchmarkNamesById={benchmarkNamesById}
             lineage={lineage}
             runtimeUsage={
               detail.kind === "tool"
