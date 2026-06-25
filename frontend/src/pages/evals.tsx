@@ -73,6 +73,7 @@ interface BenchmarkCoverage {
     latestRunId?: string;
     latestCreatedAt?: string;
   };
+  promotionGate?: PromotionGate;
 }
 
 interface CoveragePortfolio {
@@ -101,6 +102,14 @@ interface CoveragePortfolio {
     passRatio?: number;
     latest?: Array<{ runId?: string; label?: string; createdAt?: string }>;
   };
+  promotionGate?: PromotionGate;
+}
+
+interface PromotionGate {
+  state?: "blocked" | "needs_regression" | "ready" | "published" | string;
+  blockers?: string[];
+  nextActions?: string[];
+  canPromote?: boolean;
 }
 
 interface ConnectorItem {
@@ -242,6 +251,19 @@ function routerClass(decision?: string) {
   if (decision === "matched_skill") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
   if (decision === "no_safe_match") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function promotionGateClass(state?: string) {
+  if (state === "published" || state === "ready") return "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300";
+  if (state === "needs_regression") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
+}
+
+function promotionGateLabel(state?: string) {
+  if (state === "published") return "published gate";
+  if (state === "ready") return "ready to promote";
+  if (state === "needs_regression") return "needs regression";
+  return "blocked gate";
 }
 
 export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
@@ -1238,6 +1260,22 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                   </p>
                 </div>
               </div>
+              {coveragePortfolio.promotionGate && (
+                <div className={`mt-3 rounded-lg border px-3 py-3 ${promotionGateClass(coveragePortfolio.promotionGate.state)}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Portfolio promotion gate</p>
+                      <p className="mt-1 text-sm font-semibold">{promotionGateLabel(coveragePortfolio.promotionGate.state)}</p>
+                    </div>
+                    <span className="rounded-md border border-current/20 px-2 py-1 text-[10px] font-semibold">
+                      {coveragePortfolio.promotionGate.canPromote ? "promotion allowed" : `${coveragePortfolio.promotionGate.blockers?.length || 0} blocker(s)`}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-[11px] opacity-85">
+                    {(coveragePortfolio.promotionGate.nextActions || [])[0] || "All benchmark gates have enough contract, skill and regression evidence."}
+                  </p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1299,57 +1337,72 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                     </div>
 
                     {benchmark.coverage && (
-                      <div className="mb-4 grid gap-2 md:grid-cols-2 xl:grid-cols-5">
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Task contracts</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                            {benchmark.coverage.taskContractCoverage?.complete || 0}/{benchmark.coverage.taskContractCoverage?.total || 0} complete
-                          </p>
-                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                            {Math.round((benchmark.coverage.taskContractCoverage?.averageScore || 0) * 100)}% avg readiness
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                            {benchmark.coverage.skillCoverage?.ready || 0}/{benchmark.coverage.skillCoverage?.total || 0} ready
-                          </p>
-                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
-                            {benchmark.coverage.skillCoverage?.published || 0} published skills
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Systems & connectors</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                            {(benchmark.coverage.systems || []).length} systems · {(benchmark.coverage.connectorIds || []).length} connectors
-                          </p>
-                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
-                            {[...(benchmark.coverage.systems || []), ...(benchmark.coverage.connectorIds || [])].slice(0, 4).join(", ") || "No systems declared"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entities & artifacts</p>
-                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                            {(benchmark.coverage.entityNames || []).length} entities · {(benchmark.coverage.expectedArtifacts || []).length} artifacts
-                          </p>
-                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
-                            {(benchmark.coverage.expectedArtifacts || []).slice(0, 4).join(", ") || "No artifacts declared"}
-                          </p>
-                        </div>
-                        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
-                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression coverage</p>
-                          <div className="mt-1 flex items-center gap-2">
-                            <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${labelClass(benchmark.coverage.runCoverage?.latestLabel || "pending")}`}>
-                              {benchmark.coverage.runCoverage?.latestLabel || "no runs"}
-                            </span>
-                            <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                              {benchmark.coverage.runCoverage?.pass || 0}/{benchmark.coverage.runCoverage?.total || 0} pass
-                            </span>
+                      <div className="mb-4 space-y-2">
+                        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Task contracts</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                              {benchmark.coverage.taskContractCoverage?.complete || 0}/{benchmark.coverage.taskContractCoverage?.total || 0} complete
+                            </p>
+                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                              {Math.round((benchmark.coverage.taskContractCoverage?.averageScore || 0) * 100)}% avg readiness
+                            </p>
                           </div>
-                          <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
-                            {(benchmark.coverage.riskClasses || []).join(", ") || "No risk classes"}
-                          </p>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                              {benchmark.coverage.skillCoverage?.ready || 0}/{benchmark.coverage.skillCoverage?.total || 0} ready
+                            </p>
+                            <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                              {benchmark.coverage.skillCoverage?.published || 0} published skills
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Systems & connectors</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                              {(benchmark.coverage.systems || []).length} systems · {(benchmark.coverage.connectorIds || []).length} connectors
+                            </p>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                              {[...(benchmark.coverage.systems || []), ...(benchmark.coverage.connectorIds || [])].slice(0, 4).join(", ") || "No systems declared"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entities & artifacts</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                              {(benchmark.coverage.entityNames || []).length} entities · {(benchmark.coverage.expectedArtifacts || []).length} artifacts
+                            </p>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                              {(benchmark.coverage.expectedArtifacts || []).slice(0, 4).join(", ") || "No artifacts declared"}
+                            </p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression coverage</p>
+                            <div className="mt-1 flex items-center gap-2">
+                              <span className={`rounded-md border px-2 py-0.5 text-[10px] font-semibold ${labelClass(benchmark.coverage.runCoverage?.latestLabel || "pending")}`}>
+                                {benchmark.coverage.runCoverage?.latestLabel || "no runs"}
+                              </span>
+                              <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                                {benchmark.coverage.runCoverage?.pass || 0}/{benchmark.coverage.runCoverage?.total || 0} pass
+                              </span>
+                            </div>
+                            <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                              {(benchmark.coverage.riskClasses || []).join(", ") || "No risk classes"}
+                            </p>
+                          </div>
                         </div>
+                        {benchmark.coverage.promotionGate && (
+                          <div className={`rounded-lg border px-3 py-2 ${promotionGateClass(benchmark.coverage.promotionGate.state)}`}>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="text-xs font-semibold">{promotionGateLabel(benchmark.coverage.promotionGate.state)}</p>
+                              <p className="text-[10px] font-semibold">
+                                {benchmark.coverage.promotionGate.canPromote ? "can promote trajectory to skill" : (benchmark.coverage.promotionGate.blockers || []).join(", ") || "blocked"}
+                              </p>
+                            </div>
+                            <p className="mt-1 text-[11px] opacity-85">
+                              {(benchmark.coverage.promotionGate.nextActions || [])[0] || "Benchmark is ready to gate skill promotion."}
+                            </p>
+                          </div>
+                        )}
                       </div>
                     )}
 

@@ -189,6 +189,56 @@ def _task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _promotion_gate(
+    *,
+    task_total: int,
+    task_complete: int,
+    skill_total: int,
+    ready_skills: int,
+    published_skills: int,
+    run_total: int,
+    run_pass: int,
+    run_fail: int,
+) -> dict[str, Any]:
+    blockers: list[str] = []
+    next_actions: list[str] = []
+    if task_total == 0:
+        blockers.append("no_tasks")
+        next_actions.append("Add benchmark tasks with business intent, allowed systems, expected artifacts, success criteria, and risk class.")
+    elif task_complete < task_total:
+        blockers.append("incomplete_task_contracts")
+        next_actions.append("Complete every task contract before using the benchmark as a production gate.")
+    if skill_total == 0:
+        blockers.append("no_skills")
+        next_actions.append("Harvest candidate trajectories and promote at least one reusable skill.")
+    elif ready_skills == 0:
+        blockers.append("no_ready_skills")
+        next_actions.append("Harden skills with activation guidance, IO, policy, source trajectories, and regression evidence.")
+    if run_total == 0:
+        blockers.append("no_regression_runs")
+        next_actions.append("Run the benchmark and judge the resulting task trials.")
+    elif run_pass == 0:
+        blockers.append("no_passing_regression")
+        next_actions.append("Get at least one passing regression run before promotion.")
+    if run_fail > 0:
+        blockers.append("failing_regressions")
+        next_actions.append("Investigate failing regression runs before publishing or widening runtime access.")
+
+    if blockers:
+        state = "needs_regression" if blockers == ["no_regression_runs"] else "blocked"
+    elif published_skills > 0:
+        state = "published"
+    else:
+        state = "ready"
+
+    return {
+        "state": state,
+        "blockers": blockers,
+        "nextActions": next_actions,
+        "canPromote": state in {"ready", "published"},
+    }
+
+
 def _benchmark_coverage_summary(
     *,
     tasks: list[dict[str, Any]],
@@ -224,10 +274,15 @@ def _benchmark_coverage_summary(
     latest_run = runs[0] if runs else None
     published_statuses = {"published", "approved", "active", "production"}
     ready_statuses = {"ready", *published_statuses}
+    task_complete = sum(1 for item in completeness if item.get("state") == "complete")
+    skill_ready = sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in ready_statuses)
+    skill_published = sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in published_statuses)
+    run_pass = labels.count("pass")
+    run_fail = labels.count("fail")
     return {
         "taskCount": len(tasks),
         "taskContractCoverage": {
-            "complete": sum(1 for item in completeness if item.get("state") == "complete"),
+            "complete": task_complete,
             "total": len(completeness),
             "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
         },
@@ -239,18 +294,28 @@ def _benchmark_coverage_summary(
         "skillCoverage": {
             "skillIds": skill_ids,
             "total": len(skill_ids),
-            "ready": sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in ready_statuses),
-            "published": sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in published_statuses),
+            "ready": skill_ready,
+            "published": skill_published,
         },
         "runCoverage": {
             "total": len(runs),
-            "pass": labels.count("pass"),
-            "fail": labels.count("fail"),
+            "pass": run_pass,
+            "fail": run_fail,
             "pending": labels.count("pending"),
             "latestLabel": str((latest_run or {}).get("label") or ""),
             "latestRunId": str((latest_run or {}).get("runId") or ""),
             "latestCreatedAt": (latest_run or {}).get("createdAt"),
         },
+        "promotionGate": _promotion_gate(
+            task_total=len(tasks),
+            task_complete=task_complete,
+            skill_total=len(skill_ids),
+            ready_skills=skill_ready,
+            published_skills=skill_published,
+            run_total=len(runs),
+            run_pass=run_pass,
+            run_fail=run_fail,
+        ),
     }
 
 
@@ -272,6 +337,8 @@ def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         for item in coverage_items
         for skill_id in ((item.get("skillCoverage") or {}).get("skillIds") or [])
     ])
+    ready_skills = sum(int((item.get("skillCoverage") or {}).get("ready") or 0) for item in coverage_items)
+    published_skills = sum(int((item.get("skillCoverage") or {}).get("published") or 0) for item in coverage_items)
     return {
         "benchmarks": len(coverage_items),
         "tasks": task_total,
@@ -287,8 +354,8 @@ def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         "skills": {
             "skillIds": skill_ids,
             "total": len(skill_ids),
-            "ready": sum(int((item.get("skillCoverage") or {}).get("ready") or 0) for item in coverage_items),
-            "published": sum(int((item.get("skillCoverage") or {}).get("published") or 0) for item in coverage_items),
+            "ready": ready_skills,
+            "published": published_skills,
         },
         "regressions": {
             "total": run_total,
@@ -305,6 +372,16 @@ def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
                 for item in latest_runs[:5]
             ],
         },
+        "promotionGate": _promotion_gate(
+            task_total=task_total,
+            task_complete=task_complete,
+            skill_total=len(skill_ids),
+            ready_skills=ready_skills,
+            published_skills=published_skills,
+            run_total=run_total,
+            run_pass=run_pass,
+            run_fail=run_fail,
+        ),
     }
 
 
