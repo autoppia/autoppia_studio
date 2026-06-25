@@ -904,6 +904,17 @@ export interface Artifact {
   companyId: string;
   email: string;
   sessionId?: string;
+  skillId?: string;
+  trajectoryId?: string;
+  toolId?: string;
+  workItemId?: string;
+  capabilityRefs?: {
+    skillId?: string;
+    trajectoryId?: string;
+    toolId?: string;
+    workItemId?: string;
+    linked?: boolean;
+  };
   title: string;
   artifactType: string;
   description: string;

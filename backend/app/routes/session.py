@@ -69,9 +69,22 @@ def _artifact_file_name(title: str, artifact_type: str, file_name: str = "") -> 
     return stem[:160]
 
 
+def _artifact_capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
+    refs = {
+        "skillId": str(metadata.get("skillId") or ""),
+        "trajectoryId": str(metadata.get("trajectoryId") or ""),
+        "toolId": str(metadata.get("toolId") or ""),
+        "workItemId": str(metadata.get("workItemId") or ""),
+    }
+    refs["linked"] = any(refs[key] for key in ("skillId", "trajectoryId", "toolId", "workItemId"))
+    return refs
+
+
 def _serialize_session_artifact(doc: dict) -> dict:
     artifact_type = _clean_artifact_type(doc.get("artifactType") or doc.get("kind"))
     content_type, _ = ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    capability_refs = _artifact_capability_refs(metadata)
     return {
         "artifactId": doc.get("artifactId", ""),
         "sessionId": doc.get("sessionId", ""),
@@ -86,7 +99,12 @@ def _serialize_session_artifact(doc: dict) -> dict:
         "fileName": doc.get("fileName") or _artifact_file_name(doc.get("title") or doc.get("name") or "Artifact", artifact_type),
         "url": doc.get("url", ""),
         "sourceTool": doc.get("sourceTool", ""),
-        "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
+        "skillId": capability_refs["skillId"],
+        "trajectoryId": capability_refs["trajectoryId"],
+        "toolId": capability_refs["toolId"],
+        "workItemId": capability_refs["workItemId"],
+        "capabilityRefs": capability_refs,
+        "metadata": metadata,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }

@@ -136,3 +136,9 @@ async def test_artifact_listing_supports_capability_filters(monkeypatch):
     assert [item["artifactId"] for item in by_trajectory["artifacts"]] == ["artifact-skill"]
     assert [item["artifactId"] for item in by_tool["artifacts"]] == ["artifact-skill"]
     assert [item["artifactId"] for item in by_work_item["artifacts"]] == ["artifact-skill"]
+    artifact = by_skill["artifacts"][0]
+    assert artifact["skillId"] == "skill-1"
+    assert artifact["trajectoryId"] == "trajectory-1"
+    assert artifact["toolId"] == "tool-1"
+    assert artifact["workItemId"] == "work-1"
+    assert artifact["capabilityRefs"]["linked"] is True

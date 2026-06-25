@@ -320,6 +320,7 @@ async def test_session_artifact_create_list_and_download(monkeypatch):
             title="Renewal report",
             artifactType="markdown",
             content="# Renewals\n\n- Policy A",
+            metadata={"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1", "workItemId": "work-1"},
         ),
     )
     listed = await session_routes.list_session_artifacts("session-1", email="user@example.com")
@@ -331,7 +332,10 @@ async def test_session_artifact_create_list_and_download(monkeypatch):
 
     assert created["artifact"]["sessionId"] == "session-1"
     assert created["artifact"]["companyId"] == "company-1"
+    assert created["artifact"]["skillId"] == "skill-1"
+    assert created["artifact"]["capabilityRefs"]["linked"] is True
     assert listed["artifacts"][0]["title"] == "Renewal report"
+    assert listed["artifacts"][0]["trajectoryId"] == "trajectory-1"
     assert downloaded.body == b"# Renewals\n\n- Policy A"
     assert downloaded.media_type.startswith("text/markdown")
 

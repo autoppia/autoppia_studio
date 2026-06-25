@@ -109,6 +109,26 @@ function normalizeContentForType(type: string) {
   return DEFAULT_CONTENT[type] || DEFAULT_CONTENT.text;
 }
 
+function artifactSkillId(artifact?: Artifact | null) {
+  return String(artifact?.skillId || artifact?.capabilityRefs?.skillId || artifact?.metadata?.skillId || "");
+}
+
+function artifactTrajectoryId(artifact?: Artifact | null) {
+  return String(artifact?.trajectoryId || artifact?.capabilityRefs?.trajectoryId || artifact?.metadata?.trajectoryId || "");
+}
+
+function artifactToolId(artifact?: Artifact | null) {
+  return String(artifact?.toolId || artifact?.capabilityRefs?.toolId || artifact?.metadata?.toolId || "");
+}
+
+function artifactWorkItemId(artifact?: Artifact | null) {
+  return String(artifact?.workItemId || artifact?.capabilityRefs?.workItemId || artifact?.metadata?.workItemId || "");
+}
+
+function artifactCapabilityLinked(artifact: Artifact) {
+  return Boolean(artifact.capabilityRefs?.linked || artifactSkillId(artifact) || artifactTrajectoryId(artifact) || artifactToolId(artifact));
+}
+
 function csvRows(content: string) {
   return content
     .split(/\r?\n/)
@@ -209,11 +229,11 @@ export default function Artifacts(): React.ReactElement {
   const toolFilter = searchParams.get("toolId") || "";
 
   const selected = useMemo(() => artifacts.find((artifact) => artifact.artifactId === selectedId), [artifacts, selectedId]);
-  const selectedSkillId = String(selected?.metadata?.skillId || "");
-  const selectedTrajectoryId = String(selected?.metadata?.trajectoryId || "");
-  const selectedToolId = String(selected?.metadata?.toolId || "");
+  const selectedSkillId = artifactSkillId(selected);
+  const selectedTrajectoryId = artifactTrajectoryId(selected);
+  const selectedToolId = artifactToolId(selected);
   const selectedSessionId = selected?.sessionId ?? "";
-  const selectedWorkItemId = String(selected?.metadata?.workItemId || "");
+  const selectedWorkItemId = artifactWorkItemId(selected);
 
   useEffect(() => {
     selectedIdRef.current = selectedId;
@@ -365,8 +385,8 @@ export default function Artifacts(): React.ReactElement {
   const counts = useMemo(() => {
     const interactive = artifacts.filter((artifact) => ["html", "react", "svg", "mermaid"].includes(artifact.artifactType)).length;
     const runtimeLinked = artifacts.filter((artifact) => Boolean(artifact.sessionId)).length;
-    const workLinked = artifacts.filter((artifact) => Boolean(artifact.metadata?.workItemId)).length;
-    return { total: artifacts.length, interactive, runtimeLinked, workLinked };
+    const capabilityLinked = artifacts.filter(artifactCapabilityLinked).length;
+    return { total: artifacts.length, interactive, runtimeLinked, capabilityLinked };
   }, [artifacts]);
 
   return (
@@ -416,8 +436,8 @@ export default function Artifacts(): React.ReactElement {
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.runtimeLinked}</p>
                 </div>
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
-                  <p className="text-[10px] uppercase text-gray-400">Job linked</p>
-                  <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.workLinked}</p>
+                  <p className="text-[10px] uppercase text-gray-400">Capability linked</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.capabilityLinked}</p>
                 </div>
               </div>
             </div>
@@ -444,6 +464,13 @@ export default function Artifacts(): React.ReactElement {
                       {artifact.artifactType} · {formatDate(artifact.updatedAt || artifact.createdAt)}
                       {artifact.sessionId ? ` · ${artifact.sessionId.slice(0, 8)}` : ""}
                     </span>
+                    {artifactCapabilityLinked(artifact) && (
+                      <span className="mt-1 flex flex-wrap gap-1">
+                        {artifactSkillId(artifact) && <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">skill</span>}
+                        {!artifactSkillId(artifact) && artifactTrajectoryId(artifact) && <span className="rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-semibold text-primary">trajectory</span>}
+                        {artifactToolId(artifact) && <span className="rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:bg-white/10 dark:text-gray-300">tool</span>}
+                      </span>
+                    )}
                   </span>
                 </button>
               )) : (
@@ -506,6 +533,14 @@ export default function Artifacts(): React.ReactElement {
                     Artifacts are company-scoped and persist between sessions.
                     {selected?.sourceTool ? ` Source tool: ${selected.sourceTool}.` : ""}
                   </p>
+                  {selected && (selectedSkillId || selectedTrajectoryId || selectedToolId) && (
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      Capability output:
+                      {selectedSkillId ? <> skill <span className="font-mono text-gray-700 dark:text-gray-200">{selectedSkillId}</span></> : null}
+                      {!selectedSkillId && selectedTrajectoryId ? <> trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{selectedTrajectoryId}</span></> : null}
+                      {selectedToolId ? <> · tool <span className="font-mono text-gray-700 dark:text-gray-200">{selectedToolId}</span></> : null}
+                    </p>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedSessionId && (

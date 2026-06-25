@@ -74,8 +74,21 @@ def _safe_file_name(title: str, artifact_type: str, file_name: str = "") -> str:
     return stem[:160]
 
 
+def _capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
+    refs = {
+        "skillId": str(metadata.get("skillId") or ""),
+        "trajectoryId": str(metadata.get("trajectoryId") or ""),
+        "toolId": str(metadata.get("toolId") or ""),
+        "workItemId": str(metadata.get("workItemId") or ""),
+    }
+    refs["linked"] = any(refs[key] for key in ("skillId", "trajectoryId", "toolId", "workItemId"))
+    return refs
+
+
 def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     artifact_type = _clean_type(doc.get("artifactType"))
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    capability_refs = _capability_refs(metadata)
     return {
         "artifactId": doc.get("artifactId", ""),
         "companyId": doc.get("companyId", ""),
@@ -87,7 +100,12 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "content": doc.get("content", ""),
         "fileName": doc.get("fileName") or _safe_file_name(doc.get("title", ""), artifact_type),
         "sourceTool": doc.get("sourceTool", ""),
-        "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
+        "skillId": capability_refs["skillId"],
+        "trajectoryId": capability_refs["trajectoryId"],
+        "toolId": capability_refs["toolId"],
+        "workItemId": capability_refs["workItemId"],
+        "capabilityRefs": capability_refs,
+        "metadata": metadata,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
