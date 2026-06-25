@@ -91,6 +91,13 @@ def test_connector_serializer_exposes_capability_discovery_contract():
     assert discovery["mode"] == "task_scoped"
     assert discovery["docs"]["available"] is False
     assert discovery["docs"]["surfaceUrls"] == ["https://erp.example.com"]
+    assert discovery["entityMapping"]["status"] == "pending"
+    assert discovery["entityMapping"]["businessObjectCount"] == 0
+    assert discovery["entityMapping"]["businessObjects"] == []
+    assert discovery["entityMapping"]["source"] == ""
+    assert discovery["entityMapping"]["sourceUrls"] == ["https://erp.example.com"]
+    assert discovery["entityMapping"]["readyForToolBinding"] is False
+    assert discovery["entityMapping"]["nextAction"] == "Generate entity models from OpenAPI/schema/docs or runtime observations."
     assert discovery["auth"]["required"] is True
     assert discovery["auth"]["configuredFields"] == 0
     assert discovery["toolSynthesis"]["toolCount"] == 2
@@ -111,6 +118,62 @@ def test_connector_serializer_exposes_capability_discovery_contract():
         "candidate_tasks",
     ]
     assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
+
+
+def test_connector_discovery_maps_entities_from_tool_contracts():
+    connector = connectors_route._serialize(
+        {
+            "connectorId": "conn-1",
+            "email": "user@example.com",
+            "companyId": "company-1",
+            "name": "Claims ERP",
+            "type": "api",
+            "category": "software",
+            "status": "ready",
+            "provider": "custom",
+            "generationStatus": "generated",
+            "discoveryMode": "task_scoped",
+            "config": {"openApiUrl": "https://erp.example.com/openapi.json"},
+            "credentialRefs": {},
+            "toolkit": {
+                "name": "Claims toolkit",
+                "authFields": [],
+                "configFields": ["openApiUrl"],
+                "runtimeRequirements": ["network"],
+                "tools": [
+                    {
+                        "name": "claims.search_claims",
+                        "description": "Search claims.",
+                        "sideEffects": "reads",
+                        "inputEntities": ["Policy"],
+                        "outputEntity": "Claim",
+                        "inputSchema": {"type": "object", "properties": {"policyId": {"type": "string"}}},
+                        "outputSchema": {"type": "object", "properties": {"claimId": {"type": "string"}}},
+                    },
+                    {
+                        "name": "claims.update_claim",
+                        "description": "Update a claim after approval.",
+                        "sideEffects": "writes",
+                        "inputEntities": ["Claim"],
+                        "outputEntity": "Claim",
+                        "inputSchema": {"type": "object", "properties": {"claimId": {"type": "string"}}},
+                        "outputSchema": {"type": "object", "properties": {"status": {"type": "string"}}},
+                    },
+                ],
+            },
+        }
+    )
+
+    mapping = connector["capabilityDiscovery"]["entityMapping"]
+
+    assert mapping["status"] == "mapped"
+    assert mapping["businessObjectCount"] == 2
+    assert mapping["businessObjects"] == ["Policy", "Claim"]
+    assert mapping["source"] == "tool_contracts"
+    assert mapping["sourceUrls"] == ["https://erp.example.com/openapi.json"]
+    assert mapping["permissions"]["readTools"] == ["claims.search_claims"]
+    assert mapping["permissions"]["writeTools"] == ["claims.update_claim"]
+    assert mapping["readyForToolBinding"] is True
 
 
 def test_email_toolkit_marks_send_as_governed_human_approval_tool():

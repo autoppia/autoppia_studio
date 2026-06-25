@@ -333,6 +333,30 @@ def connector_toolkit(connector: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _stored_connector_toolkit(connector: dict[str, Any], stored: dict[str, Any]) -> dict[str, Any]:
+    runtime_requirements = list(stored.get("runtimeRequirements") or connector.get("runtimeRequirements") or ["network"])
+    surface = connector.get("surface") or ("browser" if str(connector.get("type") or "").lower() == "web" else "api")
+    tools = [
+        apply_tool_contract(
+            tool,
+            connector=connector,
+            toolkit={"runtimeRequirements": runtime_requirements},
+            surface=str(surface),
+            runtime_requirements=tool.get("runtimeRequirements") or runtime_requirements,
+        )
+        for tool in (stored.get("tools") if isinstance(stored.get("tools"), list) else [])
+    ]
+    return {
+        "toolkitId": stored.get("toolkitId") or f"{connector.get('connectorId')}:toolkit",
+        "connectorId": connector.get("connectorId", ""),
+        "name": stored.get("name") or f"{connector.get('name', 'Connector')} Toolkit",
+        "authFields": list(stored.get("authFields") or []),
+        "configFields": list(stored.get("configFields") or []),
+        "runtimeRequirements": runtime_requirements,
+        "tools": tools,
+    }
+
+
 def _is_secret_field(field: str) -> bool:
     value = field.lower()
     return any(token in value for token in ("password", "secret", "token", "apikey", "api_key", "key"))
@@ -406,6 +430,44 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
     for tool in tool_specs:
         risk = str(tool.get("riskLevel") or (tool.get("toolContract") or {}).get("riskLevel") or "unknown").lower()
         risk_counts[risk] = risk_counts.get(risk, 0) + 1
+    tool_entity_names: list[str] = []
+    read_tools: list[str] = []
+    write_tools_for_entities: list[str] = []
+    for tool in tool_specs:
+        side_effects = str(tool.get("sideEffects") or "").lower()
+        tool_name = str(tool.get("name") or "")
+        if side_effects in {"write", "writes", "send", "mutates"}:
+            if tool_name:
+                write_tools_for_entities.append(tool_name)
+        elif tool_name:
+            read_tools.append(tool_name)
+        tool_contract = tool.get("toolContract") if isinstance(tool.get("toolContract"), dict) else {}
+        for value in [
+            *(tool.get("inputEntities") if isinstance(tool.get("inputEntities"), list) else []),
+            tool.get("outputEntity"),
+            *(tool_contract.get("inputEntities") if isinstance(tool_contract.get("inputEntities"), list) else []),
+            tool_contract.get("outputEntity"),
+        ]:
+            clean = str(value or "").strip()
+            if clean and clean not in tool_entity_names:
+                tool_entity_names.append(clean)
+    raw_connector_entities = (
+        connector.get("discoveredEntities")
+        if isinstance(connector.get("discoveredEntities"), list)
+        else connector.get("entityCandidates")
+        if isinstance(connector.get("entityCandidates"), list)
+        else []
+    )
+    connector_entity_candidates: list[str] = []
+    for item in raw_connector_entities:
+        clean = str((item.get("name") or item.get("entity") or "") if isinstance(item, dict) else item or "").strip()
+        if clean and clean not in connector_entity_candidates:
+            connector_entity_candidates.append(clean)
+    entity_names = []
+    for name in [*tool_entity_names, *connector_entity_candidates]:
+        clean = str(name or "").strip()
+        if clean and clean not in entity_names:
+            entity_names.append(clean)
     discovery_gaps = []
     if provider == "custom" and connector_type == "api" and not docs_urls:
         discovery_gaps.append({"key": "docs", "label": "Add OpenAPI or documentation URL.", "target": "config.openApiUrl"})
@@ -421,7 +483,8 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
     surface_ready = bool(surface_urls) or not requires_surface
     auth_ready = not auth_fields or configured_auth >= len(auth_fields)
     typed_tools_ready = provider != "custom" or bool(typed_tools)
-    entity_ready = docs_ready or provider != "custom"
+    entity_source_ready = docs_ready if requires_docs else surface_ready if requires_surface else True
+    entity_ready = bool(entity_names) or entity_source_ready
     pipeline_stages = [
         {
             "key": "connector_docs",
@@ -479,7 +542,20 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
         },
         "entityDiscovery": {
             "source": "openapi" if connector_type == "api" and docs_urls else "runtime_observation" if connector_type == "web" else "toolkit",
-            "status": "available" if docs_urls or provider != "custom" else "pending",
+            "status": "available" if entity_source_ready else "pending",
+        },
+        "entityMapping": {
+            "status": "mapped" if entity_names else "source_ready" if entity_source_ready else "pending",
+            "businessObjectCount": len(entity_names),
+            "businessObjects": entity_names,
+            "source": "tool_contracts" if tool_entity_names else "connector_candidates" if connector_entity_candidates else "openapi" if docs_urls else "runtime_observation" if connector_type == "web" and entity_source_ready else "toolkit" if provider != "custom" else "",
+            "sourceUrls": [*docs_urls, *surface_urls],
+            "permissions": {
+                "readTools": read_tools,
+                "writeTools": write_tools_for_entities,
+            },
+            "readyForToolBinding": bool(entity_names and tool_specs),
+            "nextAction": "Review and persist business entities from tool contracts." if entity_names else "Generate entity models from OpenAPI/schema/docs or runtime observations.",
         },
         "toolSynthesis": {
             "toolCount": len(tool_specs),
@@ -567,6 +643,8 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "discoveryStatus": doc.get("discoveryStatus", ""),
         "discoveryMode": doc.get("discoveryMode", ""),
         "runtimeRequirements": doc.get("runtimeRequirements", []),
+        "discoveredEntities": doc.get("discoveredEntities", []),
+        "entityCandidates": doc.get("entityCandidates", []),
         "config": _public_config(doc.get("config", {}), doc.get("credentialRefs", {})),
         "credentialFields": {key: {"configured": bool(value)} for key, value in (doc.get("credentialRefs", {}) or {}).items()},
         "lastTestAt": doc.get("lastTestAt"),
@@ -592,7 +670,8 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
                 else f"hash-{os.getenv('AUTOMATA_HASH_EMBEDDING_DIMENSIONS', '256')}"
             ),
         }
-    connector["toolkit"] = connector_toolkit(connector)
+    stored_toolkit = doc.get("toolkit") if isinstance(doc.get("toolkit"), dict) else {}
+    connector["toolkit"] = _stored_connector_toolkit(connector, stored_toolkit) if stored_toolkit else connector_toolkit(connector)
     connector["capabilityDiscovery"] = _connector_capability_discovery(connector, connector["toolkit"])
     return connector
 

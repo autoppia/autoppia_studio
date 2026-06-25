@@ -910,6 +910,33 @@ export default function Connectors(): React.ReactElement {
                         <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.toolSynthesis?.writeToolCount || 0}</p>
                       </div>
                     </div>
+                    {selected.capabilityDiscovery.entityMapping && (
+                      <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-dark-border dark:bg-dark-bg">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entity mapping</p>
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${selected.capabilityDiscovery.entityMapping.readyForToolBinding ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                            {selected.capabilityDiscovery.entityMapping.status || "pending"}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2 text-[11px]">
+                          <div>
+                            <p className="text-gray-400">Objects</p>
+                            <p className="mt-0.5 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.entityMapping.businessObjectCount || 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400">Read tools</p>
+                            <p className="mt-0.5 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.entityMapping.permissions?.readTools?.length || 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-gray-400">Write tools</p>
+                            <p className="mt-0.5 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.entityMapping.permissions?.writeTools?.length || 0}</p>
+                          </div>
+                        </div>
+                        <p className="mt-2 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                          {(selected.capabilityDiscovery.entityMapping.businessObjects || []).join(", ") || selected.capabilityDiscovery.entityMapping.nextAction || "Generate entity models from docs or observations."}
+                        </p>
+                      </div>
+                    )}
                     {selected.capabilityDiscovery.ingestionPipeline && (
                       <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-dark-border dark:bg-dark-bg">
                         <div className="mb-2 flex items-center justify-between gap-2">

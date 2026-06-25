@@ -1115,6 +1115,19 @@ export interface Connector {
       source?: string;
       status?: string;
     };
+    entityMapping?: {
+      status?: "mapped" | "source_ready" | "pending" | string;
+      businessObjectCount?: number;
+      businessObjects?: string[];
+      source?: string;
+      sourceUrls?: string[];
+      permissions?: {
+        readTools?: string[];
+        writeTools?: string[];
+      };
+      readyForToolBinding?: boolean;
+      nextAction?: string;
+    };
     toolSynthesis?: {
       toolCount?: number;
       typedToolCount?: number;
