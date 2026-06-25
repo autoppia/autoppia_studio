@@ -2432,6 +2432,93 @@ export default function Capabilities(): React.ReactElement {
         return a.name.localeCompare(b.name);
       });
   }, [benchmarks, connectorFilter, filteredRuns, filteredSkills, filteredTrajectories, regression.bySkillId]);
+  const benchmarkCoverageSummary = useMemo(() => {
+    const summary = {
+      published: 0,
+      ready: 0,
+      needsReview: 0,
+      needsHarvest: 0,
+      blocked: 0,
+    };
+    for (const row of benchmarkPipeline) {
+      if (row.stage === "published") summary.published += 1;
+      if (row.stage === "ready") summary.ready += 1;
+      if (row.stage === "needs_review") summary.needsReview += 1;
+      if (row.stage === "needs_harvest") summary.needsHarvest += 1;
+      if (row.blockedSkills > 0) summary.blocked += 1;
+    }
+    return summary;
+  }, [benchmarkPipeline]);
+  const entityCoverage = useMemo(() => {
+    const rows = new Map<string, {
+      entity: string;
+      tools: Set<string>;
+      skills: Set<string>;
+      benchmarkedSkills: Set<string>;
+      regressionReadySkills: Set<string>;
+      trajectories: Set<string>;
+      sessions: Set<string>;
+    }>();
+    const ensure = (raw: string) => {
+      const entity = raw.trim();
+      if (!entity) return null;
+      const key = entity.toLowerCase();
+      if (!rows.has(key)) {
+        rows.set(key, {
+          entity,
+          tools: new Set<string>(),
+          skills: new Set<string>(),
+          benchmarkedSkills: new Set<string>(),
+          regressionReadySkills: new Set<string>(),
+          trajectories: new Set<string>(),
+          sessions: new Set<string>(),
+        });
+      }
+      return rows.get(key)!;
+    };
+
+    for (const tool of filteredTools) {
+      for (const entity of [...(tool.inputEntities || []), ...(tool.outputEntity ? [tool.outputEntity] : [])]) {
+        const row = ensure(entity);
+        if (!row) continue;
+        row.tools.add(tool.toolId);
+        for (const trajectory of trajectories.filter((item) => (item.toolIds || []).includes(tool.toolId))) {
+          row.trajectories.add(trajectory.trajectoryId);
+        }
+      }
+    }
+
+    for (const skill of filteredSkills) {
+      const sessionItems = runtimeUsage.sessionsBySkillId.get(skill.skillId) || [];
+      const isBenchmarked = Boolean(skill.benchmarkId || skill.evalId || skill.lineage?.benchmarkIds?.length || skill.lineage?.evalIds?.length);
+      const isRegressionReady = (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "pass";
+      for (const entity of [...(skill.inputEntities || []), ...(skill.outputEntity ? [skill.outputEntity] : [])]) {
+        const row = ensure(entity);
+        if (!row) continue;
+        row.skills.add(skill.skillId);
+        if (isBenchmarked) row.benchmarkedSkills.add(skill.skillId);
+        if (isRegressionReady) row.regressionReadySkills.add(skill.skillId);
+        for (const trajectoryId of skill.trajectoryIds || []) row.trajectories.add(trajectoryId);
+        for (const session of sessionItems) row.sessions.add(session.sessionId);
+      }
+    }
+
+    return Array.from(rows.values())
+      .map((row) => ({
+        entity: row.entity,
+        tools: row.tools.size,
+        skills: row.skills.size,
+        benchmarkedSkills: row.benchmarkedSkills.size,
+        regressionReadySkills: row.regressionReadySkills.size,
+        trajectories: row.trajectories.size,
+        sessions: row.sessions.size,
+      }))
+      .sort((a, b) => {
+        if (b.skills !== a.skills) return b.skills - a.skills;
+        if (b.tools !== a.tools) return b.tools - a.tools;
+        return a.entity.localeCompare(b.entity);
+      });
+  }, [filteredSkills, filteredTools, regression.bySkillId, runtimeUsage.sessionsBySkillId, trajectories]);
 
   // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
   // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
@@ -2753,6 +2840,136 @@ export default function Capabilities(): React.ReactElement {
                   value={coverage.promotableTrajectories}
                   hint="Passing trajectories ready to harden into skills."
                 />
+              </div>
+
+              <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Benchmark Coverage</p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Which benchmarks already have evidence, promotable trajectories or published reusable skills.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/evals")}
+                      className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                    >
+                      <FontAwesomeIcon icon={faClipboardCheck} className="text-[10px]" />
+                      Benchmarks
+                    </button>
+                  </div>
+                  <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+                    {[
+                      { label: "Published", value: benchmarkCoverageSummary.published, tone: stageTone("published") },
+                      { label: "Ready", value: benchmarkCoverageSummary.ready, tone: stageTone("ready") },
+                      { label: "Review", value: benchmarkCoverageSummary.needsReview, tone: stageTone("needs_review") },
+                      { label: "No evidence", value: benchmarkCoverageSummary.needsHarvest, tone: stageTone("needs_harvest") },
+                      { label: "Blocked", value: benchmarkCoverageSummary.blocked, tone: regressionTone("fail") },
+                    ].map((item) => (
+                      <div key={item.label} className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>
+                        <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{item.value}</p>
+                        <span className={`mt-2 inline-flex rounded-md border px-2 py-0.5 text-[10px] font-medium ${item.tone}`}>{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {benchmarkPipeline.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                        No benchmark pipeline is visible yet for the current scope.
+                      </div>
+                    ) : benchmarkPipeline.slice(0, 4).map((row) => (
+                      <div key={`coverage-${row.benchmarkId}`} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</p>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {row.taskCount} tasks · {row.trajectoryCount} trajectories · {row.skillCount} skills
+                            </p>
+                          </div>
+                          <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-semibold ${stageTone(row.stage)}`}>
+                            {stageLabel(row.stage)}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          {row.gaps.slice(0, 3).map((gap) => (
+                            <span key={gap} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                              {gap}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => setFactoryScope({ view: "trajectories", benchmarkId: row.benchmarkId })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                          >
+                            Review evidence
+                          </button>
+                          <button
+                            onClick={() => setFactoryScope({ view: row.skillCount > 0 ? "skills" : "trajectories", benchmarkId: row.benchmarkId })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white"
+                          >
+                            Open pipeline
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Entity Coverage</p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Business entities already mapped to typed tools and reusable skills, with benchmark and runtime evidence.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => navigate("/entities")}
+                      className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                    >
+                      <FontAwesomeIcon icon={faCube} className="text-[10px]" />
+                      Entities
+                    </button>
+                  </div>
+                  <div className="mt-4 space-y-3">
+                    {entityCoverage.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                        No entity mapping is visible yet for the current scope.
+                      </div>
+                    ) : entityCoverage.slice(0, 6).map((row) => (
+                      <div key={row.entity} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{row.entity}</p>
+                            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                              {row.tools} tools · {row.skills} skills · {row.trajectories} trajectories
+                            </p>
+                          </div>
+                          <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-medium ${row.regressionReadySkills > 0 ? regressionTone("pass") : row.benchmarkedSkills > 0 ? stageTone("ready") : stageTone("needs_harvest")}`}>
+                            {row.regressionReadySkills > 0 ? "runtime-ready" : row.benchmarkedSkills > 0 ? "benchmarked" : "unverified"}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-center dark:border-dark-border dark:bg-dark-surface">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Benchmarked</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{row.benchmarkedSkills}</p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-center dark:border-dark-border dark:bg-dark-surface">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression ready</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{row.regressionReadySkills}</p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 text-center dark:border-dark-border dark:bg-dark-surface">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Sessions</p>
+                            <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{row.sessions}</p>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
 
               {connectorCoverage.length > 0 && (
