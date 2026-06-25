@@ -187,6 +187,20 @@ function skillPromotionLabel(skill: CompanySkill) {
   return humanizeName(skill.promotionStatus || skill.status || "draft");
 }
 
+function hardeningTone(state?: string) {
+  const value = (state || "").toLowerCase();
+  if (value === "hardened") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (value === "drafting") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function hardeningLabel(skill: CompanySkill) {
+  const status = skill.hardeningStatus;
+  if (!status) return "hardening unknown";
+  const score = typeof status.score === "number" ? `${Math.round(status.score * 100)}%` : null;
+  return score ? `hardening ${score}` : `hardening ${humanizeName(status.state || "unknown")}`;
+}
+
 function trajectoryToolCalls(trajectory: CompanyTrajectory) {
   return trajectoryToolCallList(trajectory).length;
 }
@@ -204,6 +218,10 @@ function trajectoryToolCallList(trajectory: CompanyTrajectory) {
 
 function trajectoryJudgeLabel(trajectory: CompanyTrajectory) {
   return String(trajectory.judge?.label || "");
+}
+
+function parseCommaSeparated(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
 const RISK_POLICIES = [
@@ -397,11 +415,14 @@ function PromoteModal({
 }: {
   trajectory: CompanyTrajectory;
   onClose: () => void;
-  onPromote: (payload: { name: string; whenToUse: string; riskPolicy: string }) => void;
+  onPromote: (payload: { name: string; whenToUse: string; instructions: string; preconditions: string[]; expectedArtifacts: string[]; riskPolicy: string }) => void;
   promoting: boolean;
 }) {
   const [name, setName] = useState(trajectory.name || "");
   const [whenToUse, setWhenToUse] = useState(trajectory.intent || trajectory.description || "");
+  const [instructions, setInstructions] = useState(trajectory.description || trajectory.intent || "");
+  const [preconditions, setPreconditions] = useState("");
+  const [expectedArtifacts, setExpectedArtifacts] = useState("");
   const [riskPolicy, setRiskPolicy] = useState(RISK_POLICIES[0].value);
 
   return (
@@ -420,7 +441,7 @@ function PromoteModal({
           </button>
         </div>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
-          A skill is a reusable capability your agents can call. It wraps this trajectory with a clear name, a "when to use" hint and a risk policy.
+          A skill is a reusable capability your agents can call. It wraps this trajectory with activation guidance, reusable instructions and governance.
         </p>
         <div className="space-y-3">
           <label className="block">
@@ -432,12 +453,31 @@ function PromoteModal({
             <textarea value={whenToUse} onChange={(e) => setWhenToUse(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" placeholder="Describe when an agent should pick this skill." />
           </label>
           <label className="block">
+            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Instructions</span>
+            <textarea value={instructions} onChange={(e) => setInstructions(e.target.value)} rows={4} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" placeholder="Reusable playbook the runtime should follow after matching this skill." />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Preconditions</span>
+            <input value={preconditions} onChange={(e) => setPreconditions(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="Identity verified, claim exists, customer email known" />
+          </label>
+          <label className="block">
+            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Expected artifacts</span>
+            <input value={expectedArtifacts} onChange={(e) => setExpectedArtifacts(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="draft_email, case_summary" />
+          </label>
+          <label className="block">
             <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Risk policy</span>
             <SelectDropdown value={riskPolicy} onChange={setRiskPolicy} options={RISK_POLICIES} />
           </label>
         </div>
         <button
-          onClick={() => onPromote({ name: name.trim() || trajectory.name, whenToUse: whenToUse.trim(), riskPolicy })}
+          onClick={() => onPromote({
+            name: name.trim() || trajectory.name,
+            whenToUse: whenToUse.trim(),
+            instructions: instructions.trim(),
+            preconditions: parseCommaSeparated(preconditions),
+            expectedArtifacts: parseCommaSeparated(expectedArtifacts),
+            riskPolicy,
+          })}
           disabled={promoting}
           className="mt-4 w-full h-10 rounded-xl bg-gradient-primary text-white text-sm font-semibold disabled:opacity-60"
         >
@@ -511,10 +551,13 @@ function CapabilityDetailModal({
   const [skillName, setSkillName] = useState(isSkill ? detail.item.name || "" : "");
   const [skillDescription, setSkillDescription] = useState(isSkill ? detail.item.description || "" : "");
   const [skillWhenToUse, setSkillWhenToUse] = useState(isSkill ? detail.item.whenToUse || "" : "");
+  const [skillInstructions, setSkillInstructions] = useState(isSkill ? detail.item.instructions || "" : "");
   const [skillRiskPolicy, setSkillRiskPolicy] = useState(isSkill ? detail.item.riskPolicy || RISK_POLICIES[0].value : RISK_POLICIES[0].value);
   const [skillStatus, setSkillStatus] = useState(isSkill ? detail.item.status || "draft" : "draft");
   const [skillInputEntities, setSkillInputEntities] = useState(isSkill ? (detail.item.inputEntities || []).join(", ") : "");
   const [skillOutputEntity, setSkillOutputEntity] = useState(isSkill ? detail.item.outputEntity || "" : "");
+  const [skillPreconditions, setSkillPreconditions] = useState(isSkill ? (detail.item.preconditions || []).join(", ") : "");
+  const [skillExpectedArtifacts, setSkillExpectedArtifacts] = useState(isSkill ? (detail.item.expectedArtifacts || []).join(", ") : "");
   const [selectedTrajectoryIds, setSelectedTrajectoryIds] = useState<string[]>(isSkill ? detail.item.trajectoryIds || [] : []);
   const title = isTool ? detail.item.name : detail.item.name || (isTrajectory ? detail.item.trajectoryId : detail.item.skillId);
   const icon = isTool ? faWrench : isTrajectory ? faRoute : faWandMagicSparkles;
@@ -535,6 +578,19 @@ function CapabilityDetailModal({
     : isTrajectory
       ? regression.byTrajectoryId.get(detail.item.trajectoryId)
       : null;
+  const skillLatestRegression = isSkill ? detail.item.latestRegression : null;
+  const hardeningStatus = isSkill ? detail.item.hardeningStatus : null;
+  const hardeningChecks = hardeningStatus?.checks || {};
+  const hardeningChecklist = isSkill ? [
+    { key: "activation", label: "Activation" },
+    { key: "instructions", label: "Instructions" },
+    { key: "riskPolicy", label: "Risk policy" },
+    { key: "lineage", label: "Lineage" },
+    { key: "regression", label: "Regression linked" },
+    { key: "publishableRegression", label: "Regression passing" },
+    { key: "entities", label: "Entities" },
+    { key: "artifacts", label: "Artifacts" },
+  ] : [];
   const publishBlockedReason = isSkill && skillStatus === "published"
     ? !regressionSummary || regressionSummary.evalCount === 0
       ? "No benchmark evidence is linked to this skill yet."
@@ -573,10 +629,13 @@ function CapabilityDetailModal({
     setSkillName(detail.item.name || "");
     setSkillDescription(detail.item.description || "");
     setSkillWhenToUse(detail.item.whenToUse || "");
+    setSkillInstructions(detail.item.instructions || "");
     setSkillRiskPolicy(detail.item.riskPolicy || RISK_POLICIES[0].value);
     setSkillStatus(detail.item.status || "draft");
     setSkillInputEntities((detail.item.inputEntities || []).join(", "));
     setSkillOutputEntity(detail.item.outputEntity || "");
+    setSkillPreconditions((detail.item.preconditions || []).join(", "));
+    setSkillExpectedArtifacts((detail.item.expectedArtifacts || []).join(", "));
     setSelectedTrajectoryIds(detail.item.trajectoryIds || []);
   }, [detail, isSkill]);
 
@@ -658,9 +717,12 @@ function CapabilityDetailModal({
           name: skillName.trim(),
           description: skillDescription.trim(),
           whenToUse: skillWhenToUse.trim(),
+          instructions: skillInstructions.trim(),
+          preconditions: parseCommaSeparated(skillPreconditions),
+          expectedArtifacts: parseCommaSeparated(skillExpectedArtifacts),
           riskPolicy: skillRiskPolicy,
           status: skillStatus,
-          inputEntities: skillInputEntities.split(",").map((item) => item.trim()).filter(Boolean),
+          inputEntities: parseCommaSeparated(skillInputEntities),
           outputEntity: skillOutputEntity.trim(),
           trajectoryIds: selectedTrajectoryIds,
         }),
@@ -726,6 +788,58 @@ function CapabilityDetailModal({
             </div>
           </section>
 
+          {isSkill && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Skill package</p>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Hardening</p>
+                  <div className="mt-1 flex items-center gap-2">
+                    <span className={`inline-flex rounded-md border px-2 py-1 text-[11px] font-medium ${hardeningTone(hardeningStatus?.state)}`}>
+                      {humanizeName(hardeningStatus?.state || "unknown")}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {hardeningStatus?.passedChecks || 0}/{hardeningStatus?.totalChecks || hardeningChecklist.length} checks
+                    {typeof hardeningStatus?.score === "number" ? ` · ${Math.round(hardeningStatus.score * 100)}%` : ""}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Playbook steps</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{detail.item.instructions ? "Defined" : "Missing"}</p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {detail.item.instructions ? "Reusable operator instructions are attached." : "No reusable instructions stored yet."}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Preconditions</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{detail.item.preconditions?.length || 0}</p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Inputs or safety checks required before replay.</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Expected artifacts</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{detail.item.expectedArtifacts?.length || 0}</p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Business outputs this skill is expected to produce.</p>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {hardeningChecklist.map((item) => (
+                  <span
+                    key={item.key}
+                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium ${
+                      hardeningChecks[item.key]
+                        ? "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-300 border-green-200 dark:border-green-500/30"
+                        : "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border"
+                    }`}
+                  >
+                    <FontAwesomeIcon icon={hardeningChecks[item.key] ? faCheck : faClockRotateLeft} className="text-[9px]" />
+                    {item.label}
+                  </span>
+                ))}
+              </div>
+            </section>
+          )}
+
           {(isSkill || isTrajectory) && (
             <section>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Benchmark gating</p>
@@ -751,7 +865,10 @@ function CapabilityDetailModal({
                         {regressionSummary.latestLabel || "unknown"}
                       </span>
                     </div>
-                    {regressionSummary.latestCreatedAt && <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{formatDate(regressionSummary.latestCreatedAt)}</p>}
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      {formatDate(skillLatestRegression?.createdAt || regressionSummary.latestCreatedAt)}
+                      {skillLatestRegression?.runId ? ` · ${skillLatestRegression.runId.slice(0, 8)}` : ""}
+                    </p>
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Gate status</p>
@@ -1283,6 +1400,10 @@ function CapabilityDetailModal({
                   <textarea value={skillWhenToUse} onChange={(e) => setSkillWhenToUse(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" />
                 </label>
                 <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Instructions</span>
+                  <textarea value={skillInstructions} onChange={(e) => setSkillInstructions(e.target.value)} rows={4} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" placeholder="Reusable playbook the runtime should follow when this skill is matched." />
+                </label>
+                <label className="block md:col-span-2">
                   <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Description</span>
                   <textarea value={skillDescription} onChange={(e) => setSkillDescription(e.target.value)} rows={3} className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" />
                 </label>
@@ -1297,6 +1418,14 @@ function CapabilityDetailModal({
                 <label className="block md:col-span-2">
                   <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Input entities</span>
                   <input value={skillInputEntities} onChange={(e) => setSkillInputEntities(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="Policy, Customer, Claim" />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Preconditions</span>
+                  <input value={skillPreconditions} onChange={(e) => setSkillPreconditions(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="Identity verified, policy number known, claim already opened" />
+                </label>
+                <label className="block md:col-span-2">
+                  <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Expected artifacts</span>
+                  <input value={skillExpectedArtifacts} onChange={(e) => setSkillExpectedArtifacts(e.target.value)} className="w-full h-10 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 text-sm text-gray-900 dark:text-white outline-none" placeholder="draft_email, claim_summary, policy_note" />
                 </label>
               </div>
               <div className="mt-4">
@@ -1343,6 +1472,50 @@ function CapabilityDetailModal({
             </section>
           )}
 
+          {isSkill && (((detail.item.preconditions || []).length > 0) || ((detail.item.expectedArtifacts || []).length > 0) || detail.item.instructions) && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Playbook package</p>
+              <div className="space-y-3">
+                {detail.item.instructions && (
+                  <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Instructions</p>
+                    <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-gray-700 dark:text-gray-200">{detail.item.instructions}</p>
+                  </div>
+                )}
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Preconditions</p>
+                    {(detail.item.preconditions || []).length === 0 ? (
+                      <p className="mt-2 text-xs text-gray-400">No preconditions declared yet.</p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(detail.item.preconditions || []).map((item) => (
+                          <span key={item} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Expected artifacts</p>
+                    {(detail.item.expectedArtifacts || []).length === 0 ? (
+                      <p className="mt-2 text-xs text-gray-400">No expected artifacts declared yet.</p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {(detail.item.expectedArtifacts || []).map((item) => (
+                          <span key={item} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                            {item}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </section>
+          )}
+
           {isSkill && (
             <section>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Dependencies</p>
@@ -1350,6 +1523,16 @@ function CapabilityDetailModal({
                 <JsonBlock value={{ connectorIds: detail.item.connectorIds || [] }} />
                 <JsonBlock value={{ toolIds: detail.item.toolIds || [] }} />
                 <JsonBlock value={{ trajectoryIds: detail.item.trajectoryIds || [] }} />
+              </div>
+            </section>
+          )}
+
+          {isSkill && detail.item.lineage && (
+            <section>
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Source lineage</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+                <JsonBlock value={{ benchmarkIds: detail.item.lineage.benchmarkIds || [], evalIds: detail.item.lineage.evalIds || [] }} />
+                <JsonBlock value={{ connectorIds: detail.item.lineage.connectorIds || [], toolIds: detail.item.lineage.toolIds || [], sources: detail.item.lineage.sources || [] }} />
               </div>
             </section>
           )}
@@ -1572,7 +1755,7 @@ export default function Capabilities(): React.ReactElement {
     }
   }, [customConnectors, generateConnectorId]);
 
-  const promoteTrajectory = async (payload: { name: string; whenToUse: string; riskPolicy: string }) => {
+  const promoteTrajectory = async (payload: { name: string; whenToUse: string; instructions: string; preconditions: string[]; expectedArtifacts: string[]; riskPolicy: string }) => {
     if (!promoteTarget || promoting) return;
     setPromoting(true);
     try {
@@ -3161,6 +3344,11 @@ export default function Capabilities(): React.ReactElement {
                                   regression {skillRegression.latestLabel || "unknown"}
                                 </span>
                               )}
+                              {skill.hardeningStatus && (
+                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${hardeningTone(skill.hardeningStatus.state)}`}>
+                                  {hardeningLabel(skill)}
+                                </span>
+                              )}
                             </div>
                             <CapabilityRuntimeSignals
                               sessionsCount={skillSessions.length}
@@ -3168,6 +3356,20 @@ export default function Capabilities(): React.ReactElement {
                               pendingApprovalsCount={pendingSkillApprovals}
                               artifactsCount={skillArtifacts.length}
                             />
+                            {((skill.preconditions || []).length > 0 || (skill.expectedArtifacts || []).length > 0) && (
+                              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10px]">
+                                {(skill.preconditions || []).length > 0 && (
+                                  <span className="px-2 py-0.5 rounded-md border bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
+                                    {(skill.preconditions || []).length} preconditions
+                                  </span>
+                                )}
+                                {(skill.expectedArtifacts || []).length > 0 && (
+                                  <span className="px-2 py-0.5 rounded-md border bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
+                                    {(skill.expectedArtifacts || []).length} expected artifacts
+                                  </span>
+                                )}
+                              </div>
+                            )}
                             {((skill.inputEntities || []).length > 0 || skill.outputEntity) && (
                               <div className="mt-2">
                                 <EntityChips inputEntities={skill.inputEntities} outputEntity={skill.outputEntity} />

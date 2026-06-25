@@ -792,6 +792,9 @@ export interface CompanySkill {
   name: string;
   description: string;
   whenToUse: string;
+  instructions?: string;
+  preconditions?: string[];
+  expectedArtifacts?: string[];
   benchmarkId?: string;
   evalId?: string;
   inputEntities?: string[];
@@ -811,6 +814,27 @@ export interface CompanySkill {
   harvesterType?: string;
   harvesterRunId?: string;
   judge?: Record<string, any>;
+  lineage?: {
+    trajectoryIds?: string[];
+    benchmarkIds?: string[];
+    evalIds?: string[];
+    connectorIds?: string[];
+    toolIds?: string[];
+    sources?: string[];
+  };
+  latestRegression?: {
+    evalId?: string;
+    runId?: string;
+    label?: "pass" | "fail" | "pending" | "";
+    createdAt?: string;
+  } | null;
+  hardeningStatus?: {
+    checks?: Record<string, boolean>;
+    passedChecks?: number;
+    totalChecks?: number;
+    score?: number;
+    state?: string;
+  };
   createdAt?: string;
   updatedAt?: string;
 }
