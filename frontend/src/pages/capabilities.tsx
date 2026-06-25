@@ -2703,6 +2703,10 @@ export default function Capabilities(): React.ReactElement {
         || coverage.evals?.linkedToRuntime,
       ),
       reusableSkills: coverage.skills?.reusable || 0,
+      manifestReadySkills: coverage.skills?.packages?.manifestReady || 0,
+      publishableSkillPackages: coverage.skills?.packages?.publishable || 0,
+      skillRegressionSuites: coverage.skills?.packages?.regressionSuites || 0,
+      skillIoContracts: coverage.skills?.packages?.ioContracts || 0,
       totalSkills: coverage.skills?.total || 0,
       runtimeSessions: coverage.runtime?.sessions || 0,
       runtimeSessionContracts: coverage.runtime?.sessionContracts?.withContract || 0,
@@ -3488,6 +3492,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath && backendGraphStats.reusableSkills > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.reusableSkills}/{backendGraphStats.totalSkills} reusable skills
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.publishableSkillPackages > 0 && backendGraphStats.publishableSkillPackages === backendGraphStats.totalSkills ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : backendGraphStats.manifestReadySkills > 0 ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.publishableSkillPackages}/{backendGraphStats.totalSkills} publishable packages · {backendGraphStats.skillIoContracts} IO · {backendGraphStats.skillRegressionSuites} regressions
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.runtimeLinked ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.runtimeSessions} sessions · {backendGraphStats.runtimeApprovals} approvals · {backendGraphStats.runtimeArtifacts} artifacts

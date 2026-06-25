@@ -1544,6 +1544,18 @@ export interface CapabilityGraphCoverage {
     total?: number;
     ready?: number;
     reusable?: number;
+    packages?: {
+      manifestReady?: number;
+      activation?: number;
+      instructions?: number;
+      ioContracts?: number;
+      expectedArtifacts?: number;
+      riskPolicies?: number;
+      sourceTrajectories?: number;
+      regressionSuites?: number;
+      publishable?: number;
+      versioned?: number;
+    };
   };
   runtime?: {
     sessions?: number;

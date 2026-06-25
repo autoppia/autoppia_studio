@@ -960,6 +960,74 @@ def _session_contract_coverage(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _skill_package_coverage(
+    skill: dict[str, Any],
+    *,
+    trajectory_docs: list[dict[str, Any]],
+    eval_run_docs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    package = skill.get("skillPackage") if isinstance(skill.get("skillPackage"), dict) else {}
+    package_activation = package.get("activation") if isinstance(package.get("activation"), dict) else {}
+    package_policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
+    package_evidence = package.get("evidence") if isinstance(package.get("evidence"), dict) else {}
+    package_regression = package_evidence.get("regressionSuite") if isinstance(package_evidence.get("regressionSuite"), dict) else {}
+    package_io = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
+    package_outputs = package_io.get("outputs") if isinstance(package_io.get("outputs"), dict) else {}
+    trajectory_ids = _dedupe_strings([str(value or "") for value in skill.get("trajectoryIds") or []])
+    linked_trajectories = [
+        trajectory
+        for trajectory in trajectory_docs
+        if str(trajectory.get("trajectoryId") or "") in set(trajectory_ids)
+    ]
+    benchmark_ids = _dedupe_strings([
+        str(skill.get("benchmarkId") or ""),
+        *[str(trajectory.get("benchmarkId") or "") for trajectory in linked_trajectories],
+        *[str(value or "") for value in package_regression.get("benchmarkIds") or []],
+    ])
+    eval_ids = _dedupe_strings([
+        str(skill.get("evalId") or ""),
+        *[str(trajectory.get("evalId") or "") for trajectory in linked_trajectories],
+        *[str(trajectory.get("taskId") or "") for trajectory in linked_trajectories],
+        *[str(value or "") for value in package_regression.get("evalIds") or []],
+    ])
+    linked_runs = [
+        run
+        for run in eval_run_docs
+        if str(run.get("evalId") or "") in set(eval_ids)
+        or str(run.get("benchmarkId") or "") in set(benchmark_ids)
+    ]
+    latest_regression = skill.get("latestRegression") if isinstance(skill.get("latestRegression"), dict) else package_evidence.get("latestRegression") if isinstance(package_evidence.get("latestRegression"), dict) else {}
+    io_contract = _skill_io_contract(skill)
+    io_declared = bool(io_contract.get("declared") or package_io.get("declared"))
+    expected_artifacts = _dedupe_strings([
+        *[str(value or "") for value in skill.get("expectedArtifacts") or []],
+        *[str(value or "") for value in package_outputs.get("artifacts") or []],
+    ])
+    source_trajectories = bool(trajectory_ids or linked_trajectories or package_evidence.get("sourceTrajectories"))
+    activation = bool(str(skill.get("whenToUse") or package_activation.get("description") or "").strip())
+    instructions = bool(str(skill.get("instructions") or "").strip())
+    risk_policy = bool(str(skill.get("riskPolicy") or package_policies.get("riskPolicy") or "").strip() or package_policies.get("runtimePolicy") or skill.get("runtimePolicy"))
+    regression = bool(linked_runs or latest_regression or package_regression.get("cases"))
+    publishable_regression = bool(
+        any(_eval_run_label(run) == "pass" for run in linked_runs)
+        or str(latest_regression.get("label") or "").lower() == "pass"
+        or package_regression.get("publishable")
+    )
+    manifest_ready = activation and instructions and risk_policy and source_trajectories and io_declared
+    return {
+        "manifestReady": manifest_ready,
+        "activation": activation,
+        "instructions": instructions,
+        "ioContract": io_declared,
+        "expectedArtifacts": bool(expected_artifacts or skill.get("outputCard") or package_outputs.get("outputCard")),
+        "riskPolicy": risk_policy,
+        "sourceTrajectories": source_trajectories,
+        "regressionSuite": regression,
+        "publishable": manifest_ready and publishable_regression,
+        "versioned": bool(skill.get("version") or skill.get("versionHistory") or package.get("manifestVersion")),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -1009,6 +1077,10 @@ def _capability_graph_coverage(
         if str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
     }
     session_contracts = [_session_contract_coverage(doc) for doc in session_docs]
+    skill_packages = [
+        _skill_package_coverage(skill, trajectory_docs=trajectory_docs, eval_run_docs=eval_run_docs)
+        for skill in skill_docs
+    ]
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
@@ -1055,7 +1127,23 @@ def _capability_graph_coverage(
             "linkedToRuntime": "replayed_session" in edge_relations,
         },
         "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
-        "skills": {"total": len(skill_docs), "ready": ready_skills, "reusable": reusable_skills},
+        "skills": {
+            "total": len(skill_docs),
+            "ready": ready_skills,
+            "reusable": reusable_skills,
+            "packages": {
+                "manifestReady": sum(1 for item in skill_packages if item["manifestReady"]),
+                "activation": sum(1 for item in skill_packages if item["activation"]),
+                "instructions": sum(1 for item in skill_packages if item["instructions"]),
+                "ioContracts": sum(1 for item in skill_packages if item["ioContract"]),
+                "expectedArtifacts": sum(1 for item in skill_packages if item["expectedArtifacts"]),
+                "riskPolicies": sum(1 for item in skill_packages if item["riskPolicy"]),
+                "sourceTrajectories": sum(1 for item in skill_packages if item["sourceTrajectories"]),
+                "regressionSuites": sum(1 for item in skill_packages if item["regressionSuite"]),
+                "publishable": sum(1 for item in skill_packages if item["publishable"]),
+                "versioned": sum(1 for item in skill_packages if item["versioned"]),
+            },
+        },
         "runtime": {
             "sessions": len(session_docs),
             "sessionContracts": {
