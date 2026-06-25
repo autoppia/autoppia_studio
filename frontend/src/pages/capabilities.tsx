@@ -60,6 +60,43 @@ type RegressionSummary = {
   latestCreatedAt?: string;
 };
 
+type ConnectorBenchmarkSpec = {
+  key: string;
+  name: string;
+  description: string;
+  connectorTypes: string[];
+  runtimeType: string;
+  tasks: Array<{
+    key: string;
+    name: string;
+    expectedTools: string[];
+    expectedArtifacts: string[];
+    requiresApproval: boolean;
+    requiresBrowser: boolean;
+    runtimeExpectation: string;
+  }>;
+};
+
+type ConnectorAuditRow = {
+  benchmark: string;
+  status: string;
+  connectorId?: string;
+  connectorName?: string;
+  connectorType?: string;
+  connectorStatus?: string;
+  taskKeys?: string[];
+  live?: { passed: number; total: number; failed: number };
+  withSkill?: { passed: number; total: number; failed: number };
+  harvested?: number;
+  approvedSkills?: number;
+  reason?: string;
+};
+
+type ConnectorAuditReport = {
+  summary: { pass: number; blocked: number; missing: number; fail: number; total: number };
+  rows: ConnectorAuditRow[];
+};
+
 function isViewKey(value?: string | null): value is ViewKey {
   return value === "tools" || value === "trajectories" || value === "skills" || value === "runs";
 }
@@ -90,6 +127,14 @@ function regressionTone(label?: string) {
   if (label === "pass") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
   if (label === "fail") return "bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/30";
   if (label === "pending") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function connectorAuditTone(status?: string) {
+  const value = (status || "").toLowerCase();
+  if (value === "pass") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (value === "fail") return "bg-red-50 dark:bg-red-500/10 text-red-500 dark:text-red-400 border-red-200 dark:border-red-500/30";
+  if (value === "blocked" || value === "missing") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
@@ -1163,6 +1208,10 @@ export default function Capabilities(): React.ReactElement {
   const [skills, setSkills] = useState<CompanySkill[]>([]);
   const [runs, setRuns] = useState<HarvesterRun[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
+  const [connectorBenchmarks, setConnectorBenchmarks] = useState<ConnectorBenchmarkSpec[]>([]);
+  const [connectorAuditReport, setConnectorAuditReport] = useState<ConnectorAuditReport | null>(null);
+  const [connectorAuditLoading, setConnectorAuditLoading] = useState(false);
+  const [connectorAuditError, setConnectorAuditError] = useState("");
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [evalRuns, setEvalRuns] = useState<EvalRun[]>([]);
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -1191,6 +1240,9 @@ export default function Capabilities(): React.ReactElement {
       setSkills([]);
       setRuns([]);
       setConnectors([]);
+      setConnectorBenchmarks([]);
+      setConnectorAuditReport(null);
+      setConnectorAuditError("");
       setEvals([]);
       setEvalRuns([]);
       setSessions([]);
@@ -1204,10 +1256,11 @@ export default function Capabilities(): React.ReactElement {
       const params = new URLSearchParams({ email: user.email });
       const connectorParams = new URLSearchParams({ email: user.email, companyId });
       const approvalParams = new URLSearchParams({ email: user.email, companyId, includeRuntime: "true", status: "" });
-      const [capRes, runsRes, connectorsRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
+      const [capRes, runsRes, connectorsRes, connectorBenchmarksRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/harvester-runs?${params.toString()}`),
         fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/connector-benchmarks/catalog`),
         fetch(`${apiUrl}/evals?${connectorParams.toString()}`),
         fetch(`${apiUrl}/eval-runs?${connectorParams.toString()}`),
         fetch(`${apiUrl}/sessions?${connectorParams.toString()}`),
@@ -1227,6 +1280,10 @@ export default function Capabilities(): React.ReactElement {
       if (connectorsRes.ok) {
         const data = await connectorsRes.json();
         setConnectors(data.connectors || []);
+      }
+      if (connectorBenchmarksRes.ok) {
+        const data = await connectorBenchmarksRes.json();
+        setConnectorBenchmarks(data.benchmarks || []);
       }
       if (evalsRes.ok) {
         const data = await evalsRes.json();
@@ -1254,6 +1311,26 @@ export default function Capabilities(): React.ReactElement {
       setLoading(false);
     }
   }, [companyId, user.email]);
+
+  const runConnectorAuditMatrix = useCallback(async () => {
+    if (!companyId || !user.email || connectorAuditLoading) return;
+    setConnectorAuditLoading(true);
+    setConnectorAuditError("");
+    try {
+      const res = await fetch(`${apiUrl}/connector-benchmarks/audit-matrix`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: user.email, companyId, publishTools: true }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(data?.detail || "Could not run connector benchmark matrix.");
+      setConnectorAuditReport(data?.connectorAudit || null);
+    } catch (err: any) {
+      setConnectorAuditError(err?.message || "Could not run connector benchmark matrix.");
+    } finally {
+      setConnectorAuditLoading(false);
+    }
+  }, [companyId, connectorAuditLoading, user.email]);
 
   useEffect(() => {
     loadCapabilities();
@@ -1713,6 +1790,46 @@ export default function Capabilities(): React.ReactElement {
       promotableTrajectories: skillCandidates.length,
     };
   }, [filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId, skillCandidates.length, trajectoriesById]);
+  const connectorCoverage = useMemo(() => {
+    const auditByBenchmark = new Map((connectorAuditReport?.rows || []).map((row) => [row.benchmark, row]));
+    return connectorBenchmarks.map((spec) => {
+      const connector = connectors
+        .filter((item) => (spec.connectorTypes || []).includes(item.type))
+        .sort((a, b) => {
+          const aReady = (a.status || "").toLowerCase() === "connected" ? 0 : 1;
+          const bReady = (b.status || "").toLowerCase() === "connected" ? 0 : 1;
+          if (aReady !== bReady) return aReady - bReady;
+          return (spec.connectorTypes || []).indexOf(a.type) - (spec.connectorTypes || []).indexOf(b.type);
+        })[0];
+      const toolIds = new Set(
+        filteredTools
+          .filter((tool) => tool.connectorId && connector?.connectorId === tool.connectorId)
+          .map((tool) => tool.toolId),
+      );
+      const trajectories = filteredTrajectories.filter((trajectory) =>
+        connector?.connectorId
+          ? (trajectory.connectorIds || []).includes(connector.connectorId)
+          : false,
+      );
+      const trajectoryIds = new Set(trajectories.map((trajectory) => trajectory.trajectoryId));
+      const skills = filteredSkills.filter((skill) =>
+        connector?.connectorId
+          ? (skill.connectorIds || []).includes(connector.connectorId)
+            || (skill.trajectoryIds || []).some((trajectoryId) => trajectoryIds.has(trajectoryId))
+          : false,
+      );
+      const audit = auditByBenchmark.get(spec.name);
+      return {
+        spec,
+        connector,
+        audit,
+        tools: toolIds.size,
+        trajectories: trajectories.length,
+        skills: skills.length,
+        regressionReady: skills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "pass").length,
+      };
+    });
+  }, [connectorAuditReport?.rows, connectorBenchmarks, connectors, filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId]);
   const factoryGaps = useMemo(() => {
     const failedRuns = filteredRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
     const untypedTools = filteredTools.filter((tool) => (tool.inputEntities || []).length === 0 && !tool.outputEntity);
@@ -2135,6 +2252,118 @@ export default function Capabilities(): React.ReactElement {
                   hint="Passing trajectories ready to harden into skills."
                 />
               </div>
+
+              {connectorCoverage.length > 0 && (
+                <div className="mb-5 rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Connector Coverage</p>
+                      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                        Expected benchmark surfaces per connector, plus live matrix evidence when audited.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {connectorAuditReport && (
+                        <>
+                          <span className="rounded-md bg-green-50 px-2 py-0.5 text-[11px] font-semibold text-green-600 dark:bg-green-500/10 dark:text-green-400">
+                            {connectorAuditReport.summary.pass} pass
+                          </span>
+                          <span className="rounded-md bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-600 dark:bg-amber-500/10 dark:text-amber-400">
+                            {connectorAuditReport.summary.blocked} blocked
+                          </span>
+                          <span className="rounded-md bg-red-50 px-2 py-0.5 text-[11px] font-semibold text-red-500 dark:bg-red-500/10 dark:text-red-400">
+                            {connectorAuditReport.summary.fail} fail
+                          </span>
+                        </>
+                      )}
+                      <button
+                        onClick={runConnectorAuditMatrix}
+                        disabled={connectorAuditLoading || !companyId}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-60 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300 dark:hover:bg-dark-border"
+                      >
+                        <FontAwesomeIcon icon={connectorAuditLoading ? faSpinner : faClipboardCheck} className={`text-[10px] ${connectorAuditLoading ? "animate-spin" : ""}`} />
+                        {connectorAuditLoading ? "Auditing..." : connectorAuditReport ? "Refresh matrix" : "Run matrix"}
+                      </button>
+                      <button
+                        onClick={() => navigate("/evals")}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/15"
+                      >
+                        Open Benchmarks
+                      </button>
+                    </div>
+                  </div>
+                  {connectorAuditError && (
+                    <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-[11px] text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+                      <FontAwesomeIcon icon={faTriangleExclamation} className="mt-0.5 text-[10px]" />
+                      <span>{connectorAuditError}</span>
+                    </div>
+                  )}
+                  <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                    {connectorCoverage.map((row) => (
+                      <div key={row.spec.key} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{row.spec.name}</p>
+                            <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{row.spec.description}</p>
+                          </div>
+                          <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-semibold ${connectorAuditTone(row.audit?.status || (row.connector ? row.connector.status : "missing"))}`}>
+                            {row.audit?.status || (row.connector ? row.connector.status : "missing")}
+                          </span>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                          <span className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                            {(row.spec.tasks || []).length} tasks
+                          </span>
+                          <span className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                            {row.tools} tools
+                          </span>
+                          <span className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                            {row.trajectories} trajectories
+                          </span>
+                          <span className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                            {row.skills} skills
+                          </span>
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${regressionTone(row.regressionReady > 0 ? "pass" : "")}`}>
+                            {row.regressionReady} regression-ready
+                          </span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
+                          <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
+                            <p className="text-gray-400">Connector</p>
+                            <p className="mt-1 font-semibold text-gray-700 dark:text-gray-200">{row.connector?.name || "Not connected"}</p>
+                            <p className="mt-0.5 text-gray-400">{row.connector?.type || (row.spec.connectorTypes || []).join(", ")}</p>
+                          </div>
+                          <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
+                            <p className="text-gray-400">Runtime</p>
+                            {row.audit ? (
+                              <p className="mt-1 font-semibold text-gray-700 dark:text-gray-200">
+                                {row.audit.live?.passed || 0}/{row.audit.live?.total || 0} live · {row.audit.withSkill?.passed || 0}/{row.audit.withSkill?.total || 0} skill
+                              </p>
+                            ) : (
+                              <p className="mt-1 text-gray-500 dark:text-gray-400">Matrix not run yet.</p>
+                            )}
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Expected tasks</p>
+                          <div className="flex flex-wrap gap-1.5">
+                            {row.spec.tasks.map((task) => (
+                              <span key={task.key} className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                                {task.requiresBrowser && <FontAwesomeIcon icon={faCircleNodes} className="text-[9px] text-sky-500" />}
+                                {task.requiresApproval && <FontAwesomeIcon icon={faShieldHalved} className="text-[9px] text-amber-500" />}
+                                {task.name}
+                              </span>
+                            ))}
+                          </div>
+                          {row.audit?.reason && (
+                            <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-400">{row.audit.reason}</p>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {(factoryGaps.length > 0 || benchmarkPipeline.length > 0) && (
                 <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
