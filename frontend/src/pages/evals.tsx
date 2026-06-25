@@ -103,6 +103,11 @@ interface CoveragePortfolio {
     latest?: Array<{ runId?: string; label?: string; createdAt?: string }>;
   };
   promotionGate?: PromotionGate;
+  coverageMatrix?: {
+    connectors?: CoverageMatrixRow[];
+    entities?: CoverageMatrixRow[];
+    skills?: CoverageMatrixRow[];
+  };
 }
 
 interface PromotionGate {
@@ -110,6 +115,21 @@ interface PromotionGate {
   blockers?: string[];
   nextActions?: string[];
   canPromote?: boolean;
+}
+
+interface CoverageMatrixRow {
+  id?: string;
+  kind?: "connector" | "entity" | "skill" | string;
+  benchmarkCount?: number;
+  benchmarkRefs?: string[];
+  state?: string;
+  covered?: boolean;
+  regressions?: {
+    total?: number;
+    pass?: number;
+    fail?: number;
+    pending?: number;
+  };
 }
 
 interface ConnectorItem {
@@ -273,6 +293,18 @@ function promotionGateLabel(state?: string) {
   if (state === "ready") return "ready to promote";
   if (state === "needs_regression") return "needs regression";
   return "blocked gate";
+}
+
+function coverageStateClass(state?: string) {
+  if (["passing", "published", "ready"].includes(state || "")) return "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300";
+  if (["pending", "missing_regression", "needs_hardening"].includes(state || "")) return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
+}
+
+function coverageStateLabel(state?: string) {
+  if (state === "missing_regression") return "missing regression";
+  if (state === "needs_hardening") return "needs hardening";
+  return state || "unknown";
 }
 
 export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
@@ -1305,6 +1337,43 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                   <p className="mt-2 text-[11px] opacity-85">
                     {(coveragePortfolio.promotionGate.nextActions || [])[0] || "All benchmark gates have enough contract, skill and regression evidence."}
                   </p>
+                </div>
+              )}
+              {coveragePortfolio.coverageMatrix && (
+                <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                  {[
+                    { title: "Connector coverage", rows: coveragePortfolio.coverageMatrix.connectors || [], empty: "No connectors linked to benchmarked skills." },
+                    { title: "Entity coverage", rows: coveragePortfolio.coverageMatrix.entities || [], empty: "No entities mapped to benchmarked skills." },
+                    { title: "Skill coverage", rows: coveragePortfolio.coverageMatrix.skills || [], empty: "No skills linked to benchmark gates." },
+                  ].map((group) => (
+                    <div key={group.title} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                      <div className="mb-2 flex items-center justify-between gap-2">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{group.title}</p>
+                        <span className="rounded-md border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] font-semibold text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                          {group.rows.length}
+                        </span>
+                      </div>
+                      {group.rows.length === 0 ? (
+                        <p className="text-[11px] text-gray-400 dark:text-gray-500">{group.empty}</p>
+                      ) : (
+                        <div className="space-y-1.5">
+                          {group.rows.slice(0, 4).map((row) => (
+                            <div key={`${group.title}-${row.id}`} className="flex items-center justify-between gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 dark:border-dark-border dark:bg-dark-surface">
+                              <div className="min-w-0">
+                                <p className="truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{row.id}</p>
+                                <p className="text-[10px] text-gray-400 dark:text-gray-500">
+                                  {row.benchmarkCount || 0} benchmark(s) · {row.regressions?.pass || 0}/{row.regressions?.total || 0} pass
+                                </p>
+                              </div>
+                              <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[10px] font-semibold ${coverageStateClass(row.state)}`}>
+                                {coverageStateLabel(row.state)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
                 </div>
               )}
             </div>

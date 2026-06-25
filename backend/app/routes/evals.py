@@ -386,7 +386,7 @@ def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     ])
     ready_skills = sum(int((item.get("skillCoverage") or {}).get("ready") or 0) for item in coverage_items)
     published_skills = sum(int((item.get("skillCoverage") or {}).get("published") or 0) for item in coverage_items)
-    return {
+    portfolio = {
         "benchmarks": len(coverage_items),
         "tasks": task_total,
         "taskContracts": {
@@ -429,6 +429,108 @@ def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
             run_pass=run_pass,
             run_fail=run_fail,
         ),
+    }
+    portfolio["coverageMatrix"] = _coverage_matrix(coverage_items)
+    return portfolio
+
+
+def _coverage_matrix(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
+    connectors: dict[str, dict[str, Any]] = {}
+    entities: dict[str, dict[str, Any]] = {}
+    skills: dict[str, dict[str, Any]] = {}
+
+    def _run_state(run_coverage: dict[str, Any]) -> str:
+        total = int(run_coverage.get("total") or 0)
+        fail = int(run_coverage.get("fail") or 0)
+        passed = int(run_coverage.get("pass") or 0)
+        if total == 0:
+            return "missing_regression"
+        if fail:
+            return "failing"
+        if passed:
+            return "passing"
+        return "pending"
+
+    def _touch_row(table: dict[str, dict[str, Any]], key: str, *, kind: str, benchmark_index: int, run_coverage: dict[str, Any]) -> None:
+        row = table.setdefault(
+            key,
+            {
+                "id": key,
+                "kind": kind,
+                "benchmarkCount": 0,
+                "benchmarkRefs": [],
+                "regressions": {"total": 0, "pass": 0, "fail": 0, "pending": 0},
+                "state": "missing_regression",
+            },
+        )
+        benchmark_ref = f"benchmark:{benchmark_index}"
+        if benchmark_ref not in row["benchmarkRefs"]:
+            row["benchmarkRefs"].append(benchmark_ref)
+            row["benchmarkCount"] += 1
+        regressions = row["regressions"]
+        regressions["total"] += int(run_coverage.get("total") or 0)
+        regressions["pass"] += int(run_coverage.get("pass") or 0)
+        regressions["fail"] += int(run_coverage.get("fail") or 0)
+        regressions["pending"] += int(run_coverage.get("pending") or 0)
+        row_state = _run_state(regressions)
+        row["state"] = row_state
+        row["covered"] = row_state in {"passing", "pending"}
+
+    for index, item in enumerate(coverage_items):
+        run_coverage = item.get("runCoverage") if isinstance(item.get("runCoverage"), dict) else {}
+        for connector_id in item.get("connectorIds") or []:
+            _touch_row(connectors, str(connector_id), kind="connector", benchmark_index=index, run_coverage=run_coverage)
+        for entity_name in item.get("entityNames") or []:
+            _touch_row(entities, str(entity_name), kind="entity", benchmark_index=index, run_coverage=run_coverage)
+        skill_coverage = item.get("skillCoverage") if isinstance(item.get("skillCoverage"), dict) else {}
+        skill_state = "published" if int(skill_coverage.get("published") or 0) else "ready" if int(skill_coverage.get("ready") or 0) else "needs_hardening"
+        for skill_id in skill_coverage.get("skillIds") or []:
+            row = skills.setdefault(
+                str(skill_id),
+                {
+                    "id": str(skill_id),
+                    "kind": "skill",
+                    "benchmarkCount": 0,
+                    "benchmarkRefs": [],
+                    "regressions": {"total": 0, "pass": 0, "fail": 0, "pending": 0},
+                    "state": skill_state,
+                    "covered": skill_state in {"ready", "published"},
+                },
+            )
+            row["baseState"] = "published" if row.get("baseState") == "published" or skill_state == "published" else skill_state
+            benchmark_ref = f"benchmark:{index}"
+            if benchmark_ref not in row["benchmarkRefs"]:
+                row["benchmarkRefs"].append(benchmark_ref)
+                row["benchmarkCount"] += 1
+            regressions = row["regressions"]
+            regressions["total"] += int(run_coverage.get("total") or 0)
+            regressions["pass"] += int(run_coverage.get("pass") or 0)
+            regressions["fail"] += int(run_coverage.get("fail") or 0)
+            regressions["pending"] += int(run_coverage.get("pending") or 0)
+            regression_state = _run_state(regressions)
+            base_state = str(row.get("baseState") or skill_state)
+            if regression_state == "failing":
+                row["state"] = "failing"
+            elif base_state == "needs_hardening":
+                row["state"] = base_state
+            elif regression_state == "missing_regression":
+                row["state"] = regression_state
+            else:
+                row["state"] = base_state
+            row["covered"] = row["state"] in {"ready", "published"}
+
+    def _sorted_rows(rows: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
+        clean_rows = []
+        for row in rows.values():
+            clean = dict(row)
+            clean.pop("baseState", None)
+            clean_rows.append(clean)
+        return sorted(clean_rows, key=lambda row: (-int(row.get("benchmarkCount") or 0), str(row.get("id") or "")))
+
+    return {
+        "connectors": _sorted_rows(connectors),
+        "entities": _sorted_rows(entities),
+        "skills": _sorted_rows(skills),
     }
 
 

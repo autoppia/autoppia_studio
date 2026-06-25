@@ -308,6 +308,16 @@ async def test_list_benchmarks_includes_coverage_summary(monkeypatch):
     assert portfolio["regressions"]["latest"][0]["runId"] == "run-1"
     assert portfolio["promotionGate"]["state"] == "blocked"
     assert portfolio["promotionGate"]["blockers"] == ["incomplete_task_contracts"]
+    matrix = portfolio["coverageMatrix"]
+    assert matrix["connectors"][0]["id"] == "email-1"
+    assert matrix["connectors"][0]["kind"] == "connector"
+    assert matrix["connectors"][0]["state"] == "passing"
+    assert matrix["connectors"][0]["regressions"]["pass"] == 1
+    assert matrix["entities"][0]["id"] == "Claim"
+    assert matrix["entities"][0]["covered"] is True
+    assert matrix["skills"][0]["id"] == "skill-1"
+    assert matrix["skills"][0]["state"] == "published"
+    assert matrix["skills"][0]["benchmarkCount"] == 1
 
 
 @pytest.mark.asyncio
