@@ -27,6 +27,7 @@ import {
 import {
   ApprovalRequest,
   Artifact,
+  CapabilityGraph,
   CompanySkill,
   CompanyTool,
   CompanyTrajectory,
@@ -1862,6 +1863,7 @@ export default function Capabilities(): React.ReactElement {
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
+  const [backendCapabilityGraph, setBackendCapabilityGraph] = useState<CapabilityGraph | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewKey>("tools");
   const [expandedToolConnectorKeys, setExpandedToolConnectorKeys] = useState<Set<string>>(new Set());
@@ -1895,6 +1897,7 @@ export default function Capabilities(): React.ReactElement {
       setApprovals([]);
       setArtifacts([]);
       setWorkItems([]);
+      setBackendCapabilityGraph(null);
       setLoading(false);
       return;
     }
@@ -1903,7 +1906,7 @@ export default function Capabilities(): React.ReactElement {
       const params = new URLSearchParams({ email: user.email });
       const connectorParams = new URLSearchParams({ email: user.email, companyId });
       const approvalParams = new URLSearchParams({ email: user.email, companyId, includeRuntime: "true", status: "" });
-      const [capRes, runsRes, connectorsRes, connectorBenchmarksRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes, workItemsRes] = await Promise.all([
+      const [capRes, runsRes, connectorsRes, connectorBenchmarksRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes, workItemsRes, graphRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/harvester-runs?${params.toString()}`),
         fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
@@ -1914,6 +1917,7 @@ export default function Capabilities(): React.ReactElement {
         fetch(`${apiUrl}/approvals?${approvalParams.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`),
         fetch(`${apiUrl}/work-items?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/companies/${companyId}/capability-graph?${params.toString()}`),
       ]);
       if (capRes.ok) {
         const data = await capRes.json();
@@ -1957,8 +1961,15 @@ export default function Capabilities(): React.ReactElement {
         const data = await workItemsRes.json();
         setWorkItems(data.workItems || []);
       }
+      if (graphRes.ok) {
+        const data = await graphRes.json();
+        setBackendCapabilityGraph(data.graph || null);
+      } else {
+        setBackendCapabilityGraph(null);
+      }
     } catch (err) {
       console.error("Failed to load capabilities:", err);
+      setBackendCapabilityGraph(null);
     } finally {
       setLoading(false);
     }
@@ -2626,6 +2637,24 @@ export default function Capabilities(): React.ReactElement {
       promotableTrajectories: skillCandidates.length,
     };
   }, [filteredSkills, filteredTools, filteredTrajectories, regression.bySkillId, skillCandidates.length, trajectoriesById]);
+  const backendGraphStats = useMemo(() => {
+    const coverage = backendCapabilityGraph?.coverage || {};
+    return {
+      nodeCount: backendCapabilityGraph?.nodes?.length || 0,
+      edgeCount: backendCapabilityGraph?.edges?.length || 0,
+      governedTools: coverage.tools?.governed || 0,
+      totalTools: coverage.tools?.total || 0,
+      taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
+      totalTasks: coverage.benchmarks?.tasks || 0,
+      readySkills: coverage.skills?.ready || 0,
+      totalSkills: coverage.skills?.total || 0,
+      hasPromotionPath: Boolean(
+        coverage.promotionPath?.hasTaskToTrajectory
+        || coverage.promotionPath?.hasTrajectoryToSkill
+        || coverage.promotionPath?.hasToolToSkill,
+      ),
+    };
+  }, [backendCapabilityGraph]);
   const connectorCoverage = useMemo(() => {
     const auditByBenchmark = new Map((connectorAuditReport?.rows || []).map((row) => [row.benchmark, row]));
     return connectorBenchmarks.map((spec) => {
@@ -3356,6 +3385,23 @@ export default function Capabilities(): React.ReactElement {
                       <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Factory Graph</p>
                       <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{activeScopeGraph.title}</p>
                       <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">{activeScopeGraph.subtitle}</p>
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                          {backendGraphStats.nodeCount} backend nodes
+                        </span>
+                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-semibold text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                          {backendGraphStats.edgeCount} backend edges
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.governedTools === backendGraphStats.totalTools && backendGraphStats.totalTools > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                          {backendGraphStats.governedTools}/{backendGraphStats.totalTools} governed tools
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.taskContracts === backendGraphStats.totalTasks && backendGraphStats.totalTasks > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.taskContracts}/{backendGraphStats.totalTasks} task contracts
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.readySkills}/{backendGraphStats.totalSkills} ready skills
+                        </span>
+                      </div>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       {filteredBenchmark && (

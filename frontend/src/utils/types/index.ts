@@ -397,6 +397,59 @@ export interface RuntimeSpec {
   };
 }
 
+export interface ToolApprovalPolicy {
+  required?: boolean;
+  mode?: "always" | "auto" | "never" | string;
+  reasons?: string[];
+  boundary?: string;
+  humanReview?: boolean;
+  [key: string]: any;
+}
+
+export interface ToolContract {
+  contractVersion?: string;
+  toolId?: string;
+  name?: string;
+  connectorId?: string;
+  connectorName?: string;
+  action?: string;
+  atomic?: boolean;
+  sideEffects?: string;
+  policyBoundary?: string;
+  riskLevel?: string;
+  scopes?: string[];
+  approvalPolicy?: ToolApprovalPolicy;
+  schemas?: {
+    input?: any;
+    output?: any;
+  };
+  entities?: {
+    input?: string[];
+    output?: string;
+  };
+  runtime?: {
+    executionType?: string;
+    surface?: string;
+    requirements?: string[];
+  };
+  [key: string]: any;
+}
+
+export interface AgentCallable {
+  id?: string;
+  name: string;
+  description?: string;
+  inputSchema?: any;
+  outputSchema?: any;
+  riskLevel?: string;
+  sideEffects?: string;
+  policyBoundary?: string;
+  approvalPolicy?: ToolApprovalPolicy;
+  scopes?: string[];
+  toolContract?: ToolContract;
+  [key: string]: any;
+}
+
 export interface AgentConfig {
   agentConfigId?: string;
   agentId: string;
@@ -415,8 +468,8 @@ export interface AgentConfig {
   apiAuthConfigured?: boolean;
   tasks: AgentTask[];
   trajectories: AgentTrajectory[];
-  tools?: any[];
-  skills?: any[];
+  tools?: AgentCallable[];
+  skills?: AgentCallable[];
   entities?: Record<string, any>;
   resources?: any[];
   knowledge?: any[];
@@ -1208,6 +1261,61 @@ export interface EntityGraph {
 
 export type ApprovalStatus = "pending" | "approved" | "rejected" | "expired" | string;
 
+export type CapabilityGraphNodeKind = "connector" | "entity" | "tool" | "benchmark" | "task" | "trajectory" | "skill" | string;
+
+export interface CapabilityGraphNode {
+  id: string;
+  kind: CapabilityGraphNodeKind;
+  refId: string;
+  label: string;
+  payload?: Record<string, any>;
+}
+
+export interface CapabilityGraphEdge {
+  id: string;
+  source: string;
+  target: string;
+  relation: string;
+  evidence?: Record<string, any>;
+}
+
+export interface CapabilityGraphCoverage {
+  entities?: {
+    total?: number;
+    linked?: boolean;
+  };
+  tools?: {
+    total?: number;
+    ready?: number;
+    governed?: number;
+  };
+  benchmarks?: {
+    total?: number;
+    tasks?: number;
+    tasksWithContracts?: number;
+  };
+  trajectories?: {
+    total?: number;
+    approved?: number;
+  };
+  skills?: {
+    total?: number;
+    ready?: number;
+  };
+  promotionPath?: {
+    hasTaskToTrajectory?: boolean;
+    hasTrajectoryToSkill?: boolean;
+    hasToolToSkill?: boolean;
+  };
+}
+
+export interface CapabilityGraph {
+  companyId: string;
+  nodes: CapabilityGraphNode[];
+  edges: CapabilityGraphEdge[];
+  coverage?: CapabilityGraphCoverage;
+}
+
 export interface ApprovalRequest {
   approvalId: string;
   companyId: string;
@@ -1263,6 +1371,10 @@ export interface CompanyTool {
   runtimeRequirements?: string[];
   sideEffects: string;
   permissions?: Record<string, any>;
+  policyBoundary?: string;
+  approvalPolicy?: ToolApprovalPolicy;
+  scopes?: string[];
+  toolContract?: ToolContract;
   riskLevel: string;
   status: string;
   source: string;
@@ -1379,6 +1491,10 @@ export interface CompanySkill {
   outputEntity?: string;
   outputCard?: Record<string, any>;
   permissions?: Record<string, any>;
+  policyBoundary?: string;
+  approvalPolicy?: ToolApprovalPolicy;
+  scopes?: string[];
+  toolContract?: ToolContract;
   riskPolicy: string;
   runtimePolicy?: RuntimePolicy;
   runtime: string;
