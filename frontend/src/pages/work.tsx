@@ -68,6 +68,9 @@ const emptyDraft = {
   runTarget: "all" as WorkRunTarget,
   browserEnabled: true,
   browserMode: "headless" as "visible" | "headless",
+  allowedDomains: [] as string[],
+  browserRestrictedByDomain: false,
+  browserDefaultUse: "exception",
   maxCreditsPerRun: 5,
   maxBudgetCredits: 5,
   triggerType: "manual" as "manual" | "scheduled",
@@ -135,6 +138,14 @@ function slaDeadlineLabel(item: WorkItem) {
   if (state === "due") return "due now";
   if (state === "upcoming") return `due ${formatDate(sla?.dueAt || item.nextRunAt)}`;
   return state.replace("_", " ");
+}
+
+function parseDomains(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function domainListValue(domains?: string[]) {
+  return (domains || []).join(", ");
 }
 
 export default function Work() {
@@ -292,6 +303,7 @@ export default function Work() {
     const pendingApprovals = items.reduce((sum, item) => sum + Number(item.operational?.pendingApprovalCount || 0), 0);
     const artifacts = items.reduce((sum, item) => sum + Number(item.operational?.persistedArtifactCount || item.operational?.latestArtifactCount || 0), 0);
     const toolCalls = items.reduce((sum, item) => sum + Number(item.operational?.latestToolCallCount || 0), 0);
+    const unrestrictedBrowserItems = items.filter((item) => item.operational?.orchestration?.browserPolicy?.state === "unrestricted");
 
     return {
       scheduledItems,
@@ -306,6 +318,7 @@ export default function Work() {
       pendingApprovals,
       artifacts,
       toolCalls,
+      unrestrictedBrowserItems,
     };
   }, [items]);
 
@@ -343,6 +356,9 @@ export default function Work() {
           runTarget: draft.runTarget,
           browserEnabled: draft.browserEnabled,
           browserMode: draft.browserMode,
+          allowedDomains: draft.allowedDomains,
+          browserRestrictedByDomain: Boolean(draft.allowedDomains.length),
+          browserDefaultUse: draft.browserDefaultUse,
           maxCreditsPerRun: draft.maxCreditsPerRun,
           maxBudgetCredits: draft.maxBudgetCredits,
           triggerType: draft.triggerType,
@@ -596,6 +612,13 @@ export default function Work() {
                 hint: "Human decisions currently blocking job progress.",
                 icon: faShieldHalved,
                 tone: "text-amber-600 dark:text-amber-400",
+              },
+              {
+                label: "Browser policy",
+                value: orchestrationSummary.unrestrictedBrowserItems.length,
+                hint: "Browser-enabled jobs without a domain allowlist.",
+                icon: faShieldHalved,
+                tone: orchestrationSummary.unrestrictedBrowserItems.length ? "text-red-500 dark:text-red-400" : "text-emerald-600 dark:text-emerald-400",
               },
               {
                 label: "Artifacts",
@@ -936,6 +959,11 @@ export default function Work() {
                                   {Number(item.operational.orchestration.budget.remainingCredits || 0).toFixed(2)} cr left
                                 </span>
                               )}
+                              {item.operational?.orchestration?.browserPolicy?.enabled && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(item.operational.orchestration.browserPolicy.state === "unrestricted" ? "overdue" : "upcoming")}`}>
+                                  browser {item.operational.orchestration.browserPolicy.state}
+                                </span>
+                              )}
                               {matchedSkillSummary(item) && (
                                 <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary">
                                   matched {matchedSkillSummary(item)}
@@ -1105,6 +1133,21 @@ export default function Work() {
                 </select>
                 <input className={inputClass} type="number" min="0" step="0.25" value={draft.maxCreditsPerRun} onChange={(e) => setDraft((prev) => ({ ...prev, maxCreditsPerRun: Number(e.target.value) }))} />
               </div>
+
+              {draft.browserEnabled && (
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Browser domain allowlist</p>
+                  <input
+                    className={inputClass}
+                    placeholder="portal.example.com, docs.example.com"
+                    value={domainListValue(draft.allowedDomains)}
+                    onChange={(e) => setDraft((prev) => ({ ...prev, allowedDomains: parseDomains(e.target.value), browserRestrictedByDomain: parseDomains(e.target.value).length > 0 }))}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                    Scheduled browser jobs without an allowlist are blocked from unattended execution.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 <div>
@@ -1328,6 +1371,11 @@ export default function Work() {
                       <p className="mt-1">{slaDeadlineLabel(selectedItem) || "no deadline"}</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Browser</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.browserPolicy?.state || "disabled"}</p>
+                      <p className="mt-1">{(selectedItem.operational.orchestration.browserPolicy?.allowedDomains || []).join(", ") || "no allowlist"}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Budget</p>
                       <p className="mt-1">{Number(selectedItem.operational.orchestration.budget?.latestCreditsSpent || 0).toFixed(2)} / {Number(selectedItem.operational.orchestration.budget?.maxBudgetCredits || 0).toFixed(2)} cr</p>
                       <p className="mt-1">{Number(selectedItem.operational.orchestration.budget?.remainingCredits || 0).toFixed(2)} cr remaining</p>
@@ -1415,6 +1463,24 @@ export default function Work() {
                   <input className={inputClass} type="number" min="1" max="30" value={Number(drawerDraft.maxSteps ?? selectedItem.maxSteps ?? 8)} onChange={(e) => setDrawerDraft((prev) => ({ ...prev, maxSteps: Number(e.target.value) } as Partial<WorkItem>))} />
                 </div>
               </div>
+
+              {Boolean(drawerDraft.browserEnabled ?? selectedItem.browserEnabled) && (
+                <div>
+                  <p className={drawerLabelClass}>Browser domain allowlist</p>
+                  <input
+                    className={inputClass}
+                    placeholder="portal.example.com, docs.example.com"
+                    value={domainListValue(drawerDraft.allowedDomains ?? selectedItem.allowedDomains)}
+                    onChange={(e) => setDrawerDraft((prev) => {
+                      const allowedDomains = parseDomains(e.target.value);
+                      return { ...prev, allowedDomains, browserRestrictedByDomain: allowedDomains.length > 0 };
+                    })}
+                  />
+                  <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                    Browser default: {drawerDraft.browserDefaultUse || selectedItem.browserDefaultUse || "exception"} · scheduled browser jobs require a domain allowlist for unattended execution.
+                  </p>
+                </div>
+              )}
 
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
                 <div>

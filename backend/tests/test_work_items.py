@@ -245,6 +245,7 @@ async def test_create_and_list_work_items(monkeypatch):
             agentId="agent-1",
             runTarget="selected",
             maxCreditsPerRun=1.25,
+            allowedDomains=["https://portal.example.com/cases", "portal.example.com"],
         )
     )
     listed = await work_items.list_work_items("user@example.com", "company-1", created["workItem"]["boardId"])
@@ -255,6 +256,9 @@ async def test_create_and_list_work_items(monkeypatch):
     assert listed["workItems"][0]["title"] == "Check invoices"
     assert listed["workItems"][0]["maxCreditsPerRun"] == 1.25
     assert listed["workItems"][0]["runTarget"] == "selected"
+    assert listed["workItems"][0]["allowedDomains"] == ["portal.example.com"]
+    assert listed["workItems"][0]["browserRestrictedByDomain"] is True
+    assert listed["workItems"][0]["browserDefaultUse"] == "exception"
 
 
 @pytest.mark.asyncio
@@ -705,3 +709,60 @@ async def test_list_work_items_marks_overdue_scheduled_sla(monkeypatch):
     assert orchestration["automationGate"]["state"] == "scheduled"
     assert orchestration["automationGate"]["canRunUnattended"] is True
     assert orchestration["automationGate"]["nextActions"] == ["Scheduled work is overdue; confirm the worker is healthy or run it manually."]
+
+
+@pytest.mark.asyncio
+async def test_scheduled_browser_work_requires_domain_allowlist_for_unattended_gate(monkeypatch):
+    collection = _WorkItems()
+    monkeypatch.setattr(work_items, "work_items_collection", collection)
+    monkeypatch.setattr(work_items, "work_boards_collection", _Boards())
+    monkeypatch.setattr(work_items, "approvals_collection", _Approvals())
+    monkeypatch.setattr(work_items, "sessions_collection", _Sessions())
+    monkeypatch.setattr(work_items, "artifacts_collection", _Artifacts())
+    monkeypatch.setattr(work_items, "tools_collection", _Tools())
+
+    collection.docs["work-browser"] = {
+        "workItemId": "work-browser",
+        "email": "user@example.com",
+        "companyId": "company-1",
+        "boardId": "board-1",
+        "title": "Browser scheduled work",
+        "prompt": "Use the browser",
+        "runTarget": "selected",
+        "agentId": "agent-1",
+        "browserEnabled": True,
+        "browserMode": "headless",
+        "allowedDomains": [],
+        "browserRestrictedByDomain": False,
+        "browserDefaultUse": "exception",
+        "maxCreditsPerRun": 1.0,
+        "maxBudgetCredits": 5.0,
+        "maxSteps": 4,
+        "triggerType": "scheduled",
+        "scheduleFrequency": "daily",
+        "scheduleTime": "09:00",
+        "scheduleDayOfWeek": 1,
+        "nextRunAt": "2999-01-01T00:00:00+00:00",
+        "judgeImplementation": "llm",
+        "status": "TODO",
+        "report": {"creditsSpent": 0.0, "results": []},
+        "runHistory": [],
+        "createdAt": "2026-01-01T00:00:00+00:00",
+        "updatedAt": "2026-01-01T00:00:00+00:00",
+    }
+
+    listed = await work_items.list_work_items(
+        "user@example.com",
+        "company-1",
+        "board-1",
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+
+    orchestration = listed["workItems"][0]["operational"]["orchestration"]
+    assert orchestration["browserPolicy"]["state"] == "unrestricted"
+    assert orchestration["browserPolicy"]["defaultUse"] == "exception"
+    assert orchestration["browserPolicy"]["allowedDomains"] == []
+    assert orchestration["automationGate"]["state"] == "blocked"
+    assert orchestration["automationGate"]["canRunUnattended"] is False
+    assert orchestration["automationGate"]["blockers"] == ["missing_browser_allowlist"]
+    assert orchestration["automationGate"]["policy"]["requiresBrowserAllowlist"] is True

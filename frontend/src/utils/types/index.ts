@@ -747,6 +747,9 @@ export interface WorkItem {
   runTarget: WorkRunTarget;
   browserEnabled: boolean;
   browserMode: "visible" | "headless";
+  allowedDomains?: string[];
+  browserRestrictedByDomain?: boolean;
+  browserDefaultUse?: string;
   maxCreditsPerRun: number;
   maxBudgetCredits?: number;
   maxSteps?: number;
@@ -822,6 +825,15 @@ export interface WorkItem {
         pendingApprovalCount?: number;
         reviewBlocked?: boolean;
       };
+      browserPolicy?: {
+        enabled?: boolean;
+        defaultUse?: string;
+        restrictedByDomain?: boolean;
+        allowedDomains?: string[];
+        requiresSandbox?: boolean;
+        leastPrivilege?: boolean;
+        state?: string;
+      };
       sla?: {
         state?: string;
         deadlineState?: string;
@@ -840,6 +852,7 @@ export interface WorkItem {
           requiresSchedule?: boolean;
           requiresApprovalClearance?: boolean;
           requiresBudget?: boolean;
+          requiresBrowserAllowlist?: boolean;
           maxSteps?: number;
         };
       };

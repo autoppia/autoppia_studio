@@ -65,6 +65,7 @@ describe("Work page", () => {
                   orchestration: {
                     sla: { state: "blocked", deadlineState: "overdue", dueAt: "2026-01-01T00:00:00+00:00", overdueMinutes: 42, needsAttention: true },
                     schedule: { deadlineState: "overdue" },
+                    browserPolicy: { enabled: true, state: "unrestricted", allowedDomains: [], defaultUse: "exception" },
                     budget: { remainingCredits: 0, exhausted: true },
                     automationGate: {
                       state: "blocked",
@@ -149,11 +150,13 @@ describe("Work page", () => {
     expect(await screen.findByText("Artifacts")).toBeInTheDocument();
     expect(await screen.findByText("Tool calls")).toBeInTheDocument();
     expect(await screen.findByText("Overdue SLA")).toBeInTheDocument();
+    expect(await screen.findByText("Browser policy")).toBeInTheDocument();
     expect(await screen.findByText("2 runtime sessions")).toBeInTheDocument();
     expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
     expect(await screen.findByText("1 pending approvals")).toBeInTheDocument();
     expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
     expect(await screen.findByText("42 min overdue")).toBeInTheDocument();
+    expect(await screen.findByText("browser unrestricted")).toBeInTheDocument();
     expect(await screen.findByText("gate blocked")).toBeInTheDocument();
   });
 });

@@ -3,6 +3,7 @@ import os
 import uuid
 from datetime import datetime, time, timedelta, timezone
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
@@ -53,6 +54,9 @@ class WorkItemCreateRequest(BaseModel):
     runTarget: RunTarget = "all"
     browserEnabled: bool = True
     browserMode: Literal["visible", "headless"] = "headless"
+    allowedDomains: list[str] = Field(default_factory=list)
+    browserRestrictedByDomain: bool | None = None
+    browserDefaultUse: str = "exception"
     maxCreditsPerRun: float = 5.0
     maxBudgetCredits: float | None = None
     maxSteps: int = 8
@@ -82,6 +86,9 @@ class WorkItemUpdateRequest(BaseModel):
     runTarget: RunTarget | None = None
     browserEnabled: bool | None = None
     browserMode: Literal["visible", "headless"] | None = None
+    allowedDomains: list[str] | None = None
+    browserRestrictedByDomain: bool | None = None
+    browserDefaultUse: str | None = None
     maxCreditsPerRun: float | None = None
     maxBudgetCredits: float | None = None
     maxSteps: int | None = None
@@ -125,6 +132,26 @@ def _parse_schedule_time(value: str) -> time:
         return time(hour=max(0, min(23, int(hour))), minute=max(0, min(59, int(minute))), tzinfo=timezone.utc)
     except Exception:
         return time(hour=9, minute=0, tzinfo=timezone.utc)
+
+
+def _normalize_domains(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        raw = str(value or "").strip().lower()
+        if not raw:
+            continue
+        try:
+            parsed = urlparse(raw if "://" in raw else f"https://{raw}")
+            clean = (parsed.hostname or raw).strip().lower()
+        except Exception:
+            clean = raw
+        clean = clean.strip("/")
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
 
 
 def _next_run_at(*, frequency: str, schedule_time: str, day_of_week: int = 1, from_dt: datetime | None = None) -> str:
@@ -181,6 +208,9 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "runTarget": doc.get("runTarget", "selected"),
         "browserEnabled": bool(doc.get("browserEnabled", True)),
         "browserMode": doc.get("browserMode", "headless"),
+        "allowedDomains": _normalize_domains(doc.get("allowedDomains") if isinstance(doc.get("allowedDomains"), list) else []),
+        "browserRestrictedByDomain": bool(doc.get("browserRestrictedByDomain")) if doc.get("browserRestrictedByDomain") is not None else bool(doc.get("allowedDomains")),
+        "browserDefaultUse": doc.get("browserDefaultUse", "exception"),
         "maxCreditsPerRun": float(doc.get("maxCreditsPerRun", 5.0) or 0.0),
         "maxBudgetCredits": float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun", 5.0)) or 0.0),
         "maxSteps": int(doc.get("maxSteps", 8) or 8),
@@ -242,6 +272,11 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
     queue_state = str(doc.get("status") or "TODO")
     trigger_type = str(doc.get("triggerType") or "manual")
     next_run_at = str(doc.get("nextRunAt") or "")
+    browser_enabled = bool(doc.get("browserEnabled", True))
+    allowed_domains = _normalize_domains(doc.get("allowedDomains") if isinstance(doc.get("allowedDomains"), list) else [])
+    browser_restricted = bool(doc.get("browserRestrictedByDomain")) if doc.get("browserRestrictedByDomain") is not None else bool(allowed_domains)
+    browser_default_use = str(doc.get("browserDefaultUse") or "exception")
+    browser_policy_state = "disabled" if not browser_enabled else "restricted" if browser_restricted and allowed_domains else "unrestricted"
     deadline_at = _parse_iso(next_run_at) if next_run_at else None
     now = datetime.now(timezone.utc)
     minutes_until_due = round((deadline_at - now).total_seconds() / 60, 1) if deadline_at else None
@@ -272,6 +307,9 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
     if trigger_type == "scheduled" and not next_run_at:
         blockers.append("missing_schedule")
         next_actions.append("Set the next scheduled run time or switch this item to manual.")
+    if trigger_type == "scheduled" and browser_policy_state == "unrestricted":
+        blockers.append("missing_browser_allowlist")
+        next_actions.append("Add allowed domains before running browser-enabled scheduled work unattended.")
     if not blockers and trigger_type == "manual":
         next_actions.append("Manual work is ready; schedule it if it should run unattended.")
     if not blockers and deadline_state == "overdue":
@@ -308,6 +346,15 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
             "pendingApprovalCount": pending_approval_count,
             "reviewBlocked": review_blocked,
         },
+        "browserPolicy": {
+            "enabled": browser_enabled,
+            "defaultUse": browser_default_use,
+            "restrictedByDomain": browser_restricted,
+            "allowedDomains": allowed_domains,
+            "requiresSandbox": browser_enabled,
+            "leastPrivilege": True,
+            "state": browser_policy_state,
+        },
         "sla": {
             "state": sla_state,
             "deadlineState": deadline_state,
@@ -326,6 +373,7 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
                 "requiresSchedule": trigger_type == "scheduled",
                 "requiresApprovalClearance": True,
                 "requiresBudget": max_budget > 0,
+                "requiresBrowserAllowlist": bool(trigger_type == "scheduled" and browser_enabled),
                 "maxSteps": max_steps,
             },
         },
@@ -1220,6 +1268,7 @@ async def create_work_item(body: WorkItemCreateRequest, scope: RequestScope = De
     now = _now()
     board_id = body.boardId or (await _default_board(email, body.companyId)).get("boardId", "")
     max_budget = body.maxBudgetCredits if body.maxBudgetCredits is not None else body.maxCreditsPerRun
+    allowed_domains = _normalize_domains(body.allowedDomains)
     next_run_at = _next_run_at(
         frequency=body.scheduleFrequency,
         schedule_time=body.scheduleTime,
@@ -1238,6 +1287,9 @@ async def create_work_item(body: WorkItemCreateRequest, scope: RequestScope = De
         "runTarget": body.runTarget,
         "browserEnabled": body.browserEnabled,
         "browserMode": body.browserMode,
+        "allowedDomains": allowed_domains,
+        "browserRestrictedByDomain": bool(body.browserRestrictedByDomain) if body.browserRestrictedByDomain is not None else bool(allowed_domains),
+        "browserDefaultUse": body.browserDefaultUse.strip() or "exception",
         "maxCreditsPerRun": max(0.0, float(body.maxCreditsPerRun or 0.0)),
         "maxBudgetCredits": max(0.0, float(max_budget or 0.0)),
         "maxSteps": max(1, min(30, int(body.maxSteps or 8))),
@@ -1272,6 +1324,12 @@ async def update_work_item(work_item_id: str, body: WorkItemUpdateRequest, scope
         updates["prompt"] = str(updates["prompt"]).strip()
     if "successCriteria" in updates:
         updates["successCriteria"] = str(updates["successCriteria"]).strip()
+    if "allowedDomains" in updates:
+        updates["allowedDomains"] = _normalize_domains(updates["allowedDomains"] if isinstance(updates["allowedDomains"], list) else [])
+        if "browserRestrictedByDomain" not in updates:
+            updates["browserRestrictedByDomain"] = bool(updates["allowedDomains"])
+    if "browserDefaultUse" in updates:
+        updates["browserDefaultUse"] = str(updates["browserDefaultUse"] or "exception").strip() or "exception"
     if "maxCreditsPerRun" in updates:
         updates["maxCreditsPerRun"] = max(0.0, float(updates["maxCreditsPerRun"] or 0.0))
     if "maxBudgetCredits" in updates:
