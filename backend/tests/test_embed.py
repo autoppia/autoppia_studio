@@ -370,8 +370,22 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                         "indexing": {"vectorDatabaseId": "vec-1"},
                         "governance": {
                             "acl": {"visibility": "company", "allowedRoles": ["claims"], "allowedUsers": ["owner@example.com"]},
+                            "citability": {"citable": True, "citationLabel": "Claims Policy"},
                         },
                         "readTools": ["knowledge.claims.search", "knowledge.claims.read_document"],
+                        "resourceGate": {
+                            "state": "ready",
+                            "readyForRuntime": True,
+                            "blockers": [],
+                            "checks": {
+                                "indexed": True,
+                                "vectorStore": True,
+                                "readTools": True,
+                                "acl": True,
+                                "freshness": True,
+                                "citability": True,
+                            },
+                        },
                     },
                 }
             ]
@@ -559,6 +573,10 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["resourceMap"]["documents"]["acl"]["companyVisible"] == 1
     assert result["contract"]["resourceMap"]["documents"]["acl"]["visibility"] == [{"name": "company", "count": 1}]
     assert result["contract"]["resourceMap"]["documents"]["sample"][0]["aclVisibility"] == "company"
+    assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["ready"] == 1
+    assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["blocked"] == 0
+    assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["states"] == [{"name": "ready", "count": 1}]
+    assert result["contract"]["resourceMap"]["documents"]["sample"][0]["runtimeGate"]["readyForRuntime"] is True
     assert "knowledge.claims.search" in result["contract"]["resourceMap"]["documents"]["readTools"]
     assert result["contract"]["resourceMap"]["vectorStores"]["total"] == 1
     assert result["contract"]["resourceMap"]["vectorStores"]["linked"] == 1

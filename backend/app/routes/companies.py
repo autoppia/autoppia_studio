@@ -227,6 +227,49 @@ def _resource_status(doc: dict[str, Any]) -> str:
     return str(doc.get("status") or contract.get("status") or indexing.get("status") or "unknown")
 
 
+def _resource_indexed(doc: dict[str, Any]) -> bool:
+    contract = _resource_contract(doc)
+    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
+    if isinstance(indexing.get("indexed"), bool):
+        return indexing["indexed"]
+    return _resource_status(doc).lower() in {"indexed", "ready", "active", "completed"}
+
+
+def _resource_citable(doc: dict[str, Any]) -> bool:
+    contract = _resource_contract(doc)
+    governance = contract.get("governance") if isinstance(contract.get("governance"), dict) else {}
+    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+    if isinstance(citability.get("citable"), bool):
+        return citability["citable"]
+    return _resource_indexed(doc)
+
+
+def _resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(doc)
+    gate = contract.get("resourceGate")
+    return gate if isinstance(gate, dict) else {}
+
+
+def _derived_resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
+    gate = _resource_gate(doc)
+    if gate:
+        return gate
+    checks = {
+        "indexed": _resource_indexed(doc),
+        "vectorStore": bool(_resource_vector_id(doc)),
+        "readTools": bool(_resource_read_tools(doc)),
+        "acl": bool(_resource_acl(doc).get("explicit")),
+        "citability": _resource_citable(doc),
+    }
+    blockers = [key for key, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not blockers else "blocked",
+        "readyForRuntime": not blockers,
+        "blockers": blockers,
+        "checks": checks,
+    }
+
+
 async def _ensure_default_company(email: str) -> dict[str, Any]:
     existing = await companies_collection.find_one({"email": email})
     if existing:
@@ -414,6 +457,10 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         )
         resource_read_tools = sorted({tool for doc in knowledge_docs for tool in _resource_read_tools(doc)})
         resource_statuses = [_resource_status(doc) for doc in knowledge_docs]
+        resource_gates = [_derived_resource_gate(doc) for doc in knowledge_docs]
+        runtime_ready_resources = sum(1 for gate in resource_gates if bool(gate.get("readyForRuntime")))
+        gate_state_counts = _sorted_counts([str(gate.get("state") or "unknown").lower() for gate in resource_gates])
+        gate_blockers = _sorted_counts([blocker for gate in resource_gates for blocker in _normalized_list(gate.get("blockers"))])
         resource_vector_ids = {_resource_vector_id(doc) for doc in knowledge_docs if _resource_vector_id(doc)}
         vector_store_ids = {str(doc.get("vectorDatabaseId") or "").strip() for doc in vector_stores if str(doc.get("vectorDatabaseId") or "").strip()}
         docs_with_contract = sum(1 for doc in knowledge_docs if _resource_contract(doc))
@@ -432,6 +479,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 {"key": "resource_contracts", "label": "Knowledge documents exist but no resource contracts are exposed.", "target": "knowledge"} if knowledge_docs and docs_with_contract == 0 else None,
                 {"key": "resource_acl", "label": "Knowledge resources need explicit ACL governance before broad runtime use.", "target": "knowledge"} if knowledge_docs and docs_with_acl < len(knowledge_docs) else None,
                 {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before they can support skills.", "target": "knowledge"} if knowledge_docs and not resource_read_tools else None,
+                {"key": "resource_runtime_gate", "label": "Knowledge resources must pass runtime grounding gates before skills rely on them.", "target": "knowledge"} if knowledge_docs and runtime_ready_resources < len(knowledge_docs) else None,
                 {"key": "vector_index", "label": "Knowledge resources are not linked to vector stores.", "target": "knowledge"} if knowledge_docs and docs_with_vector_store == 0 else None,
                 {"key": "vector_store", "label": "Create a vector store for indexed business context.", "target": "knowledge"} if knowledge_docs and not vector_stores else None,
             ]
@@ -539,6 +587,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "approvals": counts["pendingApprovals"] > 0 or counts["approvedApprovals"] > 0,
             "domainAllowlist": bool((company.get("embedSettings") or {}).get("allowedOrigins") or connector_domains),
             "resourceAcl": not knowledge_docs or docs_with_acl == len(knowledge_docs),
+            "resourceRuntime": not knowledge_docs or runtime_ready_resources == len(knowledge_docs),
         }
         readiness_gaps = []
         if not readiness_checks["systems"]:
@@ -563,6 +612,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             readiness_gaps.append({"key": "domains", "label": "Define domain allowlists for browser/embed governance.", "target": "governance"})
         if not readiness_checks["resourceAcl"]:
             readiness_gaps.append({"key": "resource_acl", "label": "Define ACL visibility for every knowledge resource.", "target": "knowledge"})
+        if not readiness_checks["resourceRuntime"]:
+            readiness_gaps.append({"key": "resource_runtime", "label": "Clear resource runtime blockers before relying on knowledge grounding.", "target": "knowledge"})
         readiness_passed = sum(1 for value in readiness_checks.values() if value)
         readiness_score = round(readiness_passed / len(readiness_checks), 3) if readiness_checks else 0.0
 
@@ -632,9 +683,20 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                             "vectorDatabaseId": _resource_vector_id(doc),
                             "aclVisibility": _resource_acl(doc)["visibility"],
                             "readTools": _resource_read_tools(doc)[:8],
+                            "runtimeGate": {
+                                "state": str(_derived_resource_gate(doc).get("state") or "unknown"),
+                                "readyForRuntime": bool(_derived_resource_gate(doc).get("readyForRuntime")),
+                                "blockers": _normalized_list(_derived_resource_gate(doc).get("blockers"))[:8],
+                            },
                         }
                         for doc in knowledge_docs[:8]
                     ],
+                    "runtimeGate": {
+                        "ready": runtime_ready_resources,
+                        "blocked": max(0, len(knowledge_docs) - runtime_ready_resources),
+                        "states": gate_state_counts,
+                        "blockers": gate_blockers,
+                    },
                 },
                 "vectorStores": {
                     "total": counts["vectorStores"],

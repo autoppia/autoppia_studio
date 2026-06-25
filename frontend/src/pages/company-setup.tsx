@@ -582,7 +582,7 @@ export default function CompanySetup(): React.ReactElement {
               {resourceMap && (
                 <div>
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Resource map</p>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
                     <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Documents</p>
                       <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
@@ -617,6 +617,15 @@ export default function CompanySetup(): React.ReactElement {
                       </p>
                       <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
                         {resourceMap.documents.readTools.slice(0, 2).join(", ") || "No read-only tools exposed"}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Runtime gate</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Ready: <span className="font-semibold text-gray-900 dark:text-white">{resourceMap.documents.runtimeGate?.ready || 0}/{resourceMap.documents.total}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {(resourceMap.documents.runtimeGate?.blockers || []).slice(0, 2).map((item) => `${item.name} ${item.count}`).join(", ") || "No runtime blockers"}
                       </p>
                     </div>
                   </div>

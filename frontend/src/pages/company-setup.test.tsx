@@ -71,6 +71,12 @@ describe("Company Setup page", () => {
                   },
                   status: [{ name: "indexed", count: 4 }],
                   readTools: ["knowledge.claims.search", "knowledge.claims.read_document"],
+                  runtimeGate: {
+                    ready: 4,
+                    blocked: 1,
+                    states: [{ name: "ready", count: 4 }, { name: "blocked", count: 1 }],
+                    blockers: [{ name: "acl", count: 1 }],
+                  },
                   sample: [
                     {
                       documentId: "doc-1",
@@ -81,6 +87,7 @@ describe("Company Setup page", () => {
                       vectorDatabaseId: "vec-1",
                       aclVisibility: "company",
                       readTools: ["knowledge.claims.search"],
+                      runtimeGate: { state: "ready", readyForRuntime: true, blockers: [] },
                     },
                   ],
                 },
@@ -243,6 +250,9 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("Resource map")).toBeInTheDocument();
     expect(await screen.findByText("Runtime policy map")).toBeInTheDocument();
     expect(await screen.findByText("Domain restricted · 4 browser sessions")).toBeInTheDocument();
+    expect(await screen.findByText("Runtime gate")).toBeInTheDocument();
+    expect((await screen.findAllByText("4/5")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("acl 1")).toBeInTheDocument();
     expect(await screen.findByText("knowledge.claims.search, knowledge.claims.read_document")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();

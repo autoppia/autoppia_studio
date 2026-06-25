@@ -672,7 +672,18 @@ export interface CompanySetupContract {
         vectorDatabaseId: string;
         aclVisibility?: string;
         readTools: string[];
+        runtimeGate?: {
+          state?: string;
+          readyForRuntime?: boolean;
+          blockers?: string[];
+        };
       }>;
+      runtimeGate?: {
+        ready: number;
+        blocked: number;
+        states: CompanySetupCount[];
+        blockers: CompanySetupCount[];
+      };
     };
     vectorStores: {
       total: number;
