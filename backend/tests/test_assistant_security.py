@@ -223,6 +223,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "instructions": "Search the claim, draft the answer and stop before sending.",
                 "whenToUse": "Customer asks about claim status.",
                 "expectedArtifacts": ["draft_email"],
+                "riskPolicy": "human_approval_for_writes",
+                "trajectoryIds": ["traj-1"],
             },
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
         ]
@@ -381,8 +383,10 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             "instructions": "Search the claim, draft the answer and stop before sending.",
             "whenToUse": "Customer asks about claim status.",
             "expectedArtifacts": ["draft_email"],
+            "riskPolicy": "human_approval_for_writes",
+            "trajectoryIds": ["traj-1"],
         }
-    ]
+        ]
     assert capabilities.last_find_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
 
 

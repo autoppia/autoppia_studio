@@ -447,6 +447,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "whenToUse": "Customer asks about claim status.",
                     "expectedArtifacts": ["draft_email", "claim_summary"],
                     "preconditions": ["claim id known"],
+                    "trajectoryIds": ["traj-1"],
                     "runtimeRequirements": ["network"],
                 },
                 {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "human_approval_always", "status": "ready", "runtimeRequirements": ["browser"]},
