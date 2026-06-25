@@ -224,6 +224,10 @@ function parseCommaSeparated(value: string) {
   return value.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
+function matchesEntityName(value: string | undefined, entityFilter: string) {
+  return Boolean(value && value.trim().toLowerCase() === entityFilter.trim().toLowerCase());
+}
+
 const RISK_POLICIES = [
   { value: "human_approval_for_writes", label: "Human approval for writes" },
   { value: "human_approval_always", label: "Human approval always" },
@@ -1727,6 +1731,7 @@ export default function Capabilities(): React.ReactElement {
   );
   const connectorFilter = searchParams.get("connector") || "";
   const benchmarkFilter = searchParams.get("benchmark") || "";
+  const entityFilter = searchParams.get("entity") || "";
 
   const generateConnector = useMemo(
     () => customConnectors.find((connector) => connector.connectorId === generateConnectorId) || null,
@@ -1889,6 +1894,24 @@ export default function Capabilities(): React.ReactElement {
     () => benchmarks.find((benchmark) => benchmark.benchmarkId === benchmarkFilter) || null,
     [benchmarkFilter, benchmarks],
   );
+  const filteredEntity = useMemo(() => {
+    if (!entityFilter) return "";
+    const candidates = new Set<string>();
+    for (const tool of tools) {
+      for (const entity of [...(tool.inputEntities || []), ...(tool.outputEntity ? [tool.outputEntity] : [])]) {
+        if (entity) candidates.add(entity);
+      }
+    }
+    for (const skill of skills) {
+      for (const entity of [...(skill.inputEntities || []), ...(skill.outputEntity ? [skill.outputEntity] : [])]) {
+        if (entity) candidates.add(entity);
+      }
+    }
+    for (const entity of Array.from(candidates)) {
+      if (entity.toLowerCase() === entityFilter.toLowerCase()) return entity;
+    }
+    return entityFilter;
+  }, [entityFilter, skills, tools]);
   const benchmarkFilterEvalIds = useMemo(
     () => new Set((filteredBenchmark?.tasks || []).map((task) => task.evalId).filter(Boolean)),
     [filteredBenchmark],
@@ -1919,39 +1942,57 @@ export default function Capabilities(): React.ReactElement {
   const filteredTools = useMemo(
     () => tools.filter((tool) => {
       if (connectorFilter && tool.connectorId !== connectorFilter) return false;
-      if (!benchmarkScopedConnectorIds) return true;
-      return benchmarkScopedConnectorIds.has(tool.connectorId);
+      const benchmarkMatch = !benchmarkScopedConnectorIds || benchmarkScopedConnectorIds.has(tool.connectorId);
+      if (!benchmarkMatch) return false;
+      if (!entityFilter) return true;
+      return [...(tool.inputEntities || []), ...(tool.outputEntity ? [tool.outputEntity] : [])]
+        .some((entity) => matchesEntityName(entity, entityFilter));
     }),
-    [benchmarkScopedConnectorIds, connectorFilter, tools],
+    [benchmarkScopedConnectorIds, connectorFilter, entityFilter, tools],
   );
   const filteredTrajectories = useMemo(
     () => trajectories.filter((trajectory) => {
       if (connectorFilter && !(trajectory.connectorIds || []).includes(connectorFilter)) return false;
-      if (!benchmarkFilter) return true;
-      return trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId));
+      if (benchmarkFilter && !(trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId)))) return false;
+      if (!entityFilter) return true;
+      const toolEntityMatch = (trajectory.toolIds || []).some((toolId) => {
+        const tool = tools.find((item) => item.toolId === toolId);
+        return Boolean(tool && [...(tool.inputEntities || []), ...(tool.outputEntity ? [tool.outputEntity] : [])].some((entity) => matchesEntityName(entity, entityFilter)));
+      });
+      if (toolEntityMatch) return true;
+      return skills.some((skill) =>
+        (skill.trajectoryIds || []).includes(trajectory.trajectoryId)
+        && [...(skill.inputEntities || []), ...(skill.outputEntity ? [skill.outputEntity] : [])].some((entity) => matchesEntityName(entity, entityFilter)),
+      );
     }),
-    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, trajectories],
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, entityFilter, skills, tools, trajectories],
   );
   const filteredSkills = useMemo(
     () => skills.filter((skill) => {
       if (connectorFilter && !(skill.connectorIds || []).includes(connectorFilter)) return false;
-      if (!benchmarkFilter) return true;
-      if (skill.benchmarkId === benchmarkFilter) return true;
-      if (skill.evalId && benchmarkFilterEvalIds.has(skill.evalId)) return true;
-      return (skill.trajectoryIds || []).some((trajectoryId) => {
+      const benchmarkMatch = !benchmarkFilter
+        || skill.benchmarkId === benchmarkFilter
+        || (skill.evalId && benchmarkFilterEvalIds.has(skill.evalId))
+        || (skill.trajectoryIds || []).some((trajectoryId) => {
         const trajectory = trajectoriesById.get(trajectoryId);
         return Boolean(trajectory && (trajectory.benchmarkId === benchmarkFilter || (trajectory.evalId && benchmarkFilterEvalIds.has(trajectory.evalId))));
       });
+      if (!benchmarkMatch) return false;
+      if (!entityFilter) return true;
+      return [...(skill.inputEntities || []), ...(skill.outputEntity ? [skill.outputEntity] : [])]
+        .some((entity) => matchesEntityName(entity, entityFilter));
     }),
-    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, skills, trajectoriesById],
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, entityFilter, skills, trajectoriesById],
   );
   const filteredRuns = useMemo(
     () => runs.filter((run) => {
       if (connectorFilter && run.connectorId !== connectorFilter) return false;
-      if (!benchmarkFilter) return true;
-      return run.benchmarkId === benchmarkFilter || (run.evalId && benchmarkFilterEvalIds.has(run.evalId));
+      if (benchmarkFilter && !(run.benchmarkId === benchmarkFilter || (run.evalId && benchmarkFilterEvalIds.has(run.evalId)))) return false;
+      if (!entityFilter) return true;
+      return filteredTools.some((tool) => tool.connectorId === run.connectorId)
+        || filteredSkills.some((skill) => (skill.connectorIds || []).includes(run.connectorId));
     }),
-    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, runs],
+    [benchmarkFilter, benchmarkFilterEvalIds, connectorFilter, entityFilter, filteredSkills, filteredTools, runs],
   );
   const toolsByConnector = useMemo(() => {
     const groups = new Map<string, { connectorKey: string; connectorName: string; tools: CompanyTool[] }>();
@@ -2137,13 +2178,15 @@ export default function Capabilities(): React.ReactElement {
     openCapabilityRoute(`/capabilities/skill/${id}`);
   }, [openCapabilityDetail, openCapabilityRoute, skillsById, trajectoriesById]);
 
-  const setFactoryScope = useCallback((options: { view?: ViewKey; connectorId?: string; benchmarkId?: string; replace?: boolean }) => {
+  const setFactoryScope = useCallback((options: { view?: ViewKey; connectorId?: string; benchmarkId?: string; entityId?: string; replace?: boolean }) => {
     const next = new URLSearchParams(searchParams);
     if (options.view) next.set("view", options.view);
     if (options.connectorId) next.set("connector", options.connectorId);
     else if (options.connectorId === "") next.delete("connector");
     if (options.benchmarkId) next.set("benchmark", options.benchmarkId);
     else if (options.benchmarkId === "") next.delete("benchmark");
+    if (options.entityId) next.set("entity", options.entityId);
+    else if (options.entityId === "") next.delete("entity");
     if (routeKind) {
       navigate(`/capabilities?${next.toString()}`, { replace: options.replace ?? false });
       return;
@@ -2617,6 +2660,24 @@ export default function Capabilities(): React.ReactElement {
                   </button>
                 </div>
               )}
+              {filteredEntity && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Entity filter active</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Showing Factory graph only for <span className="font-semibold text-gray-700 dark:text-gray-200">{filteredEntity}</span>.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setFactoryScope({ entityId: "" });
+                    }}
+                    className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+                  >
+                    Clear entity
+                  </button>
+                </div>
+              )}
               {/* Create Capability wizard — opened from the header "Create Capability" button */}
               {showCreate && (
               <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
@@ -2965,6 +3026,20 @@ export default function Capabilities(): React.ReactElement {
                             <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Sessions</p>
                             <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{row.sessions}</p>
                           </div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          <button
+                            onClick={() => setFactoryScope({ view: "tools", entityId: row.entity })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                          >
+                            Tools graph
+                          </button>
+                          <button
+                            onClick={() => setFactoryScope({ view: row.skills > 0 ? "skills" : "trajectories", entityId: row.entity })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white"
+                          >
+                            Open factory scope
+                          </button>
                         </div>
                       </div>
                     ))}
