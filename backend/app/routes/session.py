@@ -9,7 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 from pydantic import BaseModel, Field
 
-from app.database import artifacts_collection, session_documents_collection, sessions_collection
+from app.database import approvals_collection, artifacts_collection, session_documents_collection, sessions_collection
 from app.routes.knowledge import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, create_knowledge_document_record
 
 router = APIRouter()
@@ -92,6 +92,44 @@ def _serialize_session_artifact(doc: dict) -> dict:
     }
 
 
+def _serialize_session_summary(doc: dict) -> dict:
+    action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
+    chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
+    runtime_state = doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}
+    approved_calls = runtime_state.get("approvedConnectorToolCalls") if isinstance(runtime_state.get("approvedConnectorToolCalls"), list) else []
+    has_browser_activity = any(str(item.get("action") or "").startswith("browser.") for item in action_history if isinstance(item, dict))
+    has_connector_activity = any(
+        not action.startswith(("browser.", "router.", "runtime.", "user."))
+        and action not in {"skill.use", "Initialize", "Continue", ""}
+        for action in (
+            str(item.get("action") or "")
+            for item in action_history
+            if isinstance(item, dict)
+        )
+    )
+    return {
+        "sessionId": doc.get("sessionId", ""),
+        "email": doc.get("email", ""),
+        "companyId": doc.get("companyId", ""),
+        "prompt": doc.get("prompt", ""),
+        "initialUrl": doc.get("initialUrl", ""),
+        "lastUrl": doc.get("lastUrl", ""),
+        "createdAt": doc.get("createdAt"),
+        "provider": doc.get("provider", "autoppia"),
+        "agentId": doc.get("agentId", ""),
+        "agentName": doc.get("agentName", ""),
+        "runtimeState": runtime_state,
+        "actionCount": len(action_history),
+        "chatCount": len(chat_history),
+        "hasBrowserActivity": has_browser_activity,
+        "hasConnectorActivity": has_connector_activity,
+        "matchedSkillId": str(runtime_state.get("matchedSkillId") or ""),
+        "matchedSkillName": str(runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or ""),
+        "approvedConnectorToolCallCount": len(approved_calls),
+        "pendingConnectorApproval": str(runtime_state.get("pendingConnectorApproval") or ""),
+    }
+
+
 async def _ensure_session_access(session_id: str, email: str) -> dict:
     session = await sessions_collection.find_one({"sessionId": session_id}, {"_id": 0})
     if session and session.get("email") and session.get("email") != email:
@@ -149,16 +187,13 @@ async def get_sessions(email: str, companyId: str = ""):
         cursor = sessions_collection.find(query).sort("createdAt", -1)
         sessions = []
         async for doc in cursor:
-            sessions.append(
-                {
-                    "sessionId": doc.get("sessionId", ""),
-                    "email": doc["email"],
-                    "companyId": doc.get("companyId", ""),
-                    "prompt": doc["prompt"],
-                    "initialUrl": doc.get("initialUrl", ""),
-                    "createdAt": doc.get("createdAt"),
-                }
-            )
+            summary = _serialize_session_summary(doc)
+            session_id = summary.get("sessionId", "")
+            artifact_query = {"sessionId": session_id, "email": email}
+            pending_approval_query = {"sessionId": session_id, "email": email, "status": "pending"}
+            summary["artifactCount"] = await artifacts_collection.count_documents(artifact_query)
+            summary["pendingApprovalCount"] = await approvals_collection.count_documents(pending_approval_query)
+            sessions.append(summary)
         return {"sessions": sessions}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

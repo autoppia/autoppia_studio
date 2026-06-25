@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
 import ReactMarkdown from "react-markdown";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCode,
@@ -185,6 +186,8 @@ function Preview({ artifact }: { artifact: ArtifactDraft }) {
 
 export default function Artifacts(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
+  const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -198,8 +201,12 @@ export default function Artifacts(): React.ReactElement {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const sessionFilter = searchParams.get("sessionId") || "";
 
   const selected = useMemo(() => artifacts.find((artifact) => artifact.artifactId === selectedId), [artifacts, selectedId]);
+  const selectedSkillId = String(selected?.metadata?.skillId || "");
+  const selectedTrajectoryId = String(selected?.metadata?.trajectoryId || "");
+  const selectedToolId = String(selected?.metadata?.toolId || "");
 
   const loadArtifacts = useCallback(async () => {
     if (!user.email || !companyId) {
@@ -211,6 +218,7 @@ export default function Artifacts(): React.ReactElement {
     setError("");
     try {
       const params = new URLSearchParams({ email: user.email });
+      if (sessionFilter) params.set("sessionId", sessionFilter);
       const res = await fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`);
       if (res.status === 404) {
         setArtifacts([]);
@@ -237,7 +245,7 @@ export default function Artifacts(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedId, user.email]);
+  }, [companyId, selectedId, sessionFilter, user.email]);
 
   useEffect(() => {
     loadArtifacts();
@@ -368,6 +376,11 @@ export default function Artifacts(): React.ReactElement {
           <aside className="flex min-h-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
             <div className="border-b border-gray-200 p-4 dark:border-dark-border">
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Workspace artifacts</p>
+              {sessionFilter && (
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  Focused on session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span>.
+                </p>
+              )}
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                   <p className="text-[10px] uppercase text-gray-400">Total</p>
@@ -398,7 +411,10 @@ export default function Artifacts(): React.ReactElement {
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-semibold text-gray-900 dark:text-white">{artifact.title}</span>
-                    <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">{artifact.artifactType} · {formatDate(artifact.updatedAt || artifact.createdAt)}</span>
+                    <span className="mt-0.5 block truncate text-xs text-gray-500 dark:text-gray-400">
+                      {artifact.artifactType} · {formatDate(artifact.updatedAt || artifact.createdAt)}
+                      {artifact.sessionId ? ` · ${artifact.sessionId.slice(0, 8)}` : ""}
+                    </span>
                   </span>
                 </button>
               )) : (
@@ -412,6 +428,26 @@ export default function Artifacts(): React.ReactElement {
           </aside>
 
           <main className="min-w-0 space-y-4">
+            {sessionFilter && (
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Session filter active</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Showing persisted artifacts linked to runtime session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span>.
+                  </p>
+                </div>
+                <button
+                  onClick={() => {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("sessionId");
+                    setSearchParams(next);
+                  }}
+                  className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+                >
+                  Clear filter
+                </button>
+              </div>
+            )}
             {error && (
               <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-400">
                 <FontAwesomeIcon icon={faTriangleExclamation} className="mt-0.5" />
@@ -429,9 +465,44 @@ export default function Artifacts(): React.ReactElement {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">{selected ? "Edit artifact" : "Create artifact"}</p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">Artifacts are company-scoped and persist between sessions.</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    Artifacts are company-scoped and persist between sessions.
+                    {selected?.sourceTool ? ` Source tool: ${selected.sourceTool}.` : ""}
+                  </p>
                 </div>
                 <div className="flex items-center gap-2">
+                  {selected?.sessionId && (
+                    <button
+                      onClick={() => navigate(`/session/${selected.sessionId}`)}
+                      className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
+                    >
+                      Open session
+                    </button>
+                  )}
+                  {selectedSkillId && (
+                    <button
+                      onClick={() => navigate(`/capabilities/skill/${selectedSkillId}`)}
+                      className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10"
+                    >
+                      Open skill
+                    </button>
+                  )}
+                  {!selectedSkillId && selectedTrajectoryId && (
+                    <button
+                      onClick={() => navigate(`/capabilities/trajectory/${selectedTrajectoryId}`)}
+                      className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10"
+                    >
+                      Open trajectory
+                    </button>
+                  )}
+                  {!selectedSkillId && !selectedTrajectoryId && selectedToolId && (
+                    <button
+                      onClick={() => navigate(`/capabilities/tool/${selectedToolId}`)}
+                      className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary hover:bg-primary/10"
+                    >
+                      Open tool
+                    </button>
+                  )}
                   {selectedId && (
                     <>
                       <button onClick={downloadArtifact} className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5">

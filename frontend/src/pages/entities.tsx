@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -21,8 +22,10 @@ import {
   faTriangleExclamation,
   faWandMagicSparkles,
   faXmark,
+  faRobot,
+  faArrowUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
-import { EntityField, EntityModel, EntityRelationship } from "../utils/types";
+import { AgentConfig, CompanySkill, CompanyTool, EntityField, EntityModel, EntityRelationship } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import { getApiUrl } from "../utils/api-url";
 
@@ -381,11 +384,21 @@ function DetailRow({ label, children }: { label: string; children: React.ReactNo
 
 function EntityDetailModal({
   entity,
+  linkedTools,
+  linkedSkills,
+  consumerAgents,
+  onOpenFactory,
+  onOpenAgent,
   onEdit,
   onDelete,
   onClose,
 }: {
   entity: EntityModel;
+  linkedTools: CompanyTool[];
+  linkedSkills: CompanySkill[];
+  consumerAgents: AgentConfig[];
+  onOpenFactory: (view: "tools" | "skills", connectorId?: string) => void;
+  onOpenAgent: (agentId: string) => void;
   onEdit: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -513,6 +526,73 @@ function EntityDetailModal({
             )}
           </div>
 
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[11px] text-gray-400" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Capabilities using this entity</p>
+              </div>
+              {linkedTools.length === 0 && linkedSkills.length === 0 ? (
+                <p className="text-xs text-gray-400">No tools or skills currently declare this entity.</p>
+              ) : (
+                <div className="space-y-2">
+                  {linkedTools.map((tool) => (
+                    <button
+                      key={tool.toolId}
+                      onClick={() => onOpenFactory("tools", tool.connectorId)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:hover:bg-primary/5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{tool.name}</p>
+                        <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">Tool · {tool.connectorName || "connector"}</p>
+                      </div>
+                      <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px] text-gray-400" />
+                    </button>
+                  ))}
+                  {linkedSkills.map((skill) => (
+                    <button
+                      key={skill.skillId}
+                      onClick={() => onOpenFactory("skills", skill.connectorIds?.[0] || "")}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:hover:bg-primary/5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{skill.name}</p>
+                        <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">Skill · {skill.status || "draft"}</p>
+                      </div>
+                      <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px] text-gray-400" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <div className="flex items-center gap-2 mb-2">
+                <FontAwesomeIcon icon={faRobot} className="text-[11px] text-gray-400" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Agents consuming this entity</p>
+              </div>
+              {consumerAgents.length === 0 ? (
+                <p className="text-xs text-gray-400">No agent is currently configured to consume capabilities tied to this entity.</p>
+              ) : (
+                <div className="space-y-2">
+                  {consumerAgents.map((agent) => (
+                    <button
+                      key={agent.agentId}
+                      onClick={() => onOpenAgent(agent.agentId)}
+                      className="flex w-full items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2 text-left hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:hover:bg-primary/5"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{agent.name}</p>
+                        <p className="mt-0.5 text-[11px] text-gray-500 dark:text-gray-400">{agent.runtimeType || "runtime"} · {agent.status || "draft"}</p>
+                      </div>
+                      <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px] text-gray-400" />
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
           {/* Raw JSON */}
           <div>
             <button
@@ -602,9 +682,13 @@ function EntityGraphView({ entities }: { entities: EntityModel[] }) {
 }
 
 export default function Entities(): React.ReactElement {
+  const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [entities, setEntities] = useState<EntityModel[]>([]);
+  const [tools, setTools] = useState<CompanyTool[]>([]);
+  const [skills, setSkills] = useState<CompanySkill[]>([]);
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<EntitiesTab>("list");
@@ -622,20 +706,42 @@ export default function Entities(): React.ReactElement {
   const loadEntities = useCallback(async () => {
     if (!user.email || !companyId) {
       setEntities([]);
+      setTools([]);
+      setSkills([]);
+      setAgents([]);
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
       const params = new URLSearchParams({ email: user.email });
-      const res = await fetch(`${apiUrl}/companies/${companyId}/entities?${params.toString()}`);
-      if (res.status === 404) {
+      const scoped = new URLSearchParams({ email: user.email, companyId });
+      const [entitiesRes, capabilitiesRes, agentsRes] = await Promise.all([
+        fetch(`${apiUrl}/companies/${companyId}/entities?${params.toString()}`),
+        fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
+        fetch(`${apiUrl}/agents?${scoped.toString()}`),
+      ]);
+      if (entitiesRes.status === 404) {
         setEntities([]);
         return;
       }
-      if (!res.ok) throw new Error(await responseErrorMessage(res, "Could not load entities."));
-      const data = await res.json();
+      if (!entitiesRes.ok) throw new Error(await responseErrorMessage(entitiesRes, "Could not load entities."));
+      const data = await entitiesRes.json();
       setEntities(data.entities || []);
+      if (capabilitiesRes.ok) {
+        const capabilityData = await capabilitiesRes.json();
+        setTools(capabilityData.tools || []);
+        setSkills(capabilityData.skills || []);
+      } else {
+        setTools([]);
+        setSkills([]);
+      }
+      if (agentsRes.ok) {
+        const agentData = await agentsRes.json();
+        setAgents(agentData.agents || []);
+      } else {
+        setAgents([]);
+      }
     } catch (err: any) {
       console.error("Failed to load entities:", err);
       setError("");
@@ -754,6 +860,55 @@ export default function Entities(): React.ReactElement {
 
   const totalFields = useMemo(() => entities.reduce((acc, e) => acc + (e.fields?.length || 0), 0), [entities]);
   const totalRelationships = useMemo(() => entities.reduce((acc, e) => acc + (e.relationships?.length || 0), 0), [entities]);
+  const entityUsage = useMemo(() => {
+    const result = new Map<string, { tools: CompanyTool[]; skills: CompanySkill[]; agents: AgentConfig[] }>();
+
+    const ensure = (name: string) => {
+      const key = name.trim().toLowerCase();
+      if (!key) return null;
+      if (!result.has(key)) result.set(key, { tools: [], skills: [], agents: [] });
+      return result.get(key)!;
+    };
+
+    for (const tool of tools) {
+      const names = [...(tool.inputEntities || []), ...(tool.outputEntity ? [tool.outputEntity] : [])];
+      for (const name of names) {
+        const bucket = ensure(name);
+        if (bucket && !bucket.tools.some((item) => item.toolId === tool.toolId)) bucket.tools.push(tool);
+      }
+    }
+
+    for (const skill of skills) {
+      const names = [...(skill.inputEntities || []), ...(skill.outputEntity ? [skill.outputEntity] : [])];
+      for (const name of names) {
+        const bucket = ensure(name);
+        if (bucket && !bucket.skills.some((item) => item.skillId === skill.skillId)) bucket.skills.push(skill);
+      }
+    }
+
+    for (const entity of entities) {
+      const key = entity.name.trim().toLowerCase();
+      const bucket = result.get(key);
+      if (!bucket) continue;
+      const connectorIds = new Set<string>([
+        ...bucket.tools.map((tool) => tool.connectorId).filter(Boolean),
+        ...bucket.skills.flatMap((skill) => skill.connectorIds || []).filter(Boolean),
+      ]);
+      for (const agent of agents) {
+        const agentKnowledge = Boolean(agent.runtimeCapabilities?.knowledge || agent.runtimeSpec?.tools?.knowledge);
+        const agentUsesSkills = bucket.skills.some((skill) => skill.agentId && skill.agentId === agent.agentId);
+        const agentMatchesConnector = connectorIds.size > 0 && agentKnowledge;
+        if ((agentUsesSkills || agentMatchesConnector) && !bucket.agents.some((item) => item.agentId === agent.agentId)) {
+          bucket.agents.push(agent);
+        }
+      }
+    }
+
+    return result;
+  }, [agents, entities, skills, tools]);
+  const totalToolLinks = useMemo(() => Array.from(entityUsage.values()).reduce((sum, item) => sum + item.tools.length, 0), [entityUsage]);
+  const totalSkillLinks = useMemo(() => Array.from(entityUsage.values()).reduce((sum, item) => sum + item.skills.length, 0), [entityUsage]);
+  const totalAgentLinks = useMemo(() => Array.from(entityUsage.values()).reduce((sum, item) => sum + item.agents.length, 0), [entityUsage]);
   const filteredEntities = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return entities;
@@ -828,6 +983,9 @@ export default function Entities(): React.ReactElement {
                   { icon: faCube, label: "Entities", value: entities.length },
                   { icon: faList, label: "Fields", value: totalFields },
                   { icon: faShareNodes, label: "Relationships", value: totalRelationships },
+                  { icon: faPlugCircleBolt, label: "Tool links", value: totalToolLinks },
+                  { icon: faWandMagicSparkles, label: "Skill links", value: totalSkillLinks },
+                  { icon: faRobot, label: "Agent links", value: totalAgentLinks },
                 ].map((stat) => (
                   <div key={stat.label} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 min-w-[120px]">
                     <div className="flex items-center gap-1.5 mb-1">
@@ -924,6 +1082,11 @@ export default function Entities(): React.ReactElement {
       {detailTarget && (
         <EntityDetailModal
           entity={detailTarget}
+          linkedTools={entityUsage.get(detailTarget.name.trim().toLowerCase())?.tools || []}
+          linkedSkills={entityUsage.get(detailTarget.name.trim().toLowerCase())?.skills || []}
+          consumerAgents={entityUsage.get(detailTarget.name.trim().toLowerCase())?.agents || []}
+          onOpenFactory={(view, connectorId) => navigate(`/capabilities?view=${view}${connectorId ? `&connector=${encodeURIComponent(connectorId)}` : ""}`)}
+          onOpenAgent={(agentId) => navigate(`/agents/${agentId}`)}
           onEdit={() => { openEdit(detailTarget); setDetailTarget(null); }}
           onDelete={() => { setDeleteTarget(detailTarget); setDetailTarget(null); }}
           onClose={() => setDetailTarget(null)}

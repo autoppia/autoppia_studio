@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBuilding,
@@ -76,11 +76,15 @@ function ApprovalCard({
   busy,
   onApprove,
   onReject,
+  onOpenSession,
+  onOpenCapability,
 }: {
   approval: ApprovalRequest;
   busy: boolean;
   onApprove: () => void;
   onReject: () => void;
+  onOpenSession: (sessionId: string) => void;
+  onOpenCapability: (kind: "tool" | "trajectory" | "skill", id: string) => void;
 }) {
   const actionName = approval.toolName || approval.proposedAction?.name || "proposed action";
   const args = approval.proposedAction?.arguments || {};
@@ -93,6 +97,9 @@ function ApprovalCard({
   const sourceKind = approval.sourceKind || approval.metadata?.sourceKind || (workItemId ? "work" : sessionId ? "session" : "runtime");
   const auditTrail = approval.auditTrail || [];
   const pending = approval.status === "pending";
+  const skillId = String(approval.metadata?.skillId || "");
+  const trajectoryId = String(approval.metadata?.trajectoryId || "");
+  const toolId = String(approval.metadata?.toolId || "");
 
   return (
     <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
@@ -140,6 +147,43 @@ function ApprovalCard({
         <InfoPill label="agent" value={approval.agentId} />
         <InfoPill label="key" value={approval.approvalKey} />
       </div>
+
+      {(sessionId || skillId || trajectoryId || toolId) && (
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {sessionId && (
+            <button
+              onClick={() => onOpenSession(sessionId)}
+              className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+            >
+              Open session
+            </button>
+          )}
+          {skillId && (
+            <button
+              onClick={() => onOpenCapability("skill", skillId)}
+              className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+            >
+              Open skill
+            </button>
+          )}
+          {!skillId && trajectoryId && (
+            <button
+              onClick={() => onOpenCapability("trajectory", trajectoryId)}
+              className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+            >
+              Open trajectory
+            </button>
+          )}
+          {!skillId && !trajectoryId && toolId && (
+            <button
+              onClick={() => onOpenCapability("tool", toolId)}
+              className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+            >
+              Open tool
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="mt-3">
         <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">Proposed arguments</p>
@@ -210,13 +254,18 @@ function ApprovalCard({
 export default function Approvals(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
-  const [tab, setTab] = useState<ApprovalTab>("pending");
+  const [tab, setTab] = useState<ApprovalTab>((searchParams.get("status") as ApprovalTab) || "pending");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busyId, setBusyId] = useState("");
   const [sessionResumeNotice, setSessionResumeNotice] = useState<{ sessionId: string; approvalId: string } | null>(null);
+  const sessionFilter = searchParams.get("sessionId") || "";
+  const skillFilter = searchParams.get("skillId") || "";
+  const trajectoryFilter = searchParams.get("trajectoryId") || "";
+  const toolFilter = searchParams.get("toolId") || "";
 
   const loadApprovals = useCallback(async () => {
     if (!user.email || !companyId) {
@@ -231,6 +280,10 @@ export default function Approvals(): React.ReactElement {
       if (tab !== "all") params.set("status", tab);
       else params.set("status", "");
       params.set("includeRuntime", "true");
+      if (sessionFilter) params.set("sessionId", sessionFilter);
+      if (skillFilter) params.set("skillId", skillFilter);
+      if (trajectoryFilter) params.set("trajectoryId", trajectoryFilter);
+      if (toolFilter) params.set("toolId", toolFilter);
       const res = await fetch(`${apiUrl}/approvals?${params.toString()}`);
       if (res.status === 404) {
         setApprovals([]);
@@ -245,7 +298,14 @@ export default function Approvals(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [companyId, tab, user.email]);
+  }, [companyId, sessionFilter, skillFilter, tab, toolFilter, trajectoryFilter, user.email]);
+
+  useEffect(() => {
+    const status = searchParams.get("status");
+    if (status === "pending" || status === "approved" || status === "rejected" || status === "all") {
+      setTab(status);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     loadApprovals();
@@ -325,6 +385,32 @@ export default function Approvals(): React.ReactElement {
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-6">
+          {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime filter active</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
+                  {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                  {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                  {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("sessionId");
+                  next.delete("skillId");
+                  next.delete("trajectoryId");
+                  next.delete("toolId");
+                  setSearchParams(next);
+                }}
+                className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
               <FontAwesomeIcon icon={faTriangleExclamation} className="mt-0.5 text-xs" />
@@ -367,7 +453,12 @@ export default function Approvals(): React.ReactElement {
                 ]).map((item) => (
                   <button
                     key={item.key}
-                    onClick={() => setTab(item.key)}
+                    onClick={() => {
+                      setTab(item.key);
+                      const next = new URLSearchParams(searchParams);
+                      next.set("status", item.key);
+                      setSearchParams(next);
+                    }}
                     className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-colors border ${
                       tab === item.key
                         ? "bg-amber-500 text-white border-transparent"
@@ -402,6 +493,8 @@ export default function Approvals(): React.ReactElement {
                       busy={busyId === approval.approvalId}
                       onApprove={() => decide(approval.approvalId, "approve")}
                       onReject={() => decide(approval.approvalId, "reject")}
+                      onOpenSession={(sessionId) => navigate(`/session/${sessionId}`)}
+                      onOpenCapability={(kind, id) => navigate(`/capabilities/${kind}/${id}`)}
                     />
                   ))}
                 </div>

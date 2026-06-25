@@ -5,8 +5,13 @@ import Approvals from "./approvals";
 jest.mock("react-redux", () => ({
   useSelector: jest.fn(),
 }));
+
+let mockSearch = "";
+const mockSetSearchParams = jest.fn();
+
 jest.mock("react-router-dom", () => ({
   useNavigate: () => jest.fn(),
+  useSearchParams: () => [new URLSearchParams(mockSearch), mockSetSearchParams],
 }), { virtual: true });
 
 const mockedUseSelector = useSelector as unknown as jest.Mock;
@@ -17,6 +22,8 @@ function renderApprovals() {
 
 describe("Approvals page", () => {
   beforeEach(() => {
+    mockSearch = "";
+    mockSetSearchParams.mockReset();
     localStorage.setItem("automata_company_id", "company-1");
     mockedUseSelector.mockImplementation((selector: any) =>
       selector({ user: { email: "demo@example.com" } }),
@@ -55,6 +62,21 @@ describe("Approvals page", () => {
     await waitFor(() => {
       expect(screen.queryByText('{"detail":"Not Found"}')).not.toBeInTheDocument();
     });
+  });
+
+  it("passes the session filter through to the approvals query", async () => {
+    mockSearch = "sessionId=session-42&status=pending";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ approvals: [] }),
+    }) as jest.Mock;
+
+    renderApprovals();
+
+    expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/approvals?email=demo%40example.com&companyId=company-1&status=pending&includeRuntime=true&sessionId=session-42"),
+    );
   });
 
   it("stores session resume state after approving a runtime session approval", async () => {

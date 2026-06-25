@@ -9,10 +9,20 @@ jest.mock("react-redux", () => ({
 
 jest.mock("react-markdown", () => ({ children }: { children: ReactNode }) => <div>{children}</div>);
 
+let mockSearch = "";
+const mockSetSearchParams = jest.fn();
+
+jest.mock("react-router-dom", () => ({
+  useNavigate: () => jest.fn(),
+  useSearchParams: () => [new URLSearchParams(mockSearch), mockSetSearchParams],
+}), { virtual: true });
+
 const mockedUseSelector = useSelector as unknown as jest.Mock;
 
 describe("Artifacts page", () => {
   beforeEach(() => {
+    mockSearch = "";
+    mockSetSearchParams.mockReset();
     localStorage.setItem("automata_company_id", "company-1");
     mockedUseSelector.mockImplementation((selector: any) =>
       selector({ user: { email: "demo@example.com" } }),
@@ -66,5 +76,20 @@ describe("Artifacts page", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+  });
+
+  it("passes the session filter through to the artifacts query", async () => {
+    mockSearch = "sessionId=session-7";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ artifacts: [] }),
+    }) as jest.Mock;
+
+    render(<Artifacts />);
+
+    expect(await screen.findByText("Session filter active")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&sessionId=session-7"),
+    );
   });
 });

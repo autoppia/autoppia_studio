@@ -19,22 +19,56 @@ class ApprovalDecisionRequest(BaseModel):
     reason: str = ""
 
 
-def _query_scope(email: str, company_id: str = "", status: str = "") -> dict[str, Any]:
+def _query_scope(
+    email: str,
+    company_id: str = "",
+    status: str = "",
+    session_id: str = "",
+    skill_id: str = "",
+    trajectory_id: str = "",
+    tool_id: str = "",
+) -> dict[str, Any]:
     query: dict[str, Any] = {"email": email}
     if company_id:
         query["companyId"] = company_id
     if status:
         query["status"] = status
+    or_filters: list[dict[str, Any]] = []
+    if session_id:
+        or_filters.extend([
+            {"sessionId": session_id},
+            {"metadata.sessionId": session_id},
+        ])
+    if skill_id:
+        or_filters.append({"metadata.skillId": skill_id})
+    if trajectory_id:
+        or_filters.append({"metadata.trajectoryId": trajectory_id})
+    if tool_id:
+        or_filters.append({"metadata.toolId": tool_id})
+    if or_filters:
+        query["$or"] = or_filters
     return query
 
 
 def _exclude_runtime_session_approvals(query: dict[str, Any]) -> dict[str, Any]:
-    return {
-        **query,
+    runtime_exclusion = {
         "$or": [
             {"metadata.sourceKind": {"$in": ["work", "async", "scheduled"]}},
             {"metadata.workItemId": {"$exists": True, "$nin": ["", None]}},
         ],
+    }
+    if "$or" in query:
+        base = {key: value for key, value in query.items() if key != "$or"}
+        return {
+            **base,
+            "$and": [
+                {"$or": query["$or"]},
+                runtime_exclusion,
+            ],
+        }
+    return {
+        **query,
+        **runtime_exclusion,
     }
 
 
@@ -52,6 +86,10 @@ async def _owned_approval(approval_id: str, scope: RequestScope) -> dict[str, An
 async def list_approvals(
     email: str = "",
     companyId: str = "",
+    sessionId: str = "",
+    skillId: str = "",
+    trajectoryId: str = "",
+    toolId: str = "",
     status: str = "pending",
     includeRuntime: bool = False,
     scope: RequestScope = Depends(get_request_scope),
@@ -59,7 +97,7 @@ async def list_approvals(
     scope = coerce_request_scope(scope)
     scoped_email = scope.require_email(email)
     clean_status = status if status in {"pending", "approved", "rejected", "expired", ""} else "pending"
-    query = _query_scope(scoped_email, companyId, clean_status)
+    query = _query_scope(scoped_email, companyId, clean_status, sessionId, skillId, trajectoryId, toolId)
     if not includeRuntime:
         query = _exclude_runtime_session_approvals(query)
     docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)

@@ -80,11 +80,13 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "artifactId": doc.get("artifactId", ""),
         "companyId": doc.get("companyId", ""),
         "email": doc.get("email", ""),
+        "sessionId": doc.get("sessionId", ""),
         "title": doc.get("title", ""),
         "artifactType": artifact_type,
         "description": doc.get("description", ""),
         "content": doc.get("content", ""),
         "fileName": doc.get("fileName") or _safe_file_name(doc.get("title", ""), artifact_type),
+        "sourceTool": doc.get("sourceTool", ""),
         "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
@@ -112,12 +114,15 @@ async def _owned_artifact(artifact_id: str, scope: RequestScope) -> dict[str, An
 
 
 @router.get("/companies/{company_id}/artifacts")
-async def list_company_artifacts(company_id: str, email: str = "", scope: RequestScope = Depends(get_request_scope)):
+async def list_company_artifacts(company_id: str, email: str = "", sessionId: str = "", scope: RequestScope = Depends(get_request_scope)):
     scope = coerce_request_scope(scope)
     scoped_email = scope.require_email(email)
     await _ensure_company(company_id, scope)
+    query: dict[str, Any] = {"companyId": company_id, "email": scoped_email}
+    if sessionId:
+        query["sessionId"] = sessionId
     docs = await artifacts_collection.find(
-        {"companyId": company_id, "email": scoped_email},
+        query,
         {"_id": 0},
     ).sort("updatedAt", -1).to_list(length=500)
     return {"artifacts": [_serialize(doc) for doc in docs]}

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -25,12 +25,15 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import {
+  ApprovalRequest,
+  Artifact,
   CompanySkill,
   CompanyTool,
   CompanyTrajectory,
   Connector,
   EvalItem,
   HarvesterRun,
+  SessionItem,
 } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SelectDropdown from "../components/common/select-dropdown";
@@ -45,6 +48,10 @@ type CapabilityDetail =
   | { kind: "trajectory"; item: CompanyTrajectory }
   | { kind: "skill"; item: CompanySkill }
   | null;
+
+function isViewKey(value?: string | null): value is ViewKey {
+  return value === "tools" || value === "trajectories" || value === "skills" || value === "runs";
+}
 
 function formatDate(value?: string) {
   if (!value) return "—";
@@ -182,6 +189,83 @@ function JsonBlock({ value }: { value: any }) {
   );
 }
 
+function CoverageCard({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+}) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{hint}</p>
+    </div>
+  );
+}
+
+function CapabilityRuntimeSignals({
+  sessionsCount,
+  approvalsCount,
+  pendingApprovalsCount = 0,
+  artifactsCount,
+}: {
+  sessionsCount: number;
+  approvalsCount: number;
+  pendingApprovalsCount?: number;
+  artifactsCount: number;
+}) {
+  if (sessionsCount === 0 && approvalsCount === 0 && artifactsCount === 0) return null;
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+      {sessionsCount > 0 && (
+        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border">
+          {sessionsCount} {sessionsCount === 1 ? "session" : "sessions"}
+        </span>
+      )}
+      {approvalsCount > 0 && (
+        <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${
+          pendingApprovalsCount > 0
+            ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30"
+            : "bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border"
+        }`}>
+          {approvalsCount} approvals{pendingApprovalsCount > 0 ? ` · ${pendingApprovalsCount} pending` : ""}
+        </span>
+      )}
+      {artifactsCount > 0 && (
+        <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
+          {artifactsCount} {artifactsCount === 1 ? "artifact" : "artifacts"}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function formatRuntimeDate(value?: string | Date) {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function stageTone(stage: "published" | "ready" | "needs_review" | "needs_harvest") {
+  if (stage === "published") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
+  if (stage === "ready") return "bg-primary/10 text-primary border-primary/30";
+  if (stage === "needs_review") return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+  return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
+}
+
+function stageLabel(stage: "published" | "ready" | "needs_review" | "needs_harvest") {
+  if (stage === "published") return "Published";
+  if (stage === "ready") return "Ready to promote";
+  if (stage === "needs_review") return "Needs review";
+  return "Needs harvest";
+}
+
 /** Connector -> Tools -> Trajectories -> Skills -> Agents pipeline explanation. */
 function CapabilitiesBuildInfo({ counts }: { counts: { customTools: number; trajectories: number; skills: number } }) {
   const steps = [
@@ -294,7 +378,12 @@ function CapabilityDetailModal({
   toolsByName,
   trajectoriesById,
   connectorsById,
+  benchmarkNamesById,
+  lineage,
+  runtimeUsage,
   userEmail,
+  onOpenSession,
+  onOpenApprovals,
   onReload,
   onClose,
 }: {
@@ -302,7 +391,20 @@ function CapabilityDetailModal({
   toolsByName: Map<string, CompanyTool>;
   trajectoriesById: Map<string, CompanyTrajectory>;
   connectorsById: Map<string, Connector>;
+  benchmarkNamesById: Map<string, string>;
+  lineage: {
+    trajectoryCountByToolId: Map<string, number>;
+    skillCountByToolId: Map<string, number>;
+    skillCountByTrajectoryId: Map<string, number>;
+  };
+  runtimeUsage: {
+    sessions: SessionItem[];
+    approvals: ApprovalRequest[];
+    artifacts: Artifact[];
+  };
   userEmail: string;
+  onOpenSession: (sessionId: string) => void;
+  onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onReload: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -320,6 +422,26 @@ function CapabilityDetailModal({
   const calls = isTrajectory ? trajectoryToolCallList(detail.item) : linkedTrajectory ? trajectoryToolCallList(linkedTrajectory) : [];
   const requirements = isTool || isTrajectory || isSkill ? detail.item.runtimeRequirements : [];
   const entityItem: CompanyTool | CompanySkill | null = isTool ? detail.item : isSkill ? detail.item : null;
+  const benchmarkId = isTool ? "" : detail.item.benchmarkId || linkedTrajectory?.benchmarkId || "";
+  const benchmarkName = benchmarkId ? benchmarkNamesById.get(benchmarkId) || benchmarkId : "";
+  const evalId = isTool ? "" : detail.item.evalId || linkedTrajectory?.evalId || "";
+  const recentSessions = runtimeUsage.sessions.slice(0, 4);
+  const recentApprovals = runtimeUsage.approvals.slice(0, 4);
+  const recentArtifacts = runtimeUsage.artifacts.slice(0, 4);
+  const lineageSummary = isTool
+    ? {
+        trajectories: lineage.trajectoryCountByToolId.get(detail.item.toolId) || 0,
+        skills: lineage.skillCountByToolId.get(detail.item.toolId) || 0,
+      }
+    : isTrajectory
+      ? {
+          trajectories: 1,
+          skills: lineage.skillCountByTrajectoryId.get(detail.item.trajectoryId) || 0,
+        }
+      : {
+          trajectories: (detail.item.trajectoryIds || []).length,
+          skills: 1,
+        };
 
   const updateApprovalMode = async (mode: ApprovalMode) => {
     if (!configurableApprovalItem || busyAction || mode === selectedApproval) return;
@@ -409,6 +531,175 @@ function CapabilityDetailModal({
           <section>
             <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Runtime requirements</p>
             <RequirementChips values={requirements} />
+          </section>
+
+          <section>
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Factory lineage</p>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Benchmark</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{benchmarkName || "Not linked yet"}</p>
+                {evalId && <p className="mt-1 font-mono text-[10px] text-gray-400">{evalId}</p>}
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Trajectory coverage</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{lineageSummary.trajectories}</p>
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  {isTool ? "Trajectories linked to this action" : isSkill ? "Source traces behind this skill" : "Trace under inspection"}
+                </p>
+              </div>
+              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill coverage</p>
+                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{lineageSummary.skills}</p>
+                <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                  {isTool ? "Published skills that depend on this action" : isTrajectory ? "Skills promoted from this trace" : "This capability is production-ready"}
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section>
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime usage</p>
+              {(recentSessions.length > 0 || recentApprovals.length > 0 || recentArtifacts.length > 0) && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {recentSessions.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border">
+                      {runtimeUsage.sessions.length} sessions
+                    </span>
+                  )}
+                  {recentApprovals.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-500/30">
+                      {runtimeUsage.approvals.length} approvals
+                    </span>
+                  )}
+                  {recentArtifacts.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
+                      {runtimeUsage.artifacts.length} artifacts
+                    </span>
+                  )}
+                </div>
+              )}
+            </div>
+            {recentSessions.length === 0 && recentApprovals.length === 0 && recentArtifacts.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 text-xs text-gray-400">
+                No runtime evidence is linked to this capability yet.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Sessions</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.sessions.length}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Runtime executions that used this capability.</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Approvals</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.approvals.length}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Approval events triggered while executing it.</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Artifacts</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.artifacts.length}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Business outputs from linked runtime sessions.</p>
+                  </div>
+                </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent sessions</p>
+                  {recentSessions.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
+                      No session usage recorded.
+                    </div>
+                  ) : recentSessions.map((session) => (
+                    <button
+                      key={session.sessionId}
+                      onClick={() => onOpenSession(session.sessionId)}
+                      className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-left transition-colors hover:border-primary/30"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{session.prompt || "Runtime session"}</p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {formatRuntimeDate(session.createdAt)} · {session.agentName || session.provider || "autoppia"}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-primary">Open</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent approvals</p>
+                    {runtimeUsage.approvals.length > 0 && (
+                      <button
+                        onClick={() => onOpenApprovals({
+                          skillId: isSkill ? detail.item.skillId : "",
+                          trajectoryId: isTrajectory ? detail.item.trajectoryId : isSkill ? linkedTrajectory?.trajectoryId || "" : "",
+                          toolId: isTool ? detail.item.toolId : "",
+                        })}
+                        className="text-[11px] font-semibold text-primary"
+                      >
+                        Open approvals
+                      </button>
+                    )}
+                  </div>
+                  {recentApprovals.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
+                      No approval events linked yet.
+                    </div>
+                  ) : recentApprovals.map((approval) => (
+                    <div key={approval.approvalId} className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{approval.title || approval.toolName || "Approval"}</p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {approval.status} · {formatDate(approval.createdAt)}
+                          </p>
+                        </div>
+                        {approval.sessionId && (
+                          <button
+                            onClick={() => onOpenSession(approval.sessionId || "")}
+                            className="text-[10px] text-primary"
+                          >
+                            Session
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent artifacts</p>
+                  {recentArtifacts.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
+                      No persisted artifacts linked yet.
+                    </div>
+                  ) : recentArtifacts.map((artifact) => (
+                    <div key={artifact.artifactId} className="rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{artifact.title || "Artifact"}</p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {artifact.artifactType} · {formatDate(artifact.updatedAt || artifact.createdAt)}
+                          </p>
+                        </div>
+                        {artifact.sessionId && (
+                          <button
+                            onClick={() => onOpenSession(artifact.sessionId || "")}
+                            className="text-[10px] text-primary"
+                          >
+                            Session
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              </div>
+            )}
           </section>
 
           {configurableApprovalItem && (
@@ -603,6 +894,7 @@ function CapabilityDetailModal({
 export default function Capabilities(): React.ReactElement {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { kind: routeKind, id: routeId } = useParams<{ kind?: string; id?: string }>();
   const user = useSelector((state: any) => state.user);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [tools, setTools] = useState<CompanyTool[]>([]);
@@ -611,6 +903,9 @@ export default function Capabilities(): React.ReactElement {
   const [runs, setRuns] = useState<HarvesterRun[]>([]);
   const [connectors, setConnectors] = useState<Connector[]>([]);
   const [evals, setEvals] = useState<EvalItem[]>([]);
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
+  const [artifacts, setArtifacts] = useState<Artifact[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewKey>("tools");
   const [expandedToolConnectorKeys, setExpandedToolConnectorKeys] = useState<Set<string>>(new Set());
@@ -635,6 +930,9 @@ export default function Capabilities(): React.ReactElement {
       setRuns([]);
       setConnectors([]);
       setEvals([]);
+      setSessions([]);
+      setApprovals([]);
+      setArtifacts([]);
       setLoading(false);
       return;
     }
@@ -642,11 +940,15 @@ export default function Capabilities(): React.ReactElement {
     try {
       const params = new URLSearchParams({ email: user.email });
       const connectorParams = new URLSearchParams({ email: user.email, companyId });
-      const [capRes, runsRes, connectorsRes, evalsRes] = await Promise.all([
+      const approvalParams = new URLSearchParams({ email: user.email, companyId, includeRuntime: "true", status: "" });
+      const [capRes, runsRes, connectorsRes, evalsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/harvester-runs?${params.toString()}`),
         fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
         fetch(`${apiUrl}/evals?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/sessions?${connectorParams.toString()}`),
+        fetch(`${apiUrl}/approvals?${approvalParams.toString()}`),
+        fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`),
       ]);
       if (capRes.ok) {
         const data = await capRes.json();
@@ -666,6 +968,18 @@ export default function Capabilities(): React.ReactElement {
         const data = await evalsRes.json();
         setEvals(data.evals || []);
       }
+      if (sessionsRes.ok) {
+        const data = await sessionsRes.json();
+        setSessions(data.sessions || []);
+      }
+      if (approvalsRes.ok) {
+        const data = await approvalsRes.json();
+        setApprovals(data.approvals || []);
+      }
+      if (artifactsRes.ok) {
+        const data = await artifactsRes.json();
+        setArtifacts(data.artifacts || []);
+      }
     } catch (err) {
       console.error("Failed to load capabilities:", err);
     } finally {
@@ -678,6 +992,14 @@ export default function Capabilities(): React.ReactElement {
   }, [loadCapabilities]);
 
   useEffect(() => {
+    if (routeKind) return;
+    const requestedView = searchParams.get("view");
+    if (isViewKey(requestedView) && requestedView !== view) {
+      setView(requestedView);
+    }
+  }, [routeKind, searchParams, view]);
+
+  useEffect(() => {
     const handler = (event: Event) => {
       const next = (event as CustomEvent).detail?.companyId || localStorage.getItem("automata_company_id") || "";
       setCompanyId(next);
@@ -686,10 +1008,22 @@ export default function Capabilities(): React.ReactElement {
     return () => window.removeEventListener("automata-company-changed", handler);
   }, []);
 
+  const setFactoryView = useCallback((nextView: ViewKey, options?: { replace?: boolean }) => {
+    setView(nextView);
+    if (routeKind) {
+      navigate(`/capabilities?view=${nextView}`, { replace: options?.replace ?? false });
+      return;
+    }
+    const next = new URLSearchParams(searchParams);
+    next.set("view", nextView);
+    setSearchParams(next, { replace: options?.replace ?? false });
+  }, [navigate, routeKind, searchParams, setSearchParams]);
+
   const customConnectors = useMemo(
     () => connectors.filter((connector) => (connector.provider || "official") === "custom"),
     [connectors],
   );
+  const connectorFilter = searchParams.get("connector") || "";
 
   const generateConnector = useMemo(
     () => customConnectors.find((connector) => connector.connectorId === generateConnectorId) || null,
@@ -730,7 +1064,7 @@ export default function Capabilities(): React.ReactElement {
       if (!res.ok) throw new Error(await res.text());
       setPromoteTarget(null);
       await loadCapabilities();
-      setView("skills");
+      setFactoryView("skills");
     } catch (err) {
       console.error("Failed to promote trajectory:", err);
     } finally {
@@ -773,7 +1107,7 @@ export default function Capabilities(): React.ReactElement {
         );
       }
       await loadCapabilities();
-      setView("trajectories");
+      setFactoryView("trajectories");
     } catch (err: any) {
       console.error("Failed to generate capabilities:", err);
       setGenerateError(err?.message || "Could not generate capabilities for this connector.");
@@ -783,9 +1117,30 @@ export default function Capabilities(): React.ReactElement {
   };
 
   const connectorsById = useMemo(() => new Map(connectors.map((connector) => [connector.connectorId, connector])), [connectors]);
+  const filteredConnector = useMemo(
+    () => connectors.find((connector) => connector.connectorId === connectorFilter) || null,
+    [connectorFilter, connectors],
+  );
+  const benchmarkNamesById = useMemo(() => new Map(benchmarks.map((benchmark) => [benchmark.benchmarkId, benchmark.name])), [benchmarks]);
+  const filteredTools = useMemo(
+    () => connectorFilter ? tools.filter((tool) => tool.connectorId === connectorFilter) : tools,
+    [connectorFilter, tools],
+  );
+  const filteredTrajectories = useMemo(
+    () => connectorFilter ? trajectories.filter((trajectory) => (trajectory.connectorIds || []).includes(connectorFilter)) : trajectories,
+    [connectorFilter, trajectories],
+  );
+  const filteredSkills = useMemo(
+    () => connectorFilter ? skills.filter((skill) => (skill.connectorIds || []).includes(connectorFilter)) : skills,
+    [connectorFilter, skills],
+  );
+  const filteredRuns = useMemo(
+    () => connectorFilter ? runs.filter((run) => run.connectorId === connectorFilter) : runs,
+    [connectorFilter, runs],
+  );
   const toolsByConnector = useMemo(() => {
     const groups = new Map<string, { connectorKey: string; connectorName: string; tools: CompanyTool[] }>();
-    for (const tool of tools) {
+    for (const tool of filteredTools) {
       const key = tool.connectorId || tool.connectorName || "unknown";
       const connectorName = connectorsById.get(tool.connectorId)?.name || tool.connectorName || "Unknown connector";
       if (!groups.has(key)) groups.set(key, { connectorKey: key, connectorName, tools: [] });
@@ -797,7 +1152,7 @@ export default function Capabilities(): React.ReactElement {
         tools: [...group.tools].sort((a, b) => a.name.localeCompare(b.name)),
       }))
       .sort((a, b) => a.connectorName.localeCompare(b.connectorName));
-  }, [connectorsById, tools]);
+  }, [connectorsById, filteredTools]);
 
   const toggleToolConnector = (connectorKey: string) => {
     setExpandedToolConnectorKeys((current) => {
@@ -816,37 +1171,337 @@ export default function Capabilities(): React.ReactElement {
     setExpandedToolConnectorKeys(new Set());
   };
 
-  const toolsCount = tools.length;
+  const toolsCount = filteredTools.length;
   const toolsByName = useMemo(() => new Map(tools.map((tool) => [tool.name, tool])), [tools]);
   const trajectoriesById = useMemo(() => new Map(trajectories.map((trajectory) => [trajectory.trajectoryId, trajectory])), [trajectories]);
-  const skillTrajectoryIds = useMemo(() => new Set(skills.flatMap((skill) => skill.trajectoryIds || [])), [skills]);
+  const skillTrajectoryIds = useMemo(() => new Set(filteredSkills.flatMap((skill) => skill.trajectoryIds || [])), [filteredSkills]);
+  const runtimeUsage = useMemo(() => {
+    const sessionsBySkillId = new Map<string, SessionItem[]>();
+    for (const session of sessions) {
+      const skillId = String(session.matchedSkillId || "");
+      if (!skillId) continue;
+      if (!sessionsBySkillId.has(skillId)) sessionsBySkillId.set(skillId, []);
+      sessionsBySkillId.get(skillId)!.push(session);
+    }
+
+    const approvalsBySkillId = new Map<string, ApprovalRequest[]>();
+    const approvalsByTrajectoryId = new Map<string, ApprovalRequest[]>();
+    const approvalsByToolId = new Map<string, ApprovalRequest[]>();
+    for (const approval of approvals) {
+      const skillId = String(approval.metadata?.skillId || "");
+      const trajectoryId = String(approval.metadata?.trajectoryId || "");
+      const toolId = String(approval.metadata?.toolId || "");
+      if (skillId) {
+        if (!approvalsBySkillId.has(skillId)) approvalsBySkillId.set(skillId, []);
+        approvalsBySkillId.get(skillId)!.push(approval);
+      }
+      if (trajectoryId) {
+        if (!approvalsByTrajectoryId.has(trajectoryId)) approvalsByTrajectoryId.set(trajectoryId, []);
+        approvalsByTrajectoryId.get(trajectoryId)!.push(approval);
+      }
+      if (toolId) {
+        if (!approvalsByToolId.has(toolId)) approvalsByToolId.set(toolId, []);
+        approvalsByToolId.get(toolId)!.push(approval);
+      }
+    }
+
+    const sessionsByTrajectoryId = new Map<string, SessionItem[]>();
+    const sessionsByToolId = new Map<string, SessionItem[]>();
+    const artifactsBySkillId = new Map<string, Artifact[]>();
+    const artifactsByTrajectoryId = new Map<string, Artifact[]>();
+    const artifactsByToolId = new Map<string, Artifact[]>();
+    const artifactsBySessionId = new Map<string, Artifact[]>();
+    for (const artifact of artifacts) {
+      const sessionId = String(artifact.sessionId || "");
+      if (sessionId) {
+        if (!artifactsBySessionId.has(sessionId)) artifactsBySessionId.set(sessionId, []);
+        artifactsBySessionId.get(sessionId)!.push(artifact);
+      }
+      const skillId = String(artifact.metadata?.skillId || "");
+      const trajectoryId = String(artifact.metadata?.trajectoryId || "");
+      const toolId = String(artifact.metadata?.toolId || "");
+      if (skillId) {
+        if (!artifactsBySkillId.has(skillId)) artifactsBySkillId.set(skillId, []);
+        artifactsBySkillId.get(skillId)!.push(artifact);
+      }
+      if (trajectoryId) {
+        if (!artifactsByTrajectoryId.has(trajectoryId)) artifactsByTrajectoryId.set(trajectoryId, []);
+        artifactsByTrajectoryId.get(trajectoryId)!.push(artifact);
+      }
+      if (toolId) {
+        if (!artifactsByToolId.has(toolId)) artifactsByToolId.set(toolId, []);
+        artifactsByToolId.get(toolId)!.push(artifact);
+      }
+    }
+    for (const trajectory of trajectories) {
+      const linkedSessions = skills
+        .filter((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId))
+        .flatMap((skill) => sessionsBySkillId.get(skill.skillId) || []);
+      if (linkedSessions.length > 0) {
+        sessionsByTrajectoryId.set(trajectory.trajectoryId, Array.from(new Map(linkedSessions.map((session) => [session.sessionId, session])).values()));
+      }
+    }
+    for (const tool of tools) {
+      const linkedSkillIds = skills
+        .filter((skill) => (skill.toolIds || []).includes(tool.toolId))
+        .map((skill) => skill.skillId);
+      const linkedSessions = linkedSkillIds.flatMap((skillId) => sessionsBySkillId.get(skillId) || []);
+      if (linkedSessions.length > 0) {
+        sessionsByToolId.set(tool.toolId, Array.from(new Map(linkedSessions.map((session) => [session.sessionId, session])).values()));
+      }
+    }
+
+    return {
+      sessionsBySkillId,
+      sessionsByTrajectoryId,
+      sessionsByToolId,
+      approvalsBySkillId,
+      approvalsByTrajectoryId,
+      approvalsByToolId,
+      artifactsBySkillId,
+      artifactsByTrajectoryId,
+      artifactsByToolId,
+      artifactsBySessionId,
+    };
+  }, [approvals, artifacts, sessions, skills, tools, trajectories]);
+
+  const mergeArtifacts = useCallback((directArtifacts: Artifact[], sessionItems: SessionItem[]) => {
+    return Array.from(new Map([
+      ...directArtifacts,
+      ...sessionItems.flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || []),
+    ].map((artifact) => [artifact.artifactId, artifact])).values());
+  }, [runtimeUsage.artifactsBySessionId]);
+
+  const openCapabilityDetail = useCallback((next: Exclude<CapabilityDetail, null>) => {
+    const path = next.kind === "tool"
+      ? `/capabilities/tool/${next.item.toolId}`
+      : next.kind === "trajectory"
+        ? `/capabilities/trajectory/${next.item.trajectoryId}`
+        : `/capabilities/skill/${next.item.skillId}`;
+    navigate(path);
+  }, [navigate]);
+
+  useEffect(() => {
+    if (!routeKind || !routeId) {
+      setDetail(null);
+      return;
+    }
+    if (routeKind === "tool") {
+      const found = tools.find((item) => item.toolId === routeId);
+      if (found) {
+        setView("tools");
+        setDetail({ kind: "tool", item: found });
+        return;
+      }
+    }
+    if (routeKind === "trajectory") {
+      const found = trajectories.find((item) => item.trajectoryId === routeId);
+      if (found) {
+        setView("trajectories");
+        setDetail({ kind: "trajectory", item: found });
+        return;
+      }
+    }
+    if (routeKind === "skill") {
+      const found = skills.find((item) => item.skillId === routeId);
+      if (found) {
+        setView("skills");
+        setDetail({ kind: "skill", item: found });
+        return;
+      }
+    }
+    setDetail(null);
+  }, [routeId, routeKind, skills, tools, trajectories]);
   // Skill candidates are not a separate artifact. They are trajectories that
   // passed judging and have not yet been promoted into a reusable skill.
   const skillCandidates = useMemo(
-    () => trajectories.filter((trajectory) => {
+    () => filteredTrajectories.filter((trajectory) => {
       const status = (trajectory.status || "").toLowerCase();
       return status === "harvested" && trajectoryJudgeLabel(trajectory) === "pass" && !skillTrajectoryIds.has(trajectory.trajectoryId);
     }),
-    [skillTrajectoryIds, trajectories],
+    [filteredTrajectories, skillTrajectoryIds],
   );
   const sortedTrajectories = useMemo(
-    () => [...trajectories].sort((a, b) => {
+    () => [...filteredTrajectories].sort((a, b) => {
       const aApproved = skillTrajectoryIds.has(a.trajectoryId) || (a.status || "").toLowerCase() === "approved";
       const bApproved = skillTrajectoryIds.has(b.trajectoryId) || (b.status || "").toLowerCase() === "approved";
       if (aApproved !== bApproved) return aApproved ? -1 : 1;
       return new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime();
     }),
-    [skillTrajectoryIds, trajectories],
+    [filteredTrajectories, skillTrajectoryIds],
   );
+  const lineage = useMemo(() => {
+    const trajectoryCountByToolId = new Map<string, number>();
+    const skillCountByToolId = new Map<string, number>();
+    const skillCountByTrajectoryId = new Map<string, number>();
+
+    for (const trajectory of trajectories) {
+      const toolIds = new Set<string>();
+      for (const toolId of trajectory.toolIds || []) {
+        if (toolId) toolIds.add(toolId);
+      }
+      for (const call of trajectoryToolCallList(trajectory)) {
+        const normalized = call.name.startsWith("browser.") ? call.name.split(".", 2)[1] : call.name;
+        const tool = toolsByName.get(call.name) || toolsByName.get(normalized);
+        if (tool?.toolId) toolIds.add(tool.toolId);
+      }
+      for (const toolId of Array.from(toolIds)) {
+        trajectoryCountByToolId.set(toolId, (trajectoryCountByToolId.get(toolId) || 0) + 1);
+      }
+    }
+
+    for (const skill of skills) {
+      const toolIds = new Set<string>((skill.toolIds || []).filter(Boolean));
+      for (const trajectoryId of skill.trajectoryIds || []) {
+        skillCountByTrajectoryId.set(trajectoryId, (skillCountByTrajectoryId.get(trajectoryId) || 0) + 1);
+        const trajectory = trajectoriesById.get(trajectoryId);
+        if (!trajectory) continue;
+        for (const toolId of trajectory.toolIds || []) {
+          if (toolId) toolIds.add(toolId);
+        }
+        for (const call of trajectoryToolCallList(trajectory)) {
+          const normalized = call.name.startsWith("browser.") ? call.name.split(".", 2)[1] : call.name;
+          const tool = toolsByName.get(call.name) || toolsByName.get(normalized);
+          if (tool?.toolId) toolIds.add(tool.toolId);
+        }
+      }
+      for (const toolId of Array.from(toolIds)) {
+        skillCountByToolId.set(toolId, (skillCountByToolId.get(toolId) || 0) + 1);
+      }
+    }
+
+    return { trajectoryCountByToolId, skillCountByToolId, skillCountByTrajectoryId };
+  }, [skills, toolsByName, trajectories, trajectoriesById]);
+  const coverage = useMemo(() => {
+    const typedTools = filteredTools.filter((tool) => (tool.inputEntities || []).length > 0 || Boolean(tool.outputEntity)).length;
+    const benchmarkBackedTrajectories = filteredTrajectories.filter((trajectory) => Boolean(trajectory.benchmarkId || trajectory.evalId)).length;
+    const benchmarkBackedSkills = filteredSkills.filter((skill) => Boolean(skill.benchmarkId || skill.evalId || (skill.trajectoryIds || []).some((trajectoryId) => {
+      const trajectory = trajectoriesById.get(trajectoryId);
+      return Boolean(trajectory?.benchmarkId || trajectory?.evalId);
+    }))).length;
+    return {
+      typedTools,
+      benchmarkBackedTrajectories,
+      benchmarkBackedSkills,
+      promotableTrajectories: skillCandidates.length,
+    };
+  }, [filteredSkills, filteredTools, filteredTrajectories, skillCandidates.length, trajectoriesById]);
+  const factoryGaps = useMemo(() => {
+    const failedRuns = filteredRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
+    const untypedTools = filteredTools.filter((tool) => (tool.inputEntities || []).length === 0 && !tool.outputEntity);
+    const benchmarkIdsWithTrajectories = new Set(
+      filteredTrajectories
+        .map((trajectory) => trajectory.benchmarkId || "")
+        .filter(Boolean),
+    );
+    const benchmarksWithoutTrajectories = benchmarks.filter((benchmark) => !benchmarkIdsWithTrajectories.has(benchmark.benchmarkId));
+
+    return [
+      {
+        key: "promote",
+        label: "Promote proven work",
+        count: skillCandidates.length,
+        hint: "Passing trajectories exist but are not hardened as reusable skills yet.",
+        action: () => setFactoryView("trajectories"),
+        actionLabel: "Review trajectories",
+      },
+      {
+        key: "runs",
+        label: "Fix broken runs",
+        count: failedRuns.length,
+        hint: "Harvesting produced errors or failed before the capability could be promoted.",
+        action: () => setFactoryView("runs"),
+        actionLabel: "Inspect runs",
+      },
+      {
+        key: "benchmarks",
+        label: "Benchmarks without evidence",
+        count: benchmarksWithoutTrajectories.length,
+        hint: "Tasks exist, but there is still no trajectory evidence behind them.",
+        action: () => navigate("/evals"),
+        actionLabel: "Open Benchmarks",
+      },
+      {
+        key: "entities",
+        label: "Untyped tools",
+        count: untypedTools.length,
+        hint: "Tools exist without entity mapping, so the factory still lacks semantic business coverage.",
+        action: () => setFactoryView("tools"),
+        actionLabel: "Open tools",
+      },
+    ].filter((item) => item.count > 0);
+  }, [benchmarks, filteredRuns, filteredTools, filteredTrajectories, navigate, setFactoryView, skillCandidates.length]);
+  const benchmarkPipeline = useMemo(() => {
+    const rows = benchmarks.map((benchmark) => {
+      const benchmarkEvalIds = new Set((benchmark.tasks || []).map((task) => task.evalId).filter(Boolean));
+      const benchmarkTrajectories = filteredTrajectories.filter((trajectory) =>
+        trajectory.benchmarkId === benchmark.benchmarkId || (trajectory.evalId && benchmarkEvalIds.has(trajectory.evalId)),
+      );
+      const benchmarkTrajectoryIds = new Set(benchmarkTrajectories.map((trajectory) => trajectory.trajectoryId));
+      const benchmarkSkills = filteredSkills.filter((skill) =>
+        skill.benchmarkId === benchmark.benchmarkId
+        || (skill.evalId && benchmarkEvalIds.has(skill.evalId))
+        || (skill.trajectoryIds || []).some((trajectoryId) => benchmarkTrajectoryIds.has(trajectoryId)),
+      );
+      const relatedConnectorIds = new Set<string>();
+      for (const trajectory of benchmarkTrajectories) {
+        for (const connectorId of trajectory.connectorIds || []) {
+          if (connectorId) relatedConnectorIds.add(connectorId);
+        }
+      }
+      for (const skill of benchmarkSkills) {
+        for (const connectorId of skill.connectorIds || []) {
+          if (connectorId) relatedConnectorIds.add(connectorId);
+        }
+      }
+      const benchmarkRuns = filteredRuns.filter((run) => relatedConnectorIds.has(run.connectorId));
+      const passingTrajectories = benchmarkTrajectories.filter((trajectory) => trajectoryJudgeLabel(trajectory) === "pass");
+      const promotedTrajectoryIds = new Set(benchmarkSkills.flatMap((skill) => skill.trajectoryIds || []));
+      const promotable = passingTrajectories.filter((trajectory) => !promotedTrajectoryIds.has(trajectory.trajectoryId));
+      const runFailures = benchmarkRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
+      const stage: "published" | "ready" | "needs_review" | "needs_harvest" =
+        benchmarkSkills.length > 0 ? "published"
+          : promotable.length > 0 ? "ready"
+            : benchmarkTrajectories.length > 0 ? "needs_review"
+              : "needs_harvest";
+      const gaps: string[] = [];
+      if (benchmarkTrajectories.length === 0) gaps.push("No trajectory evidence yet");
+      if (benchmarkTrajectories.length > 0 && passingTrajectories.length === 0) gaps.push("No passing trajectory yet");
+      if (promotable.length > 0) gaps.push(`${promotable.length} promotable ${promotable.length === 1 ? "trajectory" : "trajectories"}`);
+      if (runFailures.length > 0) gaps.push(`${runFailures.length} failed ${runFailures.length === 1 ? "run" : "runs"}`);
+      return {
+        benchmarkId: benchmark.benchmarkId,
+        name: benchmark.name,
+        taskCount: benchmark.tasks.length,
+        trajectoryCount: benchmarkTrajectories.length,
+        passingCount: passingTrajectories.length,
+        skillCount: benchmarkSkills.length,
+        runCount: benchmarkRuns.length,
+        runFailures: runFailures.length,
+        stage,
+        gaps,
+      };
+    });
+
+    return rows
+      .filter((row) => !connectorFilter || row.trajectoryCount > 0 || row.skillCount > 0 || row.runCount > 0)
+      .sort((a, b) => {
+        const stageOrder = { ready: 0, needs_review: 1, needs_harvest: 2, published: 3 };
+        if (stageOrder[a.stage] !== stageOrder[b.stage]) return stageOrder[a.stage] - stageOrder[b.stage];
+        if (b.runFailures !== a.runFailures) return b.runFailures - a.runFailures;
+        if (b.trajectoryCount !== a.trajectoryCount) return b.trajectoryCount - a.trajectoryCount;
+        return a.name.localeCompare(b.name);
+      });
+  }, [benchmarks, connectorFilter, filteredRuns, filteredSkills, filteredTrajectories]);
 
   // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
   // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
   // they are inputs to harvesting, not capabilities.
   const pipelineSteps: Array<{ key: ViewKey; label: string; icon: typeof faWrench; count: number; blurb: string }> = [
     { key: "tools", label: "Tools", icon: faWrench, count: toolsCount, blurb: "Atomic actions from connectors" },
-    { key: "trajectories", label: "Trajectories", icon: faRoute, count: trajectories.length, blurb: "Concrete attempts with tool calls" },
-    { key: "skills", label: "Skills", icon: faWandMagicSparkles, count: skills.length, blurb: "Reusable, versioned procedures" },
-    { key: "runs", label: "Runs", icon: faTractor, count: runs.length, blurb: "Harvester run history" },
+    { key: "trajectories", label: "Trajectories", icon: faRoute, count: filteredTrajectories.length, blurb: "Concrete attempts with tool calls" },
+    { key: "skills", label: "Skills", icon: faWandMagicSparkles, count: filteredSkills.length, blurb: "Reusable, versioned procedures" },
+    { key: "runs", label: "Runs", icon: faTractor, count: filteredRuns.length, blurb: "Harvester run history" },
   ];
   const openCreate = () => { setGenerateError(""); setGenerateMessage(""); setCreatePath("menu"); setShowCreate(true); };
 
@@ -863,10 +1518,10 @@ export default function Capabilities(): React.ReactElement {
             </span>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Capability Studio</h1>
+                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Capability Factory</h1>
                 <CapabilitiesBuildInfo counts={{ customTools: toolsCount, trajectories: trajectories.length, skills: skills.length }} />
               </div>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Turn tools into trajectories, and trajectories into reusable skills</p>
+              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Turn connector actions into trajectories, and trajectories into governed reusable skills</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
@@ -894,6 +1549,32 @@ export default function Capabilities(): React.ReactElement {
             </div>
           ) : (
             <>
+              {detail && (
+                <div className="mb-4 rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-primary dark:border-primary/20 dark:bg-primary/10">
+                  <span className="font-semibold">Capability detail active.</span>{" "}
+                  You are inspecting a {detail.kind} inside the Factory flow. Close the detail panel to return to the broader catalog.
+                </div>
+              )}
+              {filteredConnector && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Connector filter active</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      Showing Factory surfaces only for <span className="font-semibold text-gray-700 dark:text-gray-200">{filteredConnector.name}</span>.
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      const next = new URLSearchParams(searchParams);
+                      next.delete("connector");
+                      setSearchParams(next);
+                    }}
+                    className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+                  >
+                    Clear filter
+                  </button>
+                </div>
+              )}
               {/* Create Capability wizard — opened from the header "Create Capability" button */}
               {showCreate && (
               <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
@@ -943,7 +1624,7 @@ export default function Capabilities(): React.ReactElement {
                       </span>
                     </button>
 
-                    <button onClick={() => { setShowCreate(false); setView("trajectories"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
+                    <button onClick={() => { setShowCreate(false); setFactoryView("trajectories"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faFlask} className="text-xs" /></span>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Create skill from trajectory</p>
@@ -955,7 +1636,7 @@ export default function Capabilities(): React.ReactElement {
                       </span>
                     </button>
 
-                    <button onClick={() => { setShowCreate(false); setView("skills"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
+                    <button onClick={() => { setShowCreate(false); setFactoryView("skills"); }} className="text-left rounded-xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 flex flex-col hover:border-primary/40 transition-colors">
                       <div className="flex items-center gap-2 mb-1.5">
                         <span className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0"><FontAwesomeIcon icon={faWandMagicSparkles} className="text-xs" /></span>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">Improve existing skill</p>
@@ -1068,7 +1749,7 @@ export default function Capabilities(): React.ReactElement {
                   {pipelineSteps.map((step, index) => (
                     <button
                       key={step.key}
-                      onClick={() => setView(step.key)}
+                      onClick={() => setFactoryView(step.key)}
                       className={`relative text-left rounded-xl border p-3 transition-all duration-200 ${
                         view === step.key
                           ? "border-primary/40 bg-primary/5 shadow-sm"
@@ -1090,6 +1771,150 @@ export default function Capabilities(): React.ReactElement {
                   ))}
                 </div>
               </div>
+
+              <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <CoverageCard
+                  label="Typed Tools"
+                  value={`${coverage.typedTools}/${toolsCount}`}
+                  hint="Tools already mapped to business entities."
+                />
+                <CoverageCard
+                  label="Benchmarked Trajectories"
+                  value={`${coverage.benchmarkBackedTrajectories}/${trajectories.length}`}
+                  hint="Traces with explicit benchmark or eval lineage."
+                />
+                <CoverageCard
+                  label="Benchmarked Skills"
+                  value={`${coverage.benchmarkBackedSkills}/${skills.length}`}
+                  hint="Reusable skills linked to benchmarked evidence."
+                />
+                <CoverageCard
+                  label="Promotable"
+                  value={coverage.promotableTrajectories}
+                  hint="Passing trajectories ready to harden into skills."
+                />
+              </div>
+
+              {(factoryGaps.length > 0 || benchmarkPipeline.length > 0) && (
+                <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Operational gaps</p>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          What is still blocking the factory from turning validated work into governed capabilities.
+                        </p>
+                      </div>
+                      <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                        {factoryGaps.length}
+                      </span>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {factoryGaps.length === 0 ? (
+                        <div className="rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300">
+                          No immediate factory gaps detected in the current scope.
+                        </div>
+                      ) : factoryGaps.map((gap) => (
+                        <div key={gap.key} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900 dark:text-white">{gap.label}</p>
+                              <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{gap.hint}</p>
+                            </div>
+                            <span className="inline-flex h-7 min-w-7 items-center justify-center rounded-lg bg-white px-2 text-xs font-semibold text-gray-700 dark:bg-dark-surface dark:text-gray-200">
+                              {gap.count}
+                            </span>
+                          </div>
+                          <button
+                            onClick={gap.action}
+                            className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                          >
+                            <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+                            {gap.actionLabel}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Promotion pipeline</p>
+                        <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                          Benchmark-by-benchmark status from task evidence to reusable skill publication.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => navigate("/evals")}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                      >
+                        <FontAwesomeIcon icon={faClipboardCheck} className="text-[10px]" />
+                        Benchmarks
+                      </button>
+                    </div>
+                    <div className="mt-4 space-y-3">
+                      {benchmarkPipeline.length === 0 ? (
+                        <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                          No benchmark pipeline is visible yet for the current scope.
+                        </div>
+                      ) : benchmarkPipeline.slice(0, 6).map((row) => (
+                        <div key={row.benchmarkId} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{row.name}</p>
+                              <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                                {row.taskCount} {row.taskCount === 1 ? "task" : "tasks"} · {row.trajectoryCount} trajectories · {row.skillCount} skills
+                              </p>
+                            </div>
+                            <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-semibold ${stageTone(row.stage)}`}>
+                              {stageLabel(row.stage)}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid grid-cols-4 gap-2 text-center">
+                            {[
+                              { label: "Tasks", value: row.taskCount },
+                              { label: "Pass", value: row.passingCount },
+                              { label: "Skills", value: row.skillCount },
+                              { label: "Runs", value: row.runCount },
+                            ].map((metric) => (
+                              <div key={metric.label} className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{metric.label}</p>
+                                <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{metric.value}</p>
+                              </div>
+                            ))}
+                          </div>
+                          {row.gaps.length > 0 && (
+                            <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                              {row.gaps.map((gap) => (
+                                <span key={gap} className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                                  {gap}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <button
+                              onClick={() => setFactoryView("trajectories")}
+                              className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                            >
+                              <FontAwesomeIcon icon={faRoute} className="text-[10px]" />
+                              Review evidence
+                            </button>
+                            <button
+                              onClick={() => setFactoryView(row.skillCount > 0 ? "skills" : row.runFailures > 0 ? "runs" : "trajectories")}
+                              className="inline-flex h-8 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white"
+                            >
+                              <FontAwesomeIcon icon={row.skillCount > 0 ? faWandMagicSparkles : row.runFailures > 0 ? faTractor : faArrowRight} className="text-[10px]" />
+                              {row.skillCount > 0 ? "Open skills" : row.runFailures > 0 ? "Inspect runs" : "Advance pipeline"}
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {loading ? (
                 <div className="flex items-center justify-center py-20">
@@ -1153,34 +1978,48 @@ export default function Capabilities(): React.ReactElement {
                                   <div className="border-t border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg/60">
                                     <div className="flex flex-col gap-3">
                                       {group.tools.map((tool) => (
-                                        <button
-                                          key={tool.toolId}
-                                          onClick={() => setDetail({ kind: "tool", item: tool })}
-                                          className="text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5"
-                                        >
-                                          <div className="flex items-start justify-between gap-2">
-                                            <span className="font-mono text-xs text-gray-800 dark:text-gray-100 break-all">{tool.name}</span>
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(tool.status)}`}>{tool.status}</span>
-                                          </div>
-                                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{tool.description || "No description."}</p>
-                                          <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sideEffectTone(tool.sideEffects)}`}>{tool.sideEffects}</span>
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${riskTone(tool.riskLevel)}`}>
-                                              <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{tool.riskLevel} risk
-                                            </span>
-                                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
-                                              {approvalLabel(approvalMode(tool))}
-                                            </span>
-                                            {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
-                                            {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}
-                                            {tool.discoveryRelevance?.score !== undefined && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">rel {tool.discoveryRelevance.score}</span>}
-                                          </div>
-                                          {((tool.inputEntities || []).length > 0 || tool.outputEntity) && (
-                                            <div className="mt-2">
-                                              <EntityChips inputEntities={tool.inputEntities} outputEntity={tool.outputEntity} />
-                                            </div>
-                                          )}
-                                        </button>
+                                        (() => {
+                                          const toolSessions = runtimeUsage.sessionsByToolId.get(tool.toolId) || [];
+                                          const toolApprovals = runtimeUsage.approvalsByToolId.get(tool.toolId) || [];
+                                          const toolArtifacts = mergeArtifacts(runtimeUsage.artifactsByToolId.get(tool.toolId) || [], toolSessions);
+                                          const pendingToolApprovals = toolApprovals.filter((approval) => approval.status === "pending").length;
+                                          return (
+                                            <button
+                                              key={tool.toolId}
+                                              onClick={() => openCapabilityDetail({ kind: "tool", item: tool })}
+                                              className="text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5"
+                                            >
+                                              <div className="flex items-start justify-between gap-2">
+                                                <span className="font-mono text-xs text-gray-800 dark:text-gray-100 break-all">{tool.name}</span>
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border whitespace-nowrap ${statusTone(tool.status)}`}>{tool.status}</span>
+                                              </div>
+                                              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 line-clamp-2 min-h-[2rem]">{tool.description || "No description."}</p>
+                                              <div className="flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sideEffectTone(tool.sideEffects)}`}>{tool.sideEffects}</span>
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${riskTone(tool.riskLevel)}`}>
+                                                  <FontAwesomeIcon icon={faShieldHalved} className="mr-1 text-[9px]" />{tool.riskLevel} risk
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
+                                                  {approvalLabel(approvalMode(tool))}
+                                                </span>
+                                                {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
+                                                {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}
+                                                {tool.discoveryRelevance?.score !== undefined && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">rel {tool.discoveryRelevance.score}</span>}
+                                              </div>
+                                              <CapabilityRuntimeSignals
+                                                sessionsCount={toolSessions.length}
+                                                approvalsCount={toolApprovals.length}
+                                                pendingApprovalsCount={pendingToolApprovals}
+                                                artifactsCount={toolArtifacts.length}
+                                              />
+                                              {((tool.inputEntities || []).length > 0 || tool.outputEntity) && (
+                                                <div className="mt-2">
+                                                  <EntityChips inputEntities={tool.inputEntities} outputEntity={tool.outputEntity} />
+                                                </div>
+                                              )}
+                                            </button>
+                                          );
+                                        })()
                                       ))}
                                     </div>
                                   </div>
@@ -1201,7 +2040,7 @@ export default function Capabilities(): React.ReactElement {
                   )}
 
                   {/* Trajectories */}
-                  {view === "trajectories" && trajectories.length > 0 && (
+                  {view === "trajectories" && filteredTrajectories.length > 0 && (
                       <div>
                         <div className="mb-3">
                           <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Trajectories</p>
@@ -1219,10 +2058,14 @@ export default function Capabilities(): React.ReactElement {
                           const coveredBySkill = skillTrajectoryIds.has(trajectory.trajectoryId);
                           const promotable = status === "harvested" && judgeLabel === "pass" && !coveredBySkill;
                           const approved = status === "approved" || coveredBySkill;
+                          const trajectorySessions = runtimeUsage.sessionsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const trajectoryApprovals = runtimeUsage.approvalsByTrajectoryId.get(trajectory.trajectoryId) || [];
+                          const trajectoryArtifacts = mergeArtifacts(runtimeUsage.artifactsByTrajectoryId.get(trajectory.trajectoryId) || [], trajectorySessions);
+                          const pendingTrajectoryApprovals = trajectoryApprovals.filter((approval) => approval.status === "pending").length;
                           return (
                             <div
                               key={trajectory.trajectoryId}
-                              onClick={() => setDetail({ kind: "trajectory", item: trajectory })}
+                              onClick={() => openCapabilityDetail({ kind: "trajectory", item: trajectory })}
                               className="flex flex-col bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5 cursor-pointer"
                             >
                               <div className="flex items-start justify-between gap-2">
@@ -1253,6 +2096,12 @@ export default function Capabilities(): React.ReactElement {
                                   <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">recovery</span>
                                 )}
                               </div>
+                              <CapabilityRuntimeSignals
+                                sessionsCount={trajectorySessions.length}
+                                approvalsCount={trajectoryApprovals.length}
+                                pendingApprovalsCount={pendingTrajectoryApprovals}
+                                artifactsCount={trajectoryArtifacts.length}
+                              />
                               {trajectory.finalUrl && (
                                 <p className="mt-2 font-mono text-[11px] text-gray-400 dark:text-gray-500 truncate" title={trajectory.finalUrl}>{trajectory.finalUrl}</p>
                               )}
@@ -1279,7 +2128,7 @@ export default function Capabilities(): React.ReactElement {
                       </div>
                       </div>
                   )}
-                  {view === "trajectories" && trajectories.length === 0 && (
+                  {view === "trajectories" && filteredTrajectories.length === 0 && (
                     <EmptyState
                       icon={faRoute}
                       title="No trajectories yet"
@@ -1289,16 +2138,20 @@ export default function Capabilities(): React.ReactElement {
                   )}
 
                   {/* Skills */}
-                  {view === "skills" && skills.length > 0 && (
+                  {view === "skills" && filteredSkills.length > 0 && (
                       <div>
                         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Skills</p>
                       <div className="flex flex-col gap-3">
-                        {skills.map((skill) => {
+                        {filteredSkills.map((skill) => {
                           const originLabel = skillOriginLabel(skill);
+                          const skillSessions = runtimeUsage.sessionsBySkillId.get(skill.skillId) || [];
+                          const skillApprovals = runtimeUsage.approvalsBySkillId.get(skill.skillId) || [];
+                          const skillArtifacts = mergeArtifacts(runtimeUsage.artifactsBySkillId.get(skill.skillId) || [], skillSessions);
+                          const pendingSkillApprovals = skillApprovals.filter((approval) => approval.status === "pending").length;
                           return (
                           <div
                             key={skill.skillId}
-                            onClick={() => setDetail({ kind: "skill", item: skill })}
+                            onClick={() => openCapabilityDetail({ kind: "skill", item: skill })}
                             className="flex flex-col bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft hover:-translate-y-0.5 cursor-pointer"
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -1322,6 +2175,12 @@ export default function Capabilities(): React.ReactElement {
                                 {approvalLabel(approvalMode(skill))}
                               </span>
                             </div>
+                            <CapabilityRuntimeSignals
+                              sessionsCount={skillSessions.length}
+                              approvalsCount={skillApprovals.length}
+                              pendingApprovalsCount={pendingSkillApprovals}
+                              artifactsCount={skillArtifacts.length}
+                            />
                             {((skill.inputEntities || []).length > 0 || skill.outputEntity) && (
                               <div className="mt-2">
                                 <EntityChips inputEntities={skill.inputEntities} outputEntity={skill.outputEntity} />
@@ -1351,29 +2210,29 @@ export default function Capabilities(): React.ReactElement {
                       </div>
                       </div>
                   )}
-                  {view === "skills" && skills.length === 0 && (
+                  {view === "skills" && filteredSkills.length === 0 && (
                     <EmptyState
                       icon={faWandMagicSparkles}
                       title="No skills yet"
                       body="Promote a reliable Skill Candidate, or author a reusable skill manually once that flow is enabled."
-                      action={<button onClick={() => setView("trajectories")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faRoute} className="text-xs" />View Trajectories</button>}
+                      action={<button onClick={() => setFactoryView("trajectories")} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faRoute} className="text-xs" />View Trajectories</button>}
                     />
                   )}
 
                   {/* Harvester runs */}
                   {view === "runs" && (
-                    runs.length === 0 ? (
+                    filteredRuns.length === 0 ? (
                       <EmptyState
                         icon={faClockRotateLeft}
                         title="No harvester runs yet"
-                        body={trajectories.length > 0
+                        body={filteredTrajectories.length > 0
                           ? "There are trajectories, but no UI harvester run record. This can happen when a benchmark was seeded or harvested from a script."
                           : "Runs appear here when a harvester executes a benchmark and produces trajectories."}
                         action={<button onClick={openCreate} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2"><FontAwesomeIcon icon={faTractor} className="text-xs" />Run Harvester</button>}
                       />
                     ) : (
                       <div className="space-y-3">
-                        {runs.map((run) => (
+                        {filteredRuns.map((run) => (
                           <div key={run.harvesterRunId} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 transition-all duration-200 hover:border-primary/40 hover:shadow-soft">
                             <div className="flex items-start justify-between gap-3">
                               <div className="flex items-center gap-2 min-w-0">
@@ -1420,17 +2279,56 @@ export default function Capabilities(): React.ReactElement {
           onPromote={promoteTrajectory}
         />
       )}
-      {detail && (
-        <CapabilityDetailModal
-          detail={detail}
-          toolsByName={toolsByName}
-          trajectoriesById={trajectoriesById}
-          connectorsById={connectorsById}
-          userEmail={user.email}
-          onReload={loadCapabilities}
-          onClose={() => setDetail(null)}
-        />
-      )}
+        {detail && (
+          <CapabilityDetailModal
+            detail={detail}
+            toolsByName={toolsByName}
+            trajectoriesById={trajectoriesById}
+            connectorsById={connectorsById}
+            benchmarkNamesById={benchmarkNamesById}
+            lineage={lineage}
+            runtimeUsage={
+              detail.kind === "tool"
+                ? {
+                    sessions: runtimeUsage.sessionsByToolId.get(detail.item.toolId) || [],
+                    approvals: runtimeUsage.approvalsByToolId.get(detail.item.toolId) || [],
+                    artifacts: Array.from(new Map([
+                      ...(runtimeUsage.artifactsByToolId.get(detail.item.toolId) || []),
+                      ...((runtimeUsage.sessionsByToolId.get(detail.item.toolId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
+                    ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                  }
+                : detail.kind === "trajectory"
+                  ? {
+                      sessions: runtimeUsage.sessionsByTrajectoryId.get(detail.item.trajectoryId) || [],
+                      approvals: runtimeUsage.approvalsByTrajectoryId.get(detail.item.trajectoryId) || [],
+                      artifacts: Array.from(new Map([
+                        ...(runtimeUsage.artifactsByTrajectoryId.get(detail.item.trajectoryId) || []),
+                        ...((runtimeUsage.sessionsByTrajectoryId.get(detail.item.trajectoryId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
+                      ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                    }
+                  : {
+                      sessions: runtimeUsage.sessionsBySkillId.get(detail.item.skillId) || [],
+                      approvals: runtimeUsage.approvalsBySkillId.get(detail.item.skillId) || [],
+                      artifacts: Array.from(new Map([
+                        ...(runtimeUsage.artifactsBySkillId.get(detail.item.skillId) || []),
+                        ...((runtimeUsage.sessionsBySkillId.get(detail.item.skillId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
+                      ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                    }
+            }
+            userEmail={user.email}
+            onOpenSession={(sessionId) => navigate(`/session/${sessionId}`)}
+            onOpenApprovals={({ sessionId, skillId, trajectoryId, toolId }) => {
+              const params = new URLSearchParams({ status: "all" });
+              if (sessionId) params.set("sessionId", sessionId);
+              if (skillId) params.set("skillId", skillId);
+              if (trajectoryId) params.set("trajectoryId", trajectoryId);
+              if (toolId) params.set("toolId", toolId);
+              navigate(`/approvals?${params.toString()}`);
+            }}
+            onReload={loadCapabilities}
+            onClose={() => navigate(`/capabilities?view=${detail.kind === "tool" ? "tools" : detail.kind === "trajectory" ? "trajectories" : "skills"}`)}
+          />
+        )}
     </div>
   );
 }

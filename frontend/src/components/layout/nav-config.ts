@@ -11,6 +11,10 @@ import {
   faPlug,
   faBook,
   faCubes,
+  faBolt,
+  faGear,
+  faKey,
+  faShapes,
 } from "@fortawesome/free-solid-svg-icons";
 
 export interface NavItem {
@@ -39,33 +43,43 @@ export interface NavGroup {
 export const NAV_GROUPS: NavGroup[] = [
   { key: "canvas", label: "Canvas", icon: faDiagramProject, path: "/canvas", items: [] },
   {
-    key: "studio",
-    label: "Studio",
-    icon: faPlug,
+    key: "factory",
+    label: "Factory",
+    icon: faWandMagicSparkles,
     items: [
       { label: "Agents", path: "/agents", icon: faRobot },
       { label: "Connectors", path: "/connectors", icon: faPlug },
-      { label: "Knowledge", path: "/knowledge", icon: faBook },
+      { label: "Resources", path: "/knowledge", icon: faBook },
       { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles },
       { label: "Entities", path: "/entities", icon: faCubes },
-    ],
-  },
-  {
-    key: "eval",
-    label: "Eval",
-    icon: faClipboardCheck,
-    items: [
       { label: "Benchmarks", path: "/evals", icon: faClipboardCheck },
       { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft },
     ],
   },
   {
-    key: "workspace",
-    label: "Workspace",
+    key: "runtime",
+    label: "Runtime",
+    icon: faBolt,
+    items: [
+      { label: "Sessions", path: "/runtime", icon: faClockRotateLeft },
+      { label: "Approvals", path: "/approvals", icon: faCircleCheck },
+      { label: "Artifacts", path: "/artifacts", icon: faShapes },
+    ],
+  },
+  {
+    key: "operations",
+    label: "Operations",
     icon: faListCheck,
     items: [
       { label: "Work", path: "/work", icon: faBriefcase },
-      { label: "Approvals", path: "/approvals", icon: faCircleCheck },
+    ],
+  },
+  {
+    key: "setup",
+    label: "Setup",
+    icon: faGear,
+    items: [
+      { label: "Credentials", path: "/credentials", icon: faKey },
     ],
   },
 ];

@@ -5,14 +5,18 @@ import { useParams, useNavigate, useOutletContext, useLocation } from "react-rou
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBars,
+  faBolt,
   faBuilding,
   faCloudArrowUp,
   faDownload,
   faExpand,
   faFileLines,
   faGlobe,
+  faRobot,
+  faShieldHalved,
   faShapes,
   faSpinner,
+  faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
 
 import ChatSidebar from "../components/session/chat-sidebar";
@@ -82,6 +86,13 @@ function formatDocumentDate(value?: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
   return date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" });
+}
+
+function formatRuntimeDate(value?: string) {
+  if (!value) return "-";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "-";
+  return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
 function artifactRows(content: string) {
@@ -165,6 +176,31 @@ function ArtifactPreview({ artifact }: { artifact: SessionArtifact }) {
     <pre className="min-h-[420px] overflow-auto rounded-xl border border-gray-200 bg-gray-950 p-4 text-xs leading-relaxed text-gray-100 dark:border-dark-border">
       <code>{content || "Nothing to preview yet."}</code>
     </pre>
+  );
+}
+
+function RuntimeMetricCard({
+  label,
+  value,
+  hint,
+  tone = "neutral",
+}: {
+  label: string;
+  value: string | number;
+  hint: string;
+  tone?: "neutral" | "accent" | "good";
+}) {
+  const toneClass = tone === "good"
+    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+    : tone === "accent"
+      ? "border-primary/20 bg-primary/5 dark:border-primary/20 dark:bg-primary/10"
+      : "border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface";
+  return (
+    <div className={`rounded-xl border p-3 ${toneClass}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{label}</p>
+      <p className="mt-1 text-base font-semibold text-gray-900 dark:text-white">{value}</p>
+      <p className="mt-1 text-[11px] leading-4 text-gray-500 dark:text-gray-400">{hint}</p>
+    </div>
   );
 }
 
@@ -616,6 +652,7 @@ function Session(): React.ReactElement {
   const selectedArtifact = sessionArtifacts.find((artifact) => artifact.artifactId === selectedArtifactId) || sessionArtifacts[0] || null;
   const assistantMessages = chats.filter((c: ChatItem) => c.role === "assistant");
   const latestAssistant = assistantMessages.length > 0 ? assistantMessages[assistantMessages.length - 1] : null;
+  const latestAssistantTiming = latestAssistant?.actionTimings?.filter(Boolean).slice(-1)[0];
   const latestActions = latestAssistant?.actions || [];
   const runtimeRunState: RuntimeRunState = completed
     ? latestAssistant?.state === "error"
@@ -652,6 +689,84 @@ function Session(): React.ReactElement {
   const hasBrowserContent = Boolean(liveUrl) || Boolean(displayedScreenshot);
   const hasBrowserActions = runtimeTimeline.some((step) => step.activity === "browser");
   const browserAvailable = Boolean(initialUrl || lastUrl || hasBrowserContent || hasBrowserActions);
+  const connectorActionCount = runtimeTimeline.filter((step) => step.activity === "tool").length;
+  const browserActionCount = runtimeTimeline.filter((step) => step.activity === "browser").length;
+  const matchedSkillName = String(runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
+  const pendingConnectorApproval = String(runtimeState?.pendingConnectorApproval || "");
+  const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
+  const runtimeKind = browserActionCount > 0 && connectorActionCount > 0
+    ? "Hybrid runtime"
+    : browserActionCount > 0
+      ? "Browser runtime"
+      : "API runtime";
+  const latestActivityLabel = runtimeTimeline.length > 0 ? runtimeTimeline[runtimeTimeline.length - 1].label : "Waiting for task";
+  const runtimeTimestamp = String(latestAssistantTiming?.emittedAt || "");
+  const runtimeOverview = (
+    <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)]">
+      <div className="rounded-xl border border-gray-200 bg-white/80 p-4 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface/80">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime overview</p>
+            <p className="mt-1 truncate text-sm font-semibold text-gray-900 dark:text-white">{prompt || "No task loaded"}</p>
+            <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+              {runtimeKind} · {runtimeRunState}{runtimeTimestamp ? ` · ${formatRuntimeDate(runtimeTimestamp)}` : ""}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] text-gray-700 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+              <FontAwesomeIcon icon={browserActionCount > 0 && connectorActionCount > 0 ? faRobot : browserActionCount > 0 ? faGlobe : faBolt} className="text-[10px]" />
+              {runtimeKind}
+            </span>
+            {matchedSkillName && (
+              <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-[11px] text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
+                {matchedSkillName}
+              </span>
+            )}
+            {pendingConnectorApproval && (
+              <span className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                <FontAwesomeIcon icon={faShieldHalved} className="text-[10px]" />
+                Approval pending
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+          Latest activity: <span className="font-semibold text-gray-800 dark:text-gray-100">{latestActivityLabel}</span>
+          {agentName ? <span> · AgentRuntime: {agentName}</span> : null}
+          {lastUrl ? <span> · Last URL recorded</span> : null}
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {pendingConnectorApproval && (
+            <button
+              type="button"
+              onClick={() => navigate(`/approvals?status=pending&sessionId=${encodeURIComponent(reduxSessionId || sessionId || "")}`)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
+            >
+              <FontAwesomeIcon icon={faShieldHalved} className="text-[10px]" />
+              Open approvals
+            </button>
+          )}
+          {sessionArtifacts.length > 0 && (
+            <button
+              type="button"
+              onClick={() => navigate(`/artifacts?sessionId=${encodeURIComponent(reduxSessionId || sessionId || "")}`)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+            >
+              <FontAwesomeIcon icon={faShapes} className="text-[10px]" />
+              View persisted artifacts
+            </button>
+          )}
+        </div>
+      </div>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <RuntimeMetricCard label="Tool Calls" value={connectorActionCount} hint="Typed connector actions executed in this session." />
+        <RuntimeMetricCard label="Browser Steps" value={browserActionCount} hint="UI actions executed through browser runtime." tone={browserActionCount > 0 ? "accent" : "neutral"} />
+        <RuntimeMetricCard label="Artifacts" value={sessionArtifacts.length} hint="Business outputs separated from the trace." tone={sessionArtifacts.length > 0 ? "good" : "neutral"} />
+        <RuntimeMetricCard label="Approvals" value={pendingConnectorApproval ? "Pending" : approvedConnectorToolCalls.length} hint={pendingConnectorApproval ? "Waiting for human approval before write/send." : `${approvedConnectorToolCalls.length} approved connector calls recorded.`} tone={pendingConnectorApproval ? "accent" : approvedConnectorToolCalls.length > 0 ? "good" : "neutral"} />
+      </div>
+    </div>
+  );
 
   const runtimeAgents = [
     {
@@ -1064,9 +1179,11 @@ function Session(): React.ReactElement {
 
         {/* Browser view area */}
         <div className="hidden lg:flex flex-col flex-1 min-w-0 min-h-0 px-5 py-4 h-full relative overflow-hidden">
+          {runtimeOverview}
           {/* Tab switcher — Canvas and Browser are mutually exclusive */}
           <div className="mb-3 flex items-center gap-1 flex-shrink-0 w-fit rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-white/70 dark:bg-zinc-900/60 p-1 backdrop-blur-sm">
             {([
+              { key: "canvas" as const, label: "Trace", icon: faRobot },
               { key: "artifacts", label: "Artifacts", icon: faShapes },
               ...(browserAvailable ? [{ key: "browser" as const, label: "Browser", icon: faGlobe }] : []),
               { key: "documents", label: "Documents", icon: faFileLines },

@@ -42,6 +42,9 @@ class _Collection:
     async def insert_one(self, doc):
         self.docs.append(dict(doc))
 
+    async def count_documents(self, query):
+        return sum(1 for doc in self.docs if _matches(doc, query))
+
     async def update_one(self, query, update, upsert=False):
         for index, doc in enumerate(self.docs):
             if _matches(doc, query):
@@ -69,6 +72,8 @@ def _matches(doc, query):
 
 @pytest.mark.asyncio
 async def test_get_sessions_filters_by_company(monkeypatch):
+    monkeypatch.setattr(session_routes, "artifacts_collection", _Collection())
+    monkeypatch.setattr(session_routes, "approvals_collection", _Collection())
     monkeypatch.setattr(
         session_routes,
         "sessions_collection",
@@ -85,6 +90,78 @@ async def test_get_sessions_filters_by_company(monkeypatch):
 
     assert [item["sessionId"] for item in result["sessions"]] == ["session-1"]
     assert result["sessions"][0]["companyId"] == "company-1"
+    assert result["sessions"][0]["actionCount"] == 0
+    assert result["sessions"][0]["hasBrowserActivity"] is False
+
+
+@pytest.mark.asyncio
+async def test_get_sessions_exposes_runtime_summary(monkeypatch):
+    monkeypatch.setattr(
+        session_routes,
+        "artifacts_collection",
+        _Collection(
+            [
+                {"artifactId": "artifact-1", "sessionId": "session-1", "email": "user@example.com"},
+                {"artifactId": "artifact-2", "sessionId": "session-1", "email": "user@example.com"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        session_routes,
+        "approvals_collection",
+        _Collection(
+            [
+                {"approvalId": "approval-1", "sessionId": "session-1", "email": "user@example.com", "status": "pending"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        session_routes,
+        "sessions_collection",
+        _Collection(
+            [
+                {
+                    "sessionId": "session-1",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "prompt": "Review claim status",
+                    "initialUrl": "https://erp.example.com/claims/1",
+                    "lastUrl": "https://erp.example.com/claims/1/summary",
+                    "createdAt": "2026-06-19T10:00:00Z",
+                    "agentId": "agent-1",
+                    "agentName": "Claims Agent",
+                    "provider": "autoppia",
+                    "chatHistory": [{"role": "user"}, {"role": "assistant"}],
+                    "actionHistory": [
+                        {"action": "browser.navigate"},
+                        {"action": "imap.search_emails"},
+                    ],
+                    "runtimeState": {
+                        "matchedSkillId": "skill-1",
+                        "matchedSkillName": "Handle claim summary",
+                        "pendingConnectorApproval": "smtp.send_email:0:abc",
+                        "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+                    },
+                }
+            ]
+        ),
+    )
+
+    result = await session_routes.get_sessions(email="user@example.com", companyId="company-1")
+
+    session = result["sessions"][0]
+    assert session["agentName"] == "Claims Agent"
+    assert session["lastUrl"] == "https://erp.example.com/claims/1/summary"
+    assert session["chatCount"] == 2
+    assert session["actionCount"] == 2
+    assert session["hasBrowserActivity"] is True
+    assert session["hasConnectorActivity"] is True
+    assert session["matchedSkillId"] == "skill-1"
+    assert session["matchedSkillName"] == "Handle claim summary"
+    assert session["approvedConnectorToolCallCount"] == 1
+    assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
+    assert session["artifactCount"] == 2
+    assert session["pendingApprovalCount"] == 1
 
 
 @pytest.mark.asyncio

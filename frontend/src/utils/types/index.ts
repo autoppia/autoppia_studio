@@ -2,11 +2,26 @@ export interface SessionItem {
     sessionId: string;
     email: string;
     companyId?: string;
-    socketioPath: string;
+    socketioPath?: string;
     prompt: string;
     initialUrl: string;
-    sessionPath: string;
-    createdAt?: Date;
+    sessionPath?: string;
+    lastUrl?: string;
+    provider?: string;
+    agentId?: string;
+    agentName?: string;
+    runtimeState?: Record<string, any>;
+    actionCount?: number;
+    chatCount?: number;
+    hasBrowserActivity?: boolean;
+    hasConnectorActivity?: boolean;
+    matchedSkillId?: string;
+    matchedSkillName?: string;
+    approvedConnectorToolCallCount?: number;
+    pendingConnectorApproval?: string;
+    pendingApprovalCount?: number;
+    artifactCount?: number;
+    createdAt?: string | Date;
 }
 
 export type HistoryItem = SessionItem;
@@ -674,6 +689,8 @@ export interface CompanySkill {
   name: string;
   description: string;
   whenToUse: string;
+  benchmarkId?: string;
+  evalId?: string;
   inputEntities?: string[];
   outputEntity?: string;
   outputCard?: Record<string, any>;
@@ -728,11 +745,13 @@ export interface Artifact {
   artifactId: string;
   companyId: string;
   email: string;
+  sessionId?: string;
   title: string;
   artifactType: string;
   description: string;
   content: string;
   fileName: string;
+  sourceTool?: string;
   metadata?: Record<string, any>;
   createdAt?: string;
   updatedAt?: string;

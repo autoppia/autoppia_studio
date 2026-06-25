@@ -17,9 +17,11 @@ import Connectors from "./pages/connectors";
 import Capabilities from "./pages/capabilities";
 import Entities from "./pages/entities";
 import Approvals from "./pages/approvals";
+import Artifacts from "./pages/artifacts";
 import Credentials from "./pages/credentials";
 import Knowledge from "./pages/knowledge";
 import Analytics from "./pages/analytics";
+import Runtime from "./pages/runtime";
 import Work from "./pages/work";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
@@ -138,11 +140,11 @@ function App() {
                 <Route path="/settings" element={<Settings />} />
                 <Route path="/canvas" element={<Canvas />} />
                 {/* Skills are no longer a separate section — they live under Capabilities. */}
-                <Route path="/skills" element={<Navigate to="/capabilities" replace />} />
-                <Route path="/trajectories" element={<Navigate to="/capabilities" replace />} />
-                <Route path="/skills/create" element={<Navigate to="/capabilities" replace />} />
-                <Route path="/skills/record" element={<Navigate to="/capabilities" replace />} />
-                <Route path="/skills/:skillId" element={<Navigate to="/capabilities" replace />} />
+                <Route path="/skills" element={<Navigate to="/capabilities?view=skills" replace />} />
+                <Route path="/trajectories" element={<Navigate to="/capabilities?view=trajectories" replace />} />
+                <Route path="/skills/create" element={<Navigate to="/capabilities?view=skills" replace />} />
+                <Route path="/skills/record" element={<Navigate to="/capabilities?view=skills" replace />} />
+                <Route path="/skills/:skillId" element={<Navigate to="/capabilities?view=skills" replace />} />
                 <Route path="/evals" element={<Evals mode="benchmarks" />} />
                 <Route path="/eval-runs" element={<Evals mode="runs" />} />
                 <Route path="/evals/:evalId" element={<EvalDetail />} />
@@ -152,8 +154,11 @@ function App() {
                 <Route path="/work" element={<Work />} />
                 <Route path="/connectors" element={<Connectors />} />
                 <Route path="/capabilities" element={<Capabilities />} />
+                <Route path="/capabilities/:kind/:id" element={<Capabilities />} />
                 <Route path="/entities" element={<Entities />} />
+                <Route path="/runtime" element={<Runtime />} />
                 <Route path="/approvals" element={<Approvals />} />
+                <Route path="/artifacts" element={<Artifacts />} />
                 <Route path="/credentials" element={<Credentials />} />
                 <Route path="/knowledge" element={<Knowledge />} />
                 <Route path="/analytics" element={<Analytics />} />

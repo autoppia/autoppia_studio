@@ -5,6 +5,9 @@ import Entities from "./entities";
 jest.mock("react-redux", () => ({
   useSelector: jest.fn(),
 }));
+jest.mock("react-router-dom", () => ({
+  useNavigate: () => jest.fn(),
+}), { virtual: true });
 
 const mockedUseSelector = useSelector as unknown as jest.Mock;
 

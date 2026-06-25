@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -13,13 +14,15 @@ import {
   faTriangleExclamation,
   faXmark,
   faBrain,
-  faCircleNodes,
   faBuilding,
   faDatabase,
   faMagnifyingGlass,
   faBook,
+  faWrench,
+  faRobot,
+  faArrowUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
-import { KnowledgeDocument, VectorDatabase, VectorIndex } from "../utils/types";
+import { AgentConfig, KnowledgeDocument, VectorDatabase, VectorIndex } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SectionTitle from "../components/layout/section-title";
 import { getApiUrl } from "../utils/api-url";
@@ -43,6 +46,24 @@ function formatDate(value?: string) {
 function extOf(filename: string) {
   const parts = filename.split(".");
   return parts.length > 1 ? parts.pop()!.toUpperCase() : "FILE";
+}
+
+function resourceSegment(name: string) {
+  const cleaned = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return cleaned.slice(0, 48) || "knowledge";
+}
+
+function generatedKnowledgeTools(name: string) {
+  const segment = resourceSegment(name);
+  return [
+    `knowledge.${segment}.search`,
+    `knowledge.${segment}.list_documents`,
+    `knowledge.${segment}.stats`,
+    `knowledge.${segment}.read_document`,
+  ];
 }
 
 function fileMeta(filename: string, contentType?: string) {
@@ -73,9 +94,11 @@ function statusLabel(status: string) {
 const ACCEPT = ".pdf,.md,.markdown,.txt,.csv,.json,.doc,.docx,.html,.xml,.yml,.yaml";
 
 export default function Knowledge(): React.ReactElement {
+  const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [documents, setDocuments] = useState<KnowledgeDocument[]>([]);
+  const [agents, setAgents] = useState<AgentConfig[]>([]);
   const [vectorDatabases, setVectorDatabases] = useState<VectorDatabase[]>([]);
   const [vectorIndex, setVectorIndex] = useState<VectorIndex | null>(null);
   const [selectedVectorDatabaseId, setSelectedVectorDatabaseId] = useState("");
@@ -90,6 +113,7 @@ export default function Knowledge(): React.ReactElement {
   const loadDocuments = useCallback(async () => {
     if (!user.email || !companyId) {
       setDocuments([]);
+      setAgents([]);
       setVectorDatabases([]);
       setVectorIndex(null);
       setSelectedVectorDatabaseId("");
@@ -99,14 +123,23 @@ export default function Knowledge(): React.ReactElement {
     setLoading(true);
     try {
       const params = new URLSearchParams({ email: user.email, companyId });
-      const res = await fetch(`${apiUrl}/knowledge/documents?${params.toString()}`);
-      if (!res.ok) throw new Error(await res.text());
-      const data = await res.json();
+      const [knowledgeRes, agentsRes] = await Promise.all([
+        fetch(`${apiUrl}/knowledge/documents?${params.toString()}`),
+        fetch(`${apiUrl}/agents?${params.toString()}`),
+      ]);
+      if (!knowledgeRes.ok) throw new Error(await knowledgeRes.text());
+      const data = await knowledgeRes.json();
       const nextDocuments = data.documents || [];
       const nextVectorDatabases = data.vectorDatabases || [];
       setDocuments(nextDocuments);
       setVectorDatabases(nextVectorDatabases);
       setVectorIndex(data.vectorIndex || null);
+      if (agentsRes.ok) {
+        const agentsData = await agentsRes.json();
+        setAgents(agentsData.agents || []);
+      } else {
+        setAgents([]);
+      }
       setSelectedVectorDatabaseId((current) => {
         if (current && nextVectorDatabases.some((db: VectorDatabase) => db.vectorDatabaseId === current)) return current;
         return nextVectorDatabases[0]?.vectorDatabaseId || "";
@@ -213,10 +246,17 @@ export default function Knowledge(): React.ReactElement {
     () => documents.filter((doc) => !selectedVectorDatabase?.vectorDatabaseId || doc.vectorDatabaseId === selectedVectorDatabase.vectorDatabaseId),
     [documents, selectedVectorDatabase],
   );
-  const visibleTotalSize = useMemo(() => visibleDocuments.reduce((acc, doc) => acc + (doc.size || 0), 0), [visibleDocuments]);
-  const visibleIndexedCount = useMemo(
-    () => visibleDocuments.filter((doc) => ["indexed", "ready"].includes((doc.status || "").toLowerCase())).length,
+  const visibleSearchableCount = useMemo(
+    () => visibleDocuments.filter((doc) => !["index_failed", "failed", "error"].includes((doc.status || "").toLowerCase())).length,
     [visibleDocuments],
+  );
+  const consumerAgents = useMemo(
+    () => agents.filter((agent) => Boolean(agent.runtimeCapabilities?.knowledge || agent.runtimeSpec?.tools?.knowledge)),
+    [agents],
+  );
+  const resourceTools = useMemo(
+    () => selectedVectorDatabase ? generatedKnowledgeTools(selectedVectorDatabase.name) : [],
+    [selectedVectorDatabase],
   );
 
   return (
@@ -228,14 +268,14 @@ export default function Knowledge(): React.ReactElement {
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
           <SectionTitle
             icon={faBook}
-            title="Knowledge"
-            subtitle="Documents your agents rely on"
+            title="Resources"
+            subtitle="Versioned business context your agents can search and cite"
             info={
-              <InfoIcon title="Knowledge">
+              <InfoIcon title="Resources">
                 <div className="space-y-3">
-                  <p>Knowledge documents belong to the selected company and power its <strong>Knowledge connector</strong>.</p>
-                  <p>Upload the manuals, policies, price lists and internal notes your agents should rely on. Agents read them through knowledge tools.</p>
-                  <p className="text-gray-400">Uploads are extracted, chunked, embedded and indexed into the configured vector store. Agents query them through <strong>knowledge.search</strong>.</p>
+                  <p>Resources are readable company context, not executable actions. They back the selected company and power its <strong>Knowledge connector</strong>.</p>
+                  <p>Upload manuals, policies, price lists and internal notes here. Agents consume them through read-only <strong>knowledge.*</strong> tools.</p>
+                  <p className="text-gray-400">Each vector store becomes a searchable resource surface: uploads are extracted, chunked, embedded and indexed, then exposed through generated search and read tools.</p>
                 </div>
               </InfoIcon>
             }
@@ -258,32 +298,32 @@ export default function Knowledge(): React.ReactElement {
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
               <div className="flex items-center gap-1.5 mb-1">
                 <FontAwesomeIcon icon={faDatabase} className="text-[10px] text-gray-400" />
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector stores</p>
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Resource stores</p>
               </div>
               <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{vectorDatabases.length}</p>
             </div>
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
               <div className="flex items-center gap-1.5 mb-1">
                 <FontAwesomeIcon icon={faFileLines} className="text-[10px] text-gray-400" />
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Documents</p>
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Resources</p>
               </div>
               <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{visibleDocuments.length}</p>
             </div>
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
               <div className="flex items-center gap-1.5 mb-1">
                 <FontAwesomeIcon icon={faMagnifyingGlass} className="text-[10px] text-gray-400" />
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Indexed</p>
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Searchable</p>
               </div>
               <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">
-                {visibleIndexedCount}
+                {visibleSearchableCount}
               </p>
             </div>
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
               <div className="flex items-center gap-1.5 mb-1">
-                <FontAwesomeIcon icon={faCircleNodes} className="text-[10px] text-gray-400" />
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Total size</p>
+                <FontAwesomeIcon icon={faWrench} className="text-[10px] text-gray-400" />
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Generated tools</p>
               </div>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{formatSize(visibleTotalSize)}</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white leading-none">{selectedVectorDatabase ? 4 : 0}</p>
             </div>
           </div>
 
@@ -291,10 +331,10 @@ export default function Knowledge(): React.ReactElement {
             <div className="mb-2">
               <div className="flex items-center gap-2">
                 <FontAwesomeIcon icon={faDatabase} className="text-primary text-xs" />
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Vector stores</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resource stores</h2>
               </div>
               <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-0.5">
-                A vector store is the searchable index that holds your documents. Select one to view and upload documents into it.
+                A resource store is the searchable index behind a company context surface. Select one to view the resources it holds and the tools it powers.
               </p>
             </div>
           )}
@@ -333,19 +373,41 @@ export default function Knowledge(): React.ReactElement {
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-dark-border">
-                      <div>
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Docs</p>
+                        <div>
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Resources</p>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">{db.documentCount || 0}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Indexed</p>
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Searchable</p>
                         <p className="text-sm font-semibold text-gray-900 dark:text-white">{db.indexedDocuments || 0}</p>
                       </div>
                       <div>
-                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Connector</p>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{db.connectorId ? "Ready" : "Missing"}</p>
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Tools</p>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">{db.connectorId ? "4 ready" : "Missing"}</p>
                       </div>
                     </div>
+                    {db.connectorId && (
+                      <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-dark-border">
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/capabilities?view=tools&connector=${encodeURIComponent(db.connectorId || "")}`);
+                          }}
+                          className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300 dark:hover:bg-white/5"
+                        >
+                          Open Factory Tools
+                        </button>
+                        <button
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            navigate(`/capabilities?view=runs&connector=${encodeURIComponent(db.connectorId || "")}`);
+                          }}
+                          className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300 dark:hover:bg-white/5"
+                        >
+                          Open Harvester Runs
+                        </button>
+                      </div>
+                    )}
                   </button>
                 );
               })}
@@ -359,17 +421,17 @@ export default function Knowledge(): React.ReactElement {
                 <FontAwesomeIcon icon={faBrain} className="text-base" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">Company knowledge base</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Company resource base</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 leading-relaxed max-w-2xl">
-                  Documents you add here feed the selected <span className="font-medium text-gray-700 dark:text-gray-200">vector database</span> and its Knowledge connector,
-                  so every agent can ground its answers in your own sources through vector search and citations.
+                  The files you add here become governed resources. They feed the selected <span className="font-medium text-gray-700 dark:text-gray-200">resource store</span> and its Knowledge connector,
+                  so every agent can ground answers in company sources through search, read and citation-oriented tools.
                 </p>
               </div>
             </div>
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 min-w-[280px]">
               <div className="flex items-center gap-1.5 mb-2">
                 <FontAwesomeIcon icon={faDatabase} className="text-[11px] text-primary" />
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector index</p>
+                <p className="text-[10px] uppercase tracking-wide text-gray-400">Resource index</p>
               </div>
               <p className="text-sm font-semibold text-gray-900 dark:text-white">
                 {selectedVectorDatabase?.provider || vectorIndex?.provider || "local"}
@@ -380,6 +442,82 @@ export default function Knowledge(): React.ReactElement {
               </p>
             </div>
           </div>
+
+          {selectedVectorDatabase && (
+            <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faWrench} className="text-primary text-xs" />
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Generated resource tools</h2>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                This resource store exposes read-only knowledge tools inside Factory and Runtime. These are context surfaces, not business actions.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+                {resourceTools.map((toolName) => (
+                  <div key={toolName} className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="font-mono text-xs text-gray-800 dark:text-gray-100">{toolName}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                      {toolName.endsWith(".search")
+                        ? "Search company resources by semantic similarity."
+                        : toolName.endsWith(".list_documents")
+                          ? "List available resources inside this store."
+                          : toolName.endsWith(".stats")
+                            ? "Return indexing and document stats."
+                            : "Read a referenced resource chunk."}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              {selectedVectorDatabase?.connectorId && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={() => navigate(`/capabilities?view=tools&connector=${encodeURIComponent(selectedVectorDatabase.connectorId || "")}`)}
+                    className="h-8 rounded-lg bg-gradient-primary px-3 text-xs font-semibold text-white"
+                  >
+                    Inspect in Factory
+                  </button>
+                  <button
+                    onClick={() => navigate("/runtime")}
+                    className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+                  >
+                    Open Runtime Lab
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {consumerAgents.length > 0 && (
+            <div className="mb-5 rounded-xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faRobot} className="text-primary text-xs" />
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Agents consuming these resources</h2>
+              </div>
+              <p className="mt-1 text-[11px] text-gray-400 dark:text-gray-500">
+                These AgentRuntimes have knowledge enabled and can query this company resource surface through the generated tools.
+              </p>
+              <div className="mt-3 grid grid-cols-1 gap-2 lg:grid-cols-2">
+                {consumerAgents.map((agent) => (
+                  <button
+                    key={agent.agentId}
+                    onClick={() => navigate(`/agents/${agent.agentId}`)}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-bg dark:hover:border-primary/30 dark:hover:bg-primary/5"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{agent.name}</p>
+                      <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                        {agent.runtimeType || "agent runtime"} · knowledge enabled
+                      </p>
+                    </div>
+                    <span className="inline-flex h-8 items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 text-[11px] font-semibold text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                      Open
+                      <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px]" />
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 px-4 py-3 text-sm text-red-600 dark:text-red-400">
@@ -399,29 +537,29 @@ export default function Knowledge(): React.ReactElement {
                 <FontAwesomeIcon icon={faBuilding} className="text-xl" />
               </span>
               <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">No company selected</p>
-              <p className="text-sm text-gray-500 dark:text-gray-400">Create or select a company from the top bar to manage its Knowledge.</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Create or select a company from the top bar to manage its resources.</p>
             </div>
           ) : visibleDocuments.length === 0 ? (
             <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-12 text-center">
               <span className="inline-flex w-14 h-14 rounded-2xl bg-primary/10 items-center justify-center mb-4 text-primary">
                 <FontAwesomeIcon icon={faFileLines} className="text-xl" />
               </span>
-              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">No documents yet</p>
+              <p className="text-sm font-semibold text-gray-800 dark:text-gray-100 mb-1">No resources yet</p>
               <p className="text-sm text-gray-500 dark:text-gray-400 max-w-md mx-auto mb-5">
-                Upload manuals, policies, price lists or internal notes into {selectedVectorDatabase?.name || "this vector database"}.
+                Upload manuals, policies, price lists or internal notes into {selectedVectorDatabase?.name || "this resource store"}.
               </p>
               <button onClick={() => fileInputRef.current?.click()} className="h-9 px-4 rounded-lg bg-gradient-primary text-white text-sm font-semibold inline-flex items-center gap-2">
                 <FontAwesomeIcon icon={faPlus} className="text-xs" />
-                Upload your first document
+                Upload your first resource
               </button>
             </div>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-2">
                 <FontAwesomeIcon icon={faFileLines} className="text-primary text-xs" />
-                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Documents</h2>
+                <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Resources</h2>
                 <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                  in {selectedVectorDatabase?.name || "this vector store"}
+                  in {selectedVectorDatabase?.name || "this resource store"}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
@@ -453,12 +591,12 @@ export default function Knowledge(): React.ReactElement {
                     </div>
                     {["indexing", "uploaded"].includes((document.status || "").toLowerCase()) && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 truncate">
-                        Embedding into vector search…
+                        Preparing this resource for search…
                       </p>
                     )}
                     {["index_failed", "failed", "error"].includes((document.status || "").toLowerCase()) && (
                       <p className="text-[10px] text-red-500 mt-2 truncate">
-                        This document is stored but not searchable yet.
+                        This resource is stored but not searchable yet.
                       </p>
                     )}
                     {document.source && (
@@ -486,7 +624,7 @@ export default function Knowledge(): React.ReactElement {
                 </span>
                 <div>
                   <h3 className="text-base font-semibold leading-tight text-gray-900 dark:text-white">New vector store</h3>
-                  <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">A searchable index that holds your documents</p>
+                  <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">A searchable index that holds your company resources</p>
                 </div>
               </div>
               <button
@@ -511,7 +649,7 @@ export default function Knowledge(): React.ReactElement {
             <div className="mt-3 flex items-center gap-2 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-zinc-950/50">
               <FontAwesomeIcon icon={faDatabase} className="text-[11px] text-gray-400" />
               <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                Provider <span className="font-medium text-gray-700 dark:text-gray-300">Local</span> — documents are embedded and indexed here.
+                Provider <span className="font-medium text-gray-700 dark:text-gray-300">Local</span> — resources are embedded and indexed here.
               </span>
             </div>
 
