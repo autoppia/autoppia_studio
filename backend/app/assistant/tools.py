@@ -42,6 +42,7 @@ from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.work_orchestration import summarize_work_orchestration_contracts
 
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api[_-]?key|refresh|credential)", re.IGNORECASE)
 
@@ -442,81 +443,6 @@ def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
-def _work_orchestration_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    with_contract = 0
-    budgeted = 0
-    retry_configured = 0
-    sla_tracked = 0
-    sla_needs_attention = 0
-    approval_gates = 0
-    audit_trails = 0
-    browser_policies = 0
-    browser_allowlists = 0
-    unattended_ready = 0
-    run_attempts = 0
-    samples: list[dict[str, Any]] = []
-    for doc in docs:
-        operational = doc.get("operational") if isinstance(doc.get("operational"), dict) else {}
-        orchestration = operational.get("orchestration") if isinstance(operational.get("orchestration"), dict) else {}
-        budget = orchestration.get("budget") if isinstance(orchestration.get("budget"), dict) else {}
-        retry = orchestration.get("retry") if isinstance(orchestration.get("retry"), dict) else {}
-        schedule = orchestration.get("schedule") if isinstance(orchestration.get("schedule"), dict) else {}
-        sla = orchestration.get("sla") if isinstance(orchestration.get("sla"), dict) else {}
-        approval = orchestration.get("approval") if isinstance(orchestration.get("approval"), dict) else {}
-        audit = orchestration.get("auditTrail") if isinstance(orchestration.get("auditTrail"), dict) else {}
-        browser = orchestration.get("browserPolicy") if isinstance(orchestration.get("browserPolicy"), dict) else {}
-        automation_gate = orchestration.get("automationGate") if isinstance(orchestration.get("automationGate"), dict) else {}
-        history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
-        allowed_domains = _list_values(browser.get("allowedDomains")) or _list_values(doc.get("allowedDomains"))
-        has_contract = bool(orchestration)
-        attempts = _safe_int(retry.get("runAttempts") or len(history) or 0)
-        if has_contract:
-            with_contract += 1
-        if budget or _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun"))) > 0:
-            budgeted += 1
-        if retry or _safe_int(doc.get("maxSteps")) > 0:
-            retry_configured += 1
-        if sla or schedule.get("dueAt") or doc.get("nextRunAt"):
-            sla_tracked += 1
-        if sla.get("needsAttention") or str(sla.get("state") or "").lower() in {"blocked", "overdue"}:
-            sla_needs_attention += 1
-        if approval or operational.get("reviewBlocked") or operational.get("pendingApprovalCount") or str(doc.get("status") or "") == "REVIEW":
-            approval_gates += 1
-        if audit.get("uniform") or audit.get("eventCount") or audit.get("events"):
-            audit_trails += 1
-        if browser or doc.get("browserEnabled"):
-            browser_policies += 1
-        if allowed_domains:
-            browser_allowlists += 1
-        if automation_gate.get("canRunUnattended"):
-            unattended_ready += 1
-        run_attempts += attempts
-        if len(samples) < 5:
-            samples.append({
-                "workItemId": str(doc.get("workItemId") or ""),
-                "title": str(doc.get("title") or ""),
-                "contract": has_contract,
-                "slaState": str(sla.get("state") or ""),
-                "approvalGate": bool(approval or operational.get("reviewBlocked") or str(doc.get("status") or "") == "REVIEW"),
-                "runAttempts": attempts,
-            })
-    return {
-        "total": len(docs),
-        "withContract": with_contract,
-        "budgeted": budgeted,
-        "retryConfigured": retry_configured,
-        "runAttempts": run_attempts,
-        "slaTracked": sla_tracked,
-        "slaNeedsAttention": sla_needs_attention,
-        "approvalGates": approval_gates,
-        "auditTrails": audit_trails,
-        "browserPolicies": browser_policies,
-        "browserAllowlists": browser_allowlists,
-        "unattendedReady": unattended_ready,
-        "sample": samples,
-    }
-
-
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -588,7 +514,7 @@ class AutomataAssistantTools:
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
-        work_contracts = _work_orchestration_contract_summary(work_docs)
+        work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
         browser_allowlisted = bool(_connector_domains(connector_docs) or _company_allowed_origin_hosts(company_doc))
         runtime_policy_map = summarize_runtime_policy_map(

@@ -39,6 +39,7 @@ from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.work_orchestration import summarize_work_orchestration_contracts
 
 router = APIRouter()
 
@@ -511,6 +512,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         ]
         session_contracts = summarize_session_contracts(sessions)
         artifact_outputs = summarize_artifact_outputs(artifacts)
+        work_contracts = summarize_work_orchestration_contracts(work_items)
         browser_allowlisted = bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins"))
         runtime_policy_map = summarize_runtime_policy_map(
             skills=skills,
@@ -762,6 +764,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "budgetExhausted": len(exhausted_budget_items),
                     "needsAttention": len(review_blocked_items) + len(due_scheduled_items) + len(exhausted_budget_items),
                 },
+                "contracts": work_contracts,
             },
             "governance": {
                 "credentials": counts["credentials"],

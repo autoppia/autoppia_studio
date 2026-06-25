@@ -692,6 +692,11 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
     assert result["contract"]["workOrchestration"]["approvalBoundary"]["linkedApprovalWorkItems"] == 1
     assert result["contract"]["workOrchestration"]["sla"]["needsAttention"] == 3
+    assert result["contract"]["workOrchestration"]["contracts"]["total"] == 2
+    assert result["contract"]["workOrchestration"]["contracts"]["withContract"] == 0
+    assert result["contract"]["workOrchestration"]["contracts"]["budgeted"] == 2
+    assert result["contract"]["workOrchestration"]["contracts"]["retryConfigured"] == 0
+    assert result["contract"]["workOrchestration"]["contracts"]["sample"][0]["workItemId"] == "work-1"
     assert result["contract"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert result["contract"]["capabilityMap"]["taskContracts"]["coverageRatio"] == 1
     assert "insurance_erp" in result["contract"]["capabilityMap"]["taskContracts"]["allowedSystems"]

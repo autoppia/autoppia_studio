@@ -500,6 +500,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["approvalGates"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["auditTrails"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["browserAllowlists"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["sample"][0]["workItemId"] == "work-1"
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["sample"][0]["slaState"] == "blocked"
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
     assert snapshot["operatingState"]["runtime"]["sessions"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["withContract"] == 1
