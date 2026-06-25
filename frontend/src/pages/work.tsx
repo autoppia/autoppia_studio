@@ -9,11 +9,13 @@ import {
   faCircleNodes,
   faClockRotateLeft,
   faClipboardList,
+  faFileLines,
   faHouse,
   faMagnifyingGlass,
   faPlus,
   faRobot,
   faRotateRight,
+  faShieldHalved,
   faSpinner,
   faTrash,
   faTriangleExclamation,
@@ -110,6 +112,10 @@ function firstMatchedTrajectoryId(item: WorkItem) {
 
 function firstMatchedToolId(item: WorkItem) {
   return item.operational?.latestToolIds?.[0] || "";
+}
+
+function latestSessionCount(item: WorkItem) {
+  return item.operational?.latestSessionIds?.length || 0;
 }
 
 export default function Work() {
@@ -262,6 +268,10 @@ export default function Work() {
     const runningItems = items.filter((item) => item.status === "RUNNING");
     const failedItems = items.filter((item) => item.status === "FAILED");
     const totalBudget = items.reduce((sum, item) => sum + Number(item.maxBudgetCredits || item.maxCreditsPerRun || 0), 0);
+    const runtimeSessions = items.reduce((sum, item) => sum + latestSessionCount(item), 0);
+    const pendingApprovals = items.reduce((sum, item) => sum + Number(item.operational?.pendingApprovalCount || 0), 0);
+    const artifacts = items.reduce((sum, item) => sum + Number(item.operational?.persistedArtifactCount || item.operational?.latestArtifactCount || 0), 0);
+    const toolCalls = items.reduce((sum, item) => sum + Number(item.operational?.latestToolCallCount || 0), 0);
 
     return {
       scheduledItems,
@@ -271,6 +281,10 @@ export default function Work() {
       runningItems,
       failedItems,
       totalBudget,
+      runtimeSessions,
+      pendingApprovals,
+      artifacts,
+      toolCalls,
     };
   }, [items]);
 
@@ -504,7 +518,7 @@ export default function Work() {
               </button>
             </div>
           )}
-          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
               {
                 label: "Active jobs",
@@ -539,6 +553,34 @@ export default function Work() {
                 value: `${orchestrationSummary.totalBudget.toFixed(1)} cr`,
                 hint: "Configured max budget across visible jobs.",
                 icon: faScaleBalanced,
+                tone: "text-gray-700 dark:text-gray-200",
+              },
+              {
+                label: "Runtime sessions",
+                value: orchestrationSummary.runtimeSessions,
+                hint: "Linked governed executions across visible jobs.",
+                icon: faRobot,
+                tone: "text-primary",
+              },
+              {
+                label: "Pending approvals",
+                value: orchestrationSummary.pendingApprovals,
+                hint: "Human decisions currently blocking job progress.",
+                icon: faShieldHalved,
+                tone: "text-amber-600 dark:text-amber-400",
+              },
+              {
+                label: "Artifacts",
+                value: orchestrationSummary.artifacts,
+                hint: "Business outputs persisted from job execution.",
+                icon: faFileLines,
+                tone: "text-emerald-600 dark:text-emerald-400",
+              },
+              {
+                label: "Tool calls",
+                value: orchestrationSummary.toolCalls,
+                hint: "Structured runtime steps observed in recent job runs.",
+                icon: faCircleNodes,
                 tone: "text-gray-700 dark:text-gray-200",
               },
             ].map((card) => (
@@ -819,8 +861,18 @@ export default function Work() {
                             <span>{formatDate(item.updatedAt || item.createdAt)}</span>
                           </div>
 
-                          {((item.operational?.pendingApprovalCount || 0) > 0 || (item.operational?.latestArtifactCount || 0) > 0 || matchedSkillSummary(item)) && (
+                          {((item.operational?.pendingApprovalCount || 0) > 0 || (item.operational?.latestArtifactCount || 0) > 0 || matchedSkillSummary(item) || latestSessionCount(item) > 0 || (item.operational?.latestToolCallCount || 0) > 0) && (
                             <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                              {latestSessionCount(item) > 0 && (
+                                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                                  {latestSessionCount(item)} runtime {latestSessionCount(item) === 1 ? "session" : "sessions"}
+                                </span>
+                              )}
+                              {(item.operational?.latestToolCallCount || 0) > 0 && (
+                                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                                  {item.operational?.latestToolCallCount || 0} tool calls
+                                </span>
+                              )}
                               {(item.operational?.pendingApprovalCount || 0) > 0 && (
                                 <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
                                   {item.operational?.pendingApprovalCount} pending approvals
@@ -1152,12 +1204,18 @@ export default function Work() {
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime evidence</p>
                     <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      <p>Runtime sessions: {latestSessionCount(selectedItem)}</p>
                       <p>Tool calls: {selectedItem.operational.latestToolCallCount || 0}</p>
                       <p>Artifacts: {selectedItem.operational.persistedArtifactCount || selectedItem.operational.latestArtifactCount || 0}</p>
                       <p>Approvals: {selectedItem.operational.approvalCount || 0}</p>
                       <p>Pending approvals: {selectedItem.operational.pendingApprovalCount || 0}</p>
                       <p>Credits spent: {(selectedItem.operational.latestCreditsSpent || 0).toFixed(2)}</p>
                     </div>
+                    {(selectedItem.operational.latestSessionIds || []).length > 1 && (
+                      <p className="mt-3 text-[11px] leading-5 text-gray-500 dark:text-gray-400">
+                        Recent sessions: {(selectedItem.operational.latestSessionIds || []).slice(0, 3).join(", ")}
+                      </p>
+                    )}
                   </div>
                   <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Matched capabilities</p>

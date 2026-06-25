@@ -52,10 +52,16 @@ describe("Work page", () => {
                 maxCreditsPerRun: 1,
                 status: "REVIEW",
                 operational: {
+                  pendingApprovalCount: 1,
+                  latestArtifactCount: 2,
+                  persistedArtifactCount: 2,
+                  latestToolCallCount: 3,
+                  latestCreditsSpent: 1.5,
                   latestMatchedSkillIds: ["skill-1"],
+                  latestMatchedSkillNames: ["Resolve claim"],
                   latestMatchedTrajectoryIds: ["trajectory-1"],
                   latestToolIds: ["tool-1"],
-                  latestSessionIds: ["session-1"],
+                  latestSessionIds: ["session-1", "session-1b"],
                 },
               },
               {
@@ -68,6 +74,9 @@ describe("Work page", () => {
                 maxCreditsPerRun: 1,
                 status: "TODO",
                 operational: {
+                  latestArtifactCount: 1,
+                  persistedArtifactCount: 1,
+                  latestToolCallCount: 2,
                   latestMatchedSkillIds: ["skill-2"],
                   latestMatchedTrajectoryIds: ["trajectory-2"],
                   latestToolIds: ["tool-2"],
@@ -119,5 +128,18 @@ describe("Work page", () => {
     expect(await screen.findByRole("button", { name: "Open benchmark" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open recent runs" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
+  });
+
+  it("surfaces runtime evidence in orchestration summaries and job cards", async () => {
+    render(<Work />);
+
+    expect(await screen.findByText("Runtime sessions")).toBeInTheDocument();
+    expect(await screen.findByText("Pending approvals")).toBeInTheDocument();
+    expect(await screen.findByText("Artifacts")).toBeInTheDocument();
+    expect(await screen.findByText("Tool calls")).toBeInTheDocument();
+    expect(await screen.findByText("2 runtime sessions")).toBeInTheDocument();
+    expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
+    expect(await screen.findByText("1 pending approvals")).toBeInTheDocument();
+    expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
   });
 });
