@@ -508,6 +508,36 @@ export interface WorkItem {
     latestSessionIds?: string[];
     latestCreditsSpent?: number;
     reviewBlocked?: boolean;
+    orchestration?: {
+      queueState?: string;
+      triggerType?: string;
+      schedule?: {
+        frequency?: string;
+        time?: string;
+        dayOfWeek?: number;
+        nextRunAt?: string;
+      };
+      budget?: {
+        maxCreditsPerRun?: number;
+        maxBudgetCredits?: number;
+        latestCreditsSpent?: number;
+        remainingCredits?: number;
+        exhausted?: boolean;
+      };
+      retry?: {
+        runAttempts?: number;
+        retryCount?: number;
+        maxSteps?: number;
+      };
+      approval?: {
+        pendingApprovalCount?: number;
+        reviewBlocked?: boolean;
+      };
+      sla?: {
+        state?: string;
+        needsHumanReview?: boolean;
+      };
+    };
   };
   lastRunId?: string;
   createdAt?: string;

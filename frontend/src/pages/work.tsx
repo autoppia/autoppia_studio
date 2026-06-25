@@ -118,6 +118,13 @@ function latestSessionCount(item: WorkItem) {
   return item.operational?.latestSessionIds?.length || 0;
 }
 
+function orchestrationTone(state?: string) {
+  const normalized = String(state || "").toLowerCase();
+  if (normalized === "blocked") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  if (normalized === "scheduled") return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300";
+  return "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300";
+}
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
@@ -888,6 +895,16 @@ export default function Work() {
                                   {(item.operational?.latestCreditsSpent || 0).toFixed(2)} cr spent
                                 </span>
                               )}
+                              {item.operational?.orchestration?.sla?.state && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(item.operational.orchestration.sla.state)}`}>
+                                  sla {item.operational.orchestration.sla.state}
+                                </span>
+                              )}
+                              {item.operational?.orchestration?.budget?.remainingCredits !== undefined && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${item.operational.orchestration.budget.exhausted ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                                  {Number(item.operational.orchestration.budget.remainingCredits || 0).toFixed(2)} cr left
+                                </span>
+                              )}
                               {matchedSkillSummary(item) && (
                                 <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary">
                                   matched {matchedSkillSummary(item)}
@@ -1256,6 +1273,34 @@ export default function Work() {
                         )}
                       </div>
                     )}
+                  </div>
+                </div>
+              )}
+
+              {selectedItem.operational?.orchestration && (
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Orchestration contract</p>
+                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(selectedItem.operational.orchestration.sla?.state)}`}>
+                      {selectedItem.operational.orchestration.sla?.state || "manual"}
+                    </span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 text-xs text-gray-600 dark:text-gray-300 sm:grid-cols-3">
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Queue</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.queueState}</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.triggerType}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Budget</p>
+                      <p className="mt-1">{Number(selectedItem.operational.orchestration.budget?.latestCreditsSpent || 0).toFixed(2)} / {Number(selectedItem.operational.orchestration.budget?.maxBudgetCredits || 0).toFixed(2)} cr</p>
+                      <p className="mt-1">{Number(selectedItem.operational.orchestration.budget?.remainingCredits || 0).toFixed(2)} cr remaining</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Retries</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.retry?.runAttempts || 0} attempts</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.retry?.maxSteps || selectedItem.maxSteps} max steps</p>
+                    </div>
                   </div>
                 </div>
               )}

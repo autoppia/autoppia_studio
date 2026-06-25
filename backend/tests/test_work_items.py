@@ -637,3 +637,11 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["latestCreditsSpent"] == 0.42
     assert operational["persistedArtifactCount"] == 1
     assert operational["reviewBlocked"] is True
+    assert operational["orchestration"]["queueState"] == "REVIEW"
+    assert operational["orchestration"]["budget"]["maxBudgetCredits"] == 1.0
+    assert operational["orchestration"]["budget"]["latestCreditsSpent"] == 0.42
+    assert operational["orchestration"]["budget"]["remainingCredits"] == 0.58
+    assert operational["orchestration"]["retry"]["runAttempts"] == 1
+    assert operational["orchestration"]["retry"]["maxSteps"] == 4
+    assert operational["orchestration"]["approval"]["reviewBlocked"] is True
+    assert operational["orchestration"]["sla"]["state"] == "blocked"

@@ -226,6 +226,50 @@ def _step_tool_call_count(entry: dict[str, Any]) -> int:
     return count
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int, latest_credits_spent: float, review_blocked: bool) -> dict[str, Any]:
+    max_budget = _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun", 0.0)))
+    max_per_run = _safe_float(doc.get("maxCreditsPerRun"))
+    retry_count = max(0, len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []) - 1)
+    budget_remaining = max(0.0, max_budget - latest_credits_spent) if max_budget > 0 else 0.0
+    return {
+        "queueState": str(doc.get("status") or "TODO"),
+        "triggerType": str(doc.get("triggerType") or "manual"),
+        "schedule": {
+            "frequency": str(doc.get("scheduleFrequency") or "none"),
+            "time": str(doc.get("scheduleTime") or "09:00"),
+            "dayOfWeek": int(doc.get("scheduleDayOfWeek", 1) or 0),
+            "nextRunAt": str(doc.get("nextRunAt") or ""),
+        },
+        "budget": {
+            "maxCreditsPerRun": max_per_run,
+            "maxBudgetCredits": max_budget,
+            "latestCreditsSpent": latest_credits_spent,
+            "remainingCredits": round(budget_remaining, 4),
+            "exhausted": bool(max_budget > 0 and latest_credits_spent >= max_budget),
+        },
+        "retry": {
+            "runAttempts": len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []),
+            "retryCount": retry_count,
+            "maxSteps": int(doc.get("maxSteps", 8) or 8),
+        },
+        "approval": {
+            "pendingApprovalCount": pending_approval_count,
+            "reviewBlocked": review_blocked,
+        },
+        "sla": {
+            "state": "blocked" if review_blocked else "scheduled" if doc.get("nextRunAt") else "manual",
+            "needsHumanReview": review_blocked,
+        },
+    }
+
+
 def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str, Any]]) -> dict[str, Any]:
     results = _report_results(doc)
     approval_count = len(approval_docs)
@@ -289,6 +333,7 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
         or str(pending.get("approvalId") or "")
         or str(doc.get("status") or "") == "REVIEW"
     )
+    latest_credits_spent = _safe_float((doc.get("report") if isinstance(doc.get("report"), dict) else {}).get("creditsSpent"))
 
     return {
         "approvalCount": approval_count,
@@ -301,9 +346,15 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
         "latestToolNames": tool_names,
         "latestToolIds": [],
         "latestSessionIds": session_ids,
-        "latestCreditsSpent": float((doc.get("report") if isinstance(doc.get("report"), dict) else {}).get("creditsSpent") or 0.0),
+        "latestCreditsSpent": latest_credits_spent,
         "persistedArtifactCount": 0,
         "reviewBlocked": review_blocked,
+        "orchestration": _orchestration_contract(
+            doc,
+            pending_approval_count=pending_approval_count,
+            latest_credits_spent=latest_credits_spent,
+            review_blocked=review_blocked,
+        ),
     }
 
 
