@@ -120,9 +120,21 @@ function latestSessionCount(item: WorkItem) {
 
 function orchestrationTone(state?: string) {
   const normalized = String(state || "").toLowerCase();
+  if (normalized === "overdue") return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
+  if (normalized === "due") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
   if (normalized === "blocked") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
-  if (normalized === "scheduled") return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300";
+  if (["scheduled", "upcoming"].includes(normalized)) return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300";
   return "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300";
+}
+
+function slaDeadlineLabel(item: WorkItem) {
+  const sla = item.operational?.orchestration?.sla;
+  const state = sla?.deadlineState || sla?.state || "";
+  if (!state || state === "manual") return "";
+  if (state === "overdue") return `${Math.round(Number(sla?.overdueMinutes || 0))} min overdue`;
+  if (state === "due") return "due now";
+  if (state === "upcoming") return `due ${formatDate(sla?.dueAt || item.nextRunAt)}`;
+  return state.replace("_", " ");
 }
 
 export default function Work() {
@@ -274,6 +286,7 @@ export default function Work() {
     const reviewItems = items.filter((item) => item.status === "REVIEW");
     const runningItems = items.filter((item) => item.status === "RUNNING");
     const failedItems = items.filter((item) => item.status === "FAILED");
+    const overdueItems = items.filter((item) => item.operational?.orchestration?.sla?.deadlineState === "overdue");
     const totalBudget = items.reduce((sum, item) => sum + Number(item.maxBudgetCredits || item.maxCreditsPerRun || 0), 0);
     const runtimeSessions = items.reduce((sum, item) => sum + latestSessionCount(item), 0);
     const pendingApprovals = items.reduce((sum, item) => sum + Number(item.operational?.pendingApprovalCount || 0), 0);
@@ -287,6 +300,7 @@ export default function Work() {
       reviewItems,
       runningItems,
       failedItems,
+      overdueItems,
       totalBudget,
       runtimeSessions,
       pendingApprovals,
@@ -553,6 +567,13 @@ export default function Work() {
                 value: orchestrationSummary.dueScheduledItems.length,
                 hint: "Scheduled jobs whose next run window has arrived.",
                 icon: faClockRotateLeft,
+                tone: "text-red-500 dark:text-red-400",
+              },
+              {
+                label: "Overdue SLA",
+                value: orchestrationSummary.overdueItems.length,
+                hint: "Scheduled jobs past their orchestration deadline.",
+                icon: faTriangleExclamation,
                 tone: "text-red-500 dark:text-red-400",
               },
               {
@@ -898,6 +919,11 @@ export default function Work() {
                               {item.operational?.orchestration?.sla?.state && (
                                 <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(item.operational.orchestration.sla.state)}`}>
                                   sla {item.operational.orchestration.sla.state}
+                                </span>
+                              )}
+                              {slaDeadlineLabel(item) && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${orchestrationTone(item.operational?.orchestration?.sla?.deadlineState)}`}>
+                                  {slaDeadlineLabel(item)}
                                 </span>
                               )}
                               {item.operational?.orchestration?.automationGate?.state && (
@@ -1295,6 +1321,11 @@ export default function Work() {
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Queue</p>
                       <p className="mt-1">{selectedItem.operational.orchestration.queueState}</p>
                       <p className="mt-1">{selectedItem.operational.orchestration.triggerType}</p>
+                    </div>
+                    <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">SLA</p>
+                      <p className="mt-1">{selectedItem.operational.orchestration.sla?.deadlineState || selectedItem.operational.orchestration.sla?.state || "manual"}</p>
+                      <p className="mt-1">{slaDeadlineLabel(selectedItem) || "no deadline"}</p>
                     </div>
                     <div className="rounded-lg border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Budget</p>

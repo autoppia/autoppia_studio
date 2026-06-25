@@ -242,6 +242,20 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
     queue_state = str(doc.get("status") or "TODO")
     trigger_type = str(doc.get("triggerType") or "manual")
     next_run_at = str(doc.get("nextRunAt") or "")
+    deadline_at = _parse_iso(next_run_at) if next_run_at else None
+    now = datetime.now(timezone.utc)
+    minutes_until_due = round((deadline_at - now).total_seconds() / 60, 1) if deadline_at else None
+    overdue_minutes = round((now - deadline_at).total_seconds() / 60, 1) if deadline_at and deadline_at < now else 0.0
+    if trigger_type != "scheduled":
+        deadline_state = "manual"
+    elif not deadline_at:
+        deadline_state = "missing_schedule"
+    elif overdue_minutes >= 15:
+        deadline_state = "overdue"
+    elif overdue_minutes > 0:
+        deadline_state = "due"
+    else:
+        deadline_state = "upcoming"
     run_attempts = len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else [])
     max_steps = int(doc.get("maxSteps", 8) or 8)
     blockers: list[str] = []
@@ -260,9 +274,14 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
         next_actions.append("Set the next scheduled run time or switch this item to manual.")
     if not blockers and trigger_type == "manual":
         next_actions.append("Manual work is ready; schedule it if it should run unattended.")
-    if not blockers and trigger_type == "scheduled":
+    if not blockers and deadline_state == "overdue":
+        next_actions.append("Scheduled work is overdue; confirm the worker is healthy or run it manually.")
+    elif not blockers and deadline_state == "due":
+        next_actions.append("Scheduled work is due now and can be claimed by the worker loop.")
+    elif not blockers and trigger_type == "scheduled":
         next_actions.append("Scheduled work can run under the current budget, retry and approval policy.")
     gate_state = "blocked" if blockers else "scheduled" if trigger_type == "scheduled" else "manual_ready"
+    sla_state = "blocked" if review_blocked else deadline_state if trigger_type == "scheduled" else "manual"
     return {
         "queueState": queue_state,
         "triggerType": trigger_type,
@@ -271,6 +290,7 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
             "time": str(doc.get("scheduleTime") or "09:00"),
             "dayOfWeek": int(doc.get("scheduleDayOfWeek", 1) or 0),
             "nextRunAt": next_run_at,
+            "deadlineState": deadline_state,
         },
         "budget": {
             "maxCreditsPerRun": max_per_run,
@@ -289,7 +309,12 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
             "reviewBlocked": review_blocked,
         },
         "sla": {
-            "state": "blocked" if review_blocked else "scheduled" if next_run_at else "manual",
+            "state": sla_state,
+            "deadlineState": deadline_state,
+            "dueAt": next_run_at,
+            "minutesUntilDue": minutes_until_due,
+            "overdueMinutes": overdue_minutes,
+            "needsAttention": bool(review_blocked or budget_exhausted or deadline_state == "overdue"),
             "needsHumanReview": review_blocked,
         },
         "automationGate": {

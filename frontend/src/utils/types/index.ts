@@ -804,6 +804,7 @@ export interface WorkItem {
         time?: string;
         dayOfWeek?: number;
         nextRunAt?: string;
+        deadlineState?: string;
       };
       budget?: {
         maxCreditsPerRun?: number;
@@ -823,6 +824,11 @@ export interface WorkItem {
       };
       sla?: {
         state?: string;
+        deadlineState?: string;
+        dueAt?: string;
+        minutesUntilDue?: number | null;
+        overdueMinutes?: number;
+        needsAttention?: boolean;
         needsHumanReview?: boolean;
       };
       automationGate?: {

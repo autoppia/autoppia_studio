@@ -645,7 +645,63 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["orchestration"]["retry"]["maxSteps"] == 4
     assert operational["orchestration"]["approval"]["reviewBlocked"] is True
     assert operational["orchestration"]["sla"]["state"] == "blocked"
+    assert operational["orchestration"]["sla"]["deadlineState"] == "manual"
+    assert operational["orchestration"]["sla"]["needsAttention"] is True
     assert operational["orchestration"]["automationGate"]["state"] == "blocked"
     assert operational["orchestration"]["automationGate"]["canRunUnattended"] is False
     assert operational["orchestration"]["automationGate"]["blockers"] == ["pending_approval"]
     assert operational["orchestration"]["automationGate"]["policy"]["maxSteps"] == 4
+
+
+@pytest.mark.asyncio
+async def test_list_work_items_marks_overdue_scheduled_sla(monkeypatch):
+    collection = _WorkItems()
+    monkeypatch.setattr(work_items, "work_items_collection", collection)
+    monkeypatch.setattr(work_items, "work_boards_collection", _Boards())
+    monkeypatch.setattr(work_items, "approvals_collection", _Approvals())
+    monkeypatch.setattr(work_items, "sessions_collection", _Sessions())
+    monkeypatch.setattr(work_items, "artifacts_collection", _Artifacts())
+    monkeypatch.setattr(work_items, "tools_collection", _Tools())
+
+    collection.docs["work-overdue"] = {
+        "workItemId": "work-overdue",
+        "email": "user@example.com",
+        "companyId": "company-1",
+        "boardId": "board-1",
+        "title": "Overdue scheduled work",
+        "prompt": "Run the scheduled job",
+        "runTarget": "all",
+        "browserEnabled": False,
+        "browserMode": "headless",
+        "maxCreditsPerRun": 1.0,
+        "maxBudgetCredits": 5.0,
+        "maxSteps": 4,
+        "triggerType": "scheduled",
+        "scheduleFrequency": "daily",
+        "scheduleTime": "09:00",
+        "scheduleDayOfWeek": 1,
+        "nextRunAt": "2000-01-01T00:00:00+00:00",
+        "judgeImplementation": "llm",
+        "status": "TODO",
+        "report": {"creditsSpent": 0.25, "results": []},
+        "runHistory": [],
+        "createdAt": "2026-01-01T00:00:00+00:00",
+        "updatedAt": "2026-01-01T00:00:00+00:00",
+    }
+
+    listed = await work_items.list_work_items(
+        "user@example.com",
+        "company-1",
+        "board-1",
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+
+    orchestration = listed["workItems"][0]["operational"]["orchestration"]
+    assert orchestration["schedule"]["deadlineState"] == "overdue"
+    assert orchestration["sla"]["state"] == "overdue"
+    assert orchestration["sla"]["dueAt"] == "2000-01-01T00:00:00+00:00"
+    assert orchestration["sla"]["overdueMinutes"] > 0
+    assert orchestration["sla"]["needsAttention"] is True
+    assert orchestration["automationGate"]["state"] == "scheduled"
+    assert orchestration["automationGate"]["canRunUnattended"] is True
+    assert orchestration["automationGate"]["nextActions"] == ["Scheduled work is overdue; confirm the worker is healthy or run it manually."]

@@ -63,7 +63,8 @@ describe("Work page", () => {
                   latestToolIds: ["tool-1"],
                   latestSessionIds: ["session-1", "session-1b"],
                   orchestration: {
-                    sla: { state: "blocked" },
+                    sla: { state: "blocked", deadlineState: "overdue", dueAt: "2026-01-01T00:00:00+00:00", overdueMinutes: 42, needsAttention: true },
+                    schedule: { deadlineState: "overdue" },
                     budget: { remainingCredits: 0, exhausted: true },
                     automationGate: {
                       state: "blocked",
@@ -147,10 +148,12 @@ describe("Work page", () => {
     expect(await screen.findByText("Pending approvals")).toBeInTheDocument();
     expect(await screen.findByText("Artifacts")).toBeInTheDocument();
     expect(await screen.findByText("Tool calls")).toBeInTheDocument();
+    expect(await screen.findByText("Overdue SLA")).toBeInTheDocument();
     expect(await screen.findByText("2 runtime sessions")).toBeInTheDocument();
     expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
     expect(await screen.findByText("1 pending approvals")).toBeInTheDocument();
     expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
+    expect(await screen.findByText("42 min overdue")).toBeInTheDocument();
     expect(await screen.findByText("gate blocked")).toBeInTheDocument();
   });
 });
