@@ -152,6 +152,13 @@ function riskTone(risk: string) {
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
+function synthesisTone(status?: string) {
+  if ((status || "").toLowerCase() === "ready") {
+    return "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30";
+  }
+  return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+}
+
 function graphSignalTone(tone: "critical" | "warning" | "neutral") {
   if (tone === "critical") return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
   if (tone === "warning") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
@@ -1564,6 +1571,24 @@ function CapabilityDetailModal({
               <section>
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-2">Input schema</p>
                 <JsonBlock value={detail.item.inputSchema} />
+              </section>
+              <section>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tool synthesis contract</p>
+                  <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${synthesisTone(detail.item.toolSynthesis?.readiness?.status)}`}>
+                    {(detail.item.toolSynthesis?.readiness?.status || "needs_hardening").replace(/_/g, " ")}
+                  </span>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                  <div className="grid grid-cols-2 gap-2">
+                    <p><span className="text-gray-400">Atomic:</span> {detail.item.toolSynthesis?.atomic ? "yes" : "unknown"}</p>
+                    <p><span className="text-gray-400">Typed input:</span> {detail.item.toolSynthesis?.typedInput ? "yes" : "no"}</p>
+                    <p><span className="text-gray-400">Typed output:</span> {detail.item.toolSynthesis?.typedOutput ? "yes" : "no"}</p>
+                    <p><span className="text-gray-400">Approval:</span> {detail.item.toolSynthesis?.permissions?.approval || approvalMode(detail.item)}</p>
+                    <p className="col-span-2"><span className="text-gray-400">Scopes:</span> {detail.item.toolSynthesis?.permissions?.scopes?.join(", ") || "not declared"}</p>
+                    <p className="col-span-2"><span className="text-gray-400">Gaps:</span> {detail.item.toolSynthesis?.readiness?.gaps?.join(", ") || "none"}</p>
+                  </div>
+                </div>
               </section>
             </div>
           )}
@@ -4308,6 +4333,9 @@ export default function Capabilities(): React.ReactElement {
                                                 </span>
                                                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone(approvalMode(tool))}`}>
                                                   {approvalLabel(approvalMode(tool))}
+                                                </span>
+                                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${synthesisTone(tool.toolSynthesis?.readiness?.status)}`}>
+                                                  {(tool.toolSynthesis?.readiness?.status || "needs_hardening").replace(/_/g, " ")}
                                                 </span>
                                                 {tool.surface && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">{tool.surface}</span>}
                                                 {tool.discoveryScope && <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">{tool.discoveryScope}</span>}

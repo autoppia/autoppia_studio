@@ -162,6 +162,54 @@ async def test_update_tool_and_skill_approval_modes(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_tool_synthesis_contract_exposes_governed_action_readiness(monkeypatch):
+    monkeypatch.setattr(capabilities, "companies_collection", _Collection([{"companyId": "co-1"}]))
+    monkeypatch.setattr(
+        capabilities,
+        "connectors_collection",
+        _Collection(
+            [
+                {
+                    "connectorId": "conn-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "name": "ERP",
+                    "type": "api",
+                    "config": {},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "tools_collection", _Collection())
+
+    result = await capabilities.create_company_tool(
+        "co-1",
+        capabilities.ToolCreateRequest(
+            email="user@example.com",
+            connectorId="conn-1",
+            name="erp.update_claim",
+            inputSchema={"type": "object", "properties": {"claimId": {"type": "string"}}},
+            outputSchema={"type": "object", "properties": {"status": {"type": "string"}}},
+            sideEffects="writes",
+            permissions={"approval": "always", "scopes": ["claims:write"]},
+            riskLevel="high",
+            inputEntities=["Claim"],
+            outputEntity="Claim",
+        ),
+    )
+
+    synthesis = result["tool"]["toolSynthesis"]
+    assert synthesis["atomic"] is True
+    assert synthesis["typedInput"] is True
+    assert synthesis["typedOutput"] is True
+    assert synthesis["riskClassification"]["requiresApproval"] is True
+    assert synthesis["permissions"]["scopes"] == ["claims:write"]
+    assert synthesis["entityBindings"]["declared"] is True
+    assert synthesis["readiness"]["status"] == "ready"
+    assert synthesis["readiness"]["gaps"] == []
+
+
+@pytest.mark.asyncio
 async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     monkeypatch.setattr(
         capabilities,

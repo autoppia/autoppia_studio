@@ -1220,6 +1220,35 @@ export interface CompanyTool {
   discoveryScope?: string;
   discoveryRelevance?: Record<string, any>;
   discoveryEvidence?: any[];
+  toolSynthesis?: {
+    toolId?: string;
+    action?: string;
+    atomic?: boolean;
+    typedInput?: boolean;
+    typedOutput?: boolean;
+    sideEffects?: string;
+    riskLevel?: string;
+    riskClassification?: {
+      level?: string;
+      requiresApproval?: boolean;
+      approvalMode?: string;
+    };
+    permissions?: {
+      scopes?: string[];
+      readTools?: string[];
+      writeTools?: string[];
+      approval?: string;
+    };
+    entityBindings?: {
+      inputEntities?: string[];
+      outputEntity?: string;
+      declared?: boolean;
+    };
+    readiness?: {
+      status?: string;
+      gaps?: string[];
+    };
+  };
   lastTestAt?: string;
   lastTestStatus?: string;
   lastTestResult?: any;

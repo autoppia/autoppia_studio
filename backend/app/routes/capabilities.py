@@ -135,6 +135,7 @@ async def _connector(connector_id: str) -> dict[str, Any]:
 
 
 def _serialize_tool(doc: dict[str, Any]) -> dict[str, Any]:
+    tool_synthesis = _tool_synthesis_contract(doc)
     return {
         "capabilityId": doc.get("toolId", ""),
         "capabilityKind": "tool",
@@ -163,11 +164,84 @@ def _serialize_tool(doc: dict[str, Any]) -> dict[str, Any]:
         "discoveryScope": doc.get("discoveryScope", ""),
         "discoveryRelevance": doc.get("discoveryRelevance", {}),
         "discoveryEvidence": doc.get("discoveryEvidence", []),
+        "toolSynthesis": tool_synthesis,
         "lastTestAt": doc.get("lastTestAt"),
         "lastTestStatus": doc.get("lastTestStatus"),
         "lastTestResult": doc.get("lastTestResult"),
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
+    }
+
+
+def _schema_has_properties(schema: Any) -> bool:
+    if not isinstance(schema, dict):
+        return False
+    properties = schema.get("properties")
+    return schema.get("type") == "object" and isinstance(properties, dict) and bool(properties)
+
+
+def _permission_list(permissions: dict[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    for key in keys:
+        raw = permissions.get(key)
+        if isinstance(raw, str) and raw.strip():
+            values.append(raw.strip())
+        elif isinstance(raw, list):
+            values.extend(str(item).strip() for item in raw if str(item).strip())
+    return _dedupe_strings(values)
+
+
+def _tool_synthesis_contract(doc: dict[str, Any]) -> dict[str, Any]:
+    input_schema = doc.get("inputSchema") if isinstance(doc.get("inputSchema"), dict) else {}
+    output_schema = doc.get("outputSchema") if isinstance(doc.get("outputSchema"), dict) else {}
+    permissions = doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {}
+    side_effects = str(doc.get("sideEffects") or "").strip() or "reads"
+    risk_level = str(doc.get("riskLevel") or "").strip() or "low"
+    input_entities = [str(item).strip() for item in doc.get("inputEntities", []) if str(item).strip()] if isinstance(doc.get("inputEntities"), list) else []
+    output_entity = str(doc.get("outputEntity") or "").strip()
+    scopes = _permission_list(permissions, "scopes", "oauthScopes", "requiredScopes")
+    approval = str(permissions.get("approval") or "").strip()
+    gaps = []
+    if not _schema_has_properties(input_schema):
+        gaps.append("typed input schema")
+    if not output_schema:
+        gaps.append("output schema")
+    if not side_effects:
+        gaps.append("side effects")
+    if not risk_level:
+        gaps.append("risk classification")
+    if side_effects.lower() in {"writes", "deletes", "sends"} and not approval:
+        gaps.append("approval policy")
+    if not scopes and not _permission_list(permissions, "readTools", "writeTools"):
+        gaps.append("scopes or permissions")
+    return {
+        "toolId": doc.get("toolId", ""),
+        "action": doc.get("name", ""),
+        "atomic": True,
+        "typedInput": _schema_has_properties(input_schema),
+        "typedOutput": bool(output_schema),
+        "sideEffects": side_effects,
+        "riskLevel": risk_level,
+        "riskClassification": {
+            "level": risk_level,
+            "requiresApproval": bool(approval == "always" or side_effects.lower() in {"writes", "deletes", "sends"} or risk_level.lower() in {"high", "critical"}),
+            "approvalMode": approval or "auto",
+        },
+        "permissions": {
+            "scopes": scopes,
+            "readTools": _permission_list(permissions, "readTools"),
+            "writeTools": _permission_list(permissions, "writeTools"),
+            "approval": approval or "auto",
+        },
+        "entityBindings": {
+            "inputEntities": input_entities,
+            "outputEntity": output_entity,
+            "declared": bool(input_entities or output_entity),
+        },
+        "readiness": {
+            "status": "ready" if not gaps else "needs_hardening",
+            "gaps": gaps,
+        },
     }
 
 
