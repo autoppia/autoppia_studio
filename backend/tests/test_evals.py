@@ -321,6 +321,124 @@ async def test_list_benchmarks_includes_coverage_summary(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_list_benchmarks_exposes_vertical_demo_readiness(monkeypatch):
+    vertical_demo = {
+        "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+        "runtimePath": "hybrid_api_first",
+        "coverage": [
+            {"key": "email_read", "label": "Email read", "evidence": "imap.search_emails"},
+            {"key": "erp_lookup", "label": "ERP lookup", "evidence": "erp.search_claims"},
+            {"key": "document_grounding", "label": "Document grounding", "evidence": "knowledge.search"},
+            {"key": "draft_artifact", "label": "Draft artifact", "evidence": "draft_email artifact"},
+            {"key": "approval_boundary", "label": "Approval boundary", "evidence": "send_requires_human_approval"},
+            {"key": "benchmark", "label": "Benchmark", "evidence": "connector-insurance_claims tasks"},
+            {"key": "trajectory", "label": "Trajectory", "evidence": "runtime trace/tool calls"},
+            {"key": "skill_promotion", "label": "Skill promotion", "evidence": "hardened skill package"},
+            {"key": "runtime_replay", "label": "Runtime replay", "evidence": "router matched approved trajectory"},
+        ],
+    }
+    monkeypatch.setattr(
+        evals_route,
+        "benchmarks_collection",
+        _SimpleCollection(
+            [
+                {
+                    "benchmarkId": "bench-insurance",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "name": "Insurance Claims",
+                    "metadata": {"vertical": "insurance", "verticalDemo": vertical_demo},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "benchmark_tasks_collection",
+        _SimpleCollection(
+            [
+                {
+                    "taskId": "task-draft",
+                    "benchmarkId": "bench-insurance",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "prompt": "Draft claim status response",
+                    "successCriteria": "Draft exists and is not sent.",
+                    "metadata": {
+                        "expectedTools": ["imap.search_emails", "erp.search_claims", "knowledge.search", "smtp.draft_email"],
+                        "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                        "expectedArtifacts": ["draft_email", "claim_summary"],
+                        "riskClass": "draft",
+                        "businessIntent": "Respond to claim status",
+                        "initialState": {"approvalBoundary": "send_requires_human_approval"},
+                    },
+                },
+                {
+                    "taskId": "task-send",
+                    "benchmarkId": "bench-insurance",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "prompt": "Send only after approval",
+                    "successCriteria": "Human approval requested before send.",
+                    "metadata": {
+                        "expectedTools": ["api.human_approval"],
+                        "allowedSystems": ["email", "approvals"],
+                        "expectedArtifacts": ["approval_request"],
+                        "riskClass": "send",
+                        "businessIntent": "Protect claim response send",
+                        "initialState": {"approvalBoundary": "send"},
+                    },
+                },
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "capabilities_collection",
+        _SimpleCollection(
+            [
+                {
+                    "capabilityId": "skill-claim",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "company-1",
+                    "benchmarkId": "bench-insurance",
+                    "status": "published",
+                    "trajectoryIds": ["traj-claim"],
+                    "skillPackage": {"format": "autoppia.agent_skill"},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        evals_route,
+        "eval_runs_collection",
+        _SimpleCollection([{"runId": "run-claim", "evalId": "task-draft", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"}]),
+    )
+
+    result = await evals_route.list_benchmarks(email="user@example.com", companyId="company-1")
+    readiness = result["benchmarks"][0]["verticalDemoReadiness"]
+
+    assert readiness["state"] == "ready"
+    assert readiness["readyCount"] == 9
+    assert readiness["total"] == 9
+    assert readiness["runtimePath"] == "hybrid_api_first"
+    assert readiness["evidence"]["trajectoryIds"] == ["traj-claim"]
+    assert readiness["evidence"]["passingRuns"] == 1
+    assert {item["key"] for item in readiness["coverage"] if item["ready"]} == {
+        "email_read",
+        "erp_lookup",
+        "document_grounding",
+        "draft_artifact",
+        "approval_boundary",
+        "benchmark",
+        "trajectory",
+        "skill_promotion",
+        "runtime_replay",
+    }
+
+
+@pytest.mark.asyncio
 async def test_connector_benchmark_catalog_endpoint():
     result = await evals_route.list_connector_benchmark_catalog()
 

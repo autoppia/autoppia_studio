@@ -43,6 +43,7 @@ interface Benchmark {
   agentName?: string;
   tasks: EvalItem[];
   coverage?: BenchmarkCoverage;
+  verticalDemoReadiness?: VerticalDemoReadiness | null;
   persisted?: boolean;
 }
 
@@ -115,6 +116,32 @@ interface PromotionGate {
   blockers?: string[];
   nextActions?: string[];
   canPromote?: boolean;
+}
+
+interface VerticalDemoReadiness {
+  objective?: string;
+  runtimePath?: string;
+  vertical?: string;
+  readyCount?: number;
+  total?: number;
+  state?: "ready" | "partial" | "missing" | string;
+  coverage?: Array<{
+    key?: string;
+    label?: string;
+    expectedEvidence?: string;
+    ready?: boolean;
+    status?: string;
+  }>;
+  evidence?: {
+    expectedTools?: string[];
+    allowedSystems?: string[];
+    expectedArtifacts?: string[];
+    approvalBoundaries?: string[];
+    skillIds?: string[];
+    trajectoryIds?: string[];
+    passingRuns?: number;
+  };
+  nextActions?: string[];
 }
 
 interface CoverageMatrixRow {
@@ -305,6 +332,12 @@ function coverageStateLabel(state?: string) {
   if (state === "missing_regression") return "missing regression";
   if (state === "needs_hardening") return "needs hardening";
   return state || "unknown";
+}
+
+function verticalReadinessClass(state?: string) {
+  if (state === "ready") return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300";
+  if (state === "partial") return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+  return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
 }
 
 export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
@@ -1503,6 +1536,50 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                             </p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {benchmark.verticalDemoReadiness && (
+                      <div className={`mb-4 rounded-xl border px-4 py-3 ${verticalReadinessClass(benchmark.verticalDemoReadiness.state)}`}>
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-[10px] font-semibold uppercase tracking-wide opacity-80">Vertical demo readiness</p>
+                            <p className="mt-1 text-sm font-semibold">{benchmark.verticalDemoReadiness.objective || "Vertical demo"}</p>
+                            <p className="mt-1 text-[11px] opacity-80">
+                              {(benchmark.verticalDemoReadiness.runtimePath || "runtime").replace(/_/g, " ")} · {benchmark.verticalDemoReadiness.readyCount || 0}/{benchmark.verticalDemoReadiness.total || 0} evidence points
+                            </p>
+                          </div>
+                          <span className="rounded-md border border-current/20 px-2 py-1 text-[10px] font-semibold">
+                            {benchmark.verticalDemoReadiness.state || "missing"}
+                          </span>
+                        </div>
+                        <div className="mt-3 grid gap-2 md:grid-cols-3">
+                          {(benchmark.verticalDemoReadiness.coverage || []).map((item) => (
+                            <div key={item.key || item.label} className="rounded-lg border border-current/15 bg-white/60 px-2.5 py-2 dark:bg-dark-surface/50">
+                              <div className="flex items-center justify-between gap-2">
+                                <p className="truncate text-xs font-semibold">{item.label || item.key}</p>
+                                <span className={`rounded-md px-1.5 py-0.5 text-[10px] font-semibold ${item.ready ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-red-500/10 text-red-700 dark:text-red-300"}`}>
+                                  {item.ready ? "ready" : "missing"}
+                                </span>
+                              </div>
+                              <p className="mt-1 truncate text-[10px] opacity-70">{item.expectedEvidence || "evidence required"}</p>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                          {(benchmark.verticalDemoReadiness.evidence?.expectedTools || []).slice(0, 5).map((tool) => (
+                            <span key={`tool-${tool}`} className="rounded-md border border-current/20 px-2 py-1">tool {tool}</span>
+                          ))}
+                          {(benchmark.verticalDemoReadiness.evidence?.expectedArtifacts || []).slice(0, 4).map((artifact) => (
+                            <span key={`artifact-${artifact}`} className="rounded-md border border-current/20 px-2 py-1">artifact {artifact}</span>
+                          ))}
+                          {(benchmark.verticalDemoReadiness.evidence?.skillIds || []).slice(0, 3).map((skillId) => (
+                            <span key={`skill-${skillId}`} className="rounded-md border border-current/20 px-2 py-1">skill {skillId}</span>
+                          ))}
+                        </div>
+                        <p className="mt-2 text-[11px] opacity-80">
+                          {(benchmark.verticalDemoReadiness.nextActions || [])[0] || "Vertical demo evidence is tracked from benchmark, skill and runtime replay state."}
+                        </p>
                       </div>
                     )}
 
