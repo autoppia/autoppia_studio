@@ -165,6 +165,13 @@ async def test_update_tool_and_skill_approval_modes(monkeypatch):
 async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     monkeypatch.setattr(
         capabilities,
+        "eval_runs_collection",
+        _Collection([{"runId": "run-1", "evalId": "eval-2", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"}]),
+    )
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
         "trajectories_collection",
         _Collection(
             [
@@ -240,6 +247,121 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["runtimeRequirements"] == ["network", "browser"]
     assert skill["benchmarkId"] == "bench-1"
     assert skill["evalId"] == "eval-1"
+
+
+@pytest.mark.asyncio
+async def test_publish_skill_requires_latest_passing_benchmark(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Handle renewal",
+                    "status": "ready",
+                    "benchmarkId": "bench-1",
+                    "evalId": "eval-1",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "trajectories_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "eval_runs_collection",
+        _Collection([{"runId": "run-1", "evalId": "eval-1", "label": "fail", "createdAt": "2026-06-25T12:00:00+00:00"}]),
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await capabilities.update_company_skill(
+            "skill-1",
+            capabilities.SkillUpdateRequest(email="user@example.com", status="published"),
+        )
+
+    assert exc.value.status_code == 400
+    assert "latest benchmark run is fail" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_publish_skill_requires_any_benchmark_evidence(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Handle renewal",
+                    "status": "ready",
+                    "benchmarkId": "bench-1",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "trajectories_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "eval_runs_collection", _Collection([]))
+
+    with pytest.raises(HTTPException) as exc:
+        await capabilities.update_company_skill(
+            "skill-1",
+            capabilities.SkillUpdateRequest(email="user@example.com", status="published"),
+        )
+
+    assert exc.value.status_code == 400
+    assert "without benchmark evidence" in exc.value.detail
+
+
+@pytest.mark.asyncio
+async def test_publish_skill_allows_latest_passing_benchmark(monkeypatch):
+    monkeypatch.setattr(
+        capabilities,
+        "capabilities_collection",
+        _Collection(
+            [
+                {
+                    "capabilityId": "skill-1",
+                    "capabilityKind": "skill",
+                    "email": "user@example.com",
+                    "companyId": "co-1",
+                    "name": "Handle renewal",
+                    "status": "ready",
+                    "benchmarkId": "bench-1",
+                    "evalId": "eval-1",
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(capabilities, "trajectories_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
+    monkeypatch.setattr(capabilities, "benchmark_tasks_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "eval_runs_collection",
+        _Collection(
+            [
+                {"runId": "run-older", "evalId": "eval-1", "label": "fail", "createdAt": "2026-06-24T12:00:00+00:00"},
+                {"runId": "run-latest", "evalId": "eval-1", "label": "pass", "createdAt": "2026-06-25T12:00:00+00:00"},
+            ]
+        ),
+    )
+
+    result = await capabilities.update_company_skill(
+        "skill-1",
+        capabilities.SkillUpdateRequest(email="user@example.com", status="published"),
+    )
+
+    assert result["skill"]["status"] == "published"
 
 
 @pytest.mark.asyncio

@@ -1034,6 +1034,9 @@ function CapabilityDetailModal({
                 <label className="block md:col-span-1">
                   <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">Status</span>
                   <SelectDropdown value={skillStatus} onChange={(value) => setSkillStatus(value)} options={SKILL_STATUSES} />
+                  <span className="mt-1 block text-[11px] leading-4 text-gray-400 dark:text-gray-500">
+                    `Published` now requires the latest benchmark-linked eval run to pass.
+                  </span>
                 </label>
                 <label className="block md:col-span-2">
                   <span className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">When to use</span>

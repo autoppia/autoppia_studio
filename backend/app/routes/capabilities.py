@@ -10,6 +10,7 @@ from app.database import (
     benchmark_tasks_collection,
     companies_collection,
     connectors_collection,
+    eval_runs_collection,
     evals_collection,
     harvester_runs_collection,
     tools_collection,
@@ -288,6 +289,75 @@ def _dedupe_strings(values: list[str]) -> list[str]:
         seen.add(clean)
         deduped.append(clean)
     return deduped
+
+
+async def _skill_eval_ids(
+    skill: dict[str, Any],
+    trajectory_docs: list[dict[str, Any]] | None = None,
+) -> list[str]:
+    eval_ids = _dedupe_strings([str(skill.get("evalId") or "")])
+    benchmark_id = str(skill.get("benchmarkId") or "")
+    company_id = str(skill.get("companyId") or "")
+    email = str(skill.get("email") or "")
+
+    if trajectory_docs is None:
+        trajectory_ids = _dedupe_strings([str(value or "") for value in (skill.get("trajectoryIds") or [])])
+        trajectory_docs = []
+        for trajectory_id in trajectory_ids:
+            trajectory = await trajectories_collection.find_one({"trajectoryId": trajectory_id}, {"_id": 0})
+            if trajectory:
+                trajectory_docs.append(trajectory)
+
+    eval_ids.extend(
+        _dedupe_strings([str(trajectory.get("evalId") or "") for trajectory in trajectory_docs])
+    )
+
+    if benchmark_id:
+        legacy_query: dict[str, Any] = {"benchmarkId": benchmark_id}
+        task_query: dict[str, Any] = {"benchmarkId": benchmark_id}
+        if company_id:
+            legacy_query["companyId"] = company_id
+            task_query["companyId"] = company_id
+        if email:
+            legacy_query["email"] = email
+            task_query["email"] = email
+
+        legacy_evals = await evals_collection.find(legacy_query, {"_id": 0, "evalId": 1}).to_list(length=500)
+        benchmark_tasks = await benchmark_tasks_collection.find(task_query, {"_id": 0, "taskId": 1}).to_list(length=500)
+        eval_ids.extend(_dedupe_strings([str(doc.get("evalId") or "") for doc in legacy_evals]))
+        eval_ids.extend(_dedupe_strings([str(doc.get("taskId") or "") for doc in benchmark_tasks]))
+
+    return _dedupe_strings(eval_ids)
+
+
+async def _latest_skill_regression(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]] | None = None) -> dict[str, Any] | None:
+    eval_ids = await _skill_eval_ids(skill, trajectory_docs=trajectory_docs)
+    if not eval_ids:
+        return None
+    runs = await eval_runs_collection.find({"evalId": {"$in": eval_ids}}, {"_id": 0}).sort("createdAt", -1).to_list(length=100)
+    if not runs:
+        return None
+    latest = runs[0]
+    return {
+        "evalId": latest.get("evalId", ""),
+        "runId": latest.get("runId", ""),
+        "label": str(latest.get("label") or "").strip().lower(),
+        "createdAt": latest.get("createdAt"),
+    }
+
+
+async def _assert_skill_publishable(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]] | None = None) -> None:
+    latest = await _latest_skill_regression(skill, trajectory_docs=trajectory_docs)
+    if not latest:
+        raise HTTPException(
+            status_code=400,
+            detail="Skill cannot be published without benchmark evidence. Run the linked eval first.",
+        )
+    if latest.get("label") != "pass":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Skill cannot be published because the latest benchmark run is {latest.get('label') or 'pending'}.",
+        )
 
 
 async def _create_capability_run(
@@ -691,6 +761,10 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
         eval_ids = _dedupe_strings([str(trajectory.get("evalId") or "") for trajectory in trajectory_docs])
         update["benchmarkId"] = benchmark_ids[0] if benchmark_ids else skill.get("benchmarkId", "")
         update["evalId"] = eval_ids[0] if eval_ids else skill.get("evalId", "")
+
+    candidate_skill = {**skill, **update}
+    if str(candidate_skill.get("status") or "").strip().lower() == "published":
+        await _assert_skill_publishable(candidate_skill, trajectory_docs=trajectory_docs)
 
     now = _now()
     update["updatedAt"] = now
