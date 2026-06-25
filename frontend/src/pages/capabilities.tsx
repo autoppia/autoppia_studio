@@ -608,6 +608,8 @@ function CapabilityDetailModal({
   const skillLatestRegression = isSkill ? detail.item.latestRegression : null;
   const hardeningStatus = isSkill ? detail.item.hardeningStatus : null;
   const hardeningChecks = hardeningStatus?.checks || {};
+  const skillPackage = isSkill ? detail.item.skillPackage : null;
+  const packageRegressionSuite = skillPackage?.evidence?.regressionSuite;
   const hardeningChecklist = isSkill ? [
     { key: "activation", label: "Activation" },
     { key: "instructions", label: "Instructions" },
@@ -935,6 +937,63 @@ function CapabilityDetailModal({
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Published at</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{formatDate(detail.item.publishedAt)}</p>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {isSkill && skillPackage && (
+            <section>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Package manifest</p>
+                <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                  {skillPackage.format || "autoppia.agent_skill"}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Manifest</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">v{skillPackage.manifestVersion || 1}</p>
+                  <p className="mt-1 truncate font-mono text-[10px] text-gray-400">{skillPackage.packageId || detail.item.skillId}</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Activation</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {skillPackage.activation?.description ? "Declared" : "Missing"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{skillPackage.activation?.preconditions?.length || 0} preconditions</p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regression suite</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {packageRegressionSuite?.publishable ? "Publishable" : "Not publishable"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {(packageRegressionSuite?.benchmarkIds || []).length} benchmarks · {(packageRegressionSuite?.evalIds || []).length} evals
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Disclosure</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{skillPackage.progressiveDisclosure?.summaryFields?.length || 0} summary fields</p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{skillPackage.progressiveDisclosure?.fullFields?.join(", ") || "execution, evidence"}</p>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+                <JsonBlock
+                  value={{
+                    metadata: skillPackage.metadata || {},
+                    interface: skillPackage.interface || {},
+                    policies: skillPackage.policies || {},
+                  }}
+                />
+                <JsonBlock
+                  value={{
+                    execution: skillPackage.execution || {},
+                    evidence: {
+                      regressionSuite: packageRegressionSuite || {},
+                      latestRegression: skillPackage.evidence?.latestRegression || null,
+                    },
+                  }}
+                />
               </div>
             </section>
           )}
