@@ -676,7 +676,7 @@ function Session(): React.ReactElement {
     : socketId
       ? "running"
       : "idle";
-  const runtimeTimeline: RuntimeTimelineStep[] = assistantMessages.flatMap((message: ChatItem) =>
+  const chatRuntimeTimeline: RuntimeTimelineStep[] = assistantMessages.flatMap((message: ChatItem) =>
     (message.actions || []).map((action, index) => ({
       label: prettyAction(action),
       activity: activityForAction(action),
@@ -687,9 +687,20 @@ function Session(): React.ReactElement {
             ? "ok"
             : completed
               ? "ok"
-              : "pending",
+            : "pending",
     })),
   );
+  const loadedRuntimeTimelineRaw = loadedSession?.runtimeTimeline;
+  const loadedRuntimeTimeline: RuntimeTimelineStep[] = Array.isArray(loadedRuntimeTimelineRaw)
+    ? loadedRuntimeTimelineRaw
+        .filter((step) => step && typeof step.label === "string")
+        .map((step) => ({
+          label: step.label,
+          activity: ["browser", "skill", "tool", "done"].includes(String(step.activity)) ? step.activity as RuntimeActivity : "tool",
+          status: ["ok", "failed", "pending"].includes(String(step.status)) ? step.status as RuntimeTimelineStep["status"] : "ok",
+        }))
+    : [];
+  const runtimeTimeline: RuntimeTimelineStep[] = loadedRuntimeTimeline.length > 0 ? loadedRuntimeTimeline : chatRuntimeTimeline;
   const latestBrowserStep = [...assistantMessages].reverse().flatMap((message: ChatItem) => {
     const actions = message.actions || [];
     return [...actions].reverse().map((action, reverseIndex) => {

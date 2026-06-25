@@ -193,6 +193,56 @@ def _session_runtime_metrics(
     }
 
 
+def _session_action_activity(action: str) -> str:
+    normalized = str(action or "").lower()
+    if normalized.startswith("browser."):
+        return "browser"
+    if normalized.startswith("skill.") or "skill" in normalized:
+        return "skill"
+    if normalized in {"browser.done", "done", "runtime.done"} or normalized.endswith(".done"):
+        return "done"
+    return "tool"
+
+
+def _session_action_status(entry: dict[str, Any]) -> str:
+    raw = str(entry.get("status") or entry.get("state") or "").strip().lower()
+    if raw in {"failed", "fail", "error"}:
+        return "failed"
+    if raw in {"pending", "running", "waiting"}:
+        return "pending"
+    result = entry.get("success")
+    if result is False:
+        return "failed"
+    return "ok"
+
+
+def _session_runtime_timeline(action_history: list[Any]) -> list[dict[str, Any]]:
+    timeline: list[dict[str, Any]] = []
+    for index, item in enumerate(action_history):
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or item.get("name") or "").strip()
+        if not action:
+            continue
+        timeline.append(
+            {
+                "index": index,
+                "action": action,
+                "label": _pretty_session_action(action),
+                "activity": _session_action_activity(action),
+                "status": _session_action_status(item),
+                "emittedAt": _session_action_timestamp(item),
+                "elapsedSeconds": _safe_float(item.get("elapsedSeconds") or item.get("durationSeconds") or item.get("latencySeconds")),
+                "traceId": str(item.get("traceId") or item.get("trace_id") or item.get("runId") or ""),
+                "toolCallId": str(item.get("toolCallId") or item.get("callId") or ""),
+                "approvalKey": str(item.get("approvalKey") or ""),
+                "artifactId": str(item.get("artifactId") or ""),
+                "skillId": str(item.get("skillId") or item.get("matchedSkillId") or ""),
+            }
+        )
+    return timeline
+
+
 def _serialize_session_summary(doc: dict) -> dict:
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
@@ -233,6 +283,7 @@ def _serialize_session_summary(doc: dict) -> dict:
         connector_action_count=connector_action_count,
         runtime_kind=runtime_kind,
     )
+    runtime_timeline = _session_runtime_timeline(action_history)
     return {
         "sessionId": doc.get("sessionId", ""),
         "email": doc.get("email", ""),
@@ -262,6 +313,7 @@ def _serialize_session_summary(doc: dict) -> dict:
         "runId": run_id,
         "creditsSpent": credits_spent,
         "runtimeMetrics": runtime_metrics,
+        "runtimeTimeline": runtime_timeline,
         "traceIds": runtime_metrics["traceIds"],
         "latestAction": latest_action,
         "latestActivityLabel": _pretty_session_action(latest_action),

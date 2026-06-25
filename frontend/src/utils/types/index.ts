@@ -21,6 +21,20 @@ export interface SessionItem {
         stepLatencyCount?: number;
         traceIds?: string[];
     };
+    runtimeTimeline?: {
+        index?: number;
+        action?: string;
+        label: string;
+        activity: "browser" | "skill" | "tool" | "done" | string;
+        status: "ok" | "failed" | "pending" | string;
+        emittedAt?: string;
+        elapsedSeconds?: number;
+        traceId?: string;
+        toolCallId?: string;
+        approvalKey?: string;
+        artifactId?: string;
+        skillId?: string;
+    }[];
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";

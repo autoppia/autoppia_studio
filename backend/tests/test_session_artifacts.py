@@ -178,6 +178,11 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["runtimeMetrics"]["durationSeconds"] == 2.0
     assert session["runtimeMetrics"]["lastStepSeconds"] == 0.75
     assert session["runtimeMetrics"]["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
+    assert session["runtimeTimeline"][0]["activity"] == "browser"
+    assert session["runtimeTimeline"][0]["label"] == "Navigate"
+    assert session["runtimeTimeline"][0]["elapsedSeconds"] == 1.25
+    assert session["runtimeTimeline"][1]["activity"] == "tool"
+    assert session["runtimeTimeline"][1]["traceId"] == "trace-email"
     assert session["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
