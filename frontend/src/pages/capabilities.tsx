@@ -349,6 +349,16 @@ function formatRuntimeDate(value?: string | Date) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function latestActivityTimestamp(values: Array<string | Date | undefined>) {
+  let latest = 0;
+  for (const value of values) {
+    if (!value) continue;
+    const stamp = new Date(value).getTime();
+    if (!Number.isNaN(stamp) && stamp > latest) latest = stamp;
+  }
+  return latest > 0 ? new Date(latest).toISOString() : "";
+}
+
 function stageTone(stage: "published" | "ready" | "needs_review" | "needs_harvest") {
   if (stage === "published") return "bg-green-50 dark:bg-green-500/10 text-green-600 dark:text-green-400 border-green-200 dark:border-green-500/30";
   if (stage === "ready") return "bg-primary/10 text-primary border-primary/30";
@@ -3098,6 +3108,12 @@ export default function Capabilities(): React.ReactElement {
                           const nodeApprovals = runtimeUsage.approvalsByToolId.get(tool.toolId) || [];
                           const nodeArtifacts = runtimeUsage.artifactsByToolId.get(tool.toolId) || [];
                           const nodeWork = runtimeUsage.workItemsByToolId.get(tool.toolId) || [];
+                          const lastActiveAt = latestActivityTimestamp([
+                            ...nodeSessions.map((item) => item.createdAt),
+                            ...nodeApprovals.map((item) => item.createdAt),
+                            ...nodeArtifacts.map((item) => item.updatedAt || item.createdAt),
+                            ...nodeWork.map((item) => item.updatedAt || item.createdAt),
+                          ]);
                           return (
                             <div key={tool.toolId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
                               <button
@@ -3118,6 +3134,16 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                   </div>
+                                  <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
+                                    Last active: {formatRuntimeDate(lastActiveAt)}
+                                  </div>
+                                  {((nodeApprovals.length > 0) || (nodeArtifacts.length > 0) || (nodeWork.length > 0)) && (
+                                    <div className="mb-3 flex flex-wrap gap-1.5">
+                                      {nodeApprovals.slice(0, 1).map((item) => <span key={item.approvalId} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">{item.title || item.toolName || "Approval"}</span>)}
+                                      {nodeArtifacts.slice(0, 1).map((item) => <span key={item.artifactId} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">{item.title || item.artifactType || "Artifact"}</span>)}
+                                      {nodeWork.slice(0, 1).map((item) => <span key={item.workItemId} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">{item.title || "Job"}</span>)}
+                                    </div>
+                                  )}
                                   <div className="flex flex-wrap gap-2">
                                     <button onClick={() => openCapabilityDetail({ kind: "tool", item: tool })} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Inspect</button>
                                     <button onClick={() => openScopedRuntime({ sessionIds: nodeSessions.map((session) => session.sessionId) })} disabled={nodeSessions.length === 0} className="inline-flex h-7 items-center rounded-lg border border-gray-200 px-2.5 text-[11px] font-semibold text-gray-700 hover:bg-gray-100 disabled:opacity-50 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg">Runtime</button>
@@ -3150,6 +3176,12 @@ export default function Capabilities(): React.ReactElement {
                           const nodeWork = runtimeUsage.workItemsByTrajectoryId.get(trajectory.trajectoryId) || [];
                           const linkedSkills = filteredSkills.filter((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId)).slice(0, 3);
                           const linkedTools = filteredTools.filter((tool) => (trajectory.toolIds || []).includes(tool.toolId)).slice(0, 4);
+                          const lastActiveAt = latestActivityTimestamp([
+                            ...nodeSessions.map((item) => item.createdAt),
+                            ...nodeApprovals.map((item) => item.createdAt),
+                            ...nodeArtifacts.map((item) => item.updatedAt || item.createdAt),
+                            ...nodeWork.map((item) => item.updatedAt || item.createdAt),
+                          ]);
                           return (
                             <div key={trajectory.trajectoryId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
                               <button
@@ -3170,6 +3202,16 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                   </div>
+                                  <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
+                                    Last active: {formatRuntimeDate(lastActiveAt)}
+                                  </div>
+                                  {((nodeApprovals.length > 0) || (nodeArtifacts.length > 0) || (nodeWork.length > 0)) && (
+                                    <div className="mb-3 flex flex-wrap gap-1.5">
+                                      {nodeApprovals.slice(0, 1).map((item) => <span key={item.approvalId} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">{item.title || item.toolName || "Approval"}</span>)}
+                                      {nodeArtifacts.slice(0, 1).map((item) => <span key={item.artifactId} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">{item.title || item.artifactType || "Artifact"}</span>)}
+                                      {nodeWork.slice(0, 1).map((item) => <span key={item.workItemId} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">{item.title || "Job"}</span>)}
+                                    </div>
+                                  )}
                                   {((linkedSkills.length > 0) || (linkedTools.length > 0)) && (
                                     <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
                                       <div>
@@ -3230,6 +3272,12 @@ export default function Capabilities(): React.ReactElement {
                           const nodeWork = runtimeUsage.workItemsBySkillId.get(skill.skillId) || [];
                           const sourceTrajectories = (skill.trajectoryIds || []).map((trajectoryId) => trajectoriesById.get(trajectoryId)).filter(Boolean).slice(0, 3) as CompanyTrajectory[];
                           const sourceTools = filteredTools.filter((tool) => (skill.toolIds || []).includes(tool.toolId)).slice(0, 4);
+                          const lastActiveAt = latestActivityTimestamp([
+                            ...nodeSessions.map((item) => item.createdAt),
+                            ...nodeApprovals.map((item) => item.createdAt),
+                            ...nodeArtifacts.map((item) => item.updatedAt || item.createdAt),
+                            ...nodeWork.map((item) => item.updatedAt || item.createdAt),
+                          ]);
                           return (
                             <div key={skill.skillId} className="rounded-lg border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
                               <button
@@ -3255,6 +3303,16 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                   </div>
+                                  <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
+                                    Last active: {formatRuntimeDate(lastActiveAt)}
+                                  </div>
+                                  {((nodeApprovals.length > 0) || (nodeArtifacts.length > 0) || (nodeWork.length > 0)) && (
+                                    <div className="mb-3 flex flex-wrap gap-1.5">
+                                      {nodeApprovals.slice(0, 1).map((item) => <span key={item.approvalId} className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">{item.title || item.toolName || "Approval"}</span>)}
+                                      {nodeArtifacts.slice(0, 1).map((item) => <span key={item.artifactId} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">{item.title || item.artifactType || "Artifact"}</span>)}
+                                      {nodeWork.slice(0, 1).map((item) => <span key={item.workItemId} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">{item.title || "Job"}</span>)}
+                                    </div>
+                                  )}
                                   {((sourceTrajectories.length > 0) || (sourceTools.length > 0)) && (
                                     <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
                                       <div>
