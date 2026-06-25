@@ -111,6 +111,70 @@ def _session_action_timestamp(entry: dict[str, Any]) -> str:
     return ""
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _dedupe_trace_ids(values: list[Any]) -> list[str]:
+    trace_ids: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        trace_ids.append(clean)
+    return trace_ids
+
+
+def _session_runtime_metrics(
+    *,
+    action_history: list[Any],
+    runtime_state: dict[str, Any],
+    credits_spent: float,
+    browser_action_count: int,
+    connector_action_count: int,
+    runtime_kind: str,
+) -> dict[str, Any]:
+    step_latencies = [
+        _safe_float(item.get("elapsedSeconds") or item.get("durationSeconds") or item.get("latencySeconds"))
+        for item in action_history
+        if isinstance(item, dict)
+    ]
+    step_latencies = [value for value in step_latencies if value > 0]
+    runtime_duration = _safe_float(
+        runtime_state.get("durationSeconds")
+        or runtime_state.get("elapsedSeconds")
+        or runtime_state.get("latencySeconds")
+    )
+    duration_seconds = runtime_duration if runtime_duration > 0 else round(sum(step_latencies), 3)
+    last_step_seconds = step_latencies[-1] if step_latencies else 0.0
+    trace_ids = _dedupe_trace_ids([
+        runtime_state.get("traceId"),
+        runtime_state.get("trace_id"),
+        runtime_state.get("runId"),
+        runtime_state.get("workItemId"),
+        *[
+            item.get("traceId") or item.get("trace_id") or item.get("runId")
+            for item in action_history
+            if isinstance(item, dict)
+        ],
+    ])
+    return {
+        "runtimeKind": runtime_kind,
+        "creditsSpent": credits_spent,
+        "durationSeconds": round(duration_seconds, 3),
+        "lastStepSeconds": round(last_step_seconds, 3),
+        "browserActionCount": browser_action_count,
+        "connectorActionCount": connector_action_count,
+        "stepLatencyCount": len(step_latencies),
+        "traceIds": trace_ids,
+    }
+
+
 def _serialize_session_summary(doc: dict) -> dict:
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
@@ -132,7 +196,7 @@ def _serialize_session_summary(doc: dict) -> dict:
     source_kind = str(runtime_state.get("sourceKind") or "")
     work_item_id = str(runtime_state.get("workItemId") or "")
     run_id = str(runtime_state.get("runId") or "")
-    credits_spent = float(runtime_state.get("creditsSpent") or 0.0)
+    credits_spent = _safe_float(runtime_state.get("creditsSpent"))
     runtime_kind = "hybrid" if has_browser_activity and has_connector_activity else "browser" if has_browser_activity else "api"
     latest_action = ""
     latest_activity_at = ""
@@ -143,6 +207,14 @@ def _serialize_session_summary(doc: dict) -> dict:
             latest_action = str(item.get("action") or "")
             if latest_action:
                 break
+    runtime_metrics = _session_runtime_metrics(
+        action_history=action_history,
+        runtime_state=runtime_state,
+        credits_spent=credits_spent,
+        browser_action_count=browser_action_count,
+        connector_action_count=connector_action_count,
+        runtime_kind=runtime_kind,
+    )
     return {
         "sessionId": doc.get("sessionId", ""),
         "email": doc.get("email", ""),
@@ -171,6 +243,8 @@ def _serialize_session_summary(doc: dict) -> dict:
         "workItemId": work_item_id,
         "runId": run_id,
         "creditsSpent": credits_spent,
+        "runtimeMetrics": runtime_metrics,
+        "traceIds": runtime_metrics["traceIds"],
         "latestAction": latest_action,
         "latestActivityLabel": _pretty_session_action(latest_action),
         "latestActivityAt": latest_activity_at,

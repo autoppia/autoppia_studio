@@ -45,6 +45,15 @@ function formatCredits(value?: number) {
   return `${amount.toFixed(2)} cr`;
 }
 
+function formatSeconds(value?: number) {
+  const amount = Number(value || 0);
+  if (amount <= 0) return "";
+  if (amount < 60) return `${amount.toFixed(amount < 10 ? 1 : 0)}s`;
+  const minutes = Math.floor(amount / 60);
+  const seconds = Math.round(amount % 60);
+  return `${minutes}m ${seconds}s`;
+}
+
 function metricTone(kind: "neutral" | "good" | "accent") {
   if (kind === "good") return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30";
   if (kind === "accent") return "bg-primary/10 text-primary border-primary/20";
@@ -127,6 +136,9 @@ function SessionCard({
   const runId = String(session.runId || "");
   const sourceKind = String(session.sourceKind || "");
   const creditsLabel = formatCredits(session.creditsSpent);
+  const durationLabel = formatSeconds(session.runtimeMetrics?.durationSeconds);
+  const lastStepLabel = formatSeconds(session.runtimeMetrics?.lastStepSeconds);
+  const traceCount = session.traceIds?.length || session.runtimeMetrics?.traceIds?.length || 0;
   const browserActions = browserActionCount(session);
   const connectorActions = connectorActionCount(session);
 
@@ -214,6 +226,24 @@ function SessionCard({
           <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("neutral")}`}>
             <FontAwesomeIcon icon={faShapes} className="text-[10px]" />
             {creditsLabel} spent
+          </span>
+        )}
+        {durationLabel && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("neutral")}`}>
+            <FontAwesomeIcon icon={faClockRotateLeft} className="text-[10px]" />
+            {durationLabel} total
+          </span>
+        )}
+        {lastStepLabel && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("neutral")}`}>
+            <FontAwesomeIcon icon={faBolt} className="text-[10px]" />
+            {lastStepLabel} last step
+          </span>
+        )}
+        {traceCount > 0 && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("accent")}`}>
+            <FontAwesomeIcon icon={faBoxesStacked} className="text-[10px]" />
+            {traceCount} trace {traceCount === 1 ? "id" : "ids"}
           </span>
         )}
       </div>

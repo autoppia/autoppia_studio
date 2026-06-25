@@ -133,8 +133,8 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
                     "provider": "autoppia",
                     "chatHistory": [{"role": "user"}, {"role": "assistant"}],
                     "actionHistory": [
-                        {"action": "browser.navigate", "emittedAt": "2026-06-19T10:01:00Z"},
-                        {"action": "imap.search_emails", "emittedAt": "2026-06-19T10:02:00Z"},
+                        {"action": "browser.navigate", "emittedAt": "2026-06-19T10:01:00Z", "elapsedSeconds": 1.25, "traceId": "trace-browser"},
+                        {"action": "imap.search_emails", "emittedAt": "2026-06-19T10:02:00Z", "elapsedSeconds": 0.75, "traceId": "trace-email"},
                     ],
                     "runtimeState": {
                         "sourceKind": "work",
@@ -173,6 +173,12 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["sourceKind"] == "work"
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
+    assert session["runtimeMetrics"]["runtimeKind"] == "hybrid"
+    assert session["runtimeMetrics"]["creditsSpent"] == 2.5
+    assert session["runtimeMetrics"]["durationSeconds"] == 2.0
+    assert session["runtimeMetrics"]["lastStepSeconds"] == 0.75
+    assert session["runtimeMetrics"]["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
+    assert session["traceIds"] == ["run-9", "work-42", "trace-browser", "trace-email"]
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"

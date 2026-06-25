@@ -11,6 +11,16 @@ export interface SessionItem {
     agentId?: string;
     agentName?: string;
     runtimeState?: Record<string, any>;
+    runtimeMetrics?: {
+        runtimeKind?: "browser" | "api" | "hybrid" | string;
+        creditsSpent?: number;
+        durationSeconds?: number;
+        lastStepSeconds?: number;
+        browserActionCount?: number;
+        connectorActionCount?: number;
+        stepLatencyCount?: number;
+        traceIds?: string[];
+    };
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";
@@ -29,6 +39,7 @@ export interface SessionItem {
     workItemId?: string;
     runId?: string;
     creditsSpent?: number;
+    traceIds?: string[];
     latestAction?: string;
     latestActivityLabel?: string;
     latestActivityAt?: string;
