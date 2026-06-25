@@ -71,7 +71,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Operations",
     icon: faListCheck,
     items: [
-      { label: "Work", path: "/work", icon: faBriefcase },
+      { label: "Work Orchestration", path: "/work", icon: faBriefcase },
     ],
   },
   {

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -6,6 +7,7 @@ import {
   faCheck,
   faCalendarDays,
   faCircleNodes,
+  faClockRotateLeft,
   faClipboardList,
   faHouse,
   faMagnifyingGlass,
@@ -17,6 +19,8 @@ import {
   faTriangleExclamation,
   faXmark,
   faBriefcase,
+  faLayerGroup,
+  faScaleBalanced,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, WorkBoard, WorkItem, WorkRunTarget, WorkStatus } from "../utils/types";
 import SectionTitle from "../components/layout/section-title";
@@ -73,9 +77,22 @@ const emptyDraft = {
   judgeImplementation: "llm",
 };
 
+function parseDate(value?: string) {
+  if (!value) return null;
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatRunCount(item: WorkItem) {
+  const count = item.runHistory?.length || 0;
+  if (count === 0) return "No runs yet";
+  return `${count} ${count === 1 ? "run" : "runs"}`;
+}
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [boards, setBoards] = useState<WorkBoard[]>([]);
   const [activeBoardId, setActiveBoardId] = useState(localStorage.getItem("automata_work_board_id") || "");
@@ -181,8 +198,60 @@ export default function Work() {
   const selectedItem = items.find((item) => item.workItemId === selectedItemId) || null;
 
   useEffect(() => {
+    const requestedItemId = searchParams.get("item") || "";
+    if (requestedItemId && requestedItemId !== selectedItemId) {
+      setSelectedItemId(requestedItemId);
+      return;
+    }
+    if (!requestedItemId && selectedItemId) {
+      setSelectedItemId("");
+    }
+  }, [searchParams, selectedItemId]);
+
+  useEffect(() => {
     if (selectedItem) setDrawerDraft(selectedItem);
   }, [selectedItemId, selectedItem]);
+
+  const orchestrationSummary = useMemo(() => {
+    const now = new Date();
+    const scheduledItems = items.filter((item) => item.triggerType === "scheduled");
+    const dueScheduledItems = scheduledItems.filter((item) => {
+      const next = parseDate(item.nextRunAt);
+      return Boolean(next && next <= now && item.status !== "RUNNING");
+    });
+    const upcomingScheduledItems = scheduledItems
+      .filter((item) => {
+        const next = parseDate(item.nextRunAt);
+        return Boolean(next && next > now);
+      })
+      .sort((left, right) => (parseDate(left.nextRunAt)?.getTime() || 0) - (parseDate(right.nextRunAt)?.getTime() || 0));
+    const reviewItems = items.filter((item) => item.status === "REVIEW");
+    const runningItems = items.filter((item) => item.status === "RUNNING");
+    const failedItems = items.filter((item) => item.status === "FAILED");
+    const totalBudget = items.reduce((sum, item) => sum + Number(item.maxBudgetCredits || item.maxCreditsPerRun || 0), 0);
+
+    return {
+      scheduledItems,
+      dueScheduledItems,
+      upcomingScheduledItems,
+      reviewItems,
+      runningItems,
+      failedItems,
+      totalBudget,
+    };
+  }, [items]);
+
+  const openItem = (workItemId: string) => {
+    const next = new URLSearchParams(searchParams);
+    next.set("item", workItemId);
+    setSearchParams(next);
+  };
+
+  const closeDrawer = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete("item");
+    setSearchParams(next);
+  };
 
   const responseMessage = (res: Response, fallback: string) => apiErrorMessage(res, fallback, "this work item");
 
@@ -361,8 +430,8 @@ export default function Work() {
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 sm:px-8 flex-shrink-0">
           <SectionTitle
             icon={faBriefcase}
-            title={boards.find((board) => board.boardId === activeBoardId)?.name || "Work Board"}
-            subtitle="Assign work to one agent or race all agents, then review the report."
+            title="Work Orchestration"
+            subtitle="Queue recurring work, control budgets and review runtime outcomes across your agent fleet."
           />
           <div className="flex items-center gap-2 shrink-0">
             <button
@@ -370,12 +439,160 @@ export default function Work() {
               className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow whitespace-nowrap"
             >
               <FontAwesomeIcon icon={faPlus} className="mr-2 text-xs" />
-              New Work
+              New Job
             </button>
           </div>
         </div>
 
         <div className="flex-1 overflow-auto px-4 sm:px-6 py-5">
+          <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
+            {[
+              {
+                label: "Active jobs",
+                value: orchestrationSummary.runningItems.length,
+                hint: "Runs currently executing in the runtime queue.",
+                icon: faBolt,
+                tone: "text-primary",
+              },
+              {
+                label: "Needs review",
+                value: orchestrationSummary.reviewItems.length,
+                hint: "Jobs blocked on human review or waiting approval.",
+                icon: faClipboardList,
+                tone: "text-amber-600 dark:text-amber-400",
+              },
+              {
+                label: "Scheduled",
+                value: orchestrationSummary.scheduledItems.length,
+                hint: "Recurring jobs with an active trigger.",
+                icon: faCalendarDays,
+                tone: "text-gray-700 dark:text-gray-200",
+              },
+              {
+                label: "Due now",
+                value: orchestrationSummary.dueScheduledItems.length,
+                hint: "Scheduled jobs whose next run window has arrived.",
+                icon: faClockRotateLeft,
+                tone: "text-red-500 dark:text-red-400",
+              },
+              {
+                label: "Budget envelope",
+                value: `${orchestrationSummary.totalBudget.toFixed(1)} cr`,
+                hint: "Configured max budget across visible jobs.",
+                icon: faScaleBalanced,
+                tone: "text-gray-700 dark:text-gray-200",
+              },
+            ].map((card) => (
+              <div key={card.label} className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">{card.label}</p>
+                    <p className={`mt-2 text-2xl font-semibold ${card.tone}`}>{card.value}</p>
+                    <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">{card.hint}</p>
+                  </div>
+                  <span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-gray-50 text-gray-500 dark:bg-dark-bg dark:text-gray-300">
+                    <FontAwesomeIcon icon={card.icon} className="text-sm" />
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Schedule queue</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Recurring jobs ordered by next run time. Due jobs should start from the worker loop without manual intervention.
+                  </p>
+                </div>
+                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                  {orchestrationSummary.scheduledItems.length}
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {orchestrationSummary.scheduledItems.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                    No recurring jobs configured yet.
+                  </div>
+                ) : orchestrationSummary.upcomingScheduledItems.slice(0, 4).map((item) => (
+                  <button
+                    key={item.workItemId}
+                    onClick={() => openItem(item.workItemId)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-bg"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{item.title}</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                          {item.scheduleFrequency} at {item.scheduleTime || "09:00"} UTC
+                        </p>
+                      </div>
+                      <StatusBadge status={item.status} />
+                    </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-1.5">
+                      <span className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                        next {formatDate(item.nextRunAt)}
+                      </span>
+                      <span className="rounded-md border border-gray-200 bg-white px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                        {item.maxBudgetCredits || item.maxCreditsPerRun} cr
+                      </span>
+                    </div>
+                  </button>
+                ))}
+                {orchestrationSummary.dueScheduledItems.length > 0 && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 dark:border-amber-500/30 dark:bg-amber-500/10">
+                    <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+                      {orchestrationSummary.dueScheduledItems.length} due {orchestrationSummary.dueScheduledItems.length === 1 ? "job" : "jobs"}
+                    </p>
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      These jobs are ready for the scheduled worker tick or need attention if they stay idle.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Review queue</p>
+                  <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                    Jobs that need human judgement, approval follow-up or failure triage before they can be trusted.
+                  </p>
+                </div>
+                <span className="inline-flex h-8 min-w-8 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                  {orchestrationSummary.reviewItems.length + orchestrationSummary.failedItems.length}
+                </span>
+              </div>
+              <div className="mt-4 space-y-3">
+                {[...orchestrationSummary.reviewItems, ...orchestrationSummary.failedItems].slice(0, 5).map((item) => (
+                  <button
+                    key={item.workItemId}
+                    onClick={() => openItem(item.workItemId)}
+                    className="w-full rounded-xl border border-gray-200 bg-gray-50 p-4 text-left transition-colors hover:border-primary/30 dark:border-dark-border dark:bg-dark-bg"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-gray-900 dark:text-white">{item.title}</p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 line-clamp-2">
+                          {item.judge?.reason || item.report?.summary || "No report summary yet."}
+                        </p>
+                      </div>
+                      <StatusBadge status={item.status} />
+                    </div>
+                  </button>
+                ))}
+                {orchestrationSummary.reviewItems.length === 0 && orchestrationSummary.failedItems.length === 0 && (
+                  <div className="rounded-xl border border-dashed border-gray-200 bg-gray-50 px-4 py-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                    No open review blockers.
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5">
             <div className="flex flex-wrap items-center gap-2">
               {boards.map((board) => (
@@ -490,7 +707,7 @@ export default function Work() {
                           draggable={item.status !== "RUNNING"}
                           onDragStart={() => setDraggedItemId(item.workItemId)}
                           onDragEnd={() => { setDraggedItemId(""); setDragOverStatus(""); }}
-                          onClick={() => setSelectedItemId(item.workItemId)}
+                          onClick={() => openItem(item.workItemId)}
                           className={`group bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-3 shadow-soft hover:border-gray-300 dark:hover:border-gray-600 hover:shadow-soft-lg transition-all ${item.status === "RUNNING" ? "cursor-pointer" : "cursor-grab active:cursor-grabbing"} ${draggedItemId === item.workItemId ? "opacity-40" : ""}`}
                         >
                           <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -511,6 +728,12 @@ export default function Work() {
                             <span className="px-2 py-0.5 rounded-md text-[11px] border border-gray-200 dark:border-dark-border text-gray-500 dark:text-gray-400">
                               {item.maxBudgetCredits || item.maxCreditsPerRun} cr
                             </span>
+                            {item.sourceBenchmarkId && (
+                              <span className="inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded-md text-[11px] border border-gray-200 dark:border-dark-border text-gray-500 dark:text-gray-400">
+                                <FontAwesomeIcon icon={faLayerGroup} className="text-[10px] shrink-0" />
+                                <span className="truncate">benchmarked</span>
+                              </span>
+                            )}
                             {item.triggerType === "scheduled" && (
                               <span className="inline-flex items-center gap-1 max-w-full px-2 py-0.5 rounded-md text-[11px] border border-gray-200 dark:border-dark-border text-gray-500 dark:text-gray-400">
                                 <FontAwesomeIcon icon={faCalendarDays} className="text-[10px] shrink-0" />
@@ -531,6 +754,11 @@ export default function Work() {
                               <p className="text-[11px] leading-4 text-gray-500 dark:text-gray-400 line-clamp-2">{item.judge.reason}</p>
                             </div>
                           )}
+
+                          <div className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-gray-400 dark:text-gray-500">
+                            <span>{formatRunCount(item)}</span>
+                            <span>{formatDate(item.updatedAt || item.createdAt)}</span>
+                          </div>
 
                           {reportResults.length > 0 && (
                             <button
@@ -615,7 +843,7 @@ export default function Work() {
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 dark:border-dark-border">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">New Work Item</p>
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create a background task for one agent or all agents.</p>
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">Create a governed job for one agent or an all-agent race.</p>
               </div>
               <button onClick={() => setShowCreate(false)} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-border">
                 <FontAwesomeIcon icon={faXmark} className="text-xs" />
@@ -753,7 +981,7 @@ export default function Work() {
       )}
 
       {selectedItem && (
-        <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={() => setSelectedItemId("")}>
+        <div className="fixed inset-0 z-50 flex justify-end bg-black/30 backdrop-blur-sm" onClick={closeDrawer}>
           <div
             className="w-full max-w-xl h-full bg-white dark:bg-dark-surface border-l border-gray-200 dark:border-dark-border shadow-soft-lg overflow-auto"
             onClick={(event) => event.stopPropagation()}
@@ -763,7 +991,7 @@ export default function Work() {
                 <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{selectedItem.title}</p>
                 <p className="text-xs text-gray-400 dark:text-gray-500">{selectedItem.workItemId}</p>
               </div>
-              <button onClick={() => setSelectedItemId("")} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-border">
+              <button onClick={closeDrawer} className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-border">
                 <FontAwesomeIcon icon={faXmark} className="text-xs" />
               </button>
             </div>
@@ -779,6 +1007,37 @@ export default function Work() {
                   Rejudge
                 </button>
               </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Execution policy</p>
+                  <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <p>Target: {selectedItem.runTarget === "all" ? "All agents" : selectedItem.agentName || "Selected agent"}</p>
+                    <p>Runtime: {selectedItem.browserEnabled ? selectedItem.browserMode : "API-only / browser off"}</p>
+                    <p>Budget: {selectedItem.maxBudgetCredits || selectedItem.maxCreditsPerRun} credits</p>
+                    <p>Judge: {selectedItem.judgeImplementation || "llm"}</p>
+                  </div>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Orchestration</p>
+                  <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <p>Trigger: {selectedItem.triggerType || "manual"}</p>
+                    <p>Next run: {selectedItem.nextRunAt ? formatDate(selectedItem.nextRunAt) : "Not scheduled"}</p>
+                    <p>Last run: {selectedItem.startedAt ? formatDate(selectedItem.startedAt) : "Never"}</p>
+                    <p>Status: {selectedItem.status.toLowerCase()}</p>
+                  </div>
+                </div>
+              </div>
+
+              {(selectedItem.sourceBenchmarkId || selectedItem.sourceTaskId) && (
+                <div className="rounded-xl border border-gray-200 dark:border-dark-border p-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mb-2">Benchmark lineage</p>
+                  <div className="space-y-1.5 text-xs text-gray-500 dark:text-gray-400">
+                    {selectedItem.sourceBenchmarkId && <p>Benchmark: <span className="font-mono text-[11px] text-gray-700 dark:text-gray-200">{selectedItem.sourceBenchmarkId}</span></p>}
+                    {selectedItem.sourceTaskId && <p>Task: <span className="font-mono text-[11px] text-gray-700 dark:text-gray-200">{selectedItem.sourceTaskId}</span></p>}
+                  </div>
+                </div>
+              )}
 
               <div>
                 <p className={drawerLabelClass}>Title</p>
@@ -876,6 +1135,13 @@ export default function Work() {
                   <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Judge</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">{selectedItem.judge.label} · {selectedItem.judge.judgeType}</p>
                   <p className="text-xs leading-5 text-gray-600 dark:text-gray-300 mt-2">{selectedItem.judge.reason}</p>
+                </div>
+              )}
+
+              {selectedItem.report?.summary && (
+                <div className="rounded-xl border border-gray-200 dark:border-dark-border p-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white mb-1">Latest outcome</p>
+                  <p className="text-xs leading-5 text-gray-600 dark:text-gray-300">{selectedItem.report.summary}</p>
                 </div>
               )}
 
