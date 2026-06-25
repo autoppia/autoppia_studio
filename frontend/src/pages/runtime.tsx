@@ -149,6 +149,15 @@ function SessionCard({
   const labSkillName = runtimeLab?.skillMatch?.skillName || matchedSkillName || "";
   const auditTrail = session.runtimeAuditTrail;
   const auditLastEvent = auditTrail?.events?.[(auditTrail.events?.length || 0) - 1];
+  const sessionContract = session.sessionContract;
+  const contractRuntimeKind = sessionContract?.agentRuntime?.runtimeKind || kind;
+  const contractSkillName = sessionContract?.selectedSkill?.skillName || labSkillName;
+  const contractSkillMatched = Boolean(sessionContract?.selectedSkill?.matched || matchedSkillId);
+  const contractApprovalCount = sessionContract?.approvalState?.pending ?? session.pendingApprovalCount ?? 0;
+  const contractArtifactCount = sessionContract?.artifactState?.count ?? session.artifactCount ?? 0;
+  const contractCreditsLabel = formatCredits(sessionContract?.costState?.creditsSpent ?? session.creditsSpent);
+  const contractTraceCount = sessionContract?.traceState?.traceCount ?? sessionContract?.traceState?.traceIds?.length ?? traceCount;
+  const contractReplayLabel = sessionContract?.traceState?.replayReady ? "replay-ready" : "replay-blocked";
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -307,6 +316,38 @@ function SessionCard({
             <div>
               <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeLab.approvals?.pending || 0} approvals</p>
               <p className="truncate text-gray-500 dark:text-gray-400">{labArtifacts} artifacts{labCreditsLabel ? ` · ${labCreditsLabel}` : ""}</p>
+            </div>
+          </div>
+        </div>
+      )}
+      {sessionContract && (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Session contract</p>
+            <span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${sessionContract.traceState?.replayReady ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+              {contractReplayLabel}
+            </span>
+          </div>
+          <div className="mt-3 grid gap-2 text-xs sm:grid-cols-5">
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeKindLabel(contractRuntimeKind as "browser" | "api" | "hybrid")}</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{sessionContract.agentRuntime?.sourceKind || "session"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{contractSkillMatched ? "Skill selected" : "No skill selected"}</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{contractSkillName || sessionContract.selectedSkill?.skillId || "Manual runtime"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{contractApprovalCount} approvals</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{(sessionContract.approvalState?.requiredFor || []).join(", ") || "no human boundary"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{contractArtifactCount} artifacts</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{contractCreditsLabel || "no spend recorded"}</p>
+            </div>
+            <div>
+              <p className="font-semibold text-gray-800 dark:text-gray-100">{contractTraceCount} traces</p>
+              <p className="truncate text-gray-500 dark:text-gray-400">{sessionContract.traceState?.timelineSteps || 0} timeline steps</p>
             </div>
           </div>
         </div>

@@ -87,6 +87,42 @@ describe("Runtime page", () => {
                 { event: "artifact.created", description: "2 business artifact(s) created." },
               ],
             },
+            sessionContract: {
+              contractVersion: "2026-06-25",
+              sessionId: "session-1",
+              agentRuntime: {
+                runtimeKind: "hybrid",
+                sourceKind: "work",
+                workItemId: "work-1",
+                runId: "run-1",
+              },
+              selectedSkill: {
+                matched: true,
+                skillId: "skill-1",
+                skillName: "Resolve claim",
+              },
+              approvalState: {
+                pending: 1,
+                approvedConnectorCalls: 0,
+                requiredFor: ["send"],
+                hasHumanBoundary: true,
+              },
+              artifactState: {
+                count: 2,
+                hasBusinessOutput: true,
+              },
+              costState: {
+                creditsSpent: 2.5,
+                durationSeconds: 3.2,
+                lastStepSeconds: 0.4,
+              },
+              traceState: {
+                traceIds: ["run-1", "trace-email"],
+                traceCount: 2,
+                timelineSteps: 3,
+                replayReady: false,
+              },
+            },
           },
           {
             sessionId: "session-2",
@@ -151,7 +187,7 @@ describe("Runtime page", () => {
     expect(await screen.findByText("3 steps")).toBeInTheDocument();
     expect(await screen.findByText("1 tool call")).toBeInTheDocument();
     expect(await screen.findByText("Skill matched")).toBeInTheDocument();
-    expect(await screen.findByText("1 approvals")).toBeInTheDocument();
+    expect((await screen.findAllByText("1 approvals")).length).toBeGreaterThan(0);
     expect(await screen.findByText("2 artifacts · 2.50 cr")).toBeInTheDocument();
   });
 
@@ -160,7 +196,21 @@ describe("Runtime page", () => {
 
     expect(await screen.findByText("Uniform audit trail")).toBeInTheDocument();
     expect(await screen.findByText("5 events")).toBeInTheDocument();
-    expect(await screen.findByText("send")).toBeInTheDocument();
+    expect((await screen.findAllByText("send")).length).toBeGreaterThan(0);
     expect(await screen.findByText("2 business artifact(s) created.")).toBeInTheDocument();
+  });
+
+  it("shows the first-class session contract", async () => {
+    render(<Runtime />);
+
+    expect(await screen.findByText("Session contract")).toBeInTheDocument();
+    expect(await screen.findByText("replay-blocked")).toBeInTheDocument();
+    expect((await screen.findAllByText("Hybrid runtime")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("Skill selected")).toBeInTheDocument();
+    expect((await screen.findAllByText("Resolve claim")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("1 approvals")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("2 artifacts")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("2 traces")).toBeInTheDocument();
+    expect(await screen.findByText("3 timeline steps")).toBeInTheDocument();
   });
 });
