@@ -91,6 +91,9 @@ async def test_artifact_crud_and_download(monkeypatch):
     deleted = await artifacts.delete_artifact(created["artifact"]["artifactId"], scope)
 
     assert listed["artifacts"][0]["title"] == "Q2 Report"
+    assert listed["artifacts"][0]["artifactContract"]["businessOutput"] is True
+    assert listed["artifacts"][0]["artifactContract"]["separatedFromTrace"] is True
+    assert listed["artifacts"][0]["artifactContract"]["governance"]["knowledgeReady"] is True
     assert updated["artifact"]["artifactType"] == "html"
     assert downloaded.body == b"<h1>Q2</h1>"
     assert downloaded.media_type.startswith("text/html")

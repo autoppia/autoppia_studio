@@ -1445,6 +1445,29 @@ export interface Artifact {
     workItemId?: string;
     linked?: boolean;
   };
+  artifactContract?: {
+    artifactId?: string;
+    outputKind?: string;
+    businessOutput?: boolean;
+    separatedFromTrace?: boolean;
+    runtimeLinked?: boolean;
+    capabilityLinked?: boolean;
+    workLinked?: boolean;
+    source?: {
+      sessionId?: string;
+      sourceTool?: string;
+      skillId?: string;
+      trajectoryId?: string;
+      toolId?: string;
+      workItemId?: string;
+    };
+    governance?: {
+      approvalState?: string;
+      requiresReview?: boolean;
+      knowledgeReady?: boolean;
+    };
+    nextActions?: string[];
+  };
   title: string;
   artifactType: string;
   description: string;

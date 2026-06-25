@@ -89,22 +89,56 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     artifact_type = _clean_type(doc.get("artifactType"))
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
     capability_refs = _capability_refs(metadata)
+    session_id = str(doc.get("sessionId", ""))
+    source_tool = str(doc.get("sourceTool", ""))
+    artifact_contract = {
+        "artifactId": doc.get("artifactId", ""),
+        "outputKind": artifact_type,
+        "businessOutput": True,
+        "separatedFromTrace": True,
+        "runtimeLinked": bool(session_id),
+        "capabilityLinked": bool(capability_refs.get("linked")),
+        "workLinked": bool(capability_refs.get("workItemId")),
+        "source": {
+            "sessionId": session_id,
+            "sourceTool": source_tool,
+            "skillId": capability_refs["skillId"],
+            "trajectoryId": capability_refs["trajectoryId"],
+            "toolId": capability_refs["toolId"],
+            "workItemId": capability_refs["workItemId"],
+        },
+        "governance": {
+            "approvalState": metadata.get("approvalState") or metadata.get("approvalStatus") or "not_required",
+            "requiresReview": bool(metadata.get("requiresReview") or metadata.get("approvalId")),
+            "knowledgeReady": artifact_type in {"markdown", "text", "html", "pdf", "csv", "json"},
+        },
+        "nextActions": [
+            action
+            for action in [
+                "Open the originating Runtime Lab session." if session_id else "",
+                "Review linked capability evidence." if capability_refs.get("linked") else "",
+                "Save to Resources if this output should become reusable knowledge." if artifact_type in {"markdown", "text", "html", "pdf", "csv", "json"} else "",
+            ]
+            if action
+        ],
+    }
     return {
         "artifactId": doc.get("artifactId", ""),
         "companyId": doc.get("companyId", ""),
         "email": doc.get("email", ""),
-        "sessionId": doc.get("sessionId", ""),
+        "sessionId": session_id,
         "title": doc.get("title", ""),
         "artifactType": artifact_type,
         "description": doc.get("description", ""),
         "content": doc.get("content", ""),
         "fileName": doc.get("fileName") or _safe_file_name(doc.get("title", ""), artifact_type),
-        "sourceTool": doc.get("sourceTool", ""),
+        "sourceTool": source_tool,
         "skillId": capability_refs["skillId"],
         "trajectoryId": capability_refs["trajectoryId"],
         "toolId": capability_refs["toolId"],
         "workItemId": capability_refs["workItemId"],
         "capabilityRefs": capability_refs,
+        "artifactContract": artifact_contract,
         "metadata": metadata,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),

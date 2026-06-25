@@ -541,6 +541,24 @@ export default function Artifacts(): React.ReactElement {
                       {selectedToolId ? <> · tool <span className="font-mono text-gray-700 dark:text-gray-200">{selectedToolId}</span></> : null}
                     </p>
                   )}
+                  {selected?.artifactContract && (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                        business output
+                      </span>
+                      <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                        separated from trace
+                      </span>
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${selected.artifactContract.runtimeLinked ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300" : "border-gray-200 bg-gray-50 text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                        {selected.artifactContract.runtimeLinked ? "runtime linked" : "manual artifact"}
+                      </span>
+                      {selected.artifactContract.governance?.knowledgeReady && (
+                        <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">
+                          resource-ready
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2">
                   {selectedSessionId && (
