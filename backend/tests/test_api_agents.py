@@ -143,8 +143,19 @@ class _FakeToolsCollection:
                 "description": "Send a Telegram message",
                 "sideEffects": "writes",
                 "riskLevel": "medium",
+                "policyBoundary": "write",
                 "executionType": "api_call",
                 "runtimeRequirements": ["network"],
+                "permissions": {"approval": "always", "requiresApproval": True, "scopes": ["telegram:send"]},
+                "approvalPolicy": {"required": True, "mode": "always", "requiredFor": ["write"], "humanReview": True},
+                "scopes": ["write", "connector:conn-1"],
+                "toolContract": {
+                    "format": "autoppia.tool_contract",
+                    "toolName": "telegram.send_message",
+                    "policyBoundary": "write",
+                    "riskLevel": "medium",
+                    "approvalPolicy": {"required": True, "mode": "always"},
+                },
             }
         ])
 
@@ -270,6 +281,11 @@ async def test_agent_step_injects_agent_config_and_records_runtime_events(monkey
     assert agent_config["memory"] == {"seen": 1}
     assert any(item["name"] == "skill.test_skill" for item in agent_config["skills"])
     assert any(item["name"] == "telegram.send_message" for item in agent_config["tools"])
+    telegram_tool = next(item for item in agent_config["tools"] if item["name"] == "telegram.send_message")
+    assert telegram_tool["toolContract"]["format"] == "autoppia.tool_contract"
+    assert telegram_tool["policyBoundary"] == "write"
+    assert telegram_tool["approvalPolicy"]["required"] is True
+    assert telegram_tool["scopes"] == ["write", "connector:conn-1"]
     assert agent_config["resources"][0]["resourceId"] == "doc-1"
     assert agent_config["resources"][0]["citable"] is True
     assert agent_config["resources"][0]["readTools"] == ["knowledge.claims.search"]
@@ -379,6 +395,11 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["resourceGrounding"]["indexed"] == 1
     assert contract["resourceGrounding"]["citable"] == 1
     assert contract["resourceGrounding"]["readTools"] == ["knowledge.claims.search"]
+    assert contract["toolGovernance"]["total"] == 1
+    assert contract["toolGovernance"]["governed"] == 1
+    assert contract["toolGovernance"]["approvalRequiredTools"] == ["telegram.send_message"]
+    assert contract["toolGovernance"]["riskCounts"]["medium"] == 1
+    assert contract["toolGovernance"]["policyBoundaries"] == ["write"]
 
 
 @pytest.mark.asyncio

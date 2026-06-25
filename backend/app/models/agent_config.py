@@ -42,6 +42,7 @@ class AgentCallable(BaseModel):
     outputSchema: dict[str, Any] = Field(default_factory=lambda: {"type": "object", "additionalProperties": True})
     kind: Literal["tool", "skill"] = "tool"
     sideEffects: str = "reads"
+    policyBoundary: str = "read"
     riskLevel: str = "low"
     source: str = ""
     capabilityId: str = ""
@@ -51,6 +52,9 @@ class AgentCallable(BaseModel):
     runtime: str = ""
     runtimeRequirements: list[str] = Field(default_factory=list)
     permissions: dict[str, Any] = Field(default_factory=dict)
+    approvalPolicy: dict[str, Any] = Field(default_factory=dict)
+    scopes: list[str] = Field(default_factory=list)
+    toolContract: dict[str, Any] = Field(default_factory=dict)
     inputEntities: list[str] = Field(default_factory=list)
     outputEntity: str = ""
     outputCard: dict[str, Any] = Field(default_factory=dict)

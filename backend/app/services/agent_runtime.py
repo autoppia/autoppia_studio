@@ -87,12 +87,16 @@ def _tool_callable(doc: dict[str, Any]) -> dict[str, Any]:
         inputSchema=doc.get("inputSchema") or {"type": "object", "properties": {}},
         outputSchema=doc.get("outputSchema") or {"type": "object", "additionalProperties": True},
         sideEffects=str(doc.get("sideEffects") or "reads"),
+        policyBoundary=str(doc.get("policyBoundary") or (doc.get("toolContract") or {}).get("policyBoundary") or "read"),
         riskLevel=str(doc.get("riskLevel") or "low"),
         source=str(doc.get("source") or ""),
         connectorId=str(doc.get("connectorId") or ""),
         executionType=str(doc.get("executionType") or ""),
         runtimeRequirements=[str(item) for item in doc.get("runtimeRequirements") or [] if item],
         permissions=doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {},
+        approvalPolicy=doc.get("approvalPolicy") if isinstance(doc.get("approvalPolicy"), dict) else {},
+        scopes=[str(item) for item in doc.get("scopes") or [] if item],
+        toolContract=doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {},
         inputEntities=[str(item) for item in doc.get("inputEntities") or [] if item],
         outputEntity=str(doc.get("outputEntity") or ""),
         outputCard=doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {},
@@ -103,6 +107,9 @@ def _skill_callable(doc: dict[str, Any]) -> dict[str, Any]:
     name = str(doc.get("toolName") or doc.get("name") or doc.get("skillId") or "skill").strip()
     if "." not in name:
         name = f"skill.{re.sub(r'[^a-zA-Z0-9_]+', '_', name).strip('_').lower()}"
+    skill_package = doc.get("skillPackage") if isinstance(doc.get("skillPackage"), dict) else {}
+    skill_policies = skill_package.get("policies") if isinstance(skill_package.get("policies"), dict) else {}
+    runtime_policy = skill_policies.get("runtimePolicy") if isinstance(skill_policies.get("runtimePolicy"), dict) else {}
     return AgentCallable(
         kind="skill",
         name=name,
@@ -110,6 +117,7 @@ def _skill_callable(doc: dict[str, Any]) -> dict[str, Any]:
         inputSchema=doc.get("inputSchema") or {"type": "object", "properties": {"instruction": {"type": "string"}}},
         outputSchema=doc.get("outputSchema") or {"type": "object", "additionalProperties": True},
         sideEffects=str(doc.get("sideEffects") or "reads"),
+        policyBoundary=str(doc.get("policyBoundary") or runtime_policy.get("primaryBoundary") or "read"),
         riskLevel=str(doc.get("riskLevel") or "medium"),
         source=str(doc.get("source") or "skill_registry"),
         capabilityId=str(doc.get("capabilityId") or doc.get("skillId") or ""),
@@ -117,6 +125,9 @@ def _skill_callable(doc: dict[str, Any]) -> dict[str, Any]:
         runtime=str(doc.get("runtime") or ""),
         runtimeRequirements=[str(item) for item in doc.get("runtimeRequirements") or [] if item],
         permissions=doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {},
+        approvalPolicy=doc.get("approvalPolicy") if isinstance(doc.get("approvalPolicy"), dict) else {},
+        scopes=[str(item) for item in doc.get("scopes") or [] if item],
+        toolContract=doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {},
         inputEntities=[str(item) for item in doc.get("inputEntities") or [] if item],
         outputEntity=str(doc.get("outputEntity") or ""),
         outputCard=doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {},
@@ -417,6 +428,16 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
         "runtimeAvailability": runtime_requirement_status(agent_config, ["human_approval"]),
     }
     all_tools = [*base_tools, human_approval, *tool_callables, *skill_callables]
+    governed_tools = [tool for tool in tool_callables if isinstance(tool.get("toolContract"), dict) and tool["toolContract"]]
+    approval_tools = [
+        tool.get("name", "")
+        for tool in tool_callables
+        if isinstance(tool.get("approvalPolicy"), dict) and tool["approvalPolicy"].get("required")
+    ]
+    risk_counts: dict[str, int] = {}
+    for tool in tool_callables:
+        risk = str(tool.get("riskLevel") or "unknown").lower()
+        risk_counts[risk] = risk_counts.get(risk, 0) + 1
     return {
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
@@ -428,6 +449,13 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
             "indexed": sum(1 for item in resources if item.get("indexed")),
             "citable": sum(1 for item in resources if item.get("citable")),
             "readTools": sorted({tool for item in resources for tool in (item.get("readTools") or [])}),
+        },
+        "toolGovernance": {
+            "total": len(tool_callables),
+            "governed": len(governed_tools),
+            "approvalRequiredTools": approval_tools,
+            "riskCounts": risk_counts,
+            "policyBoundaries": sorted({str(tool.get("policyBoundary") or "read") for tool in tool_callables}),
         },
         "tools": tool_callables,
         "skills": skill_callables,
@@ -961,7 +989,6 @@ def _query_after(prompt: str, markers: tuple[str, ...]) -> str:
 
 
 def _connector_tool_arguments(tool_name: str, prompt: str, connector: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
-    lowered = prompt.lower()
     if tool_name in {"bopa.latest_bulletin", "bopa.latest_bulletin_pdf", "bopa.list_bulletins"}:
         return {}
     if tool_name.endswith(".search") and tool_name.startswith("knowledge."):
