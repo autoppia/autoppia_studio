@@ -1,20 +1,33 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.database import companies_collection
 from app.database import (
+    approvals_collection,
     capabilities_collection,
+    credentials_collection,
+    entities_collection,
     eval_runs_collection,
     evals_collection,
+    benchmark_tasks_collection,
+    benchmarks_collection,
     connectors_collection,
+    knowledge_documents_collection,
+    sessions_collection,
+    tools_collection,
+    vector_databases_collection,
+    work_items_collection,
+    artifacts_collection,
     agent_webs_collection,
     agents_collection,
     trajectories_collection,
 )
+from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 
@@ -69,6 +82,59 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
+
+
+def _session_runtime_kind(doc: dict[str, Any]) -> str:
+    action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
+    has_browser = any(str(item.get("action") or "").startswith("browser.") for item in action_history if isinstance(item, dict))
+    has_connector = any(
+        not action.startswith(("browser.", "router.", "runtime.", "user."))
+        and action not in {"skill.use", "Initialize", "Continue", ""}
+        for action in (str(item.get("action") or "") for item in action_history if isinstance(item, dict))
+    )
+    if has_browser and has_connector:
+        return "hybrid_runtime"
+    if has_browser:
+        return "browser_runtime"
+    return "api_runtime"
+
+
+def _connector_domains(connector: dict[str, Any]) -> list[str]:
+    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    domains: set[str] = set()
+    for key in ("baseUrl", "startUrl", "loginUrl", "docsUrl", "openApiUrl", "sourceUrl"):
+        raw = str(config.get(key) or "").strip()
+        if not raw:
+            continue
+        parsed = urlparse(raw)
+        if parsed.hostname:
+            domains.add(parsed.hostname.lower())
+    return sorted(domains)
+
+
+def _allowed_origin_hosts(company: dict[str, Any]) -> list[str]:
+    settings = company.get("embedSettings") if isinstance(company.get("embedSettings"), dict) else {}
+    hosts: set[str] = set()
+    for origin in settings.get("allowedOrigins") or []:
+        raw = str(origin or "").strip()
+        if not raw:
+            continue
+        parsed = urlparse(raw)
+        if parsed.hostname:
+            hosts.add(parsed.hostname.lower())
+    return sorted(hosts)
+
+
+async def _count(query: dict[str, Any], collection: Any) -> int:
+    return int(await collection.count_documents(query))
+
+
+def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "unknown")
+        counts[key] = counts.get(key, 0) + 1
+    return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
 async def _ensure_default_company(email: str) -> dict[str, Any]:
@@ -202,6 +268,148 @@ async def delete_company(company_id: str, scope: RequestScope = Depends(get_requ
         await companies_collection.delete_one({"companyId": company_id})
         await _ensure_default_company(str(company.get("email") or ""))
         return {"success": True, "deletedAgents": len(agent_ids)}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/companies/{company_id}/setup-contract")
+async def get_company_setup_contract(company_id: str, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        repo = _repo(scope)
+        company = await repo.by_id(company_id)
+        company_id = str(company.get("companyId") or "")
+        email = str(company.get("email") or "")
+
+        connectors = await connectors_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
+        sessions = await sessions_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
+        skills = await capabilities_collection.find({"companyId": company_id, "capabilityKind": "skill"}, {"_id": 0}).to_list(length=500)
+
+        runtime_kinds = [_session_runtime_kind(doc) for doc in sessions]
+        connected_connectors = [doc for doc in connectors if str(doc.get("status") or "") == "connected"]
+        needs_auth_connectors = [doc for doc in connectors if str(doc.get("status") or "") == "needs_auth"]
+        custom_connectors = [doc for doc in connectors if str(doc.get("provider") or "") == "custom"]
+        connector_domains = sorted({domain for doc in connectors for domain in _connector_domains(doc)})
+        category_counts = _sorted_counts([str(doc.get("category") or "uncategorized") for doc in connectors])
+        surface_counts = _sorted_counts([connector_surface(doc) for doc in connectors])
+        policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
+
+        counts = {
+            "connectors": len(connectors),
+            "connectedConnectors": len(connected_connectors),
+            "connectorsNeedingAuth": len(needs_auth_connectors),
+            "customConnectors": len(custom_connectors),
+            "credentials": await _count({"companyId": company_id, "email": email}, credentials_collection),
+            "resources": await _count({"companyId": company_id, "email": email}, knowledge_documents_collection),
+            "vectorStores": await _count({"companyId": company_id, "email": email}, vector_databases_collection),
+            "entities": await _count({"companyId": company_id, "email": email}, entities_collection),
+            "agents": await _count({"companyId": company_id, "email": email}, agents_collection),
+            "tools": await _count({"companyId": company_id, "email": email}, tools_collection),
+            "typedTools": await _count(
+                {
+                    "companyId": company_id,
+                    "email": email,
+                    "$or": [
+                        {"inputEntities.0": {"$exists": True}},
+                        {"outputEntity": {"$nin": ["", None]}},
+                    ],
+                },
+                tools_collection,
+            ),
+            "benchmarks": await _count({"companyId": company_id, "email": email}, benchmarks_collection),
+            "benchmarkTasks": await _count({"companyId": company_id, "email": email}, benchmark_tasks_collection),
+            "evalRuns": await _count({"companyId": company_id, "email": email}, eval_runs_collection),
+            "evals": await _count({"companyId": company_id, "email": email}, evals_collection),
+            "trajectories": await _count({"companyId": company_id, "email": email}, trajectories_collection),
+            "approvedTrajectories": await _count({"companyId": company_id, "email": email, "status": "approved"}, trajectories_collection),
+            "skills": len(skills),
+            "readySkills": sum(1 for doc in skills if str(doc.get("status") or "") in {"ready", "approved"}),
+            "sessions": len(sessions),
+            "artifacts": await _count({"companyId": company_id, "email": email}, artifacts_collection),
+            "pendingApprovals": await _count({"companyId": company_id, "email": email, "status": "pending"}, approvals_collection),
+            "approvedApprovals": await _count({"companyId": company_id, "email": email, "status": "approved"}, approvals_collection),
+            "workItems": await _count({"companyId": company_id, "email": email}, work_items_collection),
+            "runningWorkItems": await _count({"companyId": company_id, "email": email, "status": "RUNNING"}, work_items_collection),
+            "reviewWorkItems": await _count({"companyId": company_id, "email": email, "status": "REVIEW"}, work_items_collection),
+        }
+
+        contract = {
+            "integrationContractVersion": "2026-06-25",
+            "profile": {
+                "companyId": company_id,
+                "name": str(company.get("name") or ""),
+                "industry": str(company.get("industry") or ""),
+                "description": str(company.get("description") or ""),
+                "status": str(company.get("status") or "active"),
+            },
+            "systems": {
+                "summary": {
+                    "totalConnectors": counts["connectors"],
+                    "connectedConnectors": counts["connectedConnectors"],
+                    "connectorsNeedingAuth": counts["connectorsNeedingAuth"],
+                    "customConnectors": counts["customConnectors"],
+                },
+                "categoryCoverage": category_counts,
+                "surfaceCoverage": surface_counts,
+                "connectors": [
+                    {
+                        "connectorId": str(doc.get("connectorId") or ""),
+                        "name": str(doc.get("name") or ""),
+                        "type": str(doc.get("type") or ""),
+                        "category": str(doc.get("category") or ""),
+                        "status": str(doc.get("status") or ""),
+                        "provider": str(doc.get("provider") or "official"),
+                        "surface": connector_surface(doc),
+                        "authRequired": bool(doc.get("authRequired")),
+                        "runtimeRequirements": [str(item) for item in doc.get("runtimeRequirements") or [] if item],
+                        "domains": _connector_domains(doc),
+                    }
+                    for doc in connectors
+                ],
+            },
+            "context": {
+                "resources": counts["resources"],
+                "vectorStores": counts["vectorStores"],
+                "entities": counts["entities"],
+                "typedTools": counts["typedTools"],
+            },
+            "factory": {
+                "agents": counts["agents"],
+                "tools": counts["tools"],
+                "benchmarks": counts["benchmarks"],
+                "benchmarkTasks": counts["benchmarkTasks"],
+                "evals": counts["evals"],
+                "evalRuns": counts["evalRuns"],
+                "trajectories": counts["trajectories"],
+                "approvedTrajectories": counts["approvedTrajectories"],
+                "skills": counts["skills"],
+                "readySkills": counts["readySkills"],
+            },
+            "runtime": {
+                "sessions": counts["sessions"],
+                "runtimeKinds": _sorted_counts(runtime_kinds),
+                "artifacts": counts["artifacts"],
+                "pendingApprovals": counts["pendingApprovals"],
+                "approvedApprovals": counts["approvedApprovals"],
+                "workItems": counts["workItems"],
+                "runningWorkItems": counts["runningWorkItems"],
+                "reviewWorkItems": counts["reviewWorkItems"],
+            },
+            "governance": {
+                "credentials": counts["credentials"],
+                "allowedOrigins": list((company.get("embedSettings") or {}).get("allowedOrigins") or []),
+                "allowedOriginHosts": _allowed_origin_hosts(company),
+                "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
+                "discoveredDomains": connector_domains,
+                "skillPolicies": policy_counts,
+            },
+        }
+
+        return {
+            "company": _serialize(company),
+            "contract": contract,
+        }
     except HTTPException:
         raise
     except Exception as e:

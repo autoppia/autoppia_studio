@@ -15,6 +15,7 @@ import {
   faGear,
   faKey,
   faShapes,
+  faBuilding,
 } from "@fortawesome/free-solid-svg-icons";
 
 export interface NavItem {
@@ -79,6 +80,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Setup",
     icon: faGear,
     items: [
+      { label: "Company Setup", path: "/setup/company", icon: faBuilding },
       { label: "Credentials", path: "/credentials", icon: faKey },
     ],
   },

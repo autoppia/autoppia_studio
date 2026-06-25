@@ -264,6 +264,82 @@ export interface Company {
   updatedAt?: string;
 }
 
+export interface CompanySetupConnector {
+  connectorId: string;
+  name: string;
+  type: string;
+  category: string;
+  status: string;
+  provider: string;
+  surface: string;
+  authRequired?: boolean;
+  runtimeRequirements?: string[];
+  domains?: string[];
+}
+
+export interface CompanySetupCount {
+  name: string;
+  count: number;
+}
+
+export interface CompanySetupContract {
+  integrationContractVersion: string;
+  profile: {
+    companyId: string;
+    name: string;
+    industry?: string;
+    description?: string;
+    status?: string;
+  };
+  systems: {
+    summary: {
+      totalConnectors: number;
+      connectedConnectors: number;
+      connectorsNeedingAuth: number;
+      customConnectors: number;
+    };
+    categoryCoverage: CompanySetupCount[];
+    surfaceCoverage: CompanySetupCount[];
+    connectors: CompanySetupConnector[];
+  };
+  context: {
+    resources: number;
+    vectorStores: number;
+    entities: number;
+    typedTools: number;
+  };
+  factory: {
+    agents: number;
+    tools: number;
+    benchmarks: number;
+    benchmarkTasks: number;
+    evals: number;
+    evalRuns: number;
+    trajectories: number;
+    approvedTrajectories: number;
+    skills: number;
+    readySkills: number;
+  };
+  runtime: {
+    sessions: number;
+    runtimeKinds: CompanySetupCount[];
+    artifacts: number;
+    pendingApprovals: number;
+    approvedApprovals: number;
+    workItems: number;
+    runningWorkItems: number;
+    reviewWorkItems: number;
+  };
+  governance: {
+    credentials: number;
+    allowedOrigins: string[];
+    allowedOriginHosts: string[];
+    hostJwtConfigured: boolean;
+    discoveredDomains: string[];
+    skillPolicies: CompanySetupCount[];
+  };
+}
+
 export interface AgentToolkit {
   toolkitId: string;
   name: string;

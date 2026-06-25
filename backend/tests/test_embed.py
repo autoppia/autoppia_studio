@@ -43,6 +43,66 @@ class _CompanySettingsCollection:
         self.doc.update(update.get("$set", {}))
 
 
+class _Cursor:
+    def __init__(self, docs):
+        self.docs = [dict(doc) for doc in docs]
+
+    async def to_list(self, length=500):
+        return [dict(doc) for doc in self.docs[:length]]
+
+
+def _nested(doc, key):
+    current = doc
+    for part in key.split("."):
+        if isinstance(current, list):
+            try:
+                current = current[int(part)]
+                continue
+            except (ValueError, IndexError):
+                return None
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+def _matches(doc, query):
+    for key, value in query.items():
+        if key == "$or":
+            if not any(_matches(doc, item) for item in value):
+                return False
+            continue
+        current = _nested(doc, key)
+        if isinstance(value, dict):
+            if "$exists" in value:
+                exists = current is not None
+                if exists != bool(value["$exists"]):
+                    return False
+            if "$nin" in value and current in value["$nin"]:
+                return False
+            continue
+        if current != value:
+            return False
+    return True
+
+
+class _Collection:
+    def __init__(self, docs=None):
+        self.docs = [dict(doc) for doc in (docs or [])]
+
+    async def find_one(self, query, projection=None):
+        for doc in self.docs:
+            if _matches(doc, query):
+                return dict(doc)
+        return None
+
+    async def count_documents(self, query):
+        return sum(1 for doc in self.docs if _matches(doc, query))
+
+    def find(self, query, projection=None):
+        return _Cursor([doc for doc in self.docs if _matches(doc, query)])
+
+
 def _host_jwt(payload, secret="host-secret"):
     header = embed._b64(b'{"alg":"HS256","typ":"JWT"}')
     body = embed._b64(embed.json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8"))
@@ -230,3 +290,145 @@ async def test_update_company_embed_settings_preserves_and_clears_secret(monkeyp
     )
     assert collection.doc["embedSettings"]["hostJwtSecret"] == ""
     assert cleared["embedSettings"]["hostJwtConfigured"] is False
+
+
+@pytest.mark.asyncio
+async def test_company_setup_contract_aggregates_factory_runtime_and_governance(monkeypatch):
+    scope = RequestScope(email="owner@example.com", token_email="owner@example.com")
+    monkeypatch.setattr(
+        companies,
+        "companies_collection",
+        _Collection(
+            [
+                {
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "name": "Celeris",
+                    "industry": "Insurance",
+                    "description": "Claims and policy operations",
+                    "embedSettings": {
+                        "enabled": True,
+                        "allowedOrigins": ["https://erp.example.com"],
+                        "hostJwtSecret": "host-secret",
+                    },
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        companies,
+        "connectors_collection",
+        _Collection(
+            [
+                {
+                    "connectorId": "connector-api",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "name": "ERP API",
+                    "type": "api",
+                    "category": "software",
+                    "status": "connected",
+                    "provider": "custom",
+                    "config": {"baseUrl": "https://erp.example.com/api"},
+                    "runtimeRequirements": ["network", "api_credentials"],
+                },
+                {
+                    "connectorId": "connector-web",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "name": "Broker Portal",
+                    "type": "web",
+                    "category": "web",
+                    "status": "needs_auth",
+                    "provider": "official",
+                    "authRequired": True,
+                    "config": {"startUrl": "https://portal.example.com/login"},
+                    "runtimeRequirements": ["browser_or_http"],
+                },
+            ]
+        ),
+    )
+    monkeypatch.setattr(companies, "credentials_collection", _Collection([{"credentialId": "cred-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "knowledge_documents_collection", _Collection([{"documentId": "doc-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "vector_databases_collection", _Collection([{"vectorDatabaseId": "vec-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "entities_collection", _Collection([{"entityId": "entity-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "agents_collection", _Collection([{"agentId": "agent-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "tools_collection",
+        _Collection(
+            [
+                {"toolId": "tool-1", "companyId": "company-1", "email": "owner@example.com", "inputEntities": ["Policy"], "outputEntity": ""},
+                {"toolId": "tool-2", "companyId": "company-1", "email": "owner@example.com", "inputEntities": [], "outputEntity": ""},
+            ]
+        ),
+    )
+    monkeypatch.setattr(companies, "benchmarks_collection", _Collection([{"benchmarkId": "bench-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "benchmark_tasks_collection", _Collection([{"taskId": "task-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "evals_collection", _Collection([{"evalId": "eval-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(companies, "eval_runs_collection", _Collection([{"runId": "eval-run-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "trajectories_collection",
+        _Collection(
+            [
+                {"trajectoryId": "traj-1", "companyId": "company-1", "email": "owner@example.com", "status": "approved"},
+                {"trajectoryId": "traj-2", "companyId": "company-1", "email": "owner@example.com", "status": "draft"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        companies,
+        "capabilities_collection",
+        _Collection(
+            [
+                {"capabilityId": "skill-1", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "human_approval_for_writes", "status": "approved"},
+                {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "always", "status": "ready"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        companies,
+        "sessions_collection",
+        _Collection(
+            [
+                {"sessionId": "session-api", "companyId": "company-1", "email": "owner@example.com", "actionHistory": [{"action": "holded.search_invoices"}]},
+                {"sessionId": "session-browser", "companyId": "company-1", "email": "owner@example.com", "actionHistory": [{"action": "browser.navigate"}]},
+            ]
+        ),
+    )
+    monkeypatch.setattr(companies, "artifacts_collection", _Collection([{"artifactId": "artifact-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "approvals_collection",
+        _Collection(
+            [
+                {"approvalId": "approval-1", "companyId": "company-1", "email": "owner@example.com", "status": "pending"},
+                {"approvalId": "approval-2", "companyId": "company-1", "email": "owner@example.com", "status": "approved"},
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        companies,
+        "work_items_collection",
+        _Collection(
+            [
+                {"workItemId": "work-1", "companyId": "company-1", "email": "owner@example.com", "status": "RUNNING"},
+                {"workItemId": "work-2", "companyId": "company-1", "email": "owner@example.com", "status": "REVIEW"},
+            ]
+        ),
+    )
+
+    result = await companies.get_company_setup_contract("company-1", scope)
+
+    assert result["company"]["name"] == "Celeris"
+    assert result["contract"]["systems"]["summary"]["totalConnectors"] == 2
+    assert result["contract"]["systems"]["summary"]["connectedConnectors"] == 1
+    assert result["contract"]["context"]["typedTools"] == 1
+    assert result["contract"]["factory"]["readySkills"] == 2
+    assert result["contract"]["runtime"]["sessions"] == 2
+    assert result["contract"]["runtime"]["pendingApprovals"] == 1
+    assert result["contract"]["governance"]["credentials"] == 1
+    assert result["contract"]["governance"]["hostJwtConfigured"] is True
+    assert "erp.example.com" in result["contract"]["governance"]["allowedOriginHosts"]
+    assert "portal.example.com" in result["contract"]["governance"]["discoveredDomains"]

@@ -23,6 +23,7 @@ import Knowledge from "./pages/knowledge";
 import Analytics from "./pages/analytics";
 import Runtime from "./pages/runtime";
 import Work from "./pages/work";
+import CompanySetup from "./pages/company-setup";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -159,6 +160,7 @@ function App() {
                 <Route path="/runtime" element={<Runtime />} />
                 <Route path="/approvals" element={<Approvals />} />
                 <Route path="/artifacts" element={<Artifacts />} />
+                <Route path="/setup/company" element={<CompanySetup />} />
                 <Route path="/credentials" element={<Credentials />} />
                 <Route path="/knowledge" element={<Knowledge />} />
                 <Route path="/analytics" element={<Analytics />} />
