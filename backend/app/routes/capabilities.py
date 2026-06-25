@@ -221,6 +221,16 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         latest_regression = None
     lineage = _skill_lineage(doc, trajectory_docs)
     hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
+    runtime_policy = serialize_runtime_policy(doc)
+    package = _skill_package_manifest(
+        doc,
+        version=version,
+        promotion_status=_skill_promotion_status(doc),
+        runtime_policy=runtime_policy,
+        lineage=lineage,
+        hardening=hardening,
+        latest_regression=latest_regression,
+    )
     return {
         "capabilityId": doc.get("capabilityId", ""),
         "capabilityKind": "skill",
@@ -241,7 +251,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "evalId": doc.get("evalId", ""),
         "permissions": doc.get("permissions", {}),
         "riskPolicy": doc.get("riskPolicy", ""),
-        "runtimePolicy": serialize_runtime_policy(doc),
+        "runtimePolicy": runtime_policy,
         "inputEntities": doc.get("inputEntities", []),
         "outputEntity": doc.get("outputEntity", ""),
         "outputCard": doc.get("outputCard", {}),
@@ -262,6 +272,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         "lineage": lineage,
         "latestRegression": latest_regression,
         "hardeningStatus": hardening,
+        "skillPackage": package,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -368,6 +379,71 @@ def _skill_lifecycle_fields(*, previous: dict[str, Any], next_doc: dict[str, Any
     if previous_status != next_status:
         update["lastPromotedAt"] = now
     return update
+
+
+def _skill_package_manifest(
+    skill: dict[str, Any],
+    *,
+    version: int,
+    promotion_status: str,
+    runtime_policy: dict[str, Any],
+    lineage: dict[str, Any],
+    hardening: dict[str, Any],
+    latest_regression: dict[str, Any] | None,
+) -> dict[str, Any]:
+    package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
+    return {
+        "format": "autoppia.agent_skill",
+        "manifestVersion": 1,
+        "packageId": package_id,
+        "metadata": {
+            "name": skill.get("name", ""),
+            "description": skill.get("description", ""),
+            "version": version,
+            "versionLabel": skill.get("versionLabel") or f"v{version}",
+            "promotionStatus": promotion_status,
+            "source": skill.get("source", ""),
+            "createdAt": skill.get("createdAt"),
+            "updatedAt": skill.get("updatedAt"),
+        },
+        "activation": {
+            "description": skill.get("whenToUse", ""),
+            "preconditions": skill.get("preconditions", []),
+        },
+        "interface": {
+            "inputEntities": skill.get("inputEntities", []),
+            "outputEntity": skill.get("outputEntity", ""),
+            "expectedArtifacts": skill.get("expectedArtifacts", []),
+            "outputCard": skill.get("outputCard", {}),
+        },
+        "execution": {
+            "instructions": skill.get("instructions", ""),
+            "connectorIds": lineage.get("connectorIds", []),
+            "toolIds": lineage.get("toolIds", []),
+            "trajectoryIds": lineage.get("trajectoryIds", []),
+            "runtimeRequirements": skill.get("runtimeRequirements", []),
+            "runtime": skill.get("runtime", ""),
+        },
+        "policies": {
+            "riskPolicy": skill.get("riskPolicy", ""),
+            "permissions": skill.get("permissions", {}),
+            "runtimePolicy": runtime_policy,
+        },
+        "evidence": {
+            "lineage": lineage,
+            "latestRegression": latest_regression,
+            "hardeningStatus": hardening,
+            "regressionSuite": {
+                "benchmarkIds": lineage.get("benchmarkIds", []),
+                "evalIds": lineage.get("evalIds", []),
+                "publishable": bool(latest_regression and latest_regression.get("label") == "pass"),
+            },
+        },
+        "progressiveDisclosure": {
+            "summaryFields": ["metadata", "activation", "interface", "policies"],
+            "fullFields": ["execution", "evidence"],
+        },
+    }
 
 
 def _skill_lineage(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]]) -> dict[str, Any]:

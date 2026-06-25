@@ -270,6 +270,13 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["hardeningStatus"]["checks"]["instructions"] is True
     assert skill["hardeningStatus"]["checks"]["publishableRegression"] is True
     assert skill["hardeningStatus"]["state"] == "hardened"
+    assert skill["skillPackage"]["format"] == "autoppia.agent_skill"
+    assert skill["skillPackage"]["metadata"]["versionLabel"] == "v2"
+    assert skill["skillPackage"]["activation"]["description"] == "Use for customer renewal follow-up"
+    assert skill["skillPackage"]["interface"]["expectedArtifacts"] == ["draft_email", "renewal_summary"]
+    assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
+    assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
+    assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
 
 
 @pytest.mark.asyncio
@@ -724,6 +731,10 @@ async def test_promote_company_trajectory_to_skill(monkeypatch):
     assert result["skill"]["lineage"]["trajectoryIds"] == ["traj-1"]
     assert result["skill"]["hardeningStatus"]["checks"]["lineage"] is True
     assert result["skill"]["hardeningStatus"]["checks"]["regression"] is False
+    assert result["skill"]["skillPackage"]["manifestVersion"] == 1
+    assert result["skill"]["skillPackage"]["metadata"]["promotionStatus"] == "ready"
+    assert result["skill"]["skillPackage"]["execution"]["connectorIds"] == ["gmail", "holded"]
+    assert result["skill"]["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is False
 
     listed = await capabilities.list_company_capabilities("co-1")
     assert listed["skills"][0]["trajectoryIds"] == ["traj-1"]

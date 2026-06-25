@@ -931,6 +931,58 @@ export interface CompanySkill {
     score?: number;
     state?: string;
   };
+  skillPackage?: {
+    format?: string;
+    manifestVersion?: number;
+    packageId?: string;
+    metadata?: {
+      name?: string;
+      description?: string;
+      version?: number;
+      versionLabel?: string;
+      promotionStatus?: string;
+      source?: string;
+      createdAt?: string;
+      updatedAt?: string;
+    };
+    activation?: {
+      description?: string;
+      preconditions?: string[];
+    };
+    interface?: {
+      inputEntities?: string[];
+      outputEntity?: string;
+      expectedArtifacts?: string[];
+      outputCard?: Record<string, any>;
+    };
+    execution?: {
+      instructions?: string;
+      connectorIds?: string[];
+      toolIds?: string[];
+      trajectoryIds?: string[];
+      runtimeRequirements?: string[];
+      runtime?: string;
+    };
+    policies?: {
+      riskPolicy?: string;
+      permissions?: Record<string, any>;
+      runtimePolicy?: RuntimePolicy;
+    };
+    evidence?: {
+      lineage?: CompanySkill["lineage"];
+      latestRegression?: CompanySkill["latestRegression"];
+      hardeningStatus?: CompanySkill["hardeningStatus"];
+      regressionSuite?: {
+        benchmarkIds?: string[];
+        evalIds?: string[];
+        publishable?: boolean;
+      };
+    };
+    progressiveDisclosure?: {
+      summaryFields?: string[];
+      fullFields?: string[];
+    };
+  };
   createdAt?: string;
   updatedAt?: string;
 }
