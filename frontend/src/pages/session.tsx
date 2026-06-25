@@ -712,6 +712,7 @@ function Session(): React.ReactElement {
   const benchmarkRunId = String(locationState?.benchmarkRunId || "");
   const pendingConnectorApproval = String(loadedSession?.pendingConnectorApproval || runtimeState?.pendingConnectorApproval || "");
   const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
+  const approvedConnectorToolCallCount = Number(loadedSession?.approvedConnectorToolCallCount ?? approvedConnectorToolCalls.length);
   const sourceKind = String(loadedSession?.sourceKind || runtimeState?.sourceKind || "");
   const workItemId = String(loadedSession?.workItemId || runtimeState?.workItemId || "");
   const runId = String(loadedSession?.runId || runtimeState?.runId || "");
@@ -840,15 +841,15 @@ function Session(): React.ReactElement {
         <RuntimeMetricCard label="Artifacts" value={sessionArtifacts.length} hint="Business outputs separated from the trace." tone={sessionArtifacts.length > 0 ? "good" : "neutral"} />
         <RuntimeMetricCard
           label={creditsLabel ? "Credits" : "Approvals"}
-          value={creditsLabel || (pendingConnectorApproval ? "Pending" : approvedConnectorToolCalls.length)}
+          value={creditsLabel || (pendingConnectorApproval ? "Pending" : approvedConnectorToolCallCount)}
           hint={
             creditsLabel
               ? `Source: ${sourceKind === "work" ? "Work Orchestration" : "runtime session"}${runId ? ` · ${runId}` : ""}`
               : pendingConnectorApproval
                 ? "Waiting for human approval before write/send."
-                : `${approvedConnectorToolCalls.length} approved connector calls recorded.`
+                : `${approvedConnectorToolCallCount} approved connector calls recorded.`
           }
-          tone={creditsLabel ? "good" : pendingConnectorApproval ? "accent" : approvedConnectorToolCalls.length > 0 ? "good" : "neutral"}
+          tone={creditsLabel ? "good" : pendingConnectorApproval ? "accent" : approvedConnectorToolCallCount > 0 ? "good" : "neutral"}
         />
       </div>
     </div>
