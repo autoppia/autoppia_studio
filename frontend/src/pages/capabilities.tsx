@@ -460,6 +460,7 @@ function CapabilityDetailModal({
   userEmail,
   onOpenSession,
   onOpenApprovals,
+  onOpenCapability,
   onReload,
   onClose,
 }: {
@@ -486,6 +487,7 @@ function CapabilityDetailModal({
   userEmail: string;
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
+  onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
   onReload: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -522,6 +524,15 @@ function CapabilityDetailModal({
     : isTrajectory
       ? regression.byTrajectoryId.get(detail.item.trajectoryId)
       : null;
+  const publishBlockedReason = isSkill && skillStatus === "published"
+    ? !regressionSummary || regressionSummary.evalCount === 0
+      ? "No benchmark evidence is linked to this skill yet."
+      : regressionSummary.latestLabel === "fail"
+        ? "The latest benchmark-linked regression is failing."
+        : regressionSummary.latestLabel !== "pass"
+          ? "The latest benchmark-linked regression is still pending."
+          : ""
+    : "";
   const lineageSummary = isTool
     ? {
         trajectories: lineage.trajectoryCountByToolId.get(detail.item.toolId) || 0,
@@ -768,6 +779,43 @@ function CapabilityDetailModal({
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Published at</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{formatDate(detail.item.publishedAt)}</p>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {isSkill && publishBlockedReason && (
+            <section>
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-500/30 dark:bg-red-500/10">
+                <div className="flex items-start gap-3">
+                  <span className="mt-0.5 inline-flex h-7 w-7 items-center justify-center rounded-lg bg-red-100 text-red-600 dark:bg-red-500/20 dark:text-red-300">
+                    <FontAwesomeIcon icon={faTriangleExclamation} className="text-[11px]" />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-red-700 dark:text-red-200">Publish blocked by regression</p>
+                    <p className="mt-1 text-xs leading-5 text-red-600 dark:text-red-300">{publishBlockedReason}</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setSkillStatus("ready")}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface dark:text-red-200 dark:hover:bg-red-500/10"
+                      >
+                        Keep as Ready
+                      </button>
+                      {linkedTrajectory && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenCapability({ kind: "trajectory", item: linkedTrajectory })}
+                          className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface dark:text-red-200 dark:hover:bg-red-500/10"
+                        >
+                          Review source trace
+                        </button>
+                      )}
+                    </div>
+                    <div className="mt-3 text-[11px] leading-5 text-red-600 dark:text-red-300">
+                      Next steps: get the benchmark back to `pass`, then publish this version.
+                    </div>
+                  </div>
                 </div>
               </div>
             </section>
@@ -3120,6 +3168,7 @@ export default function Capabilities(): React.ReactElement {
               if (toolId) params.set("toolId", toolId);
               navigate(`/approvals?${params.toString()}`);
             }}
+            onOpenCapability={openCapabilityDetail}
             onReload={loadCapabilities}
             onClose={() => setFactoryScope({
               view: detail.kind === "tool" ? "tools" : detail.kind === "trajectory" ? "trajectories" : "skills",
