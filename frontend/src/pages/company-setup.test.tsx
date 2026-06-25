@@ -104,6 +104,29 @@ describe("Company Setup page", () => {
                 runningWorkItems: 1,
                 reviewWorkItems: 2,
               },
+              runtimePolicyMap: {
+                defaultBrowserUse: "exception",
+                browserRestrictedByDomain: true,
+                runtimeClasses: {
+                  declared: [{ name: "hybrid", count: 2 }],
+                  observed: [{ name: "hybrid_runtime", count: 4 }],
+                  apiCapabilities: 6,
+                  browserCapabilities: 2,
+                  browserSessions: 4,
+                },
+                approvalBoundaries: {
+                  skills: [{ name: "write", count: 2 }],
+                  tools: [{ name: "write", count: 4 }],
+                  all: [{ name: "write", count: 6 }],
+                },
+                humanApproval: {
+                  pending: 2,
+                  approved: 4,
+                  writesProtected: true,
+                  sendsProtected: true,
+                },
+                gaps: [],
+              },
               workOrchestration: {
                 queues: {
                   total: 6,
@@ -202,6 +225,8 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("Operating Graph")).toBeInTheDocument();
     expect(await screen.findByText("Capability map")).toBeInTheDocument();
     expect(await screen.findByText("Resource map")).toBeInTheDocument();
+    expect(await screen.findByText("Runtime policy map")).toBeInTheDocument();
+    expect(await screen.findByText("Domain restricted · 4 browser sessions")).toBeInTheDocument();
     expect(await screen.findByText("knowledge.claims.search, knowledge.claims.read_document")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();

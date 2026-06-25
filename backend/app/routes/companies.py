@@ -30,6 +30,7 @@ from app.database import (
 from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
+from app.services.runtime_policy import serialize_runtime_policy
 
 router = APIRouter()
 
@@ -200,6 +201,14 @@ def _work_latest_credits(doc: dict[str, Any]) -> float:
 def _work_retry_count(doc: dict[str, Any]) -> int:
     history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
     return max(0, len(history) - 1)
+
+
+def _approval_boundary_counts(policies: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    boundaries = ["read", "draft", "write", "send"]
+    return [
+        {"name": boundary, "count": sum(1 for policy in policies if boundary in (policy.get("approvalRequiredFor") or []))}
+        for boundary in boundaries
+    ]
 
 
 def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
@@ -456,6 +465,22 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             or str((doc.get("pendingApproval") if isinstance(doc.get("pendingApproval"), dict) else {}).get("approvalId") or "")
             or str(doc.get("workItemId") or "") in approval_work_item_ids
         ]
+        skill_runtime_policies = [serialize_runtime_policy(skill) for skill in skills]
+        tool_runtime_policies = [serialize_runtime_policy(tool) for tool in tools]
+        all_runtime_policies = [*skill_runtime_policies, *tool_runtime_policies]
+        browser_policy_count = sum(1 for policy in all_runtime_policies if policy.get("browserRuntime"))
+        api_policy_count = sum(1 for policy in all_runtime_policies if policy.get("runtimeClass") == "api")
+        browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime"})
+        browser_allowlisted = bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins"))
+        runtime_policy_gaps = [
+            gap
+            for gap in [
+                {"key": "browser_allowlist", "label": "Browser-capable runtime exists but no domain allowlist is configured.", "target": "governance"} if (browser_policy_count or browser_session_count) and not browser_allowlisted else None,
+                {"key": "write_approval", "label": "Writable tools or skills exist without write approval boundaries.", "target": "capabilities"} if all_runtime_policies and not any("write" in (policy.get("approvalRequiredFor") or []) for policy in all_runtime_policies) else None,
+                {"key": "runtime_policy", "label": "No tool or skill runtime policies are available yet.", "target": "capabilities"} if not all_runtime_policies else None,
+            ]
+            if gap
+        ]
 
         counts = {
             "connectors": len(connectors),
@@ -624,6 +649,29 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "workItems": counts["workItems"],
                 "runningWorkItems": counts["runningWorkItems"],
                 "reviewWorkItems": counts["reviewWorkItems"],
+            },
+            "runtimePolicyMap": {
+                "defaultBrowserUse": "exception",
+                "browserRestrictedByDomain": browser_allowlisted,
+                "runtimeClasses": {
+                    "declared": _sorted_counts([str(policy.get("runtimeClass") or "api") for policy in all_runtime_policies]),
+                    "observed": _sorted_counts(runtime_kinds),
+                    "apiCapabilities": api_policy_count,
+                    "browserCapabilities": browser_policy_count,
+                    "browserSessions": browser_session_count,
+                },
+                "approvalBoundaries": {
+                    "skills": _approval_boundary_counts(skill_runtime_policies),
+                    "tools": _approval_boundary_counts(tool_runtime_policies),
+                    "all": _approval_boundary_counts(all_runtime_policies),
+                },
+                "humanApproval": {
+                    "pending": counts["pendingApprovals"],
+                    "approved": counts["approvedApprovals"],
+                    "writesProtected": any("write" in (policy.get("approvalRequiredFor") or []) for policy in all_runtime_policies),
+                    "sendsProtected": any("send" in (policy.get("approvalRequiredFor") or []) for policy in all_runtime_policies),
+                },
+                "gaps": runtime_policy_gaps,
             },
             "workOrchestration": {
                 "queues": {

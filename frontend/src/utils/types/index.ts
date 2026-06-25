@@ -512,6 +512,29 @@ export interface CompanySetupContract {
     runningWorkItems: number;
     reviewWorkItems: number;
   };
+  runtimePolicyMap?: {
+    defaultBrowserUse: string;
+    browserRestrictedByDomain: boolean;
+    runtimeClasses: {
+      declared: CompanySetupCount[];
+      observed: CompanySetupCount[];
+      apiCapabilities: number;
+      browserCapabilities: number;
+      browserSessions: number;
+    };
+    approvalBoundaries: {
+      skills: CompanySetupCount[];
+      tools: CompanySetupCount[];
+      all: CompanySetupCount[];
+    };
+    humanApproval: {
+      pending: number;
+      approved: number;
+      writesProtected: boolean;
+      sendsProtected: boolean;
+    };
+    gaps: Array<{ key: string; label: string; target: string }>;
+  };
   workOrchestration?: {
     queues: {
       total: number;

@@ -386,8 +386,8 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         "tools_collection",
         _Collection(
             [
-                {"toolId": "tool-1", "companyId": "company-1", "email": "owner@example.com", "inputEntities": ["Policy"], "outputEntity": "Claim", "sideEffects": "read"},
-                {"toolId": "tool-2", "companyId": "company-1", "email": "owner@example.com", "inputEntities": [], "outputEntity": "", "sideEffects": "write"},
+                {"toolId": "tool-1", "companyId": "company-1", "email": "owner@example.com", "inputEntities": ["Policy"], "outputEntity": "Claim", "sideEffects": "read", "runtimeRequirements": ["api"]},
+                {"toolId": "tool-2", "companyId": "company-1", "email": "owner@example.com", "inputEntities": [], "outputEntity": "", "sideEffects": "write", "runtimeRequirements": ["browser"]},
             ]
         ),
     )
@@ -439,8 +439,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "whenToUse": "Customer asks about claim status.",
                     "expectedArtifacts": ["draft_email", "claim_summary"],
                     "preconditions": ["claim id known"],
+                    "runtimeRequirements": ["network"],
                 },
-                {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "always", "status": "ready"},
+                {"capabilityId": "skill-2", "companyId": "company-1", "capabilityKind": "skill", "riskPolicy": "human_approval_always", "status": "ready", "runtimeRequirements": ["browser"]},
             ]
         ),
     )
@@ -518,6 +519,14 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["factory"]["readySkills"] == 2
     assert result["contract"]["runtime"]["sessions"] == 2
     assert result["contract"]["runtime"]["pendingApprovals"] == 2
+    assert result["contract"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
+    assert result["contract"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
+    assert result["contract"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 2
+    assert result["contract"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
+    assert {"name": "write", "count": 4} in result["contract"]["runtimePolicyMap"]["approvalBoundaries"]["all"]
+    assert result["contract"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True
+    assert result["contract"]["runtimePolicyMap"]["humanApproval"]["sendsProtected"] is True
+    assert result["contract"]["runtimePolicyMap"]["gaps"] == []
     assert result["contract"]["governance"]["credentials"] == 1
     assert result["contract"]["governance"]["hostJwtConfigured"] is True
     assert "erp.example.com" in result["contract"]["governance"]["allowedOriginHosts"]

@@ -253,6 +253,7 @@ export default function CompanySetup(): React.ReactElement {
   const integration = contract.integration;
   const capabilityMap = contract.capabilityMap;
   const resourceMap = contract.resourceMap;
+  const runtimePolicyMap = contract.runtimePolicyMap;
   const workOrchestration = contract.workOrchestration;
   const readinessPercent = Math.round((readiness?.score || 0) * 100);
   const gapPath = (target: string) => {
@@ -638,6 +639,55 @@ export default function CompanySetup(): React.ReactElement {
                   {contract.runtime.runtimeKinds.length === 0 ? <span className="text-sm text-gray-500 dark:text-gray-400">No runtime sessions yet.</span> : contract.runtime.runtimeKinds.map((item) => <CountPill key={`runtime-${item.name}`} label={item.name.replace(/_/g, " ")} count={item.count} />)}
                 </div>
               </div>
+              {runtimePolicyMap && (
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Runtime policy map</p>
+                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Browser policy</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Default: <span className="font-semibold text-gray-900 dark:text-white">{runtimePolicyMap.defaultBrowserUse}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {runtimePolicyMap.browserRestrictedByDomain ? "Domain restricted" : "No domain restriction"} · {runtimePolicyMap.runtimeClasses.browserSessions} browser sessions
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Declared runtimes</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Browser-capable: <span className="font-semibold text-gray-900 dark:text-white">{runtimePolicyMap.runtimeClasses.browserCapabilities}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        API-capable: {runtimePolicyMap.runtimeClasses.apiCapabilities}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Human approval</p>
+                      <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                        Write/send: <span className="font-semibold text-gray-900 dark:text-white">{runtimePolicyMap.humanApproval.writesProtected && runtimePolicyMap.humanApproval.sendsProtected ? "protected" : "incomplete"}</span>
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                        {runtimePolicyMap.humanApproval.pending} pending · {runtimePolicyMap.humanApproval.approved} approved
+                      </p>
+                    </div>
+                  </div>
+                  {runtimePolicyMap.gaps.length > 0 && (
+                    <div className="mt-3 space-y-2">
+                      {runtimePolicyMap.gaps.slice(0, 3).map((gap) => (
+                        <button
+                          key={gap.key}
+                          type="button"
+                          onClick={() => navigate(gapPath(gap.target))}
+                          className="flex w-full items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-left text-xs text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200"
+                        >
+                          <span>{gap.label}</span>
+                          <FontAwesomeIcon icon={faArrowRight} className="text-[10px]" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Skill policies</p>
                 <div className="mt-3 flex flex-wrap gap-2">
