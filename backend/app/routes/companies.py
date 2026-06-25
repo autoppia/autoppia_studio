@@ -33,6 +33,12 @@ from app.request_scope import RequestScope, coerce_request_scope, get_request_sc
 from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
 from app.services.promotion_pipeline import summarize_promotion_pipeline
+from app.services.resource_governance import derived_resource_gate as _derived_resource_gate
+from app.services.resource_governance import resource_acl as _resource_acl
+from app.services.resource_governance import resource_contract as _resource_contract
+from app.services.resource_governance import resource_read_tools as _resource_read_tools
+from app.services.resource_governance import resource_vector_id as _resource_vector_id
+from app.services.resource_governance import summarize_resource_governance
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.runtime_sessions import session_runtime_kind, summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -174,84 +180,6 @@ def _work_latest_credits(doc: dict[str, Any]) -> float:
 def _work_retry_count(doc: dict[str, Any]) -> int:
     history = doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else []
     return max(0, len(history) - 1)
-
-
-def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = doc.get("resourceContract")
-    return contract if isinstance(contract, dict) else {}
-
-
-def _resource_acl(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    governance = contract.get("governance") if isinstance(contract.get("governance"), dict) else {}
-    acl = governance.get("acl") if isinstance(governance.get("acl"), dict) else doc.get("acl") if isinstance(doc.get("acl"), dict) else {}
-    visibility = str(acl.get("visibility") or "").strip()
-    return {
-        "explicit": bool(acl),
-        "visibility": visibility or "unspecified",
-        "allowedRoles": _normalized_list(acl.get("allowedRoles")),
-        "allowedUsers": _normalized_list(acl.get("allowedUsers")),
-    }
-
-
-def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
-    contract = _resource_contract(doc)
-    return _normalized_list(contract.get("readTools") or doc.get("readTools"))
-
-
-def _resource_vector_id(doc: dict[str, Any]) -> str:
-    contract = _resource_contract(doc)
-    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
-    return str(doc.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "").strip()
-
-
-def _resource_status(doc: dict[str, Any]) -> str:
-    contract = _resource_contract(doc)
-    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
-    return str(doc.get("status") or contract.get("status") or indexing.get("status") or "unknown")
-
-
-def _resource_indexed(doc: dict[str, Any]) -> bool:
-    contract = _resource_contract(doc)
-    indexing = contract.get("indexing") if isinstance(contract.get("indexing"), dict) else {}
-    if isinstance(indexing.get("indexed"), bool):
-        return indexing["indexed"]
-    return _resource_status(doc).lower() in {"indexed", "ready", "active", "completed"}
-
-
-def _resource_citable(doc: dict[str, Any]) -> bool:
-    contract = _resource_contract(doc)
-    governance = contract.get("governance") if isinstance(contract.get("governance"), dict) else {}
-    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
-    if isinstance(citability.get("citable"), bool):
-        return citability["citable"]
-    return _resource_indexed(doc)
-
-
-def _resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    gate = contract.get("resourceGate")
-    return gate if isinstance(gate, dict) else {}
-
-
-def _derived_resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
-    gate = _resource_gate(doc)
-    if gate:
-        return gate
-    checks = {
-        "indexed": _resource_indexed(doc),
-        "vectorStore": bool(_resource_vector_id(doc)),
-        "readTools": bool(_resource_read_tools(doc)),
-        "acl": bool(_resource_acl(doc).get("explicit")),
-        "citability": _resource_citable(doc),
-    }
-    blockers = [key for key, ready in checks.items() if not ready]
-    return {
-        "state": "ready" if not blockers else "blocked",
-        "readyForRuntime": not blockers,
-        "blockers": blockers,
-        "checks": checks,
-    }
 
 
 async def _ensure_default_company(email: str) -> dict[str, Any]:
@@ -447,22 +375,17 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             }
         )
         resource_read_tools = sorted({tool for doc in knowledge_docs for tool in _resource_read_tools(doc)})
-        resource_statuses = [_resource_status(doc) for doc in knowledge_docs]
         resource_gates = [_derived_resource_gate(doc) for doc in knowledge_docs]
+        resource_summary = summarize_resource_governance(knowledge_docs)
         runtime_ready_resources = sum(1 for gate in resource_gates if bool(gate.get("readyForRuntime")))
-        gate_state_counts = _sorted_counts([str(gate.get("state") or "unknown").lower() for gate in resource_gates])
-        gate_blockers = _sorted_counts([blocker for gate in resource_gates for blocker in _normalized_list(gate.get("blockers"))])
         resource_vector_ids = {_resource_vector_id(doc) for doc in knowledge_docs if _resource_vector_id(doc)}
         vector_store_ids = {str(doc.get("vectorDatabaseId") or "").strip() for doc in vector_stores if str(doc.get("vectorDatabaseId") or "").strip()}
         docs_with_contract = sum(1 for doc in knowledge_docs if _resource_contract(doc))
         docs_with_vector_store = sum(1 for doc in knowledge_docs if _resource_vector_id(doc))
-        indexed_docs = sum(1 for status in resource_statuses if str(status).lower() in {"indexed", "ready", "active", "completed"})
         resource_acls = [_resource_acl(doc) for doc in knowledge_docs]
         docs_with_acl = sum(1 for acl in resource_acls if acl.get("explicit"))
         company_visible_docs = sum(1 for acl in resource_acls if acl.get("visibility") == "company")
         restricted_docs = sum(1 for acl in resource_acls if acl.get("visibility") not in {"", "company", "unspecified"})
-        acl_roles = sorted({role for acl in resource_acls for role in _normalized_list(acl.get("allowedRoles"))})
-        acl_users = sorted({user for acl in resource_acls for user in _normalized_list(acl.get("allowedUsers"))})
         acl_visibility_counts = _sorted_counts([str(acl.get("visibility") or "unspecified") for acl in resource_acls])
         resource_gaps = [
             gap
@@ -652,44 +575,22 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             },
             "resourceMap": {
                 "documents": {
-                    "total": counts["resources"],
-                    "indexed": indexed_docs,
-                    "withResourceContract": docs_with_contract,
-                    "withVectorStore": docs_with_vector_store,
+                    "total": resource_summary["total"],
+                    "indexed": resource_summary["indexed"],
+                    "withResourceContract": resource_summary["withResourceContract"],
+                    "withVectorStore": resource_summary["withVectorStore"],
                     "acl": {
-                        "withAcl": docs_with_acl,
-                        "companyVisible": company_visible_docs,
-                        "restricted": restricted_docs,
-                        "visibility": acl_visibility_counts,
-                        "roles": acl_roles[:20],
-                        "users": acl_users[:20],
+                        "withAcl": resource_summary["acl"]["withAcl"],
+                        "companyVisible": resource_summary["acl"]["companyVisible"],
+                        "restricted": resource_summary["acl"]["restricted"],
+                        "visibility": resource_summary["acl"]["visibility"],
+                        "roles": resource_summary["acl"]["roles"],
+                        "users": resource_summary["acl"]["users"],
                     },
-                    "status": _sorted_counts(resource_statuses),
-                    "readTools": resource_read_tools[:20],
-                    "sample": [
-                        {
-                            "documentId": str(doc.get("documentId") or ""),
-                            "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
-                            "name": str(doc.get("filename") or doc.get("name") or doc.get("title") or "Untitled resource"),
-                            "resourceKind": str(doc.get("resourceKind") or _resource_contract(doc).get("resourceKind") or "document"),
-                            "status": _resource_status(doc),
-                            "vectorDatabaseId": _resource_vector_id(doc),
-                            "aclVisibility": _resource_acl(doc)["visibility"],
-                            "readTools": _resource_read_tools(doc)[:8],
-                            "runtimeGate": {
-                                "state": str(_derived_resource_gate(doc).get("state") or "unknown"),
-                                "readyForRuntime": bool(_derived_resource_gate(doc).get("readyForRuntime")),
-                                "blockers": _normalized_list(_derived_resource_gate(doc).get("blockers"))[:8],
-                            },
-                        }
-                        for doc in knowledge_docs[:8]
-                    ],
-                    "runtimeGate": {
-                        "ready": runtime_ready_resources,
-                        "blocked": max(0, len(knowledge_docs) - runtime_ready_resources),
-                        "states": gate_state_counts,
-                        "blockers": gate_blockers,
-                    },
+                    "status": resource_summary["status"],
+                    "readTools": resource_summary["readTools"],
+                    "sample": resource_summary["sample"],
+                    "runtimeGate": resource_summary["runtimeGate"],
                 },
                 "vectorStores": {
                     "total": counts["vectorStores"],

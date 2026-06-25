@@ -36,6 +36,7 @@ from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.promotion_pipeline import summarize_promotion_pipeline
+from app.services.resource_governance import summarize_resource_governance
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.runtime_sessions import summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -76,174 +77,6 @@ def _list_values(value: Any) -> list[str]:
 
 def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
     return doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-
-
-def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = doc.get("resourceContract")
-    return contract if isinstance(contract, dict) else {}
-
-
-def _resource_indexing(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    indexing = contract.get("indexing")
-    return indexing if isinstance(indexing, dict) else {}
-
-
-def _resource_governance(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    governance = contract.get("governance")
-    return governance if isinstance(governance, dict) else {}
-
-
-def _resource_acl(doc: dict[str, Any]) -> dict[str, Any]:
-    governance = _resource_governance(doc)
-    acl = governance.get("acl") if isinstance(governance.get("acl"), dict) else doc.get("acl") if isinstance(doc.get("acl"), dict) else {}
-    visibility = str(acl.get("visibility") or "").strip()
-    return {
-        "explicit": bool(acl),
-        "visibility": visibility or "unspecified",
-        "allowedRoles": _list_values(acl.get("allowedRoles")),
-        "allowedUsers": _list_values(acl.get("allowedUsers")),
-    }
-
-
-def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
-    contract = _resource_contract(doc)
-    return _list_values(contract.get("readTools") or doc.get("readTools"))
-
-
-def _resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    gate = contract.get("resourceGate")
-    return gate if isinstance(gate, dict) else {}
-
-
-def _derived_resource_gate(doc: dict[str, Any]) -> dict[str, Any]:
-    gate = _resource_gate(doc)
-    if gate:
-        return gate
-    checks = {
-        "indexed": _resource_indexed(doc),
-        "vectorStore": bool(_resource_vector_id(doc)),
-        "readTools": bool(_resource_read_tools(doc)),
-        "acl": bool(_resource_acl(doc).get("explicit")),
-        "citability": _resource_citable(doc),
-    }
-    blockers = [key for key, ready in checks.items() if not ready]
-    return {
-        "state": "ready" if not blockers else "blocked",
-        "readyForRuntime": not blockers,
-        "blockers": blockers,
-        "nextActions": [],
-        "checks": checks,
-    }
-
-
-def _resource_status(doc: dict[str, Any]) -> str:
-    return str(doc.get("status") or _resource_contract(doc).get("status") or "unknown").strip().lower()
-
-
-def _resource_indexed(doc: dict[str, Any]) -> bool:
-    indexing = _resource_indexing(doc)
-    if isinstance(indexing.get("indexed"), bool):
-        return indexing["indexed"]
-    return _resource_status(doc) in {"indexed", "ready", "active", "completed"}
-
-
-def _resource_citable(doc: dict[str, Any]) -> bool:
-    governance = _resource_governance(doc)
-    citability = governance.get("citability")
-    if isinstance(citability, dict) and isinstance(citability.get("citable"), bool):
-        return citability["citable"]
-    return _resource_indexed(doc)
-
-
-def _resource_vector_id(doc: dict[str, Any]) -> str:
-    indexing = _resource_indexing(doc)
-    return str(doc.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "").strip()
-
-
-def _resource_governance_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    read_tools = _dedupe([tool for doc in docs for tool in _resource_read_tools(doc)])
-    gates = [_derived_resource_gate(doc) for doc in docs]
-    runtime_ready = sum(1 for gate in gates if bool(gate.get("readyForRuntime")))
-    gate_state_counts: dict[str, int] = {}
-    gate_blockers: dict[str, int] = {}
-    for gate in gates:
-        state = str(gate.get("state") or "unknown").strip().lower() or "unknown"
-        gate_state_counts[state] = gate_state_counts.get(state, 0) + 1
-        for blocker in _list_values(gate.get("blockers")):
-            gate_blockers[blocker] = gate_blockers.get(blocker, 0) + 1
-    sample = []
-    for doc in docs[:8]:
-        governance = _resource_governance(doc)
-        freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
-        citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
-        gate = _derived_resource_gate(doc)
-        sample.append({
-            "documentId": str(doc.get("documentId") or ""),
-            "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
-            "name": str(doc.get("filename") or doc.get("name") or "Untitled resource"),
-            "status": _resource_status(doc),
-            "indexed": _resource_indexed(doc),
-            "citable": _resource_citable(doc),
-            "freshnessStatus": str(freshness.get("status") or ("current" if _resource_indexed(doc) else "indexing")),
-            "citationLabel": str(citability.get("citationLabel") or doc.get("filename") or ""),
-            "vectorDatabaseId": _resource_vector_id(doc),
-            "aclVisibility": _resource_acl(doc)["visibility"],
-            "readTools": _resource_read_tools(doc)[:8],
-            "runtimeGate": {
-                "state": str(gate.get("state") or "unknown"),
-                "readyForRuntime": bool(gate.get("readyForRuntime")),
-                "blockers": _list_values(gate.get("blockers"))[:8],
-            },
-        })
-    total = len(docs)
-    indexed = sum(1 for doc in docs if _resource_indexed(doc))
-    citable = sum(1 for doc in docs if _resource_citable(doc))
-    with_contract = sum(1 for doc in docs if _resource_contract(doc))
-    with_vector_store = sum(1 for doc in docs if _resource_vector_id(doc))
-    resource_acls = [_resource_acl(doc) for doc in docs]
-    with_acl = sum(1 for acl in resource_acls if acl.get("explicit"))
-    visibility_counts: dict[str, int] = {}
-    for acl in resource_acls:
-        visibility = str(acl.get("visibility") or "unspecified")
-        visibility_counts[visibility] = visibility_counts.get(visibility, 0) + 1
-    gaps = [
-        gap
-        for gap in [
-            {"key": "resource_contracts", "label": "Knowledge documents exist but are not exposed as governed resources.", "target": "knowledge"} if total and with_contract == 0 else None,
-            {"key": "resource_acl", "label": "Knowledge resources need explicit ACL visibility before runtime grounding.", "target": "knowledge"} if total and with_acl < total else None,
-            {"key": "resource_indexing", "label": "Knowledge resources exist but none are indexed for retrieval.", "target": "knowledge"} if total and indexed == 0 else None,
-            {"key": "resource_citations", "label": "Knowledge resources are not citable yet, so answers cannot cite source evidence.", "target": "knowledge"} if total and citable == 0 else None,
-            {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before AgentRuntimes can ground work in them.", "target": "knowledge"} if total and not read_tools else None,
-            {"key": "vector_store", "label": "Knowledge resources are not linked to vector stores.", "target": "knowledge"} if total and with_vector_store == 0 else None,
-        ]
-        if gap
-    ]
-    return {
-        "total": total,
-        "indexed": indexed,
-        "citable": citable,
-        "withResourceContract": with_contract,
-        "withVectorStore": with_vector_store,
-        "acl": {
-            "withAcl": with_acl,
-            "companyVisible": visibility_counts.get("company", 0),
-            "restricted": sum(count for visibility, count in visibility_counts.items() if visibility not in {"company", "unspecified"}),
-            "visibility": [{"name": key, "count": visibility_counts[key]} for key in sorted(visibility_counts, key=lambda item: (-visibility_counts[item], item))],
-        },
-        "readTools": read_tools[:20],
-        "runtimeGate": {
-            "ready": runtime_ready,
-            "blocked": sum(count for state, count in gate_state_counts.items() if state not in {"ready"}),
-            "states": [{"name": key, "count": gate_state_counts[key]} for key in sorted(gate_state_counts, key=lambda item: (-gate_state_counts[item], item))],
-            "blockers": [{"name": key, "count": gate_blockers[key]} for key in sorted(gate_blockers, key=lambda item: (-gate_blockers[item], item))],
-        },
-        "sample": sample,
-        "ready": bool(total and runtime_ready == total),
-        "gaps": gaps,
-    }
 
 
 def _safe_float(value: Any) -> float:
@@ -511,7 +344,7 @@ class AutomataAssistantTools:
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
-        resource_map = _resource_governance_summary(knowledge_docs)
+        resource_map = summarize_resource_governance(knowledge_docs)
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
