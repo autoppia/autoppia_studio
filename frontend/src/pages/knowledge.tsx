@@ -565,6 +565,7 @@ export default function Knowledge(): React.ReactElement {
               <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
               {visibleDocuments.map((document) => {
                 const meta = fileMeta(document.filename, document.contentType);
+                const contract = document.resourceContract;
                 return (
                   <div key={document.documentId} className="group bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4 hover:border-primary/40 hover:shadow-soft transition-all duration-200">
                     <div className="flex items-start gap-3">
@@ -589,6 +590,19 @@ export default function Knowledge(): React.ReactElement {
                         {statusLabel(document.status)}
                       </span>
                     </div>
+                    {contract && (
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                          {contract.resourceKind || "document"} resource
+                        </span>
+                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                          {contract.readOnly ? "read-only" : "mutable"}
+                        </span>
+                        <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                          {(contract.readTools || []).length} read tools
+                        </span>
+                      </div>
+                    )}
                     {["indexing", "uploaded"].includes((document.status || "").toLowerCase()) && (
                       <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-2 truncate">
                         Preparing this resource for search…

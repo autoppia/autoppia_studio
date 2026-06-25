@@ -666,6 +666,8 @@ export interface VectorDatabase extends VectorIndex {
 
 export interface KnowledgeDocument {
   documentId: string;
+  resourceId?: string;
+  resourceKind?: "document" | string;
   email: string;
   companyId: string;
   filename: string;
@@ -677,6 +679,27 @@ export interface KnowledgeDocument {
   vectorDatabaseId?: string;
   vectorDatabaseName?: string;
   vectorCollectionName?: string;
+  resourceContract?: {
+    resourceId?: string;
+    resourceKind?: "document" | string;
+    surface?: string;
+    readOnly?: boolean;
+    status?: string;
+    indexing?: {
+      indexed?: boolean;
+      vectorDatabaseId?: string;
+      vectorDatabaseName?: string;
+      vectorCollectionName?: string;
+    };
+    governance?: {
+      companyId?: string;
+      connectorId?: string;
+      source?: string;
+      contentType?: string;
+      size?: number;
+    };
+    readTools?: string[];
+  };
   createdAt?: string;
   updatedAt?: string;
 }

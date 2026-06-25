@@ -160,6 +160,12 @@ async def test_upload_document_creates_knowledge_connector(monkeypatch, tmp_path
     assert result["success"] is True
     assert result["document"]["filename"] == "handbook.md"
     assert result["document"]["status"] == "indexing"
+    assert result["document"]["resourceId"] == result["document"]["documentId"]
+    assert result["document"]["resourceKind"] == "document"
+    assert result["document"]["resourceContract"]["surface"] == "knowledge_resource"
+    assert result["document"]["resourceContract"]["readOnly"] is True
+    assert result["document"]["resourceContract"]["indexing"]["vectorDatabaseId"] == vector_dbs.docs[0]["vectorDatabaseId"]
+    assert "knowledge.company_knowledge.search" in result["document"]["resourceContract"]["readTools"]
     assert len(vector_dbs.docs) == 2
     assert connectors.docs[0]["type"] == "knowledge"
     assert documents.docs[0]["connectorId"] == connectors.docs[0]["connectorId"]

@@ -71,8 +71,42 @@ def _filename_from_url(url: str) -> str:
 
 
 def _serialize(doc: dict) -> dict:
+    resource_id = doc.get("resourceId") or doc.get("documentId", "")
+    vector_name = doc.get("vectorDatabaseName", "")
+    vector_collection = doc.get("vectorCollectionName", "")
+    connector_id = doc.get("connectorId", "")
+    indexed = str(doc.get("status") or "").lower() in {"indexed", "ready"}
+    segment = "_".join(part for part in re.sub(r"[^a-zA-Z0-9]+", "_", str(vector_name or "knowledge").lower()).split("_") if part)[:48] or "knowledge"
+    resource_contract = {
+        "resourceId": resource_id,
+        "resourceKind": "document",
+        "surface": "knowledge_resource",
+        "readOnly": True,
+        "status": doc.get("status", "uploaded"),
+        "indexing": {
+            "indexed": indexed,
+            "vectorDatabaseId": doc.get("vectorDatabaseId", ""),
+            "vectorDatabaseName": vector_name,
+            "vectorCollectionName": vector_collection,
+        },
+        "governance": {
+            "companyId": doc.get("companyId", ""),
+            "connectorId": connector_id,
+            "source": doc.get("source", "upload"),
+            "contentType": doc.get("contentType", ""),
+            "size": doc.get("size", 0),
+        },
+        "readTools": [
+            f"knowledge.{segment}.search",
+            f"knowledge.{segment}.list_documents",
+            f"knowledge.{segment}.stats",
+            f"knowledge.{segment}.read_document",
+        ] if connector_id else [],
+    }
     return {
         "documentId": doc.get("documentId", ""),
+        "resourceId": resource_id,
+        "resourceKind": "document",
         "email": doc.get("email", ""),
         "companyId": doc.get("companyId", ""),
         "filename": doc.get("filename", ""),
@@ -84,6 +118,7 @@ def _serialize(doc: dict) -> dict:
         "vectorDatabaseId": doc.get("vectorDatabaseId", ""),
         "vectorDatabaseName": doc.get("vectorDatabaseName", ""),
         "vectorCollectionName": doc.get("vectorCollectionName", ""),
+        "resourceContract": resource_contract,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
@@ -374,6 +409,8 @@ async def create_knowledge_document_record(
 
     doc = {
         "documentId": document_id,
+        "resourceId": document_id,
+        "resourceKind": "document",
         "email": email,
         "companyId": company_id,
         "filename": safe_name,
