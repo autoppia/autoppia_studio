@@ -220,6 +220,7 @@ function Session(): React.ReactElement {
   const locationState = location.state as {
     activeSessionId?: string;
     skillMode?: boolean;
+    skillId?: string;
     skillName?: string;
     skillGoal?: string;
     skillInstructions?: string;
@@ -698,6 +699,7 @@ function Session(): React.ReactElement {
   const connectorActionCount = runtimeTimeline.filter((step) => step.activity === "tool").length;
   const browserActionCount = runtimeTimeline.filter((step) => step.activity === "browser").length;
   const matchedSkillName = String(runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
+  const matchedSkillId = String(runtimeState?.matchedSkillId || locationState?.skillId || "");
   const pendingConnectorApproval = String(runtimeState?.pendingConnectorApproval || "");
   const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
   const sourceKind = String(runtimeState?.sourceKind || "");
@@ -783,6 +785,16 @@ function Session(): React.ReactElement {
             >
               <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
               Open job
+            </button>
+          )}
+          {matchedSkillId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/capabilities/skill/${encodeURIComponent(matchedSkillId)}`)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+            >
+              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
+              Open skill
             </button>
           )}
         </div>

@@ -93,16 +93,19 @@ function SessionCard({
   onOpenApprovals,
   onOpenArtifacts,
   onOpenWorkItem,
+  onOpenSkill,
 }: {
   session: SessionItem;
   onOpen: (sessionId: string) => void;
   onOpenApprovals: (sessionId: string) => void;
   onOpenArtifacts: (sessionId: string) => void;
   onOpenWorkItem: (workItemId: string) => void;
+  onOpenSkill: (skillId: string) => void;
 }) {
   const initialHost = hostLabel(session.initialUrl);
   const lastHost = hostLabel(session.lastUrl);
   const runtimeState = session.runtimeState || {};
+  const matchedSkillId = String(session.matchedSkillId || runtimeState.matchedSkillId || "");
   const matchedSkillName = String(session.matchedSkillName || runtimeState.matchedSkillName || runtimeState.matchedSkill || "");
   const kind = runtimeKind(session);
   const workItemId = String(session.workItemId || runtimeState.workItemId || "");
@@ -148,7 +151,7 @@ function SessionCard({
           <FontAwesomeIcon icon={faShapes} className="text-[10px]" />
           {session.chatCount || 0} messages
         </span>
-        {session.matchedSkillId && (
+        {matchedSkillId && (
           <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("good")}`}>
             <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
             {matchedSkillName || "Matched skill"}
@@ -236,6 +239,16 @@ function SessionCard({
               Artifacts
             </button>
           )}
+          {matchedSkillId && (
+            <button
+              type="button"
+              onClick={() => onOpenSkill(matchedSkillId)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+            >
+              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[10px]" />
+              Open skill
+            </button>
+          )}
           {workItemId && (
             <button
               type="button"
@@ -311,7 +324,8 @@ export default function Runtime(): React.ReactElement {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return sessions.filter((session) => {
-      if (skillFilter && String(session.matchedSkillId || "") !== skillFilter) return false;
+      const matchedSkillId = String(session.matchedSkillId || session.runtimeState?.matchedSkillId || "");
+      if (skillFilter && matchedSkillId !== skillFilter) return false;
       if (workItemFilter) {
         const sessionWorkItemId = String(session.workItemId || session.runtimeState?.workItemId || "");
         if (sessionWorkItemId !== workItemFilter) return false;
@@ -449,6 +463,7 @@ export default function Runtime(): React.ReactElement {
                 onOpenApprovals={(sessionId) => navigate(`/approvals?status=pending&sessionId=${encodeURIComponent(sessionId)}`)}
                 onOpenArtifacts={(sessionId) => navigate(`/artifacts?sessionId=${encodeURIComponent(sessionId)}`)}
                 onOpenWorkItem={(workItemId) => navigate(`/work?item=${encodeURIComponent(workItemId)}`)}
+                onOpenSkill={(skillId) => navigate(`/capabilities/skill/${encodeURIComponent(skillId)}`)}
               />
             )) : (
               <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center dark:border-dark-border dark:bg-dark-bg">

@@ -33,6 +33,8 @@ describe("Runtime page", () => {
             prompt: "Claim session",
             email: "demo@example.com",
             workItemId: "work-1",
+            matchedSkillId: "skill-1",
+            matchedSkillName: "Resolve claim",
             actionCount: 1,
             chatCount: 1,
           },
@@ -62,5 +64,6 @@ describe("Runtime page", () => {
     expect(await screen.findByText("Runtime scope active")).toBeInTheDocument();
     expect(await screen.findByText("Claim session")).toBeInTheDocument();
     expect(screen.queryByText("Other session")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
   });
 });
