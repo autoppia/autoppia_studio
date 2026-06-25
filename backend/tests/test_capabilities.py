@@ -327,6 +327,62 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
             ]
         ),
     )
+    monkeypatch.setattr(
+        capabilities,
+        "sessions_collection",
+        _Collection(
+            [
+                {
+                    "sessionId": "session-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "prompt": "Review claim status",
+                    "runtimeState": {
+                        "runtimeKind": "api_runtime",
+                        "matchedSkillId": "skill-1",
+                        "trajectoryId": "traj-1",
+                        "toolIds": ["tool-claim"],
+                    },
+                    "traceIds": ["trace-1"],
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "approvals_collection",
+        _Collection(
+            [
+                {
+                    "approvalId": "approval-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "sessionId": "session-1",
+                    "status": "pending",
+                    "approvalKey": "claim.write",
+                    "title": "Confirm claim update",
+                    "metadata": {"skillId": "skill-1", "trajectoryId": "traj-1", "toolId": "tool-claim"},
+                }
+            ]
+        ),
+    )
+    monkeypatch.setattr(
+        capabilities,
+        "artifacts_collection",
+        _Collection(
+            [
+                {
+                    "artifactId": "artifact-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "sessionId": "session-1",
+                    "title": "Claim summary",
+                    "artifactType": "markdown",
+                    "metadata": {"skillId": "skill-1", "trajectoryId": "traj-1", "toolId": "tool-claim"},
+                }
+            ]
+        ),
+    )
 
     result = await capabilities.get_company_capability_graph("co-1", email="user@example.com")
     graph = result["graph"]
@@ -335,7 +391,9 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
     assert {"connector:conn-1", "entity:entity-claim", "tool:tool-claim", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
+    assert {"session:session-1", "approval:approval-1", "artifact:artifact-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
+    assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
     assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
     assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary"]
     assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
@@ -343,6 +401,13 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
     assert graph["coverage"]["skills"]["ready"] == 1
     assert graph["coverage"]["skills"]["reusable"] == 1
+    assert graph["coverage"]["runtime"]["sessions"] == 1
+    assert graph["coverage"]["runtime"]["approvals"] == 1
+    assert graph["coverage"]["runtime"]["pendingApprovals"] == 1
+    assert graph["coverage"]["runtime"]["artifacts"] == 1
+    assert graph["coverage"]["runtime"]["linkedSessions"] is True
+    assert graph["coverage"]["runtime"]["linkedApprovals"] is True
+    assert graph["coverage"]["runtime"]["linkedArtifacts"] is True
     assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
     assert graph["coverage"]["promotionPath"]["hasTrajectoryToSkill"] is True
 

@@ -2648,6 +2648,14 @@ export default function Capabilities(): React.ReactElement {
       totalTasks: coverage.benchmarks?.tasks || 0,
       reusableSkills: coverage.skills?.reusable || 0,
       totalSkills: coverage.skills?.total || 0,
+      runtimeSessions: coverage.runtime?.sessions || 0,
+      runtimeApprovals: coverage.runtime?.approvals || 0,
+      runtimeArtifacts: coverage.runtime?.artifacts || 0,
+      runtimeLinked: Boolean(
+        coverage.runtime?.linkedSessions
+        || coverage.runtime?.linkedApprovals
+        || coverage.runtime?.linkedArtifacts,
+      ),
       hasPromotionPath: Boolean(
         coverage.promotionPath?.hasTaskToTrajectory
         || coverage.promotionPath?.hasTrajectoryToSkill
@@ -3400,6 +3408,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath && backendGraphStats.reusableSkills > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.reusableSkills}/{backendGraphStats.totalSkills} reusable skills
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.runtimeLinked ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.runtimeSessions} sessions · {backendGraphStats.runtimeApprovals} approvals · {backendGraphStats.runtimeArtifacts} artifacts
                         </span>
                       </div>
                     </div>

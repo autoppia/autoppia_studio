@@ -1375,6 +1375,15 @@ export interface CapabilityGraphCoverage {
     ready?: number;
     reusable?: number;
   };
+  runtime?: {
+    sessions?: number;
+    approvals?: number;
+    pendingApprovals?: number;
+    artifacts?: number;
+    linkedSessions?: boolean;
+    linkedApprovals?: boolean;
+    linkedArtifacts?: boolean;
+  };
   promotionPath?: {
     hasTaskToTrajectory?: boolean;
     hasTrajectoryToSkill?: boolean;

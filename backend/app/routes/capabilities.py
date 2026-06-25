@@ -6,6 +6,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.database import (
+    approvals_collection,
+    artifacts_collection,
     benchmarks_collection,
     capabilities_collection,
     benchmark_tasks_collection,
@@ -15,6 +17,7 @@ from app.database import (
     eval_runs_collection,
     evals_collection,
     harvester_runs_collection,
+    sessions_collection,
     tools_collection,
     trajectories_collection,
 )
@@ -495,6 +498,114 @@ def _tool_lookup(tool_docs: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     return result
 
 
+def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
+    metadata = doc.get("metadata")
+    return metadata if isinstance(metadata, dict) else {}
+
+
+def _runtime_state(doc: dict[str, Any]) -> dict[str, Any]:
+    runtime_state = doc.get("runtimeState")
+    return runtime_state if isinstance(runtime_state, dict) else {}
+
+
+def _runtime_ref(doc: dict[str, Any], key: str) -> str:
+    metadata = _metadata(doc)
+    runtime_state = _runtime_state(doc)
+    capability_match = runtime_state.get("capabilityMatch") if isinstance(runtime_state.get("capabilityMatch"), dict) else {}
+    capability_match_snake = runtime_state.get("capability_match") if isinstance(runtime_state.get("capability_match"), dict) else {}
+    selected_skill = doc.get("selectedSkill") if isinstance(doc.get("selectedSkill"), dict) else {}
+    runtime_evidence = doc.get("runtimeEvidence") if isinstance(doc.get("runtimeEvidence"), dict) else {}
+    capability_refs = runtime_evidence.get("capabilityRefs") if isinstance(runtime_evidence.get("capabilityRefs"), dict) else {}
+    value = (
+        doc.get(key)
+        or metadata.get(key)
+        or runtime_state.get(key)
+        or capability_match.get(key)
+        or capability_match_snake.get(key)
+        or selected_skill.get(key)
+        or capability_refs.get(key)
+    )
+    if not value and key == "matchedSkillId":
+        value = selected_skill.get("skillId") or capability_refs.get("skillId")
+    return str(value or "").strip()
+
+
+def _runtime_ref_list(doc: dict[str, Any], key: str) -> list[str]:
+    metadata = _metadata(doc)
+    runtime_state = _runtime_state(doc)
+    values: list[Any] = []
+    for container in (doc, metadata, runtime_state):
+        raw = container.get(key) if isinstance(container, dict) else None
+        if isinstance(raw, list):
+            values.extend(raw)
+        elif isinstance(raw, str) and raw.strip():
+            values.append(raw)
+    for container_key in ("operational", "runtimeMetrics", "runtimeEvidence"):
+        container = runtime_state.get(container_key) if isinstance(runtime_state.get(container_key), dict) else doc.get(container_key)
+        raw = container.get(key) if isinstance(container, dict) else None
+        if isinstance(raw, list):
+            values.extend(raw)
+        elif isinstance(raw, str) and raw.strip():
+            values.append(raw)
+    if key == "toolIds":
+        values.extend(_runtime_ref_list(doc, "latestToolIds"))
+    return _dedupe_strings([str(value or "") for value in values])
+
+
+def _session_runtime_payload(session: dict[str, Any]) -> dict[str, Any]:
+    runtime_state = _runtime_state(session)
+    return {
+        "sessionId": session.get("sessionId", ""),
+        "agentId": session.get("agentId", ""),
+        "agentName": session.get("agentName", ""),
+        "prompt": session.get("prompt", ""),
+        "provider": session.get("provider", ""),
+        "runtimeKind": session.get("runtimeKind") or runtime_state.get("runtimeKind") or runtime_state.get("runtimeType") or "",
+        "matchedSkillId": _runtime_ref(session, "matchedSkillId"),
+        "matchedSkillName": session.get("matchedSkillName") or runtime_state.get("matchedSkillName") or "",
+        "approvalState": session.get("approvalState") or runtime_state.get("approvalState") or "",
+        "artifactCount": session.get("artifactCount") or runtime_state.get("artifactCount") or 0,
+        "pendingApprovalCount": session.get("pendingApprovalCount") or runtime_state.get("pendingApprovalCount") or 0,
+        "traceIds": session.get("traceIds") or runtime_state.get("traceIds") or [],
+        "createdAt": session.get("createdAt"),
+        "updatedAt": session.get("updatedAt"),
+    }
+
+
+def _approval_runtime_payload(approval: dict[str, Any]) -> dict[str, Any]:
+    metadata = _metadata(approval)
+    return {
+        "approvalId": approval.get("approvalId", ""),
+        "sessionId": approval.get("sessionId", ""),
+        "agentId": approval.get("agentId", ""),
+        "status": approval.get("status", ""),
+        "approvalKey": approval.get("approvalKey", ""),
+        "toolName": approval.get("toolName", ""),
+        "title": approval.get("title", ""),
+        "skillId": metadata.get("skillId", ""),
+        "trajectoryId": metadata.get("trajectoryId", ""),
+        "toolId": metadata.get("toolId", ""),
+        "createdAt": approval.get("createdAt"),
+        "updatedAt": approval.get("updatedAt"),
+    }
+
+
+def _artifact_runtime_payload(artifact: dict[str, Any]) -> dict[str, Any]:
+    metadata = _metadata(artifact)
+    return {
+        "artifactId": artifact.get("artifactId", ""),
+        "sessionId": artifact.get("sessionId", ""),
+        "artifactType": artifact.get("artifactType") or artifact.get("kind") or "",
+        "title": artifact.get("title") or artifact.get("name") or "",
+        "sourceTool": artifact.get("sourceTool", ""),
+        "skillId": metadata.get("skillId", ""),
+        "trajectoryId": metadata.get("trajectoryId", ""),
+        "toolId": metadata.get("toolId", ""),
+        "createdAt": artifact.get("createdAt"),
+        "updatedAt": artifact.get("updatedAt"),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -503,6 +614,9 @@ def _capability_graph_coverage(
     task_docs: list[dict[str, Any]],
     trajectory_docs: list[dict[str, Any]],
     skill_docs: list[dict[str, Any]],
+    session_docs: list[dict[str, Any]],
+    approval_docs: list[dict[str, Any]],
+    artifact_docs: list[dict[str, Any]],
     edges: list[dict[str, Any]],
 ) -> dict[str, Any]:
     edge_relations = {edge.get("relation") for edge in edges}
@@ -516,6 +630,15 @@ def _capability_graph_coverage(
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
         "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
         "skills": {"total": len(skill_docs), "ready": ready_skills, "reusable": reusable_skills},
+        "runtime": {
+            "sessions": len(session_docs),
+            "approvals": len(approval_docs),
+            "pendingApprovals": sum(1 for item in approval_docs if str(item.get("status") or "").lower() == "pending"),
+            "artifacts": len(artifact_docs),
+            "linkedSessions": "exercised_skill" in edge_relations or "exercised_trajectory" in edge_relations or "exercised_tool" in edge_relations,
+            "linkedApprovals": "requires_approval" in edge_relations,
+            "linkedArtifacts": "produced_artifact" in edge_relations,
+        },
         "promotionPath": {
             "hasTaskToTrajectory": "produced_trajectory" in edge_relations,
             "hasTrajectoryToSkill": "promoted_to" in edge_relations,
@@ -1245,6 +1368,9 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     task_docs = await benchmark_tasks_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     trajectory_docs = await trajectories_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     skill_docs = await capabilities_collection.find({**query, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    session_docs = await sessions_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    approval_docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    artifact_docs = await artifacts_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: dict[str, dict[str, Any]] = {}
@@ -1348,6 +1474,42 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or output_entity), entity or {"name": output_entity})
             _add_edge(edges, skill_node, entity_node, "output_entity", {"source": "skill.outputEntity"})
 
+    for session in session_docs:
+        session_id = str(session.get("sessionId") or "")
+        session_node = _add_node(nodes, "session", session_id, str(session.get("prompt") or session_id), _session_runtime_payload(session))
+        skill_id = _runtime_ref(session, "matchedSkillId") or _runtime_ref(session, "skillId")
+        trajectory_id = _runtime_ref(session, "trajectoryId")
+        if skill_id:
+            _add_edge(edges, session_node, f"skill:{skill_id}", "exercised_skill", {"source": "session.runtimeState.matchedSkillId"})
+        if trajectory_id:
+            _add_edge(edges, session_node, f"trajectory:{trajectory_id}", "exercised_trajectory", {"source": "session.runtimeState.trajectoryId"})
+        for tool_ref in _runtime_ref_list(session, "toolIds"):
+            tool = tool_by_ref.get(str(tool_ref))
+            tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
+            _add_edge(edges, session_node, tool_node, "exercised_tool", {"source": "session.runtimeState.toolIds"})
+
+    for approval in approval_docs:
+        approval_id = str(approval.get("approvalId") or "")
+        approval_node = _add_node(nodes, "approval", approval_id, str(approval.get("title") or approval.get("approvalKey") or approval_id), _approval_runtime_payload(approval))
+        session_id = str(approval.get("sessionId") or "")
+        if session_id:
+            _add_edge(edges, f"session:{session_id}", approval_node, "requested_approval", {"source": "approval.sessionId"})
+        for ref_key, node_kind in (("skillId", "skill"), ("trajectoryId", "trajectory"), ("toolId", "tool")):
+            ref = _runtime_ref(approval, ref_key)
+            if ref:
+                _add_edge(edges, f"{node_kind}:{ref}", approval_node, "requires_approval", {"source": f"approval.metadata.{ref_key}"})
+
+    for artifact in artifact_docs:
+        artifact_id = str(artifact.get("artifactId") or "")
+        artifact_node = _add_node(nodes, "artifact", artifact_id, str(artifact.get("title") or artifact.get("name") or artifact_id), _artifact_runtime_payload(artifact))
+        session_id = str(artifact.get("sessionId") or "")
+        if session_id:
+            _add_edge(edges, f"session:{session_id}", artifact_node, "created_artifact", {"source": "artifact.sessionId"})
+        for ref_key, node_kind in (("skillId", "skill"), ("trajectoryId", "trajectory"), ("toolId", "tool")):
+            ref = _runtime_ref(artifact, ref_key)
+            if ref:
+                _add_edge(edges, f"{node_kind}:{ref}", artifact_node, "produced_artifact", {"source": f"artifact.metadata.{ref_key}"})
+
     edge_list = list(edges.values())
     return {
         "graph": {
@@ -1361,6 +1523,9 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
                 task_docs=task_docs,
                 trajectory_docs=trajectory_docs,
                 skill_docs=serialized_skills,
+                session_docs=session_docs,
+                approval_docs=approval_docs,
+                artifact_docs=artifact_docs,
                 edges=edge_list,
             ),
         }
