@@ -219,22 +219,40 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
         ]
     )
+    connectors = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "connected", "name": "ERP"}])
+    sessions = _Collection([{"email": "owner@example.com", "companyId": "company-1", "sessionId": "session-1"}])
+    artifacts = _Collection([{"email": "owner@example.com", "companyId": "company-1", "artifactId": "artifact-1"}])
+    eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
+    approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending"}])
+    trajectories = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "approved"}])
     empty = _Collection([])
     monkeypatch.setattr(assistant_tools, "companies_collection", companies)
     monkeypatch.setattr(assistant_tools, "agents_collection", empty)
-    monkeypatch.setattr(assistant_tools, "connectors_collection", empty)
+    monkeypatch.setattr(assistant_tools, "connectors_collection", connectors)
     monkeypatch.setattr(assistant_tools, "credentials_collection", empty)
     monkeypatch.setattr(assistant_tools, "knowledge_documents_collection", empty)
     monkeypatch.setattr(assistant_tools, "capabilities_collection", capabilities)
     monkeypatch.setattr(assistant_tools, "tools_collection", empty)
     monkeypatch.setattr(assistant_tools, "benchmark_tasks_collection", empty)
     monkeypatch.setattr(assistant_tools, "work_items_collection", empty)
+    monkeypatch.setattr(assistant_tools, "entities_collection", empty)
+    monkeypatch.setattr(assistant_tools, "sessions_collection", sessions)
+    monkeypatch.setattr(assistant_tools, "artifacts_collection", artifacts)
+    monkeypatch.setattr(assistant_tools, "eval_runs_collection", eval_runs)
+    monkeypatch.setattr(assistant_tools, "approvals_collection", approvals)
+    monkeypatch.setattr(assistant_tools, "trajectories_collection", trajectories)
 
     tools = AutomataAssistantTools(AssistantContext(email="owner@example.com", company_id="company-1"))
     snapshot = await tools.studio_snapshot()
     capabilities_payload = await tools.list_capabilities()
 
     assert snapshot["counts"]["skills"] == 1
+    assert snapshot["counts"]["pendingApprovals"] == 1
+    assert snapshot["operatingState"]["factory"]["connectedConnectors"] == 1
+    assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
+    assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessions"] == 1
+    assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert capabilities_payload["skills"] == [
         {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill", "name": "Approved skill"}
@@ -459,8 +477,10 @@ async def test_assistant_executes_create_work_item_tool_after_user_confirmation(
 
 def test_assistant_exposes_core_action_tools():
     names = {tool["name"] for tool in ASSISTANT_FUNCTION_TOOLS}
+    snapshot_tool = next(tool for tool in ASSISTANT_FUNCTION_TOOLS if tool["name"] == "studio_snapshot")
 
     assert {
+        "studio_snapshot",
         "studio_create_work_item",
         "studio_update_work_item",
         "studio_run_work_item",
@@ -480,6 +500,7 @@ def test_assistant_exposes_core_action_tools():
         "studio_get_assistant_memory",
         "studio_rebuild_assistant_memory",
     } <= names
+    assert "operating state" in snapshot_tool["description"]
 
 
 @pytest.mark.asyncio

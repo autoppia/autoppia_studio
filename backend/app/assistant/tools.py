@@ -18,8 +18,10 @@ from app.database import (
     connectors_collection,
     credentials_collection,
     entities_collection,
+    eval_runs_collection,
     knowledge_documents_collection,
     profiles_collection,
+    sessions_collection,
     tools_collection,
     trajectories_collection,
     usage_events_collection,
@@ -66,22 +68,96 @@ class AutomataAssistantTools:
         query.update(extra or {})
         return query
 
+    async def _count(self, collection: Any, query: dict[str, Any]) -> int:
+        return int(await collection.count_documents(query))
+
     async def studio_snapshot(self) -> dict[str, Any]:
         companies = await _to_list(companies_collection.find({"email": self.context.email}, {"_id": 0}).sort("createdAt", 1), 10)
         company_id = self.context.company_id or (companies[0].get("companyId", "") if companies else "")
         scoped = {"email": self.context.email, **({"companyId": company_id} if company_id else {})}
+        connected_connectors = await self._count(connectors_collection, {**scoped, "status": {"$in": ["connected", "ready", "active", "authenticated"]}})
+        approved_skills = await self._count(capabilities_collection, {**scoped, "capabilityKind": "skill", "status": {"$in": ["approved", "published", "production"]}})
+        approved_trajectories = await self._count(trajectories_collection, {**scoped, "status": {"$in": ["approved", "accepted"]}})
+        passing_runs = await self._count(eval_runs_collection, {**scoped, "label": "pass"})
+        failing_runs = await self._count(eval_runs_collection, {**scoped, "label": "fail"})
+        pending_approvals = await self._count(approvals_collection, {**scoped, "status": "pending"})
+        scheduled_work = await self._count(work_items_collection, {**scoped, "triggerType": "scheduled"})
+        running_work = await self._count(work_items_collection, {**scoped, "status": "RUNNING"})
         counts = {
             "companies": len(companies),
             "agents": await agents_collection.count_documents(scoped),
             "connectors": await connectors_collection.count_documents(scoped),
             "credentials": await credentials_collection.count_documents(scoped),
             "knowledgeDocuments": await knowledge_documents_collection.count_documents(scoped),
+            "entities": await entities_collection.count_documents(scoped),
             "skills": await capabilities_collection.count_documents({**scoped, "capabilityKind": "skill"}),
             "tools": await tools_collection.count_documents(scoped),
             "benchmarkTasks": await benchmark_tasks_collection.count_documents(scoped),
+            "trajectories": await trajectories_collection.count_documents(scoped),
+            "sessions": await sessions_collection.count_documents(scoped),
+            "artifacts": await artifacts_collection.count_documents(scoped),
             "workItems": await work_items_collection.count_documents(scoped),
+            "pendingApprovals": pending_approvals,
         }
-        return {"companies": companies, "activeCompanyId": company_id, "counts": counts}
+        readiness_checks = [
+            {"key": "company", "ready": bool(company_id), "label": "Company context selected", "nextAction": "Create or select the enterprise/company workspace."},
+            {"key": "connectors", "ready": counts["connectors"] > 0, "label": "Systems mapped", "nextAction": "Add the ERP/CRM/email/document connectors that define the operating surface."},
+            {"key": "credentials", "ready": counts["credentials"] > 0 or connected_connectors > 0, "label": "Access configured", "nextAction": "Attach credentials or OAuth profiles for connectors that need authenticated runtime access."},
+            {"key": "knowledge", "ready": counts["knowledgeDocuments"] > 0, "label": "Knowledge resources loaded", "nextAction": "Ingest policies, process docs, FAQs, product sheets, and compliance references."},
+            {"key": "entities", "ready": counts["entities"] > 0, "label": "Business entities modeled", "nextAction": "Generate or define domain entities from OpenAPI/schema/docs before publishing tools."},
+            {"key": "tools", "ready": counts["tools"] > 0, "label": "Typed tools available", "nextAction": "Publish typed connector tools with schemas, side effects, permissions, and entity links."},
+            {"key": "benchmarks", "ready": counts["benchmarkTasks"] > 0, "label": "Benchmark tasks defined", "nextAction": "Convert real business tasks into benchmark cases with success criteria and risk class."},
+            {"key": "skills", "ready": counts["skills"] > 0, "label": "Skills promoted", "nextAction": "Promote approved trajectories into reusable skills with runtime policy and regression evidence."},
+            {"key": "runtime", "ready": counts["sessions"] > 0, "label": "Runtime exercised", "nextAction": "Run an AgentRuntime session and inspect tool calls, approvals, artifacts, and traces."},
+            {"key": "work", "ready": counts["workItems"] > 0, "label": "Work orchestration configured", "nextAction": "Create operational work items with triggers, budgets, retries, SLAs, and approval rules."},
+        ]
+        ready_count = sum(1 for item in readiness_checks if item["ready"])
+        recommended_actions = [
+            {"area": item["key"], "action": item["nextAction"], "reason": item["label"]}
+            for item in readiness_checks
+            if not item["ready"]
+        ]
+        if pending_approvals:
+            recommended_actions.insert(0, {"area": "approvals", "action": "Review pending approvals before continuing automated work.", "reason": f"{pending_approvals} approval(s) are blocking execution."})
+        if failing_runs:
+            recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
+        operating_state = {
+            "readiness": {
+                "score": round(ready_count / len(readiness_checks), 2),
+                "readyCount": ready_count,
+                "total": len(readiness_checks),
+                "checks": readiness_checks,
+                "gaps": [item for item in readiness_checks if not item["ready"]],
+            },
+            "factory": {
+                "connectors": counts["connectors"],
+                "connectedConnectors": connected_connectors,
+                "resources": counts["knowledgeDocuments"],
+                "entities": counts["entities"],
+                "tools": counts["tools"],
+                "benchmarkTasks": counts["benchmarkTasks"],
+                "trajectories": counts["trajectories"],
+                "approvedTrajectories": approved_trajectories,
+                "skills": counts["skills"],
+                "approvedSkills": approved_skills,
+            },
+            "runtime": {
+                "agents": counts["agents"],
+                "sessions": counts["sessions"],
+                "artifacts": counts["artifacts"],
+                "passingEvalRuns": passing_runs,
+                "failingEvalRuns": failing_runs,
+                "pendingApprovals": pending_approvals,
+            },
+            "work": {
+                "items": counts["workItems"],
+                "scheduled": scheduled_work,
+                "running": running_work,
+                "blockedByApprovals": pending_approvals,
+            },
+            "recommendedNextActions": recommended_actions[:6],
+        }
+        return {"companies": companies, "activeCompanyId": company_id, "counts": counts, "operatingState": operating_state}
 
     async def list_agents(self, limit: int = 10) -> list[dict[str, Any]]:
         return await _to_list(agents_collection.find(self._query(), {"_id": 0}).sort("createdAt", -1), limit)

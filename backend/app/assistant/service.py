@@ -54,7 +54,7 @@ ASSISTANT_FUNCTION_TOOLS: list[dict[str, Any]] = [
     {
         "type": "function",
         "name": "studio_snapshot",
-        "description": "Load a quick scoped workspace overview: owned companies, active company id, and counts for agents, connectors, credentials, knowledge documents, tools, skills, benchmark tasks, and work items. Use for broad 'what do I have/status/overview' questions.",
+        "description": "Load the scoped Studio operating state: companies, active company id, counts, setup readiness, capability factory coverage, runtime/work health, risks, and recommended next actions. Use for broad status, readiness, roadmap, next-step, or operational cockpit questions.",
         "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
     },
     {
@@ -1276,7 +1276,10 @@ class AutomataAssistantService:
     def _tool_event_summary(self, name: str, output: dict[str, Any]) -> str:
         if name == "studio_snapshot":
             counts = output.get("counts") if isinstance(output.get("counts"), dict) else {}
-            return f"Loaded workspace snapshot: {counts.get('companies', 0)} companies, {counts.get('connectors', 0)} connectors, {counts.get('tools', 0)} tools, {counts.get('skills', 0)} skills."
+            readiness = ((output.get("operatingState") or {}).get("readiness") or {}) if isinstance(output.get("operatingState"), dict) else {}
+            score = readiness.get("score")
+            score_text = f", readiness {int(float(score) * 100)}%" if isinstance(score, (int, float)) else ""
+            return f"Loaded Studio operating state: {counts.get('companies', 0)} companies, {counts.get('connectors', 0)} connectors, {counts.get('tools', 0)} tools, {counts.get('skills', 0)} skills{score_text}."
         key = next((item for item in ("companies", "connectors", "agents", "workItems", "boards", "credentials", "apiKeys", "profiles", "usageEvents", "entities", "approvals", "documents", "artifacts", "conversations") if isinstance(output.get(item), list)), "")
         if key:
             return f"Loaded {len(output.get(key) or [])} {key}."
