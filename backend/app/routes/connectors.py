@@ -373,6 +373,12 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
     credential_fields = connector.get("credentialFields") if isinstance(connector.get("credentialFields"), dict) else {}
     configured_auth = sum(1 for field in auth_fields if credential_fields.get(field, {}).get("configured") or config.get(field) == SECRET_PLACEHOLDER or bool(config.get(field)))
     tool_specs = list(toolkit.get("tools") or [])
+    generic_discovery_tools = {"api.discover_schema", "api.generate_toolkit", "api.call", "browser.open", "browser.click", "browser.type"}
+    typed_tools = [
+        str(tool.get("name") or "")
+        for tool in tool_specs
+        if str(tool.get("name") or "") and str(tool.get("name") or "") not in generic_discovery_tools
+    ]
     write_tools = [
         tool.get("name", "")
         for tool in tool_specs
@@ -387,9 +393,55 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
         discovery_gaps.append({"key": "auth", "label": "Configure required auth fields.", "target": "credentials"})
     if not tool_specs:
         discovery_gaps.append({"key": "tools", "label": "Publish or synthesize callable tools.", "target": "capabilities"})
+    requires_docs = provider == "custom" and connector_type == "api"
+    requires_surface = provider == "custom" and connector_type == "web"
+    docs_ready = bool(docs_urls) or not requires_docs
+    surface_ready = bool(surface_urls) or not requires_surface
+    auth_ready = not auth_fields or configured_auth >= len(auth_fields)
+    typed_tools_ready = provider != "custom" or bool(typed_tools)
+    entity_ready = docs_ready or provider != "custom"
+    pipeline_stages = [
+        {
+            "key": "connector_docs",
+            "label": "Connector docs/OpenAPI",
+            "status": "ready" if docs_ready and surface_ready else "pending",
+            "target": "config.openApiUrl" if requires_docs else "config.startUrl" if requires_surface else "config",
+            "summary": "Docs or start surface are available." if docs_ready and surface_ready else "Add API docs/OpenAPI or a web start URL.",
+        },
+        {
+            "key": "auth_state",
+            "label": "Auth state",
+            "status": "ready" if auth_ready else "pending",
+            "target": "credentials",
+            "summary": f"{configured_auth}/{len(auth_fields)} required auth fields configured.",
+        },
+        {
+            "key": "entity_mapping",
+            "label": "Entity mapping",
+            "status": "ready" if entity_ready else "pending",
+            "target": "entities",
+            "summary": "Entity discovery source is available." if entity_ready else "Provide docs or observations before entity mapping.",
+        },
+        {
+            "key": "tool_synthesis",
+            "label": "Typed tool synthesis",
+            "status": "ready" if typed_tools_ready else "pending",
+            "target": "capabilities",
+            "summary": f"{len(typed_tools)} typed tools available." if typed_tools_ready else "Generate typed tools from docs, UI observations, or benchmarks.",
+        },
+        {
+            "key": "candidate_tasks",
+            "label": "Candidate tasks",
+            "status": "recommended" if provider == "custom" else "ready",
+            "target": "evals",
+            "summary": "Seed benchmark tasks to harvest trajectories." if provider == "custom" else "Connector benchmark seeding is available.",
+        },
+    ]
+    blocking_stages = [stage for stage in pipeline_stages if stage["status"] == "pending"]
+    pipeline_state = "blocked" if blocking_stages else "needs_benchmark" if provider == "custom" else "ready"
     return {
         "mode": connector.get("discoveryMode") or ("task_scoped" if provider == "custom" else "official_toolkit"),
-        "status": connector.get("discoveryStatus") or ("pending" if discovery_gaps else "ready"),
+        "status": connector.get("discoveryStatus") or ("pending" if discovery_gaps or blocking_stages else "ready"),
         "surface": connector.get("surface") or ("browser" if connector_type == "web" else "api" if connector_type == "api" else connector_type),
         "docs": {
             "available": bool(docs_urls),
@@ -409,6 +461,8 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
         },
         "toolSynthesis": {
             "toolCount": len(tool_specs),
+            "typedToolCount": len(typed_tools),
+            "typedTools": typed_tools,
             "writeToolCount": len(write_tools),
             "writeTools": write_tools,
             "runtimeRequirements": toolkit.get("runtimeRequirements", []),
@@ -417,6 +471,13 @@ def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str
             "recommended": provider == "custom",
             "source": "benchmarks",
             "reason": "Custom connectors should generate capabilities from benchmark tasks." if provider == "custom" else "Official toolkit is ready for connector benchmark seeding.",
+        },
+        "ingestionPipeline": {
+            "state": pipeline_state,
+            "readyStages": sum(1 for stage in pipeline_stages if stage["status"] == "ready"),
+            "totalStages": len(pipeline_stages),
+            "nextStage": blocking_stages[0] if blocking_stages else next((stage for stage in pipeline_stages if stage["status"] == "recommended"), None),
+            "stages": pipeline_stages,
         },
         "gaps": discovery_gaps,
     }

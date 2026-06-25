@@ -103,6 +103,12 @@ function providerTone(provider?: string) {
   return "bg-gray-100 dark:bg-dark-border text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
+function ingestionStageTone(status?: string) {
+  if (status === "ready") return "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300";
+  if (status === "recommended") return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300";
+  return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300";
+}
+
 function typeMeta(type: string) {
   return CONNECTOR_TYPES.find((item) => item.value === type) || CONNECTOR_TYPES[CONNECTOR_TYPES.length - 1];
 }
@@ -517,14 +523,20 @@ export default function Connectors(): React.ReactElement {
         </div>
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
         {connector.capabilityDiscovery && (
-          <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <div className="mt-2 grid grid-cols-4 gap-1.5">
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
               <p className="text-[9px] uppercase tracking-wide text-gray-400">Docs</p>
               <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.docs?.available ? "ready" : "missing"}</p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
-              <p className="text-[9px] uppercase tracking-wide text-gray-400">Tools</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.toolSynthesis?.toolCount || connector.toolkit.tools.length}</p>
+              <p className="text-[9px] uppercase tracking-wide text-gray-400">Typed</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.toolSynthesis?.typedToolCount ?? connector.capabilityDiscovery.toolSynthesis?.toolCount ?? connector.toolkit.tools.length}</p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[9px] uppercase tracking-wide text-gray-400">Pipeline</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">
+                {connector.capabilityDiscovery.ingestionPipeline?.readyStages || 0}/{connector.capabilityDiscovery.ingestionPipeline?.totalStages || 0}
+              </p>
             </div>
             <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
               <p className="text-[9px] uppercase tracking-wide text-gray-400">Gaps</p>
@@ -898,6 +910,29 @@ export default function Connectors(): React.ReactElement {
                         <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.toolSynthesis?.writeToolCount || 0}</p>
                       </div>
                     </div>
+                    {selected.capabilityDiscovery.ingestionPipeline && (
+                      <div className="mt-3 rounded-lg border border-gray-100 bg-gray-50 p-2 dark:border-dark-border dark:bg-dark-bg">
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Ingestion pipeline</p>
+                          <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${ingestionStageTone(selected.capabilityDiscovery.ingestionPipeline.state === "ready" ? "ready" : selected.capabilityDiscovery.ingestionPipeline.state === "needs_benchmark" ? "recommended" : "pending")}`}>
+                            {selected.capabilityDiscovery.ingestionPipeline.state || "pending"}
+                          </span>
+                        </div>
+                        <div className="grid gap-1.5 md:grid-cols-5">
+                          {(selected.capabilityDiscovery.ingestionPipeline.stages || []).map((stage) => (
+                            <div key={stage.key || stage.label} className={`rounded-lg border px-2 py-1.5 ${ingestionStageTone(stage.status)}`} title={stage.summary || ""}>
+                              <p className="truncate text-[10px] font-semibold">{stage.label || stage.key}</p>
+                              <p className="mt-0.5 text-[9px] uppercase tracking-wide opacity-80">{stage.status || "pending"}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {selected.capabilityDiscovery.ingestionPipeline.nextStage && (
+                          <p className="mt-2 text-[11px] text-gray-500 dark:text-gray-400">
+                            Next: {selected.capabilityDiscovery.ingestionPipeline.nextStage.summary || selected.capabilityDiscovery.ingestionPipeline.nextStage.label}
+                          </p>
+                        )}
+                      </div>
+                    )}
                     {(selected.capabilityDiscovery.gaps || []).length > 0 && (
                       <div className="mt-3 space-y-1.5">
                         {(selected.capabilityDiscovery.gaps || []).map((gap) => (

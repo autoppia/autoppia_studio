@@ -88,7 +88,19 @@ def test_connector_serializer_exposes_capability_discovery_contract():
     assert discovery["auth"]["required"] is True
     assert discovery["auth"]["configuredFields"] == 0
     assert discovery["toolSynthesis"]["toolCount"] == 2
+    assert discovery["toolSynthesis"]["typedToolCount"] == 0
     assert discovery["candidateTasks"]["recommended"] is True
+    assert discovery["ingestionPipeline"]["state"] == "blocked"
+    assert discovery["ingestionPipeline"]["readyStages"] == 0
+    assert discovery["ingestionPipeline"]["totalStages"] == 5
+    assert discovery["ingestionPipeline"]["nextStage"]["key"] == "connector_docs"
+    assert [stage["key"] for stage in discovery["ingestionPipeline"]["stages"]] == [
+        "connector_docs",
+        "auth_state",
+        "entity_mapping",
+        "tool_synthesis",
+        "candidate_tasks",
+    ]
     assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
 
 

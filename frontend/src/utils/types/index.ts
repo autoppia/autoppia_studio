@@ -884,6 +884,8 @@ export interface Connector {
     };
     toolSynthesis?: {
       toolCount?: number;
+      typedToolCount?: number;
+      typedTools?: string[];
       writeToolCount?: number;
       writeTools?: string[];
       runtimeRequirements?: string[];
@@ -892,6 +894,25 @@ export interface Connector {
       recommended?: boolean;
       source?: string;
       reason?: string;
+    };
+    ingestionPipeline?: {
+      state?: string;
+      readyStages?: number;
+      totalStages?: number;
+      nextStage?: {
+        key?: string;
+        label?: string;
+        status?: string;
+        target?: string;
+        summary?: string;
+      } | null;
+      stages?: Array<{
+        key?: string;
+        label?: string;
+        status?: string;
+        target?: string;
+        summary?: string;
+      }>;
     };
     gaps?: { key?: string; label?: string; target?: string }[];
   };
