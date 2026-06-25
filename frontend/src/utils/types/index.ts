@@ -253,6 +253,10 @@ export interface RuntimeSpec {
   browserMode?: "visible" | "headless";
   allowedDomains?: string[];
   browserAllowedDomains?: string[];
+  browserRestrictedByDomain?: boolean;
+  browserDefaultUse?: string;
+  approvalRequiredFor?: string[];
+  runtimeClasses?: string[];
   maxCreditsPerRun?: number;
   tools?: {
     browser?: boolean;

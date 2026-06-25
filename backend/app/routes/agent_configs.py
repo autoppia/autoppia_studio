@@ -2,6 +2,7 @@ import uuid
 import os
 from datetime import datetime, timezone
 from typing import Any, List
+from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -97,9 +98,12 @@ def _runtime_spec(
     browser_mode: str = "visible",
     max_credits_per_run: float = 5.0,
     existing_tools: dict[str, Any] | None = None,
+    website_url: str = "",
+    existing_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     mode = browser_mode if browser_mode in {"visible", "headless"} else "visible"
     credits = max(0.0, float(max_credits_per_run or 0.0))
+    existing_spec = existing_spec if isinstance(existing_spec, dict) else {}
     tools = {
         "browser": browser_enabled,
         "connectors": True,
@@ -108,12 +112,65 @@ def _runtime_spec(
         **(existing_tools or {}),
     }
     tools["browser"] = browser_enabled
+    allowed_domains = _runtime_allowed_domains(website_url, existing_spec)
+    approval_required_for = _dedupe_runtime_values(existing_spec.get("approvalRequiredFor") or ["write", "send"])
     return {
         "browserEnabled": browser_enabled,
         "browserMode": mode,
+        "browserDefaultUse": "exception",
+        "browserRestrictedByDomain": bool(allowed_domains),
+        "allowedDomains": allowed_domains,
+        "approvalRequiredFor": approval_required_for,
+        "runtimeClasses": _runtime_classes(browser_enabled=browser_enabled, tools=tools),
         "maxCreditsPerRun": credits,
         "tools": tools,
     }
+
+
+def _dedupe_runtime_values(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip().lower()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
+def _runtime_host(value: str) -> str:
+    try:
+        return (urlparse(str(value or "")).hostname or "").lower()
+    except Exception:
+        return ""
+
+
+def _runtime_allowed_domains(website_url: str, existing_spec: dict[str, Any]) -> list[str]:
+    raw_domains = (
+        existing_spec.get("allowedDomains")
+        or existing_spec.get("browserAllowedDomains")
+        or existing_spec.get("allowedOrigins")
+        or []
+    )
+    domains = _dedupe_runtime_values(raw_domains if isinstance(raw_domains, list) else [])
+    website_host = _runtime_host(website_url)
+    if website_host and website_host not in domains:
+        domains.append(website_host)
+    return domains
+
+
+def _runtime_classes(*, browser_enabled: bool, tools: dict[str, Any]) -> list[str]:
+    classes = ["api_runtime"]
+    if tools.get("connectors"):
+        classes.append("connector_runtime")
+    if tools.get("skills"):
+        classes.append("skill_runtime")
+    if browser_enabled:
+        classes.append("browser_runtime")
+        if tools.get("connectors") or tools.get("skills"):
+            classes.append("hybrid_runtime")
+    return classes
 
 
 def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
@@ -123,7 +180,18 @@ def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
         browser_enabled=bool(runtime_capabilities.get("browser", True)),
         browser_mode=str(doc.get("browserMode") or "visible"),
         max_credits_per_run=float(doc.get("maxCreditsPerRun") or 5.0),
+        website_url=str(doc.get("websiteUrl") or ""),
+        existing_spec=doc.get("runtimeSpec") if isinstance(doc.get("runtimeSpec"), dict) else {},
     )
+    if isinstance(runtime_spec, dict):
+        runtime_spec = _runtime_spec(
+            browser_enabled=bool(runtime_spec.get("browserEnabled", runtime_capabilities.get("browser", True))),
+            browser_mode=str(runtime_spec.get("browserMode") or doc.get("browserMode") or "visible"),
+            max_credits_per_run=float(runtime_spec.get("maxCreditsPerRun") or doc.get("maxCreditsPerRun") or 5.0),
+            existing_tools=runtime_spec.get("tools") if isinstance(runtime_spec.get("tools"), dict) else None,
+            website_url=str(doc.get("websiteUrl") or ""),
+            existing_spec=runtime_spec,
+        )
     return {
         "agentId": agent_id,
         "agentConfigId": agent_id,
@@ -351,6 +419,7 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
                 browser_enabled=body.browserEnabled,
                 browser_mode=body.browserMode,
                 max_credits_per_run=body.maxCreditsPerRun,
+                website_url=body.websiteUrl,
             ),
             "tasks": [task.model_dump() for task in body.tasks],
             "trajectories": [],
@@ -426,6 +495,8 @@ async def update_agent_runtime_settings(agent_id: str, body: AgentRuntimeSetting
             browser_mode=body.browserMode,
             max_credits_per_run=body.maxCreditsPerRun,
             existing_tools=(existing.get("runtimeSpec") or {}).get("tools") if isinstance(existing.get("runtimeSpec"), dict) else None,
+            website_url=str(existing.get("websiteUrl") or ""),
+            existing_spec=existing.get("runtimeSpec") if isinstance(existing.get("runtimeSpec"), dict) else {},
         )
         capabilities = {
             **(existing.get("runtimeCapabilities") if isinstance(existing.get("runtimeCapabilities"), dict) else {}),

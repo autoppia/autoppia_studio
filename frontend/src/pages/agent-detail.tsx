@@ -1093,6 +1093,49 @@ print(response.json()["result"])`;
 
               <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
                 <div className="flex items-center gap-2 mb-4">
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Enterprise runtime contract</p>
+                  <InfoIcon title="Enterprise Runtime Contract">
+                    <p>Runtime policy sent with AgentConfig: browser allowlists, explicit read/write approval boundaries, and available runtime classes.</p>
+                  </InfoIcon>
+                </div>
+                <div className="grid grid-cols-1 gap-3 lg:grid-cols-4">
+                  <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Browser default</p>
+                    <StatusBadge label={agent.runtimeSpec?.browserDefaultUse || "exception"} tone={agent.runtimeSpec?.browserEnabled ? "amber" : "gray"} />
+                  </div>
+                  <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Domain restriction</p>
+                    <StatusBadge label={agent.runtimeSpec?.browserRestrictedByDomain ? "restricted" : "open"} tone={agent.runtimeSpec?.browserRestrictedByDomain ? "green" : "amber"} />
+                  </div>
+                  <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Approval boundaries</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{(agent.runtimeSpec?.approvalRequiredFor || ["write", "send"]).join(", ")}</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-2">Runtime classes</p>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">{(agent.runtimeSpec?.runtimeClasses || ["api_runtime"]).length}</p>
+                  </div>
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(agent.runtimeSpec?.allowedDomains || []).length === 0 ? (
+                    <span className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                      No domain allowlist
+                    </span>
+                  ) : (agent.runtimeSpec?.allowedDomains || []).map((domain) => (
+                    <span key={domain} className="rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                      {domain}
+                    </span>
+                  ))}
+                  {(agent.runtimeSpec?.runtimeClasses || []).map((runtimeClass) => (
+                    <span key={runtimeClass} className="rounded-lg border border-primary/20 bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
+                      {runtimeClass.replace(/_/g, " ")}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-4">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime Capabilities</p>
                   <InfoIcon title="Runtime Capabilities">
                     <p>The browser is no longer the center of the agent. It is one runtime capability among others. An agent may have browser access, API calls, knowledge search, Python execution, or human approval depending on the company workflow.</p>

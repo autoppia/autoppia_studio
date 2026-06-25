@@ -48,3 +48,9 @@ async def test_update_agent_runtime_settings_persists_runtime_spec(monkeypatch):
     assert result["agent"]["runtimeSpec"]["browserMode"] == "headless"
     assert result["agent"]["runtimeSpec"]["maxCreditsPerRun"] == 2.25
     assert result["agent"]["runtimeSpec"]["tools"]["browser"] is False
+    assert result["agent"]["runtimeSpec"]["allowedDomains"] == ["example.com"]
+    assert result["agent"]["runtimeSpec"]["browserRestrictedByDomain"] is True
+    assert result["agent"]["runtimeSpec"]["browserDefaultUse"] == "exception"
+    assert result["agent"]["runtimeSpec"]["approvalRequiredFor"] == ["write", "send"]
+    assert "api_runtime" in result["agent"]["runtimeSpec"]["runtimeClasses"]
+    assert "browser_runtime" not in result["agent"]["runtimeSpec"]["runtimeClasses"]
