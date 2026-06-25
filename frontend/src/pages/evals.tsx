@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useSelector } from "react-redux";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faClipboardCheck,
@@ -180,6 +180,7 @@ function routerClass(decision?: string) {
 export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const startSession = useStartSession();
 
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
@@ -216,6 +217,8 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   const [connectorAuditReport, setConnectorAuditReport] = useState<ConnectorAuditReport | null>(null);
   const [connectorSmokeError, setConnectorSmokeError] = useState("");
   const [showConnectorSmoke, setShowConnectorSmoke] = useState(false);
+  const benchmarkFilter = searchParams.get("benchmark") || "";
+  const runGroupFilter = searchParams.get("runGroup") || "";
 
   useEffect(() => {
     if (!user.email) return;
@@ -319,6 +322,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   }, [evals, fetchedBenchmarks]);
 
   const filteredBenchmarks = benchmarks.filter((benchmark) => {
+    if (benchmarkFilter && benchmark.benchmarkId !== benchmarkFilter) return false;
     const q = search.toLowerCase();
     return (
       benchmark.name.toLowerCase().includes(q) ||
@@ -361,6 +365,8 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   }, [runs]);
 
   const filteredRunGroups = runGroups.filter((group) => {
+    if (benchmarkFilter && group.benchmarkId !== benchmarkFilter) return false;
+    if (runGroupFilter && group.groupId !== runGroupFilter) return false;
     const q = search.toLowerCase();
     return (
       group.benchmarkName.toLowerCase().includes(q) ||
@@ -368,6 +374,19 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
       group.runs.some((run) => (run.prompt || "").toLowerCase().includes(q))
     );
   });
+
+  useEffect(() => {
+    if (mode !== "runs") return;
+    if (runGroupFilter) {
+      if (selectedRunGroupId !== runGroupFilter) setSelectedRunGroupId(runGroupFilter);
+      return;
+    }
+    if (!benchmarkFilter) return;
+    const matches = runGroups.filter((group) => group.benchmarkId === benchmarkFilter);
+    if (matches.length === 1 && selectedRunGroupId !== matches[0].groupId) {
+      setSelectedRunGroupId(matches[0].groupId);
+    }
+  }, [benchmarkFilter, mode, runGroupFilter, runGroups, selectedRunGroupId]);
 
   const selectedRunGroup = runGroups.find((group) => group.groupId === selectedRunGroupId) || null;
   const selectedConnectorBenchmark = connectorBenchmarks.find((item) => item.key === selectedConnectorBenchmarkKey) || connectorBenchmarks[0] || null;
@@ -1167,7 +1186,14 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
           ) : selectedRunGroup ? (
             <div className="flex flex-col gap-3">
               <button
-                onClick={() => setSelectedRunGroupId(null)}
+                onClick={() => {
+                  setSelectedRunGroupId(null);
+                  if (runGroupFilter) {
+                    const next = new URLSearchParams(searchParams);
+                    next.delete("runGroup");
+                    setSearchParams(next, { replace: true });
+                  }
+                }}
                 className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 transition-colors w-fit"
               >
                 <FontAwesomeIcon icon={faArrowLeft} className="text-xs" />
@@ -1200,7 +1226,13 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
               {filteredRunGroups.map((group) => (
                 <button
                   key={group.groupId}
-                  onClick={() => setSelectedRunGroupId(group.groupId)}
+                  onClick={() => {
+                    setSelectedRunGroupId(group.groupId);
+                    const next = new URLSearchParams(searchParams);
+                    next.set("runGroup", group.groupId);
+                    if (group.benchmarkId) next.set("benchmark", group.benchmarkId);
+                    setSearchParams(next, { replace: false });
+                  }}
                   className="flex items-center gap-4 text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border shadow-soft px-5 py-4 hover:border-primary/40 transition-colors"
                 >
                   <span className="w-10 h-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">

@@ -461,6 +461,7 @@ function CapabilityDetailModal({
   onOpenSession,
   onOpenApprovals,
   onOpenCapability,
+  onOpenBenchmarkOps,
   onReload,
   onClose,
 }: {
@@ -488,6 +489,7 @@ function CapabilityDetailModal({
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
+  onOpenBenchmarkOps: (params: { mode: "benchmarks" | "runs"; benchmarkId?: string }) => void;
   onReload: () => Promise<void>;
   onClose: () => void;
 }) {
@@ -810,6 +812,24 @@ function CapabilityDetailModal({
                         >
                           Review source trace
                         </button>
+                      )}
+                      {benchmarkId && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => onOpenBenchmarkOps({ mode: "benchmarks", benchmarkId })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface dark:text-red-200 dark:hover:bg-red-500/10"
+                          >
+                            Open benchmark
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onOpenBenchmarkOps({ mode: "runs", benchmarkId })}
+                            className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-white px-3 text-xs font-semibold text-red-700 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-dark-surface dark:text-red-200 dark:hover:bg-red-500/10"
+                          >
+                            Open recent runs
+                          </button>
+                        </>
                       )}
                     </div>
                     <div className="mt-3 text-[11px] leading-5 text-red-600 dark:text-red-300">
@@ -3169,6 +3189,11 @@ export default function Capabilities(): React.ReactElement {
               navigate(`/approvals?${params.toString()}`);
             }}
             onOpenCapability={openCapabilityDetail}
+            onOpenBenchmarkOps={({ mode, benchmarkId }) => {
+              const params = new URLSearchParams();
+              if (benchmarkId) params.set("benchmark", benchmarkId);
+              navigate(`${mode === "runs" ? "/eval-runs" : "/evals"}${params.toString() ? `?${params.toString()}` : ""}`);
+            }}
             onReload={loadCapabilities}
             onClose={() => setFactoryScope({
               view: detail.kind === "tool" ? "tools" : detail.kind === "trajectory" ? "trajectories" : "skills",
