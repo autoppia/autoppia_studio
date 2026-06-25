@@ -138,6 +138,32 @@ export interface SessionItem {
             lastStepSeconds?: number;
         };
     };
+    runtimeAuditTrail?: {
+        sessionId?: string;
+        uniform?: boolean;
+        eventCount?: number;
+        events?: Array<{
+            event?: string;
+            actor?: string;
+            boundary?: string;
+            action?: string;
+            status?: string;
+            at?: string;
+            traceId?: string;
+            description?: string;
+            skillId?: string;
+        }>;
+        boundaries?: {
+            read?: number;
+            draft?: number;
+            write?: number;
+            send?: number;
+        };
+        approvalRequiredFor?: string[];
+        hasHumanBoundary?: boolean;
+        artifactCount?: number;
+        pendingApprovalCount?: number;
+    };
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";

@@ -214,6 +214,19 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["runtimeLab"]["approvals"]["requiredFor"] == ["send"]
     assert session["runtimeLab"]["outputs"]["artifacts"] == 2
     assert session["runtimeLab"]["outputs"]["creditsSpent"] == 2.5
+    assert session["runtimeAuditTrail"]["uniform"] is True
+    assert session["runtimeAuditTrail"]["hasHumanBoundary"] is True
+    assert session["runtimeAuditTrail"]["approvalRequiredFor"] == ["send"]
+    assert session["runtimeAuditTrail"]["pendingApprovalCount"] == 1
+    assert session["runtimeAuditTrail"]["artifactCount"] == 2
+    assert [event["event"] for event in session["runtimeAuditTrail"]["events"]] == [
+        "session.started",
+        "browser.action",
+        "tool.action",
+        "skill.matched",
+        "approval.pending",
+        "artifact.created",
+    ]
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"

@@ -76,6 +76,17 @@ describe("Runtime page", () => {
                 creditsSpent: 2.5,
               },
             },
+            runtimeAuditTrail: {
+              uniform: true,
+              eventCount: 5,
+              approvalRequiredFor: ["send"],
+              hasHumanBoundary: true,
+              artifactCount: 2,
+              events: [
+                { event: "session.started", description: "Runtime session created." },
+                { event: "artifact.created", description: "2 business artifact(s) created." },
+              ],
+            },
           },
           {
             sessionId: "session-2",
@@ -142,5 +153,14 @@ describe("Runtime page", () => {
     expect(await screen.findByText("Skill matched")).toBeInTheDocument();
     expect(await screen.findByText("1 approvals")).toBeInTheDocument();
     expect(await screen.findByText("2 artifacts · 2.50 cr")).toBeInTheDocument();
+  });
+
+  it("shows the uniform runtime audit trail", async () => {
+    render(<Runtime />);
+
+    expect(await screen.findByText("Uniform audit trail")).toBeInTheDocument();
+    expect(await screen.findByText("5 events")).toBeInTheDocument();
+    expect(await screen.findByText("send")).toBeInTheDocument();
+    expect(await screen.findByText("2 business artifact(s) created.")).toBeInTheDocument();
   });
 });

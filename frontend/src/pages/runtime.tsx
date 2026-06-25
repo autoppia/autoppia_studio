@@ -147,6 +147,8 @@ function SessionCard({
   const labArtifacts = runtimeLab?.outputs?.artifacts ?? session.artifactCount ?? 0;
   const labCreditsLabel = formatCredits(runtimeLab?.outputs?.creditsSpent ?? session.creditsSpent);
   const labSkillName = runtimeLab?.skillMatch?.skillName || matchedSkillName || "";
+  const auditTrail = session.runtimeAuditTrail;
+  const auditLastEvent = auditTrail?.events?.[(auditTrail.events?.length || 0) - 1];
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -306,6 +308,27 @@ function SessionCard({
               <p className="font-semibold text-gray-800 dark:text-gray-100">{runtimeLab.approvals?.pending || 0} approvals</p>
               <p className="truncate text-gray-500 dark:text-gray-400">{labArtifacts} artifacts{labCreditsLabel ? ` · ${labCreditsLabel}` : ""}</p>
             </div>
+          </div>
+        </div>
+      )}
+      {auditTrail && (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Uniform audit trail</p>
+            <span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${auditTrail.hasHumanBoundary ? "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300"}`}>
+              {auditTrail.eventCount || auditTrail.events?.length || 0} events
+            </span>
+          </div>
+          <div className="mt-2 grid gap-2 text-xs sm:grid-cols-3">
+            <p className="text-gray-500 dark:text-gray-400">
+              Boundaries: <span className="font-semibold text-gray-800 dark:text-gray-100">{(auditTrail.approvalRequiredFor || []).join(", ") || "none"}</span>
+            </p>
+            <p className="text-gray-500 dark:text-gray-400">
+              Artifacts: <span className="font-semibold text-gray-800 dark:text-gray-100">{auditTrail.artifactCount || 0}</span>
+            </p>
+            <p className="truncate text-gray-500 dark:text-gray-400">
+              Last: <span className="font-semibold text-gray-800 dark:text-gray-100">{auditLastEvent?.description || auditLastEvent?.event || "not recorded"}</span>
+            </p>
           </div>
         </div>
       )}
