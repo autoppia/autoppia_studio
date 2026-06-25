@@ -2656,6 +2656,14 @@ export default function Capabilities(): React.ReactElement {
       totalTools: coverage.tools?.total || 0,
       taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
       totalTasks: coverage.benchmarks?.tasks || 0,
+      evalRuns: coverage.evals?.runs || 0,
+      evalPass: coverage.evals?.pass || 0,
+      evalFail: coverage.evals?.fail || 0,
+      evalLinked: Boolean(
+        coverage.evals?.linkedToTasks
+        || coverage.evals?.linkedToSkills
+        || coverage.evals?.linkedToRuntime,
+      ),
       reusableSkills: coverage.skills?.reusable || 0,
       totalSkills: coverage.skills?.total || 0,
       runtimeSessions: coverage.runtime?.sessions || 0,
@@ -3427,6 +3435,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.taskContracts === backendGraphStats.totalTasks && backendGraphStats.totalTasks > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.taskContracts}/{backendGraphStats.totalTasks} task contracts
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.evalFail > 0 ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" : backendGraphStats.evalLinked && backendGraphStats.evalPass > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.evalPass}/{backendGraphStats.evalRuns} eval pass · {backendGraphStats.evalFail} fail
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath && backendGraphStats.reusableSkills > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.reusableSkills}/{backendGraphStats.totalSkills} reusable skills

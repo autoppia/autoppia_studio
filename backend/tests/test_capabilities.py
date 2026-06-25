@@ -362,7 +362,27 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
             ]
         ),
     )
-    monkeypatch.setattr(capabilities, "eval_runs_collection", _Collection([]))
+    monkeypatch.setattr(
+        capabilities,
+        "eval_runs_collection",
+        _Collection(
+            [
+                {
+                    "runId": "eval-run-1",
+                    "benchmarkRunId": "bench-run-1",
+                    "evalId": "task-1",
+                    "benchmarkId": "bench-1",
+                    "email": "user@example.com",
+                    "agentTaskName": "Review claim",
+                    "sessionId": "session-1",
+                    "label": "pass",
+                    "judgeType": "rules",
+                    "labelSource": "stateful_evaluator",
+                    "createdAt": "2026-06-25T10:00:00+00:00",
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(capabilities, "evals_collection", _Collection([]))
     monkeypatch.setattr(
         capabilities,
@@ -377,6 +397,8 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "name": "Review claim skill",
                     "status": "ready",
                     "promotionStatus": "ready",
+                    "benchmarkId": "bench-1",
+                    "evalId": "task-1",
                     "trajectoryIds": ["traj-1"],
                     "toolIds": ["tool-claim", "knowledge.claims.search"],
                     "inputEntities": ["Claim"],
@@ -481,9 +503,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
     assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
-    assert {"session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
+    assert {"eval_run:eval-run-1", "session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
     assert {"backs_vector_store", "indexes_resource", "grounds_connector", "read_by_tool", "grounds_task"} <= edge_relations
+    assert {"has_regression_run", "evaluated_by_run", "gates_skill", "replayed_session"} <= edge_relations
     assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
     assert {"scheduled_from_benchmark", "scheduled_from_task", "opened_session", "orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} <= edge_relations
     assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
@@ -501,6 +524,12 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["resources"]["linkedToTools"] is True
     assert graph["coverage"]["resources"]["linkedToTasks"] is True
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
+    assert graph["coverage"]["evals"]["runs"] == 1
+    assert graph["coverage"]["evals"]["pass"] == 1
+    assert graph["coverage"]["evals"]["fail"] == 0
+    assert graph["coverage"]["evals"]["linkedToTasks"] is True
+    assert graph["coverage"]["evals"]["linkedToSkills"] is True
+    assert graph["coverage"]["evals"]["linkedToRuntime"] is True
     assert graph["coverage"]["skills"]["ready"] == 1
     assert graph["coverage"]["skills"]["reusable"] == 1
     assert graph["coverage"]["runtime"]["sessions"] == 1

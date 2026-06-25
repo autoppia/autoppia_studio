@@ -729,6 +729,28 @@ def _vector_store_payload(vector_store: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _eval_run_label(run: dict[str, Any]) -> str:
+    return str(run.get("label") or "pending").strip().lower() or "pending"
+
+
+def _eval_run_payload(run: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "runId": run.get("runId", ""),
+        "benchmarkRunId": run.get("benchmarkRunId", ""),
+        "evalId": run.get("evalId", ""),
+        "benchmarkId": run.get("benchmarkId", ""),
+        "benchmarkName": run.get("benchmarkName", ""),
+        "agentId": run.get("agentId", ""),
+        "agentName": run.get("agentName", ""),
+        "sessionId": run.get("sessionId", ""),
+        "label": _eval_run_label(run),
+        "judgeType": run.get("judgeType", ""),
+        "labelSource": run.get("labelSource", ""),
+        "createdAt": run.get("createdAt"),
+        "updatedAt": run.get("updatedAt"),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -739,6 +761,7 @@ def _capability_graph_coverage(
     task_docs: list[dict[str, Any]],
     trajectory_docs: list[dict[str, Any]],
     skill_docs: list[dict[str, Any]],
+    eval_run_docs: list[dict[str, Any]],
     session_docs: list[dict[str, Any]],
     approval_docs: list[dict[str, Any]],
     artifact_docs: list[dict[str, Any]],
@@ -773,6 +796,15 @@ def _capability_graph_coverage(
         },
         "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
+        "evals": {
+            "runs": len(eval_run_docs),
+            "pass": sum(1 for run in eval_run_docs if _eval_run_label(run) == "pass"),
+            "fail": sum(1 for run in eval_run_docs if _eval_run_label(run) == "fail"),
+            "pending": sum(1 for run in eval_run_docs if _eval_run_label(run) == "pending"),
+            "linkedToTasks": "evaluated_by_run" in edge_relations,
+            "linkedToSkills": "gates_skill" in edge_relations,
+            "linkedToRuntime": "replayed_session" in edge_relations,
+        },
         "trajectories": {"total": len(trajectory_docs), "approved": sum(1 for item in trajectory_docs if str(item.get("status") or "").lower() == "approved")},
         "skills": {"total": len(skill_docs), "ready": ready_skills, "reusable": reusable_skills},
         "runtime": {
@@ -1529,12 +1561,35 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     approval_docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     artifact_docs = await artifacts_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     work_item_docs = await work_items_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    linked_eval_ids = _dedupe_strings([
+        *[str(task.get("taskId") or "") for task in task_docs],
+        *[str(task.get("evalId") or "") for task in task_docs],
+        *[str(trajectory.get("evalId") or "") for trajectory in trajectory_docs],
+        *[str(skill.get("evalId") or "") for skill in skill_docs],
+    ])
+    linked_benchmark_ids = _dedupe_strings([
+        *[str(benchmark.get("benchmarkId") or "") for benchmark in benchmark_docs],
+        *[str(task.get("benchmarkId") or "") for task in task_docs],
+        *[str(trajectory.get("benchmarkId") or "") for trajectory in trajectory_docs],
+        *[str(skill.get("benchmarkId") or "") for skill in skill_docs],
+    ])
+    eval_run_filters: list[dict[str, Any]] = []
+    if linked_eval_ids:
+        eval_run_filters.append({"evalId": {"$in": linked_eval_ids}})
+    if linked_benchmark_ids:
+        eval_run_filters.append({"benchmarkId": {"$in": linked_benchmark_ids}})
+    eval_run_query: dict[str, Any] = {"$or": eval_run_filters} if eval_run_filters else dict(query)
+    if email:
+        eval_run_query["email"] = email
+    eval_run_docs = await eval_runs_collection.find(eval_run_query, {"_id": 0, "actions": 0, "screenshots": 0}).sort("createdAt", 1).to_list(length=1000)
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: dict[str, dict[str, Any]] = {}
     entity_by_name = _entity_names(entity_docs)
     tool_by_ref = _tool_lookup(tool_docs)
     resource_node_ids: list[str] = []
+    task_nodes_by_eval_id: dict[str, str] = {}
+    task_nodes_by_benchmark_id: dict[str, list[str]] = {}
 
     for connector in connector_docs:
         connector_id = str(connector.get("connectorId") or "")
@@ -1618,6 +1673,14 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             "successCriteria": task_contract["successCriteria"],
             "taskContract": task_contract,
         })
+        if task_node:
+            task_nodes_by_eval_id[task_id] = task_node
+            eval_id = str(task.get("evalId") or "")
+            if eval_id:
+                task_nodes_by_eval_id[eval_id] = task_node
+            benchmark_id = str(task.get("benchmarkId") or "")
+            if benchmark_id:
+                task_nodes_by_benchmark_id.setdefault(benchmark_id, []).append(task_node)
         _add_edge(edges, f"benchmark:{task.get('benchmarkId')}", task_node, "contains_task", {"source": "benchmark_tasks"})
         if task.get("trajectoryId"):
             _add_edge(edges, task_node, f"trajectory:{task.get('trajectoryId')}", "produced_trajectory", {"source": "task.trajectoryId"})
@@ -1638,9 +1701,18 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             _add_edge(edges, tool_node, trajectory_node, "used_in_trajectory", {"source": "trajectory.toolIds"})
 
     serialized_skills = [await _serialize_skill(skill) for skill in skill_docs]
+    skill_nodes_by_eval_id: dict[str, list[str]] = {}
+    skill_nodes_by_benchmark_id: dict[str, list[str]] = {}
     for skill in serialized_skills:
         skill_id = str(skill.get("skillId") or skill.get("capabilityId") or "")
         skill_node = _add_node(nodes, "skill", skill_id, str(skill.get("name") or skill_id), skill)
+        if skill_node:
+            eval_id = str(skill.get("evalId") or "")
+            if eval_id:
+                skill_nodes_by_eval_id.setdefault(eval_id, []).append(skill_node)
+            benchmark_id = str(skill.get("benchmarkId") or "")
+            if benchmark_id:
+                skill_nodes_by_benchmark_id.setdefault(benchmark_id, []).append(skill_node)
         for trajectory_id in skill.get("trajectoryIds") or []:
             _add_edge(edges, f"trajectory:{trajectory_id}", skill_node, "promoted_to", {"source": "skill.trajectoryIds"})
         for tool_ref in skill.get("toolIds") or []:
@@ -1661,6 +1733,21 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             entity_id = str((entity or {}).get("entityId") or output_entity)
             entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or output_entity), entity or {"name": output_entity})
             _add_edge(edges, skill_node, entity_node, "output_entity", {"source": "skill.outputEntity"})
+
+    for run in eval_run_docs:
+        run_id = str(run.get("runId") or "")
+        run_node = _add_node(nodes, "eval_run", run_id, str(run.get("agentTaskName") or run.get("evalId") or run_id), _eval_run_payload(run))
+        benchmark_id = str(run.get("benchmarkId") or "")
+        eval_id = str(run.get("evalId") or "")
+        session_id = str(run.get("sessionId") or "")
+        if benchmark_id:
+            _add_edge(edges, f"benchmark:{benchmark_id}", run_node, "has_regression_run", {"source": "eval_run.benchmarkId"})
+        for task_node in _dedupe_strings([task_nodes_by_eval_id.get(eval_id, ""), *task_nodes_by_benchmark_id.get(benchmark_id, [])]):
+            _add_edge(edges, task_node, run_node, "evaluated_by_run", {"source": "eval_run.evalId"})
+        for skill_node in _dedupe_strings([*skill_nodes_by_eval_id.get(eval_id, []), *skill_nodes_by_benchmark_id.get(benchmark_id, [])]):
+            _add_edge(edges, run_node, skill_node, "gates_skill", {"source": "eval_run.evalId"})
+        if session_id:
+            _add_edge(edges, run_node, f"session:{session_id}", "replayed_session", {"source": "eval_run.sessionId"})
 
     for session in session_docs:
         session_id = str(session.get("sessionId") or "")
@@ -1734,6 +1821,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
                 task_docs=task_docs,
                 trajectory_docs=trajectory_docs,
                 skill_docs=serialized_skills,
+                eval_run_docs=eval_run_docs,
                 session_docs=session_docs,
                 approval_docs=approval_docs,
                 artifact_docs=artifact_docs,

@@ -1379,6 +1379,15 @@ export interface CapabilityGraphCoverage {
     tasks?: number;
     tasksWithContracts?: number;
   };
+  evals?: {
+    runs?: number;
+    pass?: number;
+    fail?: number;
+    pending?: number;
+    linkedToTasks?: boolean;
+    linkedToSkills?: boolean;
+    linkedToRuntime?: boolean;
+  };
   trajectories?: {
     total?: number;
     approved?: number;
