@@ -1311,7 +1311,7 @@ export default function Work() {
                     Open latest runtime session
                   </button>
                   <button
-                    onClick={() => navigate(`/runtime?sessionIds=${encodeURIComponent((selectedItem.operational?.latestSessionIds || []).join(","))}`)}
+                    onClick={() => navigate(`/runtime?workItemId=${encodeURIComponent(selectedItem.workItemId)}`)}
                     className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
                   >
                     Open Runtime Lab

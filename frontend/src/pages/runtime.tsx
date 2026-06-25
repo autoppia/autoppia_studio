@@ -271,6 +271,7 @@ export default function Runtime(): React.ReactElement {
   const [search, setSearch] = useState("");
   const [kindFilter, setKindFilter] = useState<"all" | "browser" | "api" | "hybrid">("all");
   const skillFilter = searchParams.get("skillId") || "";
+  const workItemFilter = searchParams.get("workItemId") || "";
   const sessionIdsFilter = useMemo(
     () => new Set((searchParams.get("sessionIds") || "").split(",").map((value) => value.trim()).filter(Boolean)),
     [searchParams],
@@ -311,6 +312,10 @@ export default function Runtime(): React.ReactElement {
     const q = search.trim().toLowerCase();
     return sessions.filter((session) => {
       if (skillFilter && String(session.matchedSkillId || "") !== skillFilter) return false;
+      if (workItemFilter) {
+        const sessionWorkItemId = String(session.workItemId || session.runtimeState?.workItemId || "");
+        if (sessionWorkItemId !== workItemFilter) return false;
+      }
       if (sessionIdsFilter.size > 0 && !sessionIdsFilter.has(session.sessionId)) return false;
       const kindMatches = kindFilter === "all" || runtimeKind(session) === kindFilter;
       if (!kindMatches) return false;
@@ -323,10 +328,11 @@ export default function Runtime(): React.ReactElement {
         session.lastUrl || "",
         session.provider || "",
         session.matchedSkillName || "",
+        session.workItemId || "",
       ].join(" ").toLowerCase().includes(q)
       );
     });
-  }, [kindFilter, search, sessionIdsFilter, sessions, skillFilter]);
+  }, [kindFilter, search, sessionIdsFilter, sessions, skillFilter, workItemFilter]);
 
   const metrics = useMemo(() => ({
     total: filtered.length,
@@ -375,13 +381,15 @@ export default function Runtime(): React.ReactElement {
             </label>
           </div>
 
-          {(skillFilter || sessionIdsFilter.size > 0) && (
+          {(skillFilter || workItemFilter || sessionIdsFilter.size > 0) && (
             <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-bg">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime scope active</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {skillFilter
                     ? `Showing sessions for skill ${skillFilter}.`
+                    : workItemFilter
+                      ? `Showing sessions for job ${workItemFilter}.`
                     : `Showing ${sessionIdsFilter.size} linked runtime ${sessionIdsFilter.size === 1 ? "session" : "sessions"}.`}
                 </p>
               </div>
@@ -389,6 +397,7 @@ export default function Runtime(): React.ReactElement {
                 onClick={() => {
                   const next = new URLSearchParams(searchParams);
                   next.delete("skillId");
+                  next.delete("workItemId");
                   next.delete("sessionIds");
                   setSearchParams(next, { replace: true });
                 }}
