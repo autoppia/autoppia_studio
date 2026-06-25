@@ -383,6 +383,34 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
             ]
         ),
     )
+    monkeypatch.setattr(
+        capabilities,
+        "work_items_collection",
+        _Collection(
+            [
+                {
+                    "workItemId": "work-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "title": "Daily claim review",
+                    "status": "REVIEW",
+                    "triggerType": "scheduled",
+                    "scheduleFrequency": "daily",
+                    "sourceBenchmarkId": "bench-1",
+                    "sourceTaskId": "task-1",
+                    "currentSessionId": "session-1",
+                    "operational": {
+                        "latestMatchedSkillIds": ["skill-1"],
+                        "latestMatchedTrajectoryIds": ["traj-1"],
+                        "latestToolIds": ["tool-claim"],
+                        "latestSessionIds": ["session-1"],
+                        "reviewBlocked": True,
+                        "pendingApprovalCount": 1,
+                    },
+                }
+            ]
+        ),
+    )
 
     result = await capabilities.get_company_capability_graph("co-1", email="user@example.com")
     graph = result["graph"]
@@ -391,9 +419,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
     assert {"connector:conn-1", "entity:entity-claim", "tool:tool-claim", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
-    assert {"session:session-1", "approval:approval-1", "artifact:artifact-1"} <= node_ids
+    assert {"session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
     assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
+    assert {"scheduled_from_benchmark", "scheduled_from_task", "opened_session", "orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} <= edge_relations
     assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
     assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary"]
     assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
@@ -408,6 +437,13 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["runtime"]["linkedSessions"] is True
     assert graph["coverage"]["runtime"]["linkedApprovals"] is True
     assert graph["coverage"]["runtime"]["linkedArtifacts"] is True
+    assert graph["coverage"]["work"]["total"] == 1
+    assert graph["coverage"]["work"]["scheduled"] == 1
+    assert graph["coverage"]["work"]["review"] == 1
+    assert graph["coverage"]["work"]["blockedByApproval"] == 1
+    assert graph["coverage"]["work"]["linkedToTasks"] is True
+    assert graph["coverage"]["work"]["linkedToRuntime"] is True
+    assert graph["coverage"]["work"]["linkedToCapabilities"] is True
     assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
     assert graph["coverage"]["promotionPath"]["hasTrajectoryToSkill"] is True
 

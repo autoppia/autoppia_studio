@@ -1384,6 +1384,16 @@ export interface CapabilityGraphCoverage {
     linkedApprovals?: boolean;
     linkedArtifacts?: boolean;
   };
+  work?: {
+    total?: number;
+    scheduled?: number;
+    running?: number;
+    review?: number;
+    blockedByApproval?: number;
+    linkedToTasks?: boolean;
+    linkedToRuntime?: boolean;
+    linkedToCapabilities?: boolean;
+  };
   promotionPath?: {
     hasTaskToTrajectory?: boolean;
     hasTrajectoryToSkill?: boolean;

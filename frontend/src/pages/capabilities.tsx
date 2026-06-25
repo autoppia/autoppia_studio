@@ -2656,6 +2656,15 @@ export default function Capabilities(): React.ReactElement {
         || coverage.runtime?.linkedApprovals
         || coverage.runtime?.linkedArtifacts,
       ),
+      workItems: coverage.work?.total || 0,
+      scheduledWork: coverage.work?.scheduled || 0,
+      reviewWork: coverage.work?.review || 0,
+      approvalBlockedWork: coverage.work?.blockedByApproval || 0,
+      workLinked: Boolean(
+        coverage.work?.linkedToTasks
+        || coverage.work?.linkedToRuntime
+        || coverage.work?.linkedToCapabilities,
+      ),
       hasPromotionPath: Boolean(
         coverage.promotionPath?.hasTaskToTrajectory
         || coverage.promotionPath?.hasTrajectoryToSkill
@@ -3411,6 +3420,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.runtimeLinked ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.runtimeSessions} sessions · {backendGraphStats.runtimeApprovals} approvals · {backendGraphStats.runtimeArtifacts} artifacts
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.workLinked ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.workItems} jobs · {backendGraphStats.scheduledWork} scheduled · {backendGraphStats.approvalBlockedWork || backendGraphStats.reviewWork} review
                         </span>
                       </div>
                     </div>

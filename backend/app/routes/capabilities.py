@@ -20,6 +20,7 @@ from app.database import (
     sessions_collection,
     tools_collection,
     trajectories_collection,
+    work_items_collection,
 )
 from app.harvesters import harvest_connector_capabilities
 from app.harvesters.base import connector_surface
@@ -606,6 +607,50 @@ def _artifact_runtime_payload(artifact: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _work_operational(doc: dict[str, Any]) -> dict[str, Any]:
+    operational = doc.get("operational")
+    return operational if isinstance(operational, dict) else {}
+
+
+def _work_ref_list(doc: dict[str, Any], key: str) -> list[str]:
+    operational = _work_operational(doc)
+    raw = operational.get(key)
+    values = raw if isinstance(raw, list) else []
+    return _dedupe_strings([str(value or "") for value in values])
+
+
+def _work_item_payload(work_item: dict[str, Any]) -> dict[str, Any]:
+    operational = _work_operational(work_item)
+    orchestration = operational.get("orchestration") if isinstance(operational.get("orchestration"), dict) else {}
+    return {
+        "workItemId": work_item.get("workItemId", ""),
+        "title": work_item.get("title", ""),
+        "prompt": work_item.get("prompt", ""),
+        "status": work_item.get("status", "TODO"),
+        "agentId": work_item.get("agentId", ""),
+        "agentName": work_item.get("agentName", ""),
+        "runTarget": work_item.get("runTarget", "selected"),
+        "triggerType": work_item.get("triggerType", "manual"),
+        "scheduleFrequency": work_item.get("scheduleFrequency", "none"),
+        "nextRunAt": work_item.get("nextRunAt", ""),
+        "maxCreditsPerRun": work_item.get("maxCreditsPerRun", 0),
+        "maxBudgetCredits": work_item.get("maxBudgetCredits", 0),
+        "maxSteps": work_item.get("maxSteps", 0),
+        "sourceTaskId": work_item.get("sourceTaskId", ""),
+        "sourceBenchmarkId": work_item.get("sourceBenchmarkId", ""),
+        "currentSessionId": work_item.get("currentSessionId", ""),
+        "lastRunId": work_item.get("lastRunId", ""),
+        "reviewBlocked": bool(operational.get("reviewBlocked") or str(work_item.get("status") or "") == "REVIEW"),
+        "pendingApprovalCount": operational.get("pendingApprovalCount", 0),
+        "latestArtifactCount": operational.get("latestArtifactCount", 0),
+        "persistedArtifactCount": operational.get("persistedArtifactCount", 0),
+        "latestCreditsSpent": operational.get("latestCreditsSpent", 0),
+        "orchestration": orchestration,
+        "createdAt": work_item.get("createdAt"),
+        "updatedAt": work_item.get("updatedAt"),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -617,6 +662,7 @@ def _capability_graph_coverage(
     session_docs: list[dict[str, Any]],
     approval_docs: list[dict[str, Any]],
     artifact_docs: list[dict[str, Any]],
+    work_item_docs: list[dict[str, Any]],
     edges: list[dict[str, Any]],
 ) -> dict[str, Any]:
     edge_relations = {edge.get("relation") for edge in edges}
@@ -638,6 +684,16 @@ def _capability_graph_coverage(
             "linkedSessions": "exercised_skill" in edge_relations or "exercised_trajectory" in edge_relations or "exercised_tool" in edge_relations,
             "linkedApprovals": "requires_approval" in edge_relations,
             "linkedArtifacts": "produced_artifact" in edge_relations,
+        },
+        "work": {
+            "total": len(work_item_docs),
+            "scheduled": sum(1 for item in work_item_docs if str(item.get("triggerType") or "").lower() == "scheduled"),
+            "running": sum(1 for item in work_item_docs if str(item.get("status") or "").upper() == "RUNNING"),
+            "review": sum(1 for item in work_item_docs if str(item.get("status") or "").upper() == "REVIEW"),
+            "blockedByApproval": sum(1 for item in work_item_docs if bool(_work_operational(item).get("reviewBlocked")) or str(item.get("status") or "").upper() == "REVIEW"),
+            "linkedToTasks": "scheduled_from_task" in edge_relations,
+            "linkedToRuntime": "opened_session" in edge_relations,
+            "linkedToCapabilities": "orchestrates_skill" in edge_relations or "orchestrates_trajectory" in edge_relations or "orchestrates_tool" in edge_relations,
         },
         "promotionPath": {
             "hasTaskToTrajectory": "produced_trajectory" in edge_relations,
@@ -1371,6 +1427,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     session_docs = await sessions_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     approval_docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
     artifact_docs = await artifacts_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
+    work_item_docs = await work_items_collection.find(query, {"_id": 0}).sort("createdAt", 1).to_list(length=1000)
 
     nodes: dict[str, dict[str, Any]] = {}
     edges: dict[str, dict[str, Any]] = {}
@@ -1510,6 +1567,27 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             if ref:
                 _add_edge(edges, f"{node_kind}:{ref}", artifact_node, "produced_artifact", {"source": f"artifact.metadata.{ref_key}"})
 
+    for work_item in work_item_docs:
+        work_item_id = str(work_item.get("workItemId") or "")
+        work_node = _add_node(nodes, "work_item", work_item_id, str(work_item.get("title") or work_item_id), _work_item_payload(work_item))
+        source_benchmark_id = str(work_item.get("sourceBenchmarkId") or "")
+        source_task_id = str(work_item.get("sourceTaskId") or "")
+        if source_benchmark_id:
+            _add_edge(edges, f"benchmark:{source_benchmark_id}", work_node, "scheduled_from_benchmark", {"source": "work.sourceBenchmarkId"})
+        if source_task_id:
+            _add_edge(edges, f"task:{source_task_id}", work_node, "scheduled_from_task", {"source": "work.sourceTaskId"})
+        session_ids = _dedupe_strings([str(work_item.get("currentSessionId") or ""), *_work_ref_list(work_item, "latestSessionIds")])
+        for session_id in session_ids:
+            _add_edge(edges, work_node, f"session:{session_id}", "opened_session", {"source": "work.currentSessionId"})
+        for skill_id in _work_ref_list(work_item, "latestMatchedSkillIds"):
+            _add_edge(edges, work_node, f"skill:{skill_id}", "orchestrates_skill", {"source": "work.operational.latestMatchedSkillIds"})
+        for trajectory_id in _work_ref_list(work_item, "latestMatchedTrajectoryIds"):
+            _add_edge(edges, work_node, f"trajectory:{trajectory_id}", "orchestrates_trajectory", {"source": "work.operational.latestMatchedTrajectoryIds"})
+        for tool_ref in _work_ref_list(work_item, "latestToolIds"):
+            tool = tool_by_ref.get(str(tool_ref))
+            tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
+            _add_edge(edges, work_node, tool_node, "orchestrates_tool", {"source": "work.operational.latestToolIds"})
+
     edge_list = list(edges.values())
     return {
         "graph": {
@@ -1526,6 +1604,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
                 session_docs=session_docs,
                 approval_docs=approval_docs,
                 artifact_docs=artifact_docs,
+                work_item_docs=work_item_docs,
                 edges=edge_list,
             ),
         }
