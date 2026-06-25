@@ -932,6 +932,25 @@ export interface CompanySetupContract {
       tasks: number;
       evalRuns: number;
     };
+    evalGate?: {
+      totalSkills: number;
+      benchmarkLinked: number;
+      regressionLinked: number;
+      passing: number;
+      failing: number;
+      pending: number;
+      missing: number;
+      blockedByRegression: number;
+      sample: Array<{
+        skillId: string;
+        name: string;
+        state: string;
+        benchmarkIds: string[];
+        evalIds: string[];
+        latestLabel: string;
+        blockers: string[];
+      }>;
+    };
     tools: {
       total: number;
       typed: number;

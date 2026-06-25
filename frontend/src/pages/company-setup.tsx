@@ -669,6 +669,37 @@ export default function CompanySetup(): React.ReactElement {
                       </div>
                     </div>
                   )}
+                  {capabilityMap.evalGate && capabilityMap.skills.total > 0 && (
+                    <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Eval gate</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Linked: <span className="font-semibold text-gray-900 dark:text-white">{capabilityMap.evalGate.benchmarkLinked}/{capabilityMap.evalGate.totalSkills}</span>
+                        </p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Passing</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Skills: <span className="font-semibold text-gray-900 dark:text-white">{capabilityMap.evalGate.passing}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{capabilityMap.evalGate.regressionLinked} regression linked</p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Blocked</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Skills: <span className="font-semibold text-gray-900 dark:text-white">{capabilityMap.evalGate.blockedByRegression}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{capabilityMap.evalGate.failing} failing</p>
+                      </div>
+                      <div className="rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Missing</p>
+                        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+                          Regression: <span className="font-semibold text-gray-900 dark:text-white">{capabilityMap.evalGate.missing}</span>
+                        </p>
+                        <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{capabilityMap.evalGate.pending} pending</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
               {resourceMap && (

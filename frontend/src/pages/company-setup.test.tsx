@@ -270,6 +270,27 @@ describe("Company Setup page", () => {
                   tasks: 2,
                   evalRuns: 10,
                 },
+                evalGate: {
+                  totalSkills: 3,
+                  benchmarkLinked: 2,
+                  regressionLinked: 2,
+                  passing: 1,
+                  failing: 1,
+                  pending: 0,
+                  missing: 1,
+                  blockedByRegression: 1,
+                  sample: [
+                    {
+                      skillId: "skill-1",
+                      name: "Claim status reply",
+                      state: "passing",
+                      benchmarkIds: ["bench-claims"],
+                      evalIds: ["task-claim"],
+                      latestLabel: "pass",
+                      blockers: [],
+                    },
+                  ],
+                },
                 tools: {
                   total: 8,
                   typed: 6,
@@ -356,6 +377,11 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("2 manifest ready · 1 regressions")).toBeInTheDocument();
     expect(await screen.findByText("Regression gate")).toBeInTheDocument();
     expect(await screen.findByText("1 publishable")).toBeInTheDocument();
+    expect(await screen.findByText("Eval gate")).toBeInTheDocument();
+    expect((await screen.findAllByText("2/3")).length).toBeGreaterThan(0);
+    expect(await screen.findByText("2 regression linked")).toBeInTheDocument();
+    expect(await screen.findByText("1 failing")).toBeInTheDocument();
+    expect(await screen.findByText("0 pending")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();
     expect(await screen.findByText("1 due now")).toBeInTheDocument();
     expect(await screen.findByText("Capability Factory")).toBeInTheDocument();

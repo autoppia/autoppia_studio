@@ -466,7 +466,22 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         ),
     )
     monkeypatch.setattr(companies, "evals_collection", _Collection([{"evalId": "eval-1", "companyId": "company-1", "email": "owner@example.com"}]))
-    monkeypatch.setattr(companies, "eval_runs_collection", _Collection([{"runId": "eval-run-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "eval_runs_collection",
+        _Collection(
+            [
+                {
+                    "runId": "eval-run-1",
+                    "evalId": "task-1",
+                    "benchmarkId": "bench-1",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "label": "pass",
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(
         companies,
         "trajectories_collection",
@@ -495,6 +510,8 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "outputEntity": "DraftEmail",
                     "preconditions": ["claim id known"],
                     "trajectoryIds": ["traj-1"],
+                    "benchmarkId": "bench-1",
+                    "evalId": "task-1",
                     "latestRegression": {"label": "pass"},
                     "version": "1.0.0",
                     "runtimeRequirements": ["network"],
@@ -652,6 +669,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert "insurance_erp" in result["contract"]["capabilityMap"]["taskContracts"]["allowedSystems"]
     assert "claim_summary" in result["contract"]["capabilityMap"]["taskContracts"]["expectedArtifacts"]
     assert result["contract"]["capabilityMap"]["benchmarks"]["verticals"] == [{"name": "insurance", "count": 1}]
+    assert result["contract"]["capabilityMap"]["evalGate"]["totalSkills"] == 2
+    assert result["contract"]["capabilityMap"]["evalGate"]["benchmarkLinked"] == 1
+    assert result["contract"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
+    assert result["contract"]["capabilityMap"]["evalGate"]["passing"] == 1
+    assert result["contract"]["capabilityMap"]["evalGate"]["missing"] == 1
+    assert result["contract"]["capabilityMap"]["evalGate"]["blockedByRegression"] == 0
     assert result["contract"]["capabilityMap"]["tools"]["typed"] == 1
     assert "Claim" in result["contract"]["capabilityMap"]["tools"]["mappedEntities"]
     assert result["contract"]["capabilityMap"]["skills"]["hardened"] == 1
