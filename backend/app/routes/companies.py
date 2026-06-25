@@ -30,6 +30,7 @@ from app.database import (
 from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
+from app.services.connector_factory import summarize_connector_factory
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
@@ -149,89 +150,6 @@ def _session_contract_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
         "replayReady": replay_ready,
         "creditsSpent": round(total_credits, 4),
         "runtimeKinds": _sorted_counts(runtime_kinds),
-    }
-
-
-def _connector_factory_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    entity_mapped = 0
-    entity_source_ready = 0
-    entity_pending = 0
-    typed_tool_ready = 0
-    tool_synthesis_pending = 0
-    candidate_tasks_ready = 0
-    ingestion_ready = 0
-    ingestion_blocked = 0
-    ready_stage_count = 0
-    total_stage_count = 0
-    gaps: list[dict[str, str]] = []
-    samples: list[dict[str, Any]] = []
-    for doc in docs:
-        discovery = doc.get("capabilityDiscovery") if isinstance(doc.get("capabilityDiscovery"), dict) else {}
-        entity_mapping = discovery.get("entityMapping") if isinstance(discovery.get("entityMapping"), dict) else {}
-        tool_synthesis = discovery.get("toolSynthesis") if isinstance(discovery.get("toolSynthesis"), dict) else {}
-        candidate_tasks = discovery.get("candidateTasks") if isinstance(discovery.get("candidateTasks"), dict) else {}
-        ingestion = discovery.get("ingestionPipeline") if isinstance(discovery.get("ingestionPipeline"), dict) else {}
-        entity_status = str(entity_mapping.get("status") or "").strip().lower()
-        ingestion_state = str(ingestion.get("state") or "").strip().lower()
-        typed_tool_count = int(tool_synthesis.get("typedToolCount") or 0)
-        ready_stages = int(ingestion.get("readyStages") or 0)
-        total_stages = int(ingestion.get("totalStages") or 0)
-        ready_stage_count += ready_stages
-        total_stage_count += total_stages
-        if entity_status == "mapped" or entity_mapping.get("readyForToolBinding"):
-            entity_mapped += 1
-        elif entity_status == "source_ready":
-            entity_source_ready += 1
-        else:
-            entity_pending += 1
-        if typed_tool_count > 0:
-            typed_tool_ready += 1
-        elif discovery:
-            tool_synthesis_pending += 1
-        if candidate_tasks.get("recommended") or int(candidate_tasks.get("count") or 0) > 0:
-            candidate_tasks_ready += 1
-        if ingestion_state == "ready":
-            ingestion_ready += 1
-        elif ingestion_state == "blocked":
-            ingestion_blocked += 1
-        if entity_status not in {"mapped", "source_ready"} and not entity_mapping.get("readyForToolBinding"):
-            gaps.append({"key": "entity_mapping", "label": f"{doc.get('name') or 'Connector'} needs business entity mapping.", "target": "connectors"})
-        if discovery and typed_tool_count == 0:
-            gaps.append({"key": "tool_synthesis", "label": f"{doc.get('name') or 'Connector'} has no typed synthesized tools yet.", "target": "connectors"})
-        if ingestion_state == "blocked":
-            next_stage = ingestion.get("nextStage") if isinstance(ingestion.get("nextStage"), dict) else {}
-            label = str(next_stage.get("summary") or next_stage.get("label") or "ingestion pipeline is blocked")
-            gaps.append({"key": "ingestion", "label": f"{doc.get('name') or 'Connector'}: {label}.", "target": "connectors"})
-        if len(samples) < 8:
-            samples.append(
-                {
-                    "connectorId": str(doc.get("connectorId") or ""),
-                    "name": str(doc.get("name") or ""),
-                    "entityMapping": entity_status or "unknown",
-                    "businessObjects": _normalized_list(entity_mapping.get("businessObjects"))[:5],
-                    "readyForToolBinding": bool(entity_mapping.get("readyForToolBinding")),
-                    "typedToolCount": typed_tool_count,
-                    "governedToolCount": int(tool_synthesis.get("governedToolCount") or 0),
-                    "candidateTasksRecommended": bool(candidate_tasks.get("recommended")),
-                    "ingestionState": ingestion_state or "unknown",
-                    "readyStages": ready_stages,
-                    "totalStages": total_stages,
-                }
-            )
-    return {
-        "total": len(docs),
-        "entityMapped": entity_mapped,
-        "entitySourceReady": entity_source_ready,
-        "entityPending": entity_pending,
-        "typedToolReady": typed_tool_ready,
-        "toolSynthesisPending": tool_synthesis_pending,
-        "candidateTasksReady": candidate_tasks_ready,
-        "ingestionReady": ingestion_ready,
-        "ingestionBlocked": ingestion_blocked,
-        "readyStages": ready_stage_count,
-        "totalStages": total_stage_count,
-        "sample": samples,
-        "gaps": gaps[:10],
     }
 
 
@@ -559,7 +477,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         connector_domains = sorted({domain for doc in connectors for domain in _connector_domains(doc)})
         category_counts = _sorted_counts([str(doc.get("category") or "uncategorized") for doc in connectors])
         surface_counts = _sorted_counts([connector_surface(doc) for doc in connectors])
-        connector_factory = _connector_factory_summary(connectors)
+        connector_factory = summarize_connector_factory(connectors)
         policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
         task_contracts_ready = sum(1 for task in benchmark_tasks if task_contract_ready(task))
         task_contracts = [task_contract_from_record(task) for task in benchmark_tasks]

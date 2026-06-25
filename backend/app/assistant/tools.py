@@ -32,6 +32,7 @@ from app.database import (
     work_items_collection,
 )
 from app.services.queue import enqueue_job
+from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -376,55 +377,6 @@ def _vertical_demo_summary(
     }
 
 
-def _connector_factory_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
-    entity_mapped = 0
-    entity_source_ready = 0
-    entity_pending = 0
-    typed_tool_ready = 0
-    tool_synthesis_pending = 0
-    ingestion_blocked = 0
-    samples: list[dict[str, Any]] = []
-    for doc in docs:
-        discovery = doc.get("capabilityDiscovery") if isinstance(doc.get("capabilityDiscovery"), dict) else {}
-        entity_mapping = discovery.get("entityMapping") if isinstance(discovery.get("entityMapping"), dict) else {}
-        tool_synthesis = discovery.get("toolSynthesis") if isinstance(discovery.get("toolSynthesis"), dict) else {}
-        ingestion = discovery.get("ingestionPipeline") if isinstance(discovery.get("ingestionPipeline"), dict) else {}
-        entity_status = str(entity_mapping.get("status") or "").strip().lower()
-        if entity_status == "mapped" or entity_mapping.get("readyForToolBinding"):
-            entity_mapped += 1
-        elif entity_status == "source_ready":
-            entity_source_ready += 1
-        else:
-            entity_pending += 1
-        if int(tool_synthesis.get("typedToolCount") or 0) > 0:
-            typed_tool_ready += 1
-        elif discovery:
-            tool_synthesis_pending += 1
-        if str(ingestion.get("state") or "").lower() == "blocked":
-            ingestion_blocked += 1
-        if len(samples) < 5:
-            samples.append(
-                {
-                    "connectorId": str(doc.get("connectorId") or ""),
-                    "name": str(doc.get("name") or ""),
-                    "entityMapping": entity_status or "unknown",
-                    "businessObjects": _list_values(entity_mapping.get("businessObjects"))[:5],
-                    "typedToolCount": int(tool_synthesis.get("typedToolCount") or 0),
-                    "ingestionState": str(ingestion.get("state") or ""),
-                }
-            )
-    return {
-        "total": len(docs),
-        "entityMapped": entity_mapped,
-        "entitySourceReady": entity_source_ready,
-        "entityPending": entity_pending,
-        "typedToolReady": typed_tool_ready,
-        "toolSynthesisPending": tool_synthesis_pending,
-        "ingestionBlocked": ingestion_blocked,
-        "sample": samples,
-    }
-
-
 def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
     domains: set[str] = set()
     for doc in docs:
@@ -685,7 +637,7 @@ class AutomataAssistantTools:
         hardened_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
-        connector_map = _connector_factory_summary(connector_docs)
+        connector_map = summarize_connector_factory(connector_docs, sample_limit=5)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
