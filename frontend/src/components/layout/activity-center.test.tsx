@@ -254,4 +254,45 @@ describe("ActivityCenter", () => {
       expect(mockNavigate).toHaveBeenCalledWith("/approvals?status=pending&sessionId=session-42");
     });
   });
+
+  it("surfaces lifecycle navigation shortcuts inside activity", async () => {
+    global.fetch = jest.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/activity-summary?")) {
+        return jsonResponse({
+          status: {
+            runningTasks: 1,
+            queuedTasks: 2,
+            reviewTasks: 3,
+            doneTasks: 0,
+            failedTasks: 1,
+            scheduledDue: 1,
+            scheduledUpcoming: 2,
+            activeSessions: 4,
+            evalRunsPending: 2,
+            evalRunsPassed: 0,
+            evalRunsFailed: 1,
+            harvestersRunning: 1,
+            harvestersCompleted: 0,
+            harvestersFailed: 0,
+          },
+          running: [],
+          notifications: { unreadCount: 0, recent: [] },
+        });
+      }
+      return jsonResponse({});
+    }) as jest.Mock;
+
+    render(<ActivityCenter />);
+
+    fireEvent.click(await screen.findByTitle("Activity"));
+    expect(await screen.findByText("Operating surfaces")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /Factory/i }));
+    expect(mockNavigate).toHaveBeenCalledWith("/capabilities");
+
+    fireEvent.click(await screen.findByTitle("Activity"));
+    fireEvent.click(screen.getByRole("button", { name: /Setup/i }));
+    expect(mockNavigate).toHaveBeenCalledWith("/setup/company");
+  });
 });

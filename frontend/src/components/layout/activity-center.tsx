@@ -46,6 +46,7 @@ function relativeTime(value?: string): string {
 type PanelKey = "none" | "activity" | "notifications";
 
 type StatTile = { label: string; value: number; color: string };
+type SurfaceTile = { label: string; hint: string; actionUrl: string; count: number };
 
 function workRunSessionId(workItemId?: string, runId?: string): string {
   if (!workItemId || !runId) return "";
@@ -289,6 +290,33 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
     { label: "Harvest failed", value: status?.harvestersFailed || 0, color: "text-red-500 dark:text-red-400" },
   ];
 
+  const surfaceTiles: SurfaceTile[] = [
+    {
+      label: "Factory",
+      hint: "Benchmarks, harvesters and capabilities",
+      actionUrl: "/capabilities",
+      count: (status?.harvestersRunning || 0) + (status?.evalRunsPending || 0) + (status?.evalRunsFailed || 0),
+    },
+    {
+      label: "Runtime",
+      hint: "Live governed sessions",
+      actionUrl: "/runtime",
+      count: status?.activeSessions || 0,
+    },
+    {
+      label: "Work",
+      hint: "Queues, schedules and jobs",
+      actionUrl: "/work",
+      count: (status?.runningTasks || 0) + (status?.queuedTasks || 0) + (status?.reviewTasks || 0),
+    },
+    {
+      label: "Approvals",
+      hint: "Human decision surface",
+      actionUrl: "/approvals?status=pending",
+      count: status?.reviewTasks || 0,
+    },
+  ];
+
   const renderTiles = (tiles: StatTile[]) => (
     <div className="grid grid-cols-3 gap-2">
       {tiles.map((stat) => (
@@ -359,6 +387,28 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
               <div className="px-4 pb-4">
                 <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400 mb-2">Sessions & runs</p>
                 {renderTiles(runStats)}
+              </div>
+
+              <div className="px-4 pb-4">
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Operating surfaces</p>
+                  <button onClick={() => handleAction("/setup/company")} className="text-[11px] font-medium text-primary hover:underline">
+                    Setup
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  {surfaceTiles.map((tile) => (
+                    <button
+                      key={tile.label}
+                      onClick={() => handleAction(tile.actionUrl)}
+                      className="rounded-lg border border-gray-100 dark:border-zinc-800/80 dark:bg-zinc-950/45 px-3 py-2 text-left transition-colors hover:bg-gray-50 dark:hover:bg-white/5"
+                    >
+                      <span className="block text-sm font-semibold text-gray-900 dark:text-white">{tile.label}</span>
+                      <span className="mt-0.5 block text-[10px] uppercase tracking-wide text-gray-400">{tile.count} in scope</span>
+                      <span className="mt-1 block text-[11px] leading-4 text-gray-500 dark:text-gray-400">{tile.hint}</span>
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
