@@ -423,6 +423,60 @@ def test_email_runtime_plans_spanish_read_message_id_as_imap_read():
     assert result["tool_calls"][0]["arguments"]["messageId"] == "1"
 
 
+@pytest.mark.asyncio
+async def test_local_connector_runtime_can_smoke_insurance_claims_blueprint(monkeypatch):
+    task = connector_benchmarks.INSURANCE_CLAIMS_BENCHMARK_TASKS[0].as_task_doc(
+        benchmark_id="connector-insurance_claims-smtp-1",
+        agent_id="agent-1",
+        email="user@example.com",
+        company_id="co-1",
+        connector_id="smtp-1",
+        benchmark_key="insurance_claims",
+    )
+    monkeypatch.setattr(agent_runtime, "benchmark_tasks_collection", _Collection([task]))
+    monkeypatch.setattr(agent_runtime, "tools_collection", _Collection())
+    monkeypatch.setattr(agent_runtime, "connectors_collection", _Collection([{"connectorId": "smtp-1", "companyId": "co-1", "type": "smtp"}]))
+
+    result = await agent_runtime._local_connector_agent_response(
+        {"companyId": "co-1"},
+        task["prompt"],
+        {},
+        {"context": {"taskId": task["taskId"]}},
+    )
+    validation = connector_benchmarks.validate_runtime_step(task, result)
+
+    assert [call["name"] for call in result["tool_calls"]] == ["imap.search_emails", "erp.search_claims", "knowledge.search", "smtp.draft_email"]
+    assert result["artifacts"][0]["artifactType"] == "draft_email"
+    assert validation["success"] is True
+
+
+@pytest.mark.asyncio
+async def test_local_connector_runtime_requests_approval_for_insurance_send(monkeypatch):
+    task = connector_benchmarks.INSURANCE_CLAIMS_BENCHMARK_TASKS[1].as_task_doc(
+        benchmark_id="connector-insurance_claims-smtp-1",
+        agent_id="agent-1",
+        email="user@example.com",
+        company_id="co-1",
+        connector_id="smtp-1",
+        benchmark_key="insurance_claims",
+    )
+    monkeypatch.setattr(agent_runtime, "benchmark_tasks_collection", _Collection([task]))
+    monkeypatch.setattr(agent_runtime, "tools_collection", _Collection())
+    monkeypatch.setattr(agent_runtime, "connectors_collection", _Collection([{"connectorId": "smtp-1", "companyId": "co-1", "type": "smtp"}]))
+
+    result = await agent_runtime._local_connector_agent_response(
+        {"companyId": "co-1"},
+        task["prompt"],
+        {},
+        {"context": {"taskId": task["taskId"]}},
+    )
+    validation = connector_benchmarks.validate_runtime_step(task, result)
+
+    assert result["tool_calls"][0]["name"] == "api.human_approval"
+    assert result["state_out"]["pendingConnectorApproval"]
+    assert validation["success"] is True
+
+
 def test_connector_harvester_builds_email_tool_arguments():
     search_args = agent_runtime._connector_tool_arguments("imap.search_emails", "Busca el email mas reciente sobre nominas.", {}, {})
     read_args = agent_runtime._connector_tool_arguments("imap.read_email", "Lee el email con messageId 1 en INBOX y resume su contenido.", {}, {})

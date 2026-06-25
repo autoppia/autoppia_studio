@@ -619,8 +619,15 @@ def validate_runtime_step(
         failures.append(f"Unexpected browser tool(s): {', '.join(browser_tools)}")
     if requires_approval and not state_out.get("pendingConnectorApproval") and "api.human_approval" not in actual_tools:
         failures.append("Expected approval gate was not requested.")
-    if expected_artifacts and not artifacts and not any(marker in artifact_evidence for marker in expected_artifacts):
-        failures.append(f"Missing expected artifact(s): {', '.join(expected_artifacts)}")
+    missing_artifacts: list[str] = []
+    for artifact in expected_artifacts:
+        if artifact == "approval_request" and (state_out.get("pendingConnectorApproval") or "api.human_approval" in actual_tools):
+            continue
+        if artifact in artifact_evidence:
+            continue
+        missing_artifacts.append(artifact)
+    if missing_artifacts:
+        failures.append(f"Missing expected artifact(s): {', '.join(missing_artifacts)}")
     if skill_replay_expected and router_decision != "matched_skill":
         failures.append(f"Expected approved skill trajectory replay, got router decision {router_decision or 'missing'}.")
     if forbid_skill_match and router_decision == "matched_skill":

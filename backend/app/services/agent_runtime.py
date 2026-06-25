@@ -874,6 +874,8 @@ def _connector_tool_arguments(tool_name: str, prompt: str, connector: dict[str, 
         return {}
     if tool_name.endswith(".search") and tool_name.startswith("knowledge."):
         return {"query": prompt, "topK": 5}
+    if tool_name == "erp.search_claims":
+        return {"query": _query_after(prompt, ("siniestro", "claim", "cliente", "customer")) or prompt, "limit": 5}
     if tool_name.endswith(".list_documents") and tool_name.startswith("knowledge."):
         return {"limit": 20}
     if tool_name == "holded.list_invoices":
@@ -972,8 +974,11 @@ async def _local_connector_agent_response(agent_config: dict[str, Any], prompt: 
 
     tool_docs = await tools_collection.find({"companyId": company_id}, {"_id": 0}).to_list(length=500)
     tool_names = [str(tool.get("name") or "") for tool in tool_docs if tool.get("name")]
-    expected_tool = expected_tools[0] if expected_tools else _fallback_expected_tool_from_prompt(prompt, tool_names)
-    tool_name = await _resolve_company_tool_name(company_id, expected_tool)
+    selected_expected_tools = expected_tools or [_fallback_expected_tool_from_prompt(prompt, tool_names)]
+    selected_expected_tools = [tool for tool in selected_expected_tools if tool]
+    resolved_tool_names = [await _resolve_company_tool_name(company_id, expected_tool) for expected_tool in selected_expected_tools]
+    resolved_tool_names = [tool for tool in resolved_tool_names if tool]
+    tool_name = resolved_tool_names[0] if resolved_tool_names else ""
 
     connector = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0}) if connector_id else None
     if not connector and tool_name:
@@ -993,13 +998,36 @@ async def _local_connector_agent_response(agent_config: dict[str, Any], prompt: 
             "state_out": state,
         }
 
+    tool_calls = [
+        {"name": name, "arguments": _connector_tool_arguments(name, prompt, connector, payload)}
+        for name in resolved_tool_names
+    ]
+    expected_artifacts = [str(item) for item in metadata.get("expectedArtifacts") or [] if item]
+    artifacts = [
+        {
+            "artifactId": f"{task_id or 'connector-task'}:{artifact}",
+            "name": artifact,
+            "title": artifact.replace("_", " ").title(),
+            "artifactType": artifact,
+            "kind": artifact,
+            "content": f"Generated {artifact} for benchmark task {task_id or 'ad-hoc connector task'}.",
+            "sourceTool": "local_connector_agent",
+            "metadata": {"benchmarkId": metadata.get("benchmarkId", ""), "taskId": task_id},
+        }
+        for artifact in expected_artifacts
+        if artifact not in {"approval_request"}
+    ]
+    state_out = dict(state or {})
+    if bool(metadata.get("requiresApproval")) or "api.human_approval" in resolved_tool_names:
+        state_out["pendingConnectorApproval"] = state_out.get("pendingConnectorApproval") or f"{task_id or 'connector-task'}:approval"
     return {
         "protocol_version": "1.0",
-        "tool_calls": [{"name": tool_name, "arguments": _connector_tool_arguments(tool_name, prompt, connector, payload)}],
+        "tool_calls": tool_calls,
+        "artifacts": artifacts,
         "content": None,
-        "reasoning": f"Local connector runtime selected {tool_name} for this connector task.",
+        "reasoning": f"Local connector runtime selected {', '.join(resolved_tool_names)} for this connector task.",
         "done": False,
-        "state_out": state,
+        "state_out": state_out,
     }
 
 
