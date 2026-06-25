@@ -3108,6 +3108,7 @@ export default function Capabilities(): React.ReactElement {
                           const nodeApprovals = runtimeUsage.approvalsByToolId.get(tool.toolId) || [];
                           const nodeArtifacts = runtimeUsage.artifactsByToolId.get(tool.toolId) || [];
                           const nodeWork = runtimeUsage.workItemsByToolId.get(tool.toolId) || [];
+                          const pendingApprovals = nodeApprovals.filter((item) => item.status === "pending").length;
                           const lastActiveAt = latestActivityTimestamp([
                             ...nodeSessions.map((item) => item.createdAt),
                             ...nodeApprovals.map((item) => item.createdAt),
@@ -3130,9 +3131,11 @@ export default function Capabilities(): React.ReactElement {
                                 <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
                                   <div className="mb-3 flex flex-wrap gap-1.5">
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
-                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${pendingApprovals > 0 ? approvalTone("always") : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>{nodeApprovals.length} approvals{pendingApprovals > 0 ? ` · ${pendingApprovals} pending` : ""}</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${sideEffectTone(tool.sideEffects)}`}>{tool.sideEffects}</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${riskTone(tool.riskLevel)}`}>{tool.riskLevel}</span>
                                   </div>
                                   <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
                                     Last active: {formatRuntimeDate(lastActiveAt)}
@@ -3176,6 +3179,8 @@ export default function Capabilities(): React.ReactElement {
                           const nodeWork = runtimeUsage.workItemsByTrajectoryId.get(trajectory.trajectoryId) || [];
                           const linkedSkills = filteredSkills.filter((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId)).slice(0, 3);
                           const linkedTools = filteredTools.filter((tool) => (trajectory.toolIds || []).includes(tool.toolId)).slice(0, 4);
+                          const pendingApprovals = nodeApprovals.filter((item) => item.status === "pending").length;
+                          const failingSkills = linkedSkills.filter((skill) => (skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel) === "fail").length;
                           const lastActiveAt = latestActivityTimestamp([
                             ...nodeSessions.map((item) => item.createdAt),
                             ...nodeApprovals.map((item) => item.createdAt),
@@ -3198,9 +3203,12 @@ export default function Capabilities(): React.ReactElement {
                                 <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
                                   <div className="mb-3 flex flex-wrap gap-1.5">
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
-                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${pendingApprovals > 0 ? approvalTone("always") : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>{nodeApprovals.length} approvals{pendingApprovals > 0 ? ` · ${pendingApprovals} pending` : ""}</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                    {failingSkills > 0 && (
+                                      <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone("fail")}`}>{failingSkills} regression fail</span>
+                                    )}
                                   </div>
                                   <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
                                     Last active: {formatRuntimeDate(lastActiveAt)}
@@ -3272,6 +3280,8 @@ export default function Capabilities(): React.ReactElement {
                           const nodeWork = runtimeUsage.workItemsBySkillId.get(skill.skillId) || [];
                           const sourceTrajectories = (skill.trajectoryIds || []).map((trajectoryId) => trajectoriesById.get(trajectoryId)).filter(Boolean).slice(0, 3) as CompanyTrajectory[];
                           const sourceTools = filteredTools.filter((tool) => (skill.toolIds || []).includes(tool.toolId)).slice(0, 4);
+                          const pendingApprovals = nodeApprovals.filter((item) => item.status === "pending").length;
+                          const regressionState = skill.latestRegression?.label || regression.bySkillId.get(skill.skillId)?.latestLabel || "";
                           const lastActiveAt = latestActivityTimestamp([
                             ...nodeSessions.map((item) => item.createdAt),
                             ...nodeApprovals.map((item) => item.createdAt),
@@ -3299,9 +3309,15 @@ export default function Capabilities(): React.ReactElement {
                                 <div className="border-t border-gray-200 px-3 py-3 dark:border-dark-border">
                                   <div className="mb-3 flex flex-wrap gap-1.5">
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeSessions.length} sessions</span>
-                                    <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeApprovals.length} approvals</span>
+                                    <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${pendingApprovals > 0 ? approvalTone("always") : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>{nodeApprovals.length} approvals{pendingApprovals > 0 ? ` · ${pendingApprovals} pending` : ""}</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeArtifacts.length} artifacts</span>
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
+                                    {skill.riskPolicy && (
+                                      <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionState === "fail" ? regressionTone("fail") : approvalTone(approvalMode(skill))}`}>{skill.riskPolicy.replace(/_/g, " ")}</span>
+                                    )}
+                                    {regressionState && (
+                                      <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone(regressionState)}`}>regression {regressionState}</span>
+                                    )}
                                   </div>
                                   <div className="mb-3 text-[11px] text-gray-500 dark:text-gray-400">
                                     Last active: {formatRuntimeDate(lastActiveAt)}
