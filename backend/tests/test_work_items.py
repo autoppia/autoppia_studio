@@ -340,6 +340,12 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     assert len(persisted_artifacts) == 1
     assert persisted_artifacts[0]["sessionId"] == started["sessionId"]
     assert [item["title"] for item in notifications] == ["Work item started", "Work item done"]
+    assert notifications[0]["metadata"]["workItemId"] == work_item_id
+    assert notifications[0]["metadata"]["sessionId"] == started["sessionId"]
+    assert notifications[0]["metadata"]["sourceKind"] == "work"
+    assert notifications[1]["metadata"]["workItemId"] == work_item_id
+    assert notifications[1]["metadata"]["sessionId"] == started["sessionId"]
+    assert notifications[1]["metadata"]["sourceKind"] == "work"
     assert jobs[0][0] == "work_run"
 
 

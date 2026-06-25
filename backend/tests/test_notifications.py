@@ -143,6 +143,8 @@ async def test_activity_summary_counts_work_and_unread_notifications(monkeypatch
                 "status": "RUNNING",
                 "triggerType": "manual",
                 "startedAt": "2026-06-03T10:00:00+00:00",
+                "lastRunId": "run-1",
+                "currentSessionId": "work-work-1-run-1",
             },
             {
                 "workItemId": "work-2",
@@ -166,6 +168,8 @@ async def test_activity_summary_counts_work_and_unread_notifications(monkeypatch
     assert summary["status"]["reviewTasks"] == 1
     assert summary["notifications"]["unreadCount"] == 1
     assert summary["running"][0]["title"] == "Running work"
+    assert summary["running"][0]["lastRunId"] == "run-1"
+    assert summary["running"][0]["sessionId"] == "work-work-1-run-1"
 
 
 @pytest.mark.asyncio

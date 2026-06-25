@@ -996,6 +996,10 @@ async def _notify_work_item(
     status: str = "",
 ) -> None:
     try:
+        work_item_id = str(item.get("workItemId") or "")
+        session_id = str(item.get("currentSessionId") or "")
+        if not session_id and work_item_id and run_id:
+            session_id = _work_run_session_id(work_item_id, run_id)
         await create_notification(
             email=str(item.get("email") or ""),
             company_id=str(item.get("companyId") or ""),
@@ -1004,9 +1008,16 @@ async def _notify_work_item(
             level=level,
             source="work",
             entity_type="work_item",
-            entity_id=str(item.get("workItemId") or ""),
+            entity_id=work_item_id,
             action_url=f"/work?item={item.get('workItemId')}",
-            metadata={"runId": run_id, "status": status, "boardId": item.get("boardId", "")},
+            metadata={
+                "runId": run_id,
+                "status": status,
+                "boardId": item.get("boardId", ""),
+                "workItemId": work_item_id,
+                "sessionId": session_id,
+                "sourceKind": "work",
+            },
         )
     except Exception:
         pass

@@ -290,7 +290,7 @@ async def activity_summary(email: str, companyId: str = ""):
     )
     running_docs = await work_items_collection.find(
         {**base_query, "status": "RUNNING"},
-        {"_id": 0, "workItemId": 1, "title": 1, "agentName": 1, "runTarget": 1, "startedAt": 1, "lastRunId": 1},
+        {"_id": 0, "workItemId": 1, "title": 1, "agentName": 1, "runTarget": 1, "startedAt": 1, "lastRunId": 1, "currentSessionId": 1},
     ).sort("startedAt", -1).to_list(length=8)
     recent_notifications = await notifications_collection.find(
         {**base_query},
@@ -331,6 +331,7 @@ async def activity_summary(email: str, companyId: str = ""):
                 "runTarget": doc.get("runTarget", "selected"),
                 "startedAt": doc.get("startedAt", ""),
                 "lastRunId": doc.get("lastRunId", ""),
+                "sessionId": doc.get("currentSessionId", ""),
             }
             for doc in running_docs
         ],

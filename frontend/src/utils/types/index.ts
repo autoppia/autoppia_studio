@@ -479,6 +479,7 @@ export interface RunningWorkItem {
   runTarget?: WorkRunTarget;
   startedAt?: string;
   lastRunId?: string;
+  sessionId?: string;
 }
 
 export interface ActivityStatusCounts {

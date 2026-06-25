@@ -331,7 +331,7 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
                     {runningItems.map((item) => (
                       <button
                         key={item.workItemId}
-                        onClick={() => handleAction(runtimeActionUrl({ workItemId: item.workItemId, runId: item.lastRunId }))}
+                        onClick={() => handleAction(runtimeActionUrl({ sessionId: item.sessionId, workItemId: item.workItemId, runId: item.lastRunId }))}
                         className="w-full flex items-center gap-2 text-left rounded-lg px-2 py-1.5 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
                       >
                         <FontAwesomeIcon icon={faSpinner} className="text-[11px] text-primary animate-spin shrink-0" />
