@@ -506,6 +506,24 @@ export interface AgentRuntimeContract {
   };
   tools?: AgentCallable[];
   skills?: AgentCallable[];
+  skillPackages?: {
+    total?: number;
+    manifestReady?: number;
+    publishable?: number;
+    withIoContract?: number;
+    withRegressionSuite?: number;
+    blocked?: number;
+    packages?: Array<{
+      skillId?: string;
+      name?: string;
+      version?: number | string;
+      manifestReady?: boolean;
+      publishable?: boolean;
+      checks?: Record<string, boolean>;
+      blockers?: string[];
+      progressiveDisclosure?: Record<string, any>;
+    }>;
+  };
   toolCalls?: string[];
   unavailableToolCalls?: Array<{
     name?: string;

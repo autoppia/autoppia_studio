@@ -30,6 +30,7 @@ import {
   AgentCapability,
   AgentTrajectory,
   AgentWeb,
+  AgentRuntimeContract,
   RuntimeEvent,
 } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
@@ -118,6 +119,7 @@ export default function AgentDetail() {
   const [evals, setEvals] = useState<EvalItem[]>([]);
   const [runs, setRuns] = useState<EvalRun[]>([]);
   const [creationJob, setCreationJob] = useState<AgentCreationJob | null>(null);
+  const [runtimeContract, setRuntimeContract] = useState<AgentRuntimeContract | null>(null);
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
@@ -148,7 +150,7 @@ export default function AgentDetail() {
     if (!agentId || !user.email) return;
     setLoading(true);
     try {
-      const [opRes, websRes, trRes, capRes, toolkitsRes, evalRes, runsRes, jobRes] = await Promise.all([
+      const [opRes, websRes, trRes, capRes, toolkitsRes, evalRes, runsRes, jobRes, contractRes] = await Promise.all([
         fetch(`${apiUrl}/agents/${agentId}`),
         fetch(`${apiUrl}/agents/${agentId}/webs`),
         fetch(`${apiUrl}/agents/${agentId}/trajectories`),
@@ -157,6 +159,7 @@ export default function AgentDetail() {
         fetch(`${apiUrl}/evals?email=${encodeURIComponent(user.email)}`),
         fetch(`${apiUrl}/eval-runs?email=${encodeURIComponent(user.email)}`),
         fetch(`${apiUrl}/agents/${agentId}/creation-job`),
+        fetch(`${apiUrl}/agents/${agentId}/runtime-contract`),
       ]);
       if (!opRes.ok) throw new Error(await opRes.text());
       const opData = await opRes.json();
@@ -168,6 +171,7 @@ export default function AgentDetail() {
       setEvals(evalRes.ok ? ((await evalRes.json()).evals || []).filter((item: EvalItem) => item.agentId === agentId) : []);
       setRuns(runsRes.ok ? ((await runsRes.json()).runs || []).filter((run: EvalRun) => run.agentId === agentId) : []);
       setCreationJob(jobRes.ok ? (await jobRes.json()).job || null : null);
+      setRuntimeContract(contractRes.ok ? (await contractRes.json()).contract || null : null);
     } catch (err) {
       console.error("Failed to load agent:", err);
       showToast("Could not load agent details.", "error");
@@ -523,6 +527,8 @@ export default function AgentDetail() {
   const knowledgeEnabled = agent.runtimeCapabilities?.knowledge ?? false;
 
   const apiBase = (apiUrl || "").replace(/\/$/, "");
+  const runtimeSkillPackages = runtimeContract?.skillPackages;
+  const runtimePackageSamples = runtimeSkillPackages?.packages || [];
   const agentStepUrl = `${apiBase}/api/v1/agents/${agentId}/step`;
   const agentSkillsUrl = `${apiBase}/api/v1/agents/${agentId}/skills`;
   const docsUrl = `${apiBase}/docs`;
@@ -1132,6 +1138,54 @@ print(response.json()["result"])`;
                     </span>
                   ))}
                 </div>
+                {runtimeSkillPackages && (
+                  <div className="mt-4 rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Skill package readiness</p>
+                        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+                          Runtime receives package gates, IO contracts and regression evidence before calling approved skills.
+                        </p>
+                      </div>
+                      <StatusBadge
+                        label={`${runtimeSkillPackages.publishable || 0}/${runtimeSkillPackages.total || 0} publishable`}
+                        tone={(runtimeSkillPackages.publishable || 0) === (runtimeSkillPackages.total || 0) && (runtimeSkillPackages.total || 0) > 0 ? "green" : (runtimeSkillPackages.manifestReady || 0) > 0 ? "amber" : "gray"}
+                      />
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-5">
+                      {[
+                        { label: "Manifest", value: runtimeSkillPackages.manifestReady || 0 },
+                        { label: "IO contract", value: runtimeSkillPackages.withIoContract || 0 },
+                        { label: "Regression", value: runtimeSkillPackages.withRegressionSuite || 0 },
+                        { label: "Blocked", value: runtimeSkillPackages.blocked || 0 },
+                        { label: "Callable", value: runtimeSkillPackages.total || 0 },
+                      ].map((item) => (
+                        <div key={item.label} className="rounded-lg border border-gray-200 bg-white px-3 py-2 dark:border-dark-border dark:bg-dark-surface">
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>
+                          <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{item.value}</p>
+                        </div>
+                      ))}
+                    </div>
+                    {runtimePackageSamples.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {runtimePackageSamples.slice(0, 4).map((pkg) => (
+                          <span
+                            key={pkg.skillId || pkg.name}
+                            className={`rounded-lg border px-2.5 py-1 text-xs font-medium ${
+                              pkg.publishable
+                                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300"
+                                : pkg.manifestReady
+                                  ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+                                  : "border-gray-200 bg-white text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"
+                            }`}
+                          >
+                            {pkg.name || pkg.skillId || "skill"} · {pkg.publishable ? "publishable" : pkg.manifestReady ? "needs regression" : "needs hardening"}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">

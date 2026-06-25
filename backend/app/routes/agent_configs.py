@@ -19,7 +19,7 @@ from app.database import (
 from app.routes.agent_creation import ensure_agent_creation_job
 from app.repositories import AgentConfigRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
-from app.services.agent_runtime import agent_step_result
+from app.services.agent_runtime import agent_step_result, runtime_contract_payload
 from app.services.task_contracts import task_metadata_with_contract
 
 router = APIRouter()
@@ -494,6 +494,18 @@ async def get_agent(agent_id: str, scope: RequestScope = Depends(get_request_sco
         doc = await _repo(scope).by_id(agent_id)
         agent = _serialize_agent_config(doc)
         return {"agent": agent}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/agents/{agent_id}/runtime-contract")
+async def get_agent_runtime_contract(agent_id: str, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        doc = await _repo(scope).by_id(agent_id)
+        contract = await runtime_contract_payload(doc)
+        return {"agentId": agent_id, "contract": contract}
     except HTTPException:
         raise
     except Exception as e:
