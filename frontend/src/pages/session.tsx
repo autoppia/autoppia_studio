@@ -737,6 +737,11 @@ function Session(): React.ReactElement {
     loadedSession?.latestActivityLabel ||
     (runtimeTimeline.length > 0 ? runtimeTimeline[runtimeTimeline.length - 1].label : "Waiting for task"),
   );
+  const latestActionName = String(
+    loadedSession?.latestAction ||
+    latestActions[latestActions.length - 1] ||
+    "",
+  );
   const runtimeTimestamp = String(latestAssistantTiming?.emittedAt || "");
   const runtimeOverview = (
     <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)]">
@@ -874,8 +879,8 @@ function Session(): React.ReactElement {
       id: agentId || "active-agent",
       name: agentName || "Automata Agent",
       state: runtimeRunState,
-      activity: activityForAction(latestActions[latestActions.length - 1]),
-      detail: latestActions.length > 0 ? prettyAction(latestActions[latestActions.length - 1]) : prompt || "Waiting for task",
+      activity: activityForAction(latestActionName),
+      detail: latestActivityLabel || prompt || "Waiting for task",
       browserEnabled: browserAvailable,
     },
   ];
