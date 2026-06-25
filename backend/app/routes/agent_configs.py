@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.database import (
     benchmark_tasks_collection,
+    benchmarks_collection,
     capabilities_collection,
     evals_collection,
     agent_webs_collection,
@@ -292,6 +293,43 @@ async def _ensure_agent_evals(
     return eval_ids
 
 
+async def _ensure_agent_benchmark(
+    *,
+    email: str,
+    company_id: str,
+    agent_id: str,
+    agent_name: str,
+    website_url: str,
+    tasks: list[dict[str, Any]],
+    source: str = "agent_config",
+) -> str:
+    now = datetime.now(timezone.utc).isoformat()
+    benchmark_id = f"agent-{agent_id}"
+    task_count = sum(1 for task in tasks if str(task.get("prompt") or "").strip())
+    await benchmarks_collection.update_one(
+        {"benchmarkId": benchmark_id},
+        {
+            "$set": {
+                "benchmarkId": benchmark_id,
+                "email": email,
+                "companyId": company_id,
+                "agentId": agent_id,
+                "agentName": agent_name,
+                "name": f"{agent_name} Benchmark",
+                "description": f"Agent creation benchmark for {agent_name}.",
+                "websiteUrl": website_url,
+                "source": source,
+                "status": "draft",
+                "taskCount": task_count,
+                "updatedAt": now,
+            },
+            "$setOnInsert": {"createdAt": now},
+        },
+        upsert=True,
+    )
+    return benchmark_id
+
+
 async def _ensure_agent_benchmark_tasks(
     *,
     email: str,
@@ -533,11 +571,20 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
             website_url=body.websiteUrl,
             tasks=[task.model_dump() for task in body.tasks],
         )
+        benchmark_id = await _ensure_agent_benchmark(
+            email=email,
+            company_id=body.companyId,
+            agent_id=agent_id,
+            agent_name=body.name,
+            website_url=body.websiteUrl,
+            tasks=[task.model_dump() for task in body.tasks],
+            source="user_prompt",
+        )
         task_ids = await _ensure_agent_benchmark_tasks(
             email=email,
             company_id=body.companyId,
             agent_id=agent_id,
-            benchmark_id=f"agent-{agent_id}",
+            benchmark_id=benchmark_id,
             website_url=body.websiteUrl,
             web_id=web_id,
             tasks=[task.model_dump() for task in body.tasks],
@@ -547,6 +594,7 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
             "success": True,
             "agentId": agent_id,
             "agentConfigId": agent_id,
+            "benchmarkId": benchmark_id,
             "evalIds": eval_ids,
             "taskIds": task_ids,
             "trajectoryIds": [],

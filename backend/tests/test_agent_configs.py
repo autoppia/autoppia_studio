@@ -99,10 +99,12 @@ async def test_create_agent_seeds_benchmark_tasks_instead_of_pending_trajectorie
     agents = _Collection()
     webs = _Collection()
     evals = _Collection()
+    benchmarks = _Collection()
     tasks = _Collection()
     monkeypatch.setattr(agent_configs, "agents_collection", agents)
     monkeypatch.setattr(agent_configs, "agent_webs_collection", webs)
     monkeypatch.setattr(agent_configs, "evals_collection", evals)
+    monkeypatch.setattr(agent_configs, "benchmarks_collection", benchmarks)
     monkeypatch.setattr(agent_configs, "benchmark_tasks_collection", tasks)
     monkeypatch.setattr(agent_configs, "trajectories_collection", _NoTrajectoryCollection())
 
@@ -129,8 +131,12 @@ async def test_create_agent_seeds_benchmark_tasks_instead_of_pending_trajectorie
     )
 
     assert result["trajectoryIds"] == []
+    assert result["benchmarkId"].startswith("agent-")
     assert len(result["taskIds"]) == 1
     assert agents.docs[0]["trainingStatus"] == "needs_harvest"
+    assert len(benchmarks.docs) == 1
+    assert benchmarks.docs[0]["name"] == "Claims Agent Benchmark"
+    assert benchmarks.docs[0]["taskCount"] == 1
     assert len(tasks.docs) == 1
     task_doc = tasks.docs[0]
     assert task_doc["status"] == "needs_harvest"
