@@ -527,6 +527,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "sourceBenchmarkId": "bench-1",
                     "sourceTaskId": "task-1",
                     "currentSessionId": "session-1",
+                    "runHistory": [{"runId": "run-1", "status": "WAITING_APPROVAL"}],
                     "operational": {
                         "latestMatchedSkillIds": ["skill-1"],
                         "latestMatchedTrajectoryIds": ["traj-1"],
@@ -534,6 +535,18 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                         "latestSessionIds": ["session-1"],
                         "reviewBlocked": True,
                         "pendingApprovalCount": 1,
+                        "orchestration": {
+                            "queueState": "REVIEW",
+                            "triggerType": "scheduled",
+                            "schedule": {"deadlineState": "upcoming", "dueAt": "2026-06-26T12:00:00+00:00"},
+                            "budget": {"maxBudgetCredits": 5.0, "latestCreditsSpent": 1.75, "remainingCredits": 3.25, "exhausted": False},
+                            "retry": {"runAttempts": 1, "maxSteps": 8},
+                            "approval": {"reviewBlocked": True, "pendingApprovalCount": 1},
+                            "sla": {"state": "blocked", "deadlineState": "upcoming", "needsAttention": True},
+                            "automationGate": {"state": "blocked", "canRunUnattended": False, "blockers": ["pending_approval"]},
+                            "browserPolicy": {"state": "restricted", "enabled": True, "allowedDomains": ["claims.example.com"]},
+                            "auditTrail": {"uniform": True, "eventCount": 4, "hasApprovalCheckpoint": True, "hasBudgetCheckpoint": True},
+                        },
                     },
                 }
             ]
@@ -618,6 +631,19 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["work"]["scheduled"] == 1
     assert graph["coverage"]["work"]["review"] == 1
     assert graph["coverage"]["work"]["blockedByApproval"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["withContract"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["scheduled"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["budgeted"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["budgetExhausted"] == 0
+    assert graph["coverage"]["work"]["orchestration"]["retryConfigured"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["runAttempts"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["slaTracked"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["slaNeedsAttention"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["approvalGates"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["auditTrails"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["browserPolicies"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["browserAllowlists"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["unattendedReady"] == 0
     assert graph["coverage"]["work"]["linkedToTasks"] is True
     assert graph["coverage"]["work"]["linkedToRuntime"] is True
     assert graph["coverage"]["work"]["linkedToCapabilities"] is True

@@ -1581,6 +1581,21 @@ export interface CapabilityGraphCoverage {
     running?: number;
     review?: number;
     blockedByApproval?: number;
+    orchestration?: {
+      withContract?: number;
+      scheduled?: number;
+      budgeted?: number;
+      budgetExhausted?: number;
+      retryConfigured?: number;
+      runAttempts?: number;
+      slaTracked?: number;
+      slaNeedsAttention?: number;
+      approvalGates?: number;
+      auditTrails?: number;
+      browserPolicies?: number;
+      browserAllowlists?: number;
+      unattendedReady?: number;
+    };
     linkedToTasks?: boolean;
     linkedToRuntime?: boolean;
     linkedToCapabilities?: boolean;

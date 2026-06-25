@@ -2723,6 +2723,12 @@ export default function Capabilities(): React.ReactElement {
       scheduledWork: coverage.work?.scheduled || 0,
       reviewWork: coverage.work?.review || 0,
       approvalBlockedWork: coverage.work?.blockedByApproval || 0,
+      workContracts: coverage.work?.orchestration?.withContract || 0,
+      workSlaTracked: coverage.work?.orchestration?.slaTracked || 0,
+      workSlaNeedsAttention: coverage.work?.orchestration?.slaNeedsAttention || 0,
+      workBudgeted: coverage.work?.orchestration?.budgeted || 0,
+      workAuditTrails: coverage.work?.orchestration?.auditTrails || 0,
+      workBrowserAllowlists: coverage.work?.orchestration?.browserAllowlists || 0,
       workLinked: Boolean(
         coverage.work?.linkedToTasks
         || coverage.work?.linkedToRuntime
@@ -3504,6 +3510,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.workLinked ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.workItems} jobs · {backendGraphStats.scheduledWork} scheduled · {backendGraphStats.approvalBlockedWork || backendGraphStats.reviewWork} review
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.workContracts > 0 && backendGraphStats.workAuditTrails > 0 && backendGraphStats.workSlaNeedsAttention === 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : backendGraphStats.workContracts > 0 ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.workContracts}/{backendGraphStats.workItems} work contracts · {backendGraphStats.workSlaTracked} SLA · {backendGraphStats.workBudgeted} budgets · {backendGraphStats.workBrowserAllowlists} browser allowlists
                         </span>
                       </div>
                     </div>

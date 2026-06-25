@@ -43,6 +43,13 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _safe_int(value: Any) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
 def _string_list(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -1028,6 +1035,37 @@ def _skill_package_coverage(
     }
 
 
+def _work_orchestration_coverage(work_item: dict[str, Any]) -> dict[str, Any]:
+    operational = _work_operational(work_item)
+    orchestration = operational.get("orchestration") if isinstance(operational.get("orchestration"), dict) else {}
+    schedule = orchestration.get("schedule") if isinstance(orchestration.get("schedule"), dict) else {}
+    budget = orchestration.get("budget") if isinstance(orchestration.get("budget"), dict) else {}
+    retry = orchestration.get("retry") if isinstance(orchestration.get("retry"), dict) else {}
+    approval = orchestration.get("approval") if isinstance(orchestration.get("approval"), dict) else {}
+    sla = orchestration.get("sla") if isinstance(orchestration.get("sla"), dict) else {}
+    automation_gate = orchestration.get("automationGate") if isinstance(orchestration.get("automationGate"), dict) else {}
+    audit_trail = orchestration.get("auditTrail") if isinstance(orchestration.get("auditTrail"), dict) else {}
+    browser_policy = orchestration.get("browserPolicy") if isinstance(orchestration.get("browserPolicy"), dict) else {}
+    allowed_domains = _string_list(browser_policy.get("allowedDomains") if isinstance(browser_policy.get("allowedDomains"), list) else work_item.get("allowedDomains"))
+    run_attempts = retry.get("runAttempts") or len(work_item.get("runHistory") if isinstance(work_item.get("runHistory"), list) else [])
+    trigger_type = str(work_item.get("triggerType") or orchestration.get("triggerType") or "").lower()
+    return {
+        "withContract": bool(orchestration),
+        "scheduled": trigger_type == "scheduled" or bool(schedule),
+        "budgeted": bool(budget) or _safe_float(work_item.get("maxBudgetCredits") or work_item.get("maxCreditsPerRun")) > 0,
+        "budgetExhausted": bool(budget.get("exhausted")),
+        "retryConfigured": bool(retry) or _safe_int(work_item.get("maxSteps")) > 0,
+        "runAttempts": _safe_int(run_attempts),
+        "slaTracked": bool(sla) or bool(schedule.get("dueAt") or work_item.get("nextRunAt")),
+        "slaNeedsAttention": bool(sla.get("needsAttention") or str(sla.get("state") or "").lower() in {"blocked", "overdue"}),
+        "approvalGate": bool(approval or operational.get("reviewBlocked") or operational.get("pendingApprovalCount") or str(work_item.get("status") or "").upper() == "REVIEW"),
+        "auditTrail": bool(audit_trail.get("uniform") or audit_trail.get("eventCount") or audit_trail.get("events")),
+        "browserPolicy": bool(browser_policy) or bool(work_item.get("browserEnabled")),
+        "browserAllowlist": bool(allowed_domains),
+        "unattendedReady": bool(automation_gate.get("canRunUnattended")),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -1081,6 +1119,7 @@ def _capability_graph_coverage(
         _skill_package_coverage(skill, trajectory_docs=trajectory_docs, eval_run_docs=eval_run_docs)
         for skill in skill_docs
     ]
+    work_orchestration = [_work_orchestration_coverage(item) for item in work_item_docs]
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
@@ -1168,6 +1207,21 @@ def _capability_graph_coverage(
             "running": sum(1 for item in work_item_docs if str(item.get("status") or "").upper() == "RUNNING"),
             "review": sum(1 for item in work_item_docs if str(item.get("status") or "").upper() == "REVIEW"),
             "blockedByApproval": sum(1 for item in work_item_docs if bool(_work_operational(item).get("reviewBlocked")) or str(item.get("status") or "").upper() == "REVIEW"),
+            "orchestration": {
+                "withContract": sum(1 for item in work_orchestration if item["withContract"]),
+                "scheduled": sum(1 for item in work_orchestration if item["scheduled"]),
+                "budgeted": sum(1 for item in work_orchestration if item["budgeted"]),
+                "budgetExhausted": sum(1 for item in work_orchestration if item["budgetExhausted"]),
+                "retryConfigured": sum(1 for item in work_orchestration if item["retryConfigured"]),
+                "runAttempts": sum(item["runAttempts"] for item in work_orchestration),
+                "slaTracked": sum(1 for item in work_orchestration if item["slaTracked"]),
+                "slaNeedsAttention": sum(1 for item in work_orchestration if item["slaNeedsAttention"]),
+                "approvalGates": sum(1 for item in work_orchestration if item["approvalGate"]),
+                "auditTrails": sum(1 for item in work_orchestration if item["auditTrail"]),
+                "browserPolicies": sum(1 for item in work_orchestration if item["browserPolicy"]),
+                "browserAllowlists": sum(1 for item in work_orchestration if item["browserAllowlist"]),
+                "unattendedReady": sum(1 for item in work_orchestration if item["unattendedReady"]),
+            },
             "linkedToTasks": "scheduled_from_task" in edge_relations,
             "linkedToRuntime": "opened_session" in edge_relations,
             "linkedToCapabilities": "orchestrates_skill" in edge_relations or "orchestrates_trajectory" in edge_relations or "orchestrates_tool" in edge_relations,
