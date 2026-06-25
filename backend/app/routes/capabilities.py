@@ -29,6 +29,13 @@ from app.harvesters.base import connector_surface
 from app.harvesters.toolkit import ToolkitHarvester
 from app.connectors import execute_connector_tool
 from app.routes.connectors import connector_toolkit
+from app.services.resource_governance import resource_citable
+from app.services.resource_governance import resource_contract
+from app.services.resource_governance import resource_governance
+from app.services.resource_governance import resource_indexed
+from app.services.resource_governance import resource_payload
+from app.services.resource_governance import resource_read_tools
+from app.services.resource_governance import resource_vector_id
 from app.services.runtime_policy import serialize_runtime_policy
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
@@ -674,69 +681,6 @@ def _work_item_payload(work_item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _resource_contract(resource: dict[str, Any]) -> dict[str, Any]:
-    contract = resource.get("resourceContract")
-    return contract if isinstance(contract, dict) else {}
-
-
-def _resource_indexing(resource: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(resource)
-    indexing = contract.get("indexing")
-    return indexing if isinstance(indexing, dict) else {}
-
-
-def _resource_governance(resource: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(resource)
-    governance = contract.get("governance")
-    return governance if isinstance(governance, dict) else {}
-
-
-def _resource_read_tools(resource: dict[str, Any]) -> list[str]:
-    contract = _resource_contract(resource)
-    raw = contract.get("readTools") or resource.get("readTools")
-    return _dedupe_strings([str(value or "") for value in raw]) if isinstance(raw, list) else []
-
-
-def _resource_indexed(resource: dict[str, Any]) -> bool:
-    indexing = _resource_indexing(resource)
-    status = str(resource.get("status") or indexing.get("status") or "").lower()
-    return bool(indexing.get("indexed")) or status in {"indexed", "ready", "active", "completed"}
-
-
-def _resource_citable(resource: dict[str, Any]) -> bool:
-    governance = _resource_governance(resource)
-    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
-    return bool(citability.get("citable") or _resource_indexed(resource))
-
-
-def _resource_payload(resource: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(resource)
-    indexing = _resource_indexing(resource)
-    governance = _resource_governance(resource)
-    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
-    return {
-        "resourceId": resource.get("resourceId") or resource.get("documentId", ""),
-        "documentId": resource.get("documentId", ""),
-        "resourceKind": resource.get("resourceKind") or contract.get("resourceKind") or "document",
-        "filename": resource.get("filename") or resource.get("name") or resource.get("title") or "",
-        "status": resource.get("status", "uploaded"),
-        "source": resource.get("source", "upload"),
-        "connectorId": resource.get("connectorId") or governance.get("connectorId") or "",
-        "vectorDatabaseId": resource.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or "",
-        "vectorDatabaseName": resource.get("vectorDatabaseName") or indexing.get("vectorDatabaseName") or "",
-        "vectorCollectionName": resource.get("vectorCollectionName") or indexing.get("vectorCollectionName") or "",
-        "contentType": resource.get("contentType", ""),
-        "size": resource.get("size", 0),
-        "indexed": _resource_indexed(resource),
-        "citable": _resource_citable(resource),
-        "citationLabel": citability.get("citationLabel") or resource.get("filename") or "",
-        "readTools": _resource_read_tools(resource),
-        "resourceContract": contract,
-        "createdAt": resource.get("createdAt"),
-        "updatedAt": resource.get("updatedAt"),
-    }
-
-
 def _vector_store_payload(vector_store: dict[str, Any]) -> dict[str, Any]:
     return {
         "vectorDatabaseId": vector_store.get("vectorDatabaseId", ""),
@@ -999,9 +943,9 @@ def _capability_graph_coverage(
     browser_skills_sandboxed = all(bool((policy.get("browserPolicy") if isinstance(policy.get("browserPolicy"), dict) else {}).get("requiresSandbox")) for policy in browser_skill_policies)
     vector_store_ids = {str(store.get("vectorDatabaseId") or "") for store in vector_store_docs if str(store.get("vectorDatabaseId") or "")}
     resource_vector_ids = {
-        str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
+        resource_vector_id(resource)
         for resource in resource_docs
-        if str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
+        if resource_vector_id(resource)
     }
     session_contracts = [_session_contract_coverage(doc) for doc in session_docs]
     skill_packages = [
@@ -1013,10 +957,10 @@ def _capability_graph_coverage(
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
             "total": len(resource_docs),
-            "indexed": sum(1 for resource in resource_docs if _resource_indexed(resource)),
-            "citable": sum(1 for resource in resource_docs if _resource_citable(resource)),
-            "withResourceContract": sum(1 for resource in resource_docs if bool(_resource_contract(resource))),
-            "withReadTools": sum(1 for resource in resource_docs if bool(_resource_read_tools(resource))),
+            "indexed": sum(1 for resource in resource_docs if resource_indexed(resource)),
+            "citable": sum(1 for resource in resource_docs if resource_citable(resource)),
+            "withResourceContract": sum(1 for resource in resource_docs if bool(resource_contract(resource))),
+            "withReadTools": sum(1 for resource in resource_docs if bool(resource_read_tools(resource))),
             "vectorStores": len(vector_store_docs),
             "linkedVectorStores": len(resource_vector_ids & vector_store_ids) if vector_store_ids else 0,
             "linkedToConnectors": "grounds_connector" in edge_relations,
@@ -1984,16 +1928,16 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
 
     for resource in resource_docs:
         resource_id = str(resource.get("resourceId") or resource.get("documentId") or "")
-        resource_node = _add_node(nodes, "resource", resource_id, str(resource.get("filename") or resource.get("name") or resource_id), _resource_payload(resource))
+        resource_node = _add_node(nodes, "resource", resource_id, str(resource.get("filename") or resource.get("name") or resource_id), resource_payload(resource))
         if resource_node:
             resource_node_ids.append(resource_node)
-        vector_store_id = str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
-        connector_id = str(resource.get("connectorId") or _resource_governance(resource).get("connectorId") or "")
+        vector_store_id = resource_vector_id(resource)
+        connector_id = str(resource.get("connectorId") or resource_governance(resource).get("connectorId") or "")
         if vector_store_id:
             _add_edge(edges, f"vector_store:{vector_store_id}", resource_node, "indexes_resource", {"source": "resource.vectorDatabaseId"})
         if connector_id:
             _add_edge(edges, f"connector:{connector_id}", resource_node, "grounds_connector", {"source": "resource.connectorId"})
-        for tool_ref in _resource_read_tools(resource):
+        for tool_ref in resource_read_tools(resource):
             tool = tool_by_ref.get(str(tool_ref))
             tool_node = f"tool:{(tool or {}).get('toolId') or tool_ref}"
             _add_edge(edges, resource_node, tool_node, "read_by_tool", {"source": "resource.readTools"})

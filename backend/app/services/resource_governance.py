@@ -88,6 +88,34 @@ def resource_citable(resource: dict[str, Any]) -> bool:
     return resource_indexed(resource)
 
 
+def resource_payload(resource: dict[str, Any]) -> dict[str, Any]:
+    contract = resource_contract(resource)
+    indexing = resource_indexing(resource)
+    governance = resource_governance(resource)
+    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+    return {
+        "resourceId": resource.get("resourceId") or resource.get("documentId", ""),
+        "documentId": resource.get("documentId", ""),
+        "resourceKind": resource.get("resourceKind") or contract.get("resourceKind") or "document",
+        "filename": resource.get("filename") or resource.get("name") or resource.get("title") or "",
+        "status": resource.get("status", "uploaded"),
+        "source": resource.get("source", "upload"),
+        "connectorId": resource.get("connectorId") or governance.get("connectorId") or "",
+        "vectorDatabaseId": resource_vector_id(resource),
+        "vectorDatabaseName": resource.get("vectorDatabaseName") or indexing.get("vectorDatabaseName") or "",
+        "vectorCollectionName": resource.get("vectorCollectionName") or indexing.get("vectorCollectionName") or "",
+        "contentType": resource.get("contentType", ""),
+        "size": resource.get("size", 0),
+        "indexed": resource_indexed(resource),
+        "citable": resource_citable(resource),
+        "citationLabel": citability.get("citationLabel") or resource.get("filename") or "",
+        "readTools": resource_read_tools(resource),
+        "resourceContract": contract,
+        "createdAt": resource.get("createdAt"),
+        "updatedAt": resource.get("updatedAt"),
+    }
+
+
 def resource_gate(resource: dict[str, Any]) -> dict[str, Any]:
     contract = resource_contract(resource)
     gate = contract.get("resourceGate")
