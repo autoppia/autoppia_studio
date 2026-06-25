@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { useSelector } from "react-redux";
 import Runtime from "./runtime";
 
@@ -37,16 +37,24 @@ describe("Runtime page", () => {
             matchedSkillName: "Resolve claim",
             latestActivityLabel: "Read email",
             latestActivityAt: "2026-06-25T10:02:00Z",
-            actionCount: 1,
+            actionCount: 3,
             chatCount: 1,
+            hasBrowserActivity: true,
+            hasConnectorActivity: true,
+            browserActionCount: 2,
+            connectorActionCount: 1,
+            pendingApprovalCount: 1,
+            artifactCount: 2,
           },
           {
             sessionId: "session-2",
             prompt: "Other session",
             email: "demo@example.com",
             workItemId: "work-2",
-            actionCount: 1,
+            actionCount: 2,
             chatCount: 1,
+            hasConnectorActivity: true,
+            connectorActionCount: 2,
           },
         ],
       }),
@@ -74,5 +82,22 @@ describe("Runtime page", () => {
 
     expect(await screen.findByText("Latest activity:")).toBeInTheDocument();
     expect(await screen.findByText("Read email")).toBeInTheDocument();
+  });
+
+  it("shows runtime action totals in the summary cards", async () => {
+    render(<Runtime />);
+
+    const runtimeActionsCard = (await screen.findByText("Runtime Actions")).closest("div");
+    const browserActionsCard = (await screen.findByText("Browser Actions")).closest("div");
+    const connectorActionsCard = (await screen.findByText("Connector Actions")).closest("div");
+
+    expect(runtimeActionsCard).not.toBeNull();
+    expect(browserActionsCard).not.toBeNull();
+    expect(connectorActionsCard).not.toBeNull();
+    expect(within(runtimeActionsCard as HTMLElement).getByText("5")).toBeInTheDocument();
+    expect(within(browserActionsCard as HTMLElement).getByText("2")).toBeInTheDocument();
+    expect(within(connectorActionsCard as HTMLElement).getByText("3")).toBeInTheDocument();
+    expect(await screen.findByText("2 browser actions")).toBeInTheDocument();
+    expect(await screen.findByText("1 connector action")).toBeInTheDocument();
   });
 });

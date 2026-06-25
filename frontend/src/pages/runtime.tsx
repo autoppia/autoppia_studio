@@ -70,6 +70,19 @@ function runtimeKindTone(kind: "browser" | "api" | "hybrid") {
   return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30";
 }
 
+function browserActionCount(session: SessionItem) {
+  if (typeof session.browserActionCount === "number") return session.browserActionCount;
+  return session.hasBrowserActivity ? 1 : 0;
+}
+
+function connectorActionCount(session: SessionItem) {
+  if (typeof session.connectorActionCount === "number") return session.connectorActionCount;
+  if (typeof session.approvedConnectorToolCallCount === "number" && session.approvedConnectorToolCallCount > 0) {
+    return session.approvedConnectorToolCallCount;
+  }
+  return session.hasConnectorActivity ? 1 : 0;
+}
+
 function SummaryCard({
   label,
   value,
@@ -114,6 +127,8 @@ function SessionCard({
   const runId = String(session.runId || "");
   const sourceKind = String(session.sourceKind || "");
   const creditsLabel = formatCredits(session.creditsSpent);
+  const browserActions = browserActionCount(session);
+  const connectorActions = connectorActionCount(session);
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -162,7 +177,13 @@ function SessionCard({
         {session.hasBrowserActivity && (
           <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("accent")}`}>
             <FontAwesomeIcon icon={faGlobe} className="text-[10px]" />
-            Browser trace
+            {browserActions} browser {browserActions === 1 ? "action" : "actions"}
+          </span>
+        )}
+        {connectorActions > 0 && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("neutral")}`}>
+            <FontAwesomeIcon icon={faShapes} className="text-[10px]" />
+            {connectorActions} connector {connectorActions === 1 ? "action" : "actions"}
           </span>
         )}
         {(session.approvedConnectorToolCallCount || 0) > 0 && (
@@ -359,9 +380,10 @@ export default function Runtime(): React.ReactElement {
 
   const metrics = useMemo(() => ({
     total: filtered.length,
-    browser: filtered.filter((session) => session.hasBrowserActivity).length,
+    actions: filtered.reduce((sum, session) => sum + (session.actionCount || 0), 0),
+    browserActions: filtered.reduce((sum, session) => sum + browserActionCount(session), 0),
+    connectorActions: filtered.reduce((sum, session) => sum + connectorActionCount(session), 0),
     skillReplay: filtered.filter((session) => !!session.matchedSkillId).length,
-    approvals: filtered.reduce((sum, session) => sum + (session.approvedConnectorToolCallCount || 0), 0),
     pendingApprovals: filtered.reduce((sum, session) => sum + (session.pendingApprovalCount || 0), 0),
     artifacts: filtered.reduce((sum, session) => sum + (session.artifactCount || 0), 0),
   }), [filtered]);
@@ -377,9 +399,10 @@ export default function Runtime(): React.ReactElement {
           />
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
             <SummaryCard label="Sessions" value={metrics.total} hint="Durable runtime executions in scope" />
-            <SummaryCard label="Browser Traces" value={metrics.browser} hint="Sessions that touched browser automation" />
+            <SummaryCard label="Runtime Actions" value={metrics.actions} hint="Observed actions across runtime sessions" />
+            <SummaryCard label="Browser Actions" value={metrics.browserActions} hint="Browser automation steps captured in traces" />
+            <SummaryCard label="Connector Actions" value={metrics.connectorActions} hint="Structured connector/tool steps executed in runtime" />
             <SummaryCard label="Skill Replays" value={metrics.skillReplay} hint="Sessions with a matched approved skill" />
-            <SummaryCard label="Approved Calls" value={metrics.approvals} hint="Connector calls already unblocked in runtime" />
             <SummaryCard label="Pending Approvals" value={metrics.pendingApprovals} hint="Runtime actions waiting for human approval" />
             <SummaryCard label="Artifacts" value={metrics.artifacts} hint="Business outputs created across runtime sessions" />
           </div>
