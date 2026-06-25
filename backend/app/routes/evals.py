@@ -254,6 +254,60 @@ def _benchmark_coverage_summary(
     }
 
 
+def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
+    latest_runs = [
+        item.get("runCoverage") or {}
+        for item in coverage_items
+        if (item.get("runCoverage") or {}).get("latestRunId")
+    ]
+    latest_runs = sorted(latest_runs, key=lambda item: str(item.get("latestCreatedAt") or ""), reverse=True)
+    task_total = sum(int((item.get("taskContractCoverage") or {}).get("total") or 0) for item in coverage_items)
+    task_complete = sum(int((item.get("taskContractCoverage") or {}).get("complete") or 0) for item in coverage_items)
+    run_total = sum(int((item.get("runCoverage") or {}).get("total") or 0) for item in coverage_items)
+    run_pass = sum(int((item.get("runCoverage") or {}).get("pass") or 0) for item in coverage_items)
+    run_fail = sum(int((item.get("runCoverage") or {}).get("fail") or 0) for item in coverage_items)
+    run_pending = sum(int((item.get("runCoverage") or {}).get("pending") or 0) for item in coverage_items)
+    skill_ids = _dedupe_strings([
+        skill_id
+        for item in coverage_items
+        for skill_id in ((item.get("skillCoverage") or {}).get("skillIds") or [])
+    ])
+    return {
+        "benchmarks": len(coverage_items),
+        "tasks": task_total,
+        "taskContracts": {
+            "complete": task_complete,
+            "total": task_total,
+            "coverageRatio": round(task_complete / task_total, 3) if task_total else 0.0,
+        },
+        "connectors": _dedupe_strings([connector_id for item in coverage_items for connector_id in (item.get("connectorIds") or [])]),
+        "systems": _dedupe_strings([system for item in coverage_items for system in (item.get("systems") or [])]),
+        "entities": _dedupe_strings([entity for item in coverage_items for entity in (item.get("entityNames") or [])]),
+        "artifacts": _dedupe_strings([artifact for item in coverage_items for artifact in (item.get("expectedArtifacts") or [])]),
+        "skills": {
+            "skillIds": skill_ids,
+            "total": len(skill_ids),
+            "ready": sum(int((item.get("skillCoverage") or {}).get("ready") or 0) for item in coverage_items),
+            "published": sum(int((item.get("skillCoverage") or {}).get("published") or 0) for item in coverage_items),
+        },
+        "regressions": {
+            "total": run_total,
+            "pass": run_pass,
+            "fail": run_fail,
+            "pending": run_pending,
+            "passRatio": round(run_pass / run_total, 3) if run_total else 0.0,
+            "latest": [
+                {
+                    "runId": str(item.get("latestRunId") or ""),
+                    "label": str(item.get("latestLabel") or ""),
+                    "createdAt": item.get("latestCreatedAt"),
+                }
+                for item in latest_runs[:5]
+            ],
+        },
+    }
+
+
 async def _benchmark_task_eval(eval_id: str) -> dict[str, Any] | None:
     task = await benchmark_tasks_collection.find_one({"taskId": eval_id}, {"_id": 0})
     if not task:
@@ -370,20 +424,22 @@ async def list_benchmarks(email: str, companyId: str = ""):
         benchmark_id = task_benchmark_by_id.get(str(run.get("evalId") or ""), "")
         if benchmark_id:
             runs_by_benchmark.setdefault(benchmark_id, []).append(run)
+    benchmark_payloads = [
+        {
+            **benchmark,
+            "tasks": [_task_to_eval(task, benchmark) for task in tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), [])],
+            "coverage": _benchmark_coverage_summary(
+                tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+                benchmark=benchmark,
+            ),
+        }
+        for benchmark in benchmarks
+    ]
     return {
-        "benchmarks": [
-            {
-                **benchmark,
-                "tasks": [_task_to_eval(task, benchmark) for task in tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), [])],
-                "coverage": _benchmark_coverage_summary(
-                    tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
-                    skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
-                    runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
-                    benchmark=benchmark,
-                ),
-            }
-            for benchmark in benchmarks
-        ]
+        "benchmarks": benchmark_payloads,
+        "coveragePortfolio": _coverage_portfolio([benchmark.get("coverage") or {} for benchmark in benchmark_payloads]),
     }
 
 

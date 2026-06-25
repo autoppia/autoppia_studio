@@ -75,6 +75,34 @@ interface BenchmarkCoverage {
   };
 }
 
+interface CoveragePortfolio {
+  benchmarks?: number;
+  tasks?: number;
+  taskContracts?: {
+    complete?: number;
+    total?: number;
+    coverageRatio?: number;
+  };
+  connectors?: string[];
+  systems?: string[];
+  entities?: string[];
+  artifacts?: string[];
+  skills?: {
+    skillIds?: string[];
+    total?: number;
+    ready?: number;
+    published?: number;
+  };
+  regressions?: {
+    total?: number;
+    pass?: number;
+    fail?: number;
+    pending?: number;
+    passRatio?: number;
+    latest?: Array<{ runId?: string; label?: string; createdAt?: string }>;
+  };
+}
+
 interface ConnectorItem {
   connectorId: string;
   name: string;
@@ -236,6 +264,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   const [pendingRun, setPendingRun] = useState<PendingRun | null>(null);
   const [selectedAgentId, setSelectedAgentId] = useState("");
   const [fetchedBenchmarks, setFetchedBenchmarks] = useState<Benchmark[]>([]);
+  const [coveragePortfolio, setCoveragePortfolio] = useState<CoveragePortfolio | null>(null);
 
   const [showCreateBenchmark, setShowCreateBenchmark] = useState(false);
   const [creatingBenchmark, setCreatingBenchmark] = useState(false);
@@ -315,6 +344,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
       if (benchmarksRes.ok) {
         const benchmarksData = await benchmarksRes.json();
         setFetchedBenchmarks(benchmarksData.benchmarks || []);
+        setCoveragePortfolio(benchmarksData.coveragePortfolio || null);
       }
       if (connectorsRes.ok) {
         const connectorsData = await connectorsRes.json();
@@ -1147,6 +1177,67 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                 </div>
               </div>
               )}
+            </div>
+          )}
+
+          {mode === "benchmarks" && coveragePortfolio && (
+            <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-soft dark:border-dark-border dark:bg-dark-surface">
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Coverage portfolio</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Aggregate readiness across benchmarks, capabilities and recent regression runs.</p>
+                </div>
+                <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[11px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                  {coveragePortfolio.benchmarks || 0} benchmarks
+                </span>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Task contracts</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {coveragePortfolio.taskContracts?.complete || 0}/{coveragePortfolio.taskContracts?.total || 0} complete
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {Math.round((coveragePortfolio.taskContracts?.coverageRatio || 0) * 100)}% portfolio readiness
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Systems</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {(coveragePortfolio.systems || []).length} systems · {(coveragePortfolio.connectors || []).length} connectors
+                  </p>
+                  <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                    {[...(coveragePortfolio.systems || []), ...(coveragePortfolio.connectors || [])].slice(0, 4).join(", ") || "No systems covered"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Entities & artifacts</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {(coveragePortfolio.entities || []).length} entities · {(coveragePortfolio.artifacts || []).length} artifacts
+                  </p>
+                  <p className="mt-1 truncate text-[11px] text-gray-500 dark:text-gray-400">
+                    {(coveragePortfolio.artifacts || []).slice(0, 4).join(", ") || "No artifacts declared"}
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Skill gating</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {coveragePortfolio.skills?.ready || 0}/{coveragePortfolio.skills?.total || 0} ready
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {coveragePortfolio.skills?.published || 0} published skills
+                  </p>
+                </div>
+                <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Regressions</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {coveragePortfolio.regressions?.pass || 0}/{coveragePortfolio.regressions?.total || 0} pass
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {Math.round((coveragePortfolio.regressions?.passRatio || 0) * 100)}% pass rate · {coveragePortfolio.regressions?.fail || 0} fail
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
