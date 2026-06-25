@@ -5,9 +5,10 @@ from app.routes import session as session_routes
 
 
 class _Result:
-    def __init__(self, deleted_count=0, upserted_id=None):
+    def __init__(self, deleted_count=0, upserted_id=None, matched_count=0):
         self.deleted_count = deleted_count
         self.upserted_id = upserted_id
+        self.matched_count = matched_count
 
 
 class _Cursor:
@@ -51,7 +52,7 @@ class _Collection:
                 next_doc = dict(doc)
                 next_doc.update(update.get("$set", {}))
                 self.docs[index] = next_doc
-                return _Result()
+                return _Result(matched_count=1)
         if upsert:
             doc = dict(query)
             doc.update(update.get("$setOnInsert", {}))
@@ -237,6 +238,8 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
 async def test_save_session_persists_company_id(monkeypatch):
     sessions = _Collection()
     monkeypatch.setattr(session_routes, "sessions_collection", sessions)
+    monkeypatch.setattr(session_routes, "artifacts_collection", _Collection())
+    monkeypatch.setattr(session_routes, "approvals_collection", _Collection())
 
     result = await session_routes.save_session(
         session_routes.SessionSaveRequest(
@@ -250,6 +253,69 @@ async def test_save_session_persists_company_id(monkeypatch):
 
     assert result["created"] is True
     assert sessions.docs[0]["companyId"] == "company-1"
+    assert sessions.docs[0]["runtimeKind"] == "api"
+    assert sessions.docs[0]["selectedSkill"] == {"matched": False, "skillId": "", "skillName": ""}
+    assert sessions.docs[0]["approvalState"]["pending"] == 0
+    assert sessions.docs[0]["artifactState"]["count"] == 0
+    assert sessions.docs[0]["costState"]["creditsSpent"] == 0.0
+    assert sessions.docs[0]["traceState"]["traceIds"] == []
+
+
+@pytest.mark.asyncio
+async def test_save_chat_history_persists_operational_session_snapshot(monkeypatch):
+    sessions = _Collection(
+        [
+            {
+                "sessionId": "session-1",
+                "email": "user@example.com",
+                "companyId": "company-1",
+                "prompt": "Handle claim",
+                "createdAt": "2026-06-19T10:00:00Z",
+            }
+        ]
+    )
+    monkeypatch.setattr(session_routes, "sessions_collection", sessions)
+    monkeypatch.setattr(
+        session_routes,
+        "artifacts_collection",
+        _Collection([{"artifactId": "artifact-1", "sessionId": "session-1", "email": "user@example.com"}]),
+    )
+    monkeypatch.setattr(
+        session_routes,
+        "approvals_collection",
+        _Collection([{"approvalId": "approval-1", "sessionId": "session-1", "email": "user@example.com", "status": "pending"}]),
+    )
+
+    result = await session_routes.save_chat_history(
+        "session-1",
+        session_routes.ChatHistoryRequest(
+            chatHistory=[{"role": "user"}, {"role": "assistant"}],
+            actionHistory=[
+                {"action": "browser.navigate", "traceId": "trace-browser", "elapsedSeconds": 1.0},
+                {"action": "smtp.draft_email", "traceId": "trace-draft", "elapsedSeconds": 0.5},
+            ],
+            runtimeState={
+                "runId": "run-1",
+                "creditsSpent": 1.5,
+                "matchedSkillId": "skill-1",
+                "matchedSkillName": "Draft claim response",
+                "pendingConnectorApproval": "smtp.send_email:0:abc",
+            },
+        ),
+    )
+
+    assert result["success"] is True
+    doc = sessions.docs[0]
+    assert doc["runtimeKind"] == "hybrid"
+    assert doc["selectedSkill"] == {"matched": True, "skillId": "skill-1", "skillName": "Draft claim response"}
+    assert doc["approvalState"]["pending"] == 1
+    assert doc["approvalState"]["requiredFor"] == ["send"]
+    assert doc["artifactState"] == {"count": 1, "hasBusinessOutput": True}
+    assert doc["costState"]["creditsSpent"] == 1.5
+    assert doc["costState"]["durationSeconds"] == 1.5
+    assert doc["traceState"]["traceIds"] == ["run-1", "trace-browser", "trace-draft"]
+    assert doc["runtimeLab"]["timeline"]["steps"] == 2
+    assert doc["runtimeAuditTrail"]["hasHumanBoundary"] is True
 
 
 @pytest.mark.asyncio

@@ -311,6 +311,66 @@ def _attach_session_runtime_counts(summary: dict[str, Any], *, artifact_count: i
     return summary
 
 
+def _session_operational_fields(
+    doc: dict[str, Any],
+    *,
+    artifact_count: int,
+    pending_approval_count: int,
+) -> dict[str, Any]:
+    summary = _attach_session_runtime_counts(
+        _serialize_session_summary(doc),
+        artifact_count=artifact_count,
+        pending_approval_count=pending_approval_count,
+    )
+    runtime_metrics = summary.get("runtimeMetrics") if isinstance(summary.get("runtimeMetrics"), dict) else {}
+    runtime_lab = summary.get("runtimeLab") if isinstance(summary.get("runtimeLab"), dict) else {}
+    runtime_evidence = summary.get("runtimeEvidence") if isinstance(summary.get("runtimeEvidence"), dict) else {}
+    runtime_policy = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
+    skill_match = runtime_lab.get("skillMatch") if isinstance(runtime_lab.get("skillMatch"), dict) else {}
+    outputs = runtime_lab.get("outputs") if isinstance(runtime_lab.get("outputs"), dict) else {}
+    approvals = runtime_lab.get("approvals") if isinstance(runtime_lab.get("approvals"), dict) else {}
+    trace = runtime_evidence.get("trace") if isinstance(runtime_evidence.get("trace"), dict) else {}
+    return {
+        "runtimeKind": summary.get("runtimeKind", "api"),
+        "matchedSkillId": summary.get("matchedSkillId", ""),
+        "matchedSkillName": summary.get("matchedSkillName", ""),
+        "creditsSpent": summary.get("creditsSpent", 0.0),
+        "traceIds": summary.get("traceIds", []),
+        "runtimeMetrics": runtime_metrics,
+        "runtimePolicyBoundary": runtime_policy,
+        "runtimeTimeline": summary.get("runtimeTimeline", []),
+        "runtimeEvidence": runtime_evidence,
+        "runtimeLab": runtime_lab,
+        "runtimeAuditTrail": summary.get("runtimeAuditTrail", {}),
+        "selectedSkill": {
+            "matched": bool(skill_match.get("matched")),
+            "skillId": str(skill_match.get("skillId") or ""),
+            "skillName": str(skill_match.get("skillName") or ""),
+        },
+        "approvalState": {
+            "pending": pending_approval_count,
+            "approvedConnectorCalls": int(approvals.get("approvedConnectorCalls") or 0),
+            "requiredFor": approvals.get("requiredFor") if isinstance(approvals.get("requiredFor"), list) else [],
+            "hasHumanBoundary": bool(approvals.get("hasHumanBoundary") or runtime_policy.get("hasHumanBoundary")),
+        },
+        "artifactState": {
+            "count": artifact_count,
+            "hasBusinessOutput": bool(outputs.get("hasBusinessOutput")),
+        },
+        "costState": {
+            "creditsSpent": _safe_float(outputs.get("creditsSpent") or summary.get("creditsSpent")),
+            "durationSeconds": _safe_float(outputs.get("durationSeconds") or runtime_metrics.get("durationSeconds")),
+            "lastStepSeconds": _safe_float(outputs.get("lastStepSeconds") or runtime_metrics.get("lastStepSeconds")),
+        },
+        "traceState": {
+            "traceIds": trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else summary.get("traceIds", []),
+            "traceCount": int(trace.get("traceCount") or 0),
+            "timelineSteps": int(trace.get("timelineSteps") or 0),
+            "replayReady": bool(trace.get("replayReady")),
+        },
+    }
+
+
 def _session_runtime_audit_trail(summary: dict[str, Any], *, action_history: list[Any], artifact_count: int, pending_approval_count: int) -> dict[str, Any]:
     runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
     policy_boundary = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
@@ -710,6 +770,20 @@ async def save_session(body: SessionSaveRequest):
             update_fields["agentId"] = body.agentId
         if body.agentName:
             update_fields["agentName"] = body.agentName
+        artifact_count = await artifacts_collection.count_documents({"sessionId": body.sessionId, "email": body.email})
+        pending_approval_count = await approvals_collection.count_documents({"sessionId": body.sessionId, "email": body.email, "status": "pending"})
+        update_fields.update(
+            _session_operational_fields(
+                {
+                    "sessionId": body.sessionId,
+                    "email": body.email,
+                    **update_fields,
+                    "createdAt": now,
+                },
+                artifact_count=artifact_count,
+                pending_approval_count=pending_approval_count,
+            )
+        )
 
         result = await sessions_collection.update_one(
             {"sessionId": body.sessionId},
@@ -944,12 +1018,27 @@ async def delete_all_sessions(email: str):
 async def save_chat_history(session_id: str, body: ChatHistoryRequest):
     """Save chat history for a session."""
     try:
+        existing = await sessions_collection.find_one({"sessionId": session_id}, {"_id": 0}) or {}
         update_fields: dict = {"chatHistory": body.chatHistory}
         if body.lastUrl:
             update_fields["lastUrl"] = body.lastUrl
         if body.actionHistory:
             update_fields["actionHistory"] = body.actionHistory
         update_fields["runtimeState"] = body.runtimeState
+        email = str(existing.get("email") or "")
+        artifact_count = await artifacts_collection.count_documents({"sessionId": session_id, "email": email}) if email else 0
+        pending_approval_count = await approvals_collection.count_documents({"sessionId": session_id, "email": email, "status": "pending"}) if email else 0
+        update_fields.update(
+            _session_operational_fields(
+                {
+                    **existing,
+                    **update_fields,
+                    "sessionId": session_id,
+                },
+                artifact_count=artifact_count,
+                pending_approval_count=pending_approval_count,
+            )
+        )
 
         result = await sessions_collection.update_one(
             {"sessionId": session_id},
