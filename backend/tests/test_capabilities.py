@@ -458,6 +458,14 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                         "trajectoryId": "traj-1",
                         "toolIds": ["tool-claim", "tool-knowledge"],
                     },
+                    "sessionContract": {
+                        "agentRuntime": {"runtimeKind": "api", "sourceKind": "eval", "runId": "run-1"},
+                        "selectedSkill": {"matched": True, "skillId": "skill-1", "skillName": "Resolve claim"},
+                        "approvalState": {"pending": 1, "requiredFor": ["send"], "hasHumanBoundary": True},
+                        "artifactState": {"count": 1, "hasBusinessOutput": True},
+                        "costState": {"creditsSpent": 1.75},
+                        "traceState": {"traceIds": ["trace-1"], "replayReady": True},
+                    },
                     "traceIds": ["trace-1"],
                 }
             ]
@@ -581,6 +589,13 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["skills"]["ready"] == 1
     assert graph["coverage"]["skills"]["reusable"] == 1
     assert graph["coverage"]["runtime"]["sessions"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["withContract"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["selectedSkill"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["pendingApprovals"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["traceIds"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["replayReady"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.75
     assert graph["coverage"]["runtime"]["approvals"] == 1
     assert graph["coverage"]["runtime"]["pendingApprovals"] == 1
     assert graph["coverage"]["runtime"]["artifacts"] == 1

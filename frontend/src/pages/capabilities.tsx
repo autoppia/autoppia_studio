@@ -2705,6 +2705,9 @@ export default function Capabilities(): React.ReactElement {
       reusableSkills: coverage.skills?.reusable || 0,
       totalSkills: coverage.skills?.total || 0,
       runtimeSessions: coverage.runtime?.sessions || 0,
+      runtimeSessionContracts: coverage.runtime?.sessionContracts?.withContract || 0,
+      runtimeSessionTraces: coverage.runtime?.sessionContracts?.traceIds || 0,
+      runtimeReplayReady: coverage.runtime?.sessionContracts?.replayReady || 0,
       runtimeApprovals: coverage.runtime?.approvals || 0,
       runtimeArtifacts: coverage.runtime?.artifacts || 0,
       runtimeLinked: Boolean(
@@ -3488,6 +3491,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.runtimeLinked ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.runtimeSessions} sessions · {backendGraphStats.runtimeApprovals} approvals · {backendGraphStats.runtimeArtifacts} artifacts
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.runtimeSessionContracts > 0 && backendGraphStats.runtimeSessionTraces > 0 ? "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-500/30 dark:bg-sky-500/10 dark:text-sky-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.runtimeSessionContracts}/{backendGraphStats.runtimeSessions} session contracts · {backendGraphStats.runtimeSessionTraces} traces · {backendGraphStats.runtimeReplayReady} replay
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.workLinked ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.workItems} jobs · {backendGraphStats.scheduledWork} scheduled · {backendGraphStats.approvalBlockedWork || backendGraphStats.reviewWork} review

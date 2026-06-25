@@ -36,6 +36,19 @@ from app.services.task_contracts import task_contract_from_record, task_contract
 router = APIRouter()
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item or "").strip()]
+
+
 class ToolCreateRequest(BaseModel):
     email: str
     connectorId: str
@@ -926,6 +939,27 @@ def _vertical_demo_payload(
     }
 
 
+def _session_contract_coverage(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = doc.get("sessionContract") if isinstance(doc.get("sessionContract"), dict) else {}
+    skill = contract.get("selectedSkill") if isinstance(contract.get("selectedSkill"), dict) else {}
+    approvals = contract.get("approvalState") if isinstance(contract.get("approvalState"), dict) else {}
+    artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
+    cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
+    trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
+    runtime_state = doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}
+    trace_ids = _string_list(trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else doc.get("traceIds"))
+    skill_id = str(skill.get("skillId") or doc.get("matchedSkillId") or runtime_state.get("matchedSkillId") or "").strip()
+    return {
+        "withContract": bool(contract),
+        "selectedSkill": bool(skill.get("matched") or skill_id),
+        "pendingApprovals": int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0),
+        "artifactOutputs": int(artifacts.get("count") or doc.get("artifactCount") or 0),
+        "traceIds": len(trace_ids),
+        "replayReady": bool(trace.get("replayReady")),
+        "creditsSpent": _safe_float(cost.get("creditsSpent") or doc.get("creditsSpent")),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -974,6 +1008,7 @@ def _capability_graph_coverage(
         for resource in resource_docs
         if str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
     }
+    session_contracts = [_session_contract_coverage(doc) for doc in session_docs]
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
@@ -1023,6 +1058,15 @@ def _capability_graph_coverage(
         "skills": {"total": len(skill_docs), "ready": ready_skills, "reusable": reusable_skills},
         "runtime": {
             "sessions": len(session_docs),
+            "sessionContracts": {
+                "withContract": sum(1 for item in session_contracts if item["withContract"]),
+                "selectedSkill": sum(1 for item in session_contracts if item["selectedSkill"]),
+                "pendingApprovals": sum(item["pendingApprovals"] for item in session_contracts),
+                "artifactOutputs": sum(item["artifactOutputs"] for item in session_contracts),
+                "traceIds": sum(item["traceIds"] for item in session_contracts),
+                "replayReady": sum(1 for item in session_contracts if item["replayReady"]),
+                "creditsSpent": round(sum(item["creditsSpent"] for item in session_contracts), 4),
+            },
             "approvals": len(approval_docs),
             "pendingApprovals": sum(1 for item in approval_docs if str(item.get("status") or "").lower() == "pending"),
             "artifacts": len(artifact_docs),

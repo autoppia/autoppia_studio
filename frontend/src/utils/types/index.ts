@@ -1547,6 +1547,15 @@ export interface CapabilityGraphCoverage {
   };
   runtime?: {
     sessions?: number;
+    sessionContracts?: {
+      withContract?: number;
+      selectedSkill?: number;
+      pendingApprovals?: number;
+      artifactOutputs?: number;
+      traceIds?: number;
+      replayReady?: number;
+      creditsSpent?: number;
+    };
     approvals?: number;
     pendingApprovals?: number;
     artifacts?: number;
