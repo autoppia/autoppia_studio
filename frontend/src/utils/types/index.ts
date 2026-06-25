@@ -353,6 +353,16 @@ export interface WorkItem {
     judgeType?: string;
   };
   runHistory?: any[];
+  operational?: {
+    approvalCount?: number;
+    pendingApprovalCount?: number;
+    latestArtifactCount?: number;
+    latestToolCallCount?: number;
+    latestMatchedSkillIds?: string[];
+    latestMatchedSkillNames?: string[];
+    latestSessionIds?: string[];
+    reviewBlocked?: boolean;
+  };
   lastRunId?: string;
   createdAt?: string;
   updatedAt?: string;

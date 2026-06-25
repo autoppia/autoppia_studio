@@ -84,6 +84,37 @@ class _Boards(_WorkItems):
         self.docs[doc["boardId"]] = dict(doc)
 
 
+def _nested(doc, path):
+    current = doc
+    for part in path.split("."):
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
+
+
+class _Approvals:
+    def __init__(self, docs=None):
+        self.docs = list(docs or [])
+
+    def find(self, query, projection=None):
+        docs = []
+        for doc in self.docs:
+            matched = True
+            for key, value in query.items():
+                actual = _nested(doc, key)
+                if isinstance(value, dict) and "$in" in value:
+                    if actual not in value["$in"]:
+                        matched = False
+                        break
+                elif actual != value:
+                    matched = False
+                    break
+            if matched:
+                docs.append(dict(doc))
+        return _Cursor(docs)
+
+
 class _Agents:
     def __init__(self):
         self.docs = [
@@ -115,8 +146,10 @@ async def test_create_and_list_work_items(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     collection = _WorkItems()
     boards = _Boards()
+    approvals = _Approvals()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -145,9 +178,11 @@ async def test_run_work_item_records_report_and_judge(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
     agents = _Agents()
+    approvals = _Approvals()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
 
     notifications = []
 
@@ -247,9 +282,11 @@ async def test_run_work_item_pauses_on_human_approval(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
     agents = _Agents()
+    approvals = _Approvals()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
     monkeypatch.setattr(work_items, "agents_collection", agents)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
 
     async def fake_create_notification(**kwargs):
         return kwargs
@@ -319,8 +356,10 @@ async def test_scheduled_work_item_gets_next_run(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     collection = _WorkItems()
     boards = _Boards()
+    approvals = _Approvals()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -344,8 +383,10 @@ async def test_scheduled_work_item_gets_next_run(monkeypatch):
 async def test_due_scheduled_work_claims_atomically(monkeypatch):
     collection = _WorkItems()
     boards = _Boards()
+    approvals = _Approvals()
     monkeypatch.setattr(work_items, "work_items_collection", collection)
     monkeypatch.setattr(work_items, "work_boards_collection", boards)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
 
     created = await work_items.create_work_item(
         WorkItemCreateRequest(
@@ -384,3 +425,80 @@ async def test_due_scheduled_work_claims_atomically(monkeypatch):
     assert collection.docs[work_item_id]["lastRunId"]
     assert len(jobs) == 1
     assert len(notifications) == 1
+
+
+@pytest.mark.asyncio
+async def test_list_work_items_includes_operational_summary(monkeypatch):
+    collection = _WorkItems()
+    boards = _Boards()
+    approvals = _Approvals([
+        {
+            "approvalId": "approval-1",
+            "status": "pending",
+            "metadata": {"workItemId": "work-1"},
+        },
+        {
+            "approvalId": "approval-2",
+            "status": "approved",
+            "metadata": {"workItemId": "work-1"},
+        },
+    ])
+    monkeypatch.setattr(work_items, "work_items_collection", collection)
+    monkeypatch.setattr(work_items, "work_boards_collection", boards)
+    monkeypatch.setattr(work_items, "approvals_collection", approvals)
+
+    collection.docs["work-1"] = {
+        "workItemId": "work-1",
+        "email": "user@example.com",
+        "companyId": "company-1",
+        "boardId": "board-1",
+        "title": "Operational summary",
+        "prompt": "Run a skill-backed task",
+        "runTarget": "selected",
+        "browserEnabled": False,
+        "browserMode": "headless",
+        "maxCreditsPerRun": 1.0,
+        "maxBudgetCredits": 1.0,
+        "maxSteps": 4,
+        "triggerType": "manual",
+        "scheduleFrequency": "none",
+        "scheduleTime": "09:00",
+        "scheduleDayOfWeek": 1,
+        "judgeImplementation": "llm",
+        "status": "REVIEW",
+        "pendingApproval": {"approvalId": "approval-1"},
+        "report": {
+            "runId": "run-1",
+            "resultCount": 1,
+            "results": [
+                {
+                    "agentId": "agent-1",
+                    "status": "ok",
+                    "steps": [{"toolCalls": [{"name": "crm.lookup"}]}],
+                    "result": {
+                        "artifacts": [{"artifactType": "markdown"}],
+                        "state_out": {"matchedSkillId": "skill-1", "matchedSkillName": "Resolve claim"},
+                    },
+                }
+            ],
+        },
+        "runHistory": [{"runId": "run-1", "status": "WAITING_APPROVAL"}],
+        "createdAt": "2026-01-01T00:00:00+00:00",
+        "updatedAt": "2026-01-01T00:00:00+00:00",
+    }
+
+    listed = await work_items.list_work_items(
+        "user@example.com",
+        "company-1",
+        "board-1",
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+
+    operational = listed["workItems"][0]["operational"]
+    assert operational["approvalCount"] == 2
+    assert operational["pendingApprovalCount"] == 1
+    assert operational["latestArtifactCount"] == 1
+    assert operational["latestToolCallCount"] == 1
+    assert operational["latestMatchedSkillIds"] == ["skill-1"]
+    assert operational["latestMatchedSkillNames"] == ["Resolve claim"]
+    assert operational["reviewBlocked"] is True

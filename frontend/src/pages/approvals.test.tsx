@@ -79,6 +79,21 @@ describe("Approvals page", () => {
     );
   });
 
+  it("passes the work item filter through to the approvals query", async () => {
+    mockSearch = "workItemId=work-42&status=all";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ approvals: [] }),
+    }) as jest.Mock;
+
+    renderApprovals();
+
+    expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/approvals?email=demo%40example.com&companyId=company-1&status=&includeRuntime=true&workItemId=work-42"),
+    );
+  });
+
   it("stores session resume state after approving a runtime session approval", async () => {
     const approval = {
       approvalId: "approval-1",

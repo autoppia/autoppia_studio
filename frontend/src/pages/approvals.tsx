@@ -77,6 +77,7 @@ function ApprovalCard({
   onApprove,
   onReject,
   onOpenSession,
+  onOpenWorkItem,
   onOpenCapability,
 }: {
   approval: ApprovalRequest;
@@ -84,6 +85,7 @@ function ApprovalCard({
   onApprove: () => void;
   onReject: () => void;
   onOpenSession: (sessionId: string) => void;
+  onOpenWorkItem: (workItemId: string) => void;
   onOpenCapability: (kind: "tool" | "trajectory" | "skill", id: string) => void;
 }) {
   const actionName = approval.toolName || approval.proposedAction?.name || "proposed action";
@@ -148,8 +150,16 @@ function ApprovalCard({
         <InfoPill label="key" value={approval.approvalKey} />
       </div>
 
-      {(sessionId || skillId || trajectoryId || toolId) && (
+      {(workItemId || sessionId || skillId || trajectoryId || toolId) && (
         <div className="mt-3 flex flex-wrap items-center gap-2">
+          {workItemId && (
+            <button
+              onClick={() => onOpenWorkItem(workItemId)}
+              className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+            >
+              Open job
+            </button>
+          )}
           {sessionId && (
             <button
               onClick={() => onOpenSession(sessionId)}
@@ -263,6 +273,7 @@ export default function Approvals(): React.ReactElement {
   const [busyId, setBusyId] = useState("");
   const [sessionResumeNotice, setSessionResumeNotice] = useState<{ sessionId: string; approvalId: string } | null>(null);
   const sessionFilter = searchParams.get("sessionId") || "";
+  const workItemFilter = searchParams.get("workItemId") || "";
   const skillFilter = searchParams.get("skillId") || "";
   const trajectoryFilter = searchParams.get("trajectoryId") || "";
   const toolFilter = searchParams.get("toolId") || "";
@@ -281,6 +292,7 @@ export default function Approvals(): React.ReactElement {
       else params.set("status", "");
       params.set("includeRuntime", "true");
       if (sessionFilter) params.set("sessionId", sessionFilter);
+      if (workItemFilter) params.set("workItemId", workItemFilter);
       if (skillFilter) params.set("skillId", skillFilter);
       if (trajectoryFilter) params.set("trajectoryId", trajectoryFilter);
       if (toolFilter) params.set("toolId", toolFilter);
@@ -298,7 +310,7 @@ export default function Approvals(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [companyId, sessionFilter, skillFilter, tab, toolFilter, trajectoryFilter, user.email]);
+  }, [companyId, sessionFilter, workItemFilter, skillFilter, tab, toolFilter, trajectoryFilter, user.email]);
 
   useEffect(() => {
     const status = searchParams.get("status");
@@ -385,21 +397,23 @@ export default function Approvals(): React.ReactElement {
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-6">
-          {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
+          {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter || toolFilter) && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime filter active</p>
                 <p className="text-xs text-gray-500 dark:text-gray-400">
                   {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
-                  {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
-                  {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
-                  {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
+                  {workItemFilter ? <> {(sessionFilter) ? "· " : ""}Job <span className="font-mono text-gray-700 dark:text-gray-200">{workItemFilter}</span></> : null}
+                  {skillFilter ? <> {(sessionFilter || workItemFilter) ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                  {trajectoryFilter ? <> {(sessionFilter || workItemFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                  {toolFilter ? <> {(sessionFilter || workItemFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
                 </p>
               </div>
               <button
                 onClick={() => {
                   const next = new URLSearchParams(searchParams);
                   next.delete("sessionId");
+                  next.delete("workItemId");
                   next.delete("skillId");
                   next.delete("trajectoryId");
                   next.delete("toolId");
@@ -494,6 +508,7 @@ export default function Approvals(): React.ReactElement {
                       onApprove={() => decide(approval.approvalId, "approve")}
                       onReject={() => decide(approval.approvalId, "reject")}
                       onOpenSession={(sessionId) => navigate(`/session/${sessionId}`)}
+                      onOpenWorkItem={(workItemId) => navigate(`/work?item=${workItemId}`)}
                       onOpenCapability={(kind, id) => navigate(`/capabilities/${kind}/${id}`)}
                     />
                   ))}

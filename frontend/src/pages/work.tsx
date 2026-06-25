@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -89,9 +89,17 @@ function formatRunCount(item: WorkItem) {
   return `${count} ${count === 1 ? "run" : "runs"}`;
 }
 
+function matchedSkillSummary(item: WorkItem) {
+  const names = item.operational?.latestMatchedSkillNames || [];
+  if (names.length === 0) return "";
+  if (names.length === 1) return names[0];
+  return `${names[0]} +${names.length - 1}`;
+}
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [boards, setBoards] = useState<WorkBoard[]>([]);
@@ -760,6 +768,26 @@ export default function Work() {
                             <span>{formatDate(item.updatedAt || item.createdAt)}</span>
                           </div>
 
+                          {((item.operational?.pendingApprovalCount || 0) > 0 || (item.operational?.latestArtifactCount || 0) > 0 || matchedSkillSummary(item)) && (
+                            <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                              {(item.operational?.pendingApprovalCount || 0) > 0 && (
+                                <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-1 text-[10px] font-medium text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                  {item.operational?.pendingApprovalCount} pending approvals
+                                </span>
+                              )}
+                              {(item.operational?.latestArtifactCount || 0) > 0 && (
+                                <span className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">
+                                  {item.operational?.latestArtifactCount} artifacts
+                                </span>
+                              )}
+                              {matchedSkillSummary(item) && (
+                                <span className="rounded-md border border-primary/30 bg-primary/10 px-2 py-1 text-[10px] font-medium text-primary">
+                                  matched {matchedSkillSummary(item)}
+                                </span>
+                              )}
+                            </div>
+                          )}
+
                           {reportResults.length > 0 && (
                             <button
                               onClick={(event) => { event.stopPropagation(); setExpandedReportId(reportOpen ? "" : item.workItemId); }}
@@ -1039,6 +1067,32 @@ export default function Work() {
                 </div>
               )}
 
+              {selectedItem.operational && (
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime evidence</p>
+                    <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      <p>Tool calls: {selectedItem.operational.latestToolCallCount || 0}</p>
+                      <p>Artifacts: {selectedItem.operational.latestArtifactCount || 0}</p>
+                      <p>Approvals: {selectedItem.operational.approvalCount || 0}</p>
+                      <p>Pending approvals: {selectedItem.operational.pendingApprovalCount || 0}</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Matched capabilities</p>
+                    <div className="mt-2 space-y-1.5 text-xs text-gray-600 dark:text-gray-300">
+                      {(selectedItem.operational.latestMatchedSkillNames || []).length > 0 ? (
+                        (selectedItem.operational.latestMatchedSkillNames || []).slice(0, 3).map((name) => (
+                          <p key={name}>{name}</p>
+                        ))
+                      ) : (
+                        <p>No matched skills recorded in the latest report.</p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <p className={drawerLabelClass}>Title</p>
                 <input className={inputClass} value={String(drawerDraft.title || "")} onChange={(e) => setDrawerDraft((prev) => ({ ...prev, title: e.target.value }))} />
@@ -1129,6 +1183,15 @@ export default function Work() {
               <button onClick={() => patchItem(selectedItem, drawerDraft)} className="w-full h-10 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow">
                 Save Changes
               </button>
+
+              {(selectedItem.operational?.approvalCount || 0) > 0 && (
+                <button
+                  onClick={() => navigate(`/approvals?status=all&workItemId=${selectedItem.workItemId}`)}
+                  className="w-full h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                >
+                  Open approvals for this job
+                </button>
+              )}
 
               {selectedItem.judge?.label && (
                 <div className="rounded-xl border border-gray-200 dark:border-dark-border p-4">

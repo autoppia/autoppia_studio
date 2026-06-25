@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, field_validator
 
-from app.database import agents_collection, work_boards_collection, work_items_collection
+from app.database import agents_collection, approvals_collection, work_boards_collection, work_items_collection
 from app.repositories import WorkBoardRepository, WorkItemRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.notifications import create_notification
@@ -203,6 +203,105 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "startedAt": doc.get("startedAt", ""),
         "completedAt": doc.get("completedAt", ""),
     }
+
+
+def _report_results(doc: dict[str, Any]) -> list[dict[str, Any]]:
+    report = doc.get("report") if isinstance(doc.get("report"), dict) else {}
+    return report.get("results") if isinstance(report.get("results"), list) else []
+
+
+def _result_payload(entry: dict[str, Any]) -> dict[str, Any]:
+    result = entry.get("result")
+    return result if isinstance(result, dict) else {}
+
+
+def _step_tool_call_count(entry: dict[str, Any]) -> int:
+    steps = entry.get("steps") if isinstance(entry.get("steps"), list) else []
+    count = 0
+    for step in steps:
+        if not isinstance(step, dict):
+            continue
+        calls = step.get("toolCalls") if isinstance(step.get("toolCalls"), list) else []
+        count += len(calls)
+    return count
+
+
+def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str, Any]]) -> dict[str, Any]:
+    results = _report_results(doc)
+    approval_count = len(approval_docs)
+    pending_approval_count = sum(1 for approval in approval_docs if str(approval.get("status") or "") == "pending")
+    artifact_count = 0
+    tool_call_count = 0
+    matched_skill_ids: list[str] = []
+    matched_skill_names: list[str] = []
+    session_ids: list[str] = []
+
+    for entry in results:
+        if not isinstance(entry, dict):
+            continue
+        payload = _result_payload(entry)
+        artifacts = payload.get("artifacts") if isinstance(payload.get("artifacts"), list) else []
+        artifact_count += len(artifacts)
+        step_tool_calls = _step_tool_call_count(entry)
+        if step_tool_calls > 0:
+            tool_call_count += step_tool_calls
+        else:
+            tool_call_count += len(payload.get("tool_calls") if isinstance(payload.get("tool_calls"), list) else [])
+
+        state_out = payload.get("state_out") if isinstance(payload.get("state_out"), dict) else {}
+        matched_skill_id = str(state_out.get("matchedSkillId") or payload.get("matchedSkillId") or "")
+        matched_skill_name = str(state_out.get("matchedSkillName") or state_out.get("matchedSkill") or payload.get("matchedSkillName") or "")
+        session_id = str(payload.get("sessionId") or payload.get("session_id") or state_out.get("sessionId") or "")
+        if matched_skill_id and matched_skill_id not in matched_skill_ids:
+            matched_skill_ids.append(matched_skill_id)
+        if matched_skill_name and matched_skill_name not in matched_skill_names:
+            matched_skill_names.append(matched_skill_name)
+        if session_id and session_id not in session_ids:
+            session_ids.append(session_id)
+
+    pending = doc.get("pendingApproval") if isinstance(doc.get("pendingApproval"), dict) else {}
+    review_blocked = bool(
+        pending_approval_count
+        or str(pending.get("approvalId") or "")
+        or str(doc.get("status") or "") == "REVIEW"
+    )
+
+    return {
+        "approvalCount": approval_count,
+        "pendingApprovalCount": pending_approval_count,
+        "latestArtifactCount": artifact_count,
+        "latestToolCallCount": tool_call_count,
+        "latestMatchedSkillIds": matched_skill_ids,
+        "latestMatchedSkillNames": matched_skill_names,
+        "latestSessionIds": session_ids,
+        "reviewBlocked": review_blocked,
+    }
+
+
+async def _serialized_work_items_with_operational_data(docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not docs:
+        return []
+    work_item_ids = [str(doc.get("workItemId") or "") for doc in docs if str(doc.get("workItemId") or "")]
+    approval_docs: list[dict[str, Any]] = []
+    if work_item_ids:
+        approval_docs = await approvals_collection.find(
+            {"metadata.workItemId": {"$in": work_item_ids}},
+            {"_id": 0, "metadata.workItemId": 1, "status": 1},
+        ).to_list(length=2000)
+    approvals_by_work_item: dict[str, list[dict[str, Any]]] = {}
+    for approval in approval_docs:
+        metadata = approval.get("metadata") if isinstance(approval.get("metadata"), dict) else {}
+        work_item_id = str(metadata.get("workItemId") or "")
+        if not work_item_id:
+            continue
+        approvals_by_work_item.setdefault(work_item_id, []).append(approval)
+
+    serialized: list[dict[str, Any]] = []
+    for doc in docs:
+        item = _serialize(doc)
+        item["operational"] = _work_operational_summary(doc, approvals_by_work_item.get(item["workItemId"], []))
+        serialized.append(item)
+    return serialized
 
 
 def _deterministic_judge_result(results: list[dict[str, Any]], success_criteria: str = "") -> dict[str, Any]:
@@ -698,7 +797,7 @@ async def list_work_items(email: str, companyId: str = "", boardId: str = "", sc
     elif board.get("boardId"):
         query["$or"] = [{"boardId": board["boardId"]}, {"boardId": {"$exists": False}}, {"boardId": ""}]
     docs = await work_items_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)
-    return {"workItems": [_serialize(doc) for doc in docs]}
+    return {"workItems": await _serialized_work_items_with_operational_data(docs)}
 
 
 @router.post("/work-items")

@@ -24,6 +24,7 @@ def _query_scope(
     company_id: str = "",
     status: str = "",
     session_id: str = "",
+    work_item_id: str = "",
     skill_id: str = "",
     trajectory_id: str = "",
     tool_id: str = "",
@@ -39,6 +40,8 @@ def _query_scope(
             {"sessionId": session_id},
             {"metadata.sessionId": session_id},
         ])
+    if work_item_id:
+        or_filters.append({"metadata.workItemId": work_item_id})
     if skill_id:
         or_filters.append({"metadata.skillId": skill_id})
     if trajectory_id:
@@ -87,6 +90,7 @@ async def list_approvals(
     email: str = "",
     companyId: str = "",
     sessionId: str = "",
+    workItemId: str = "",
     skillId: str = "",
     trajectoryId: str = "",
     toolId: str = "",
@@ -97,7 +101,7 @@ async def list_approvals(
     scope = coerce_request_scope(scope)
     scoped_email = scope.require_email(email)
     clean_status = status if status in {"pending", "approved", "rejected", "expired", ""} else "pending"
-    query = _query_scope(scoped_email, companyId, clean_status, sessionId, skillId, trajectoryId, toolId)
+    query = _query_scope(scoped_email, companyId, clean_status, sessionId, workItemId, skillId, trajectoryId, toolId)
     if not includeRuntime:
         query = _exclude_runtime_session_approvals(query)
     docs = await approvals_collection.find(query, {"_id": 0}).sort("createdAt", -1).to_list(length=500)
