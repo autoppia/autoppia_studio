@@ -32,6 +32,7 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.entity_mapper import propose_entities_from_openapi_url
+from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
 SECRET_KEY_RE = re.compile(r"(secret|token|password|api[_-]?key|refresh|credential)", re.IGNORECASE)
@@ -66,17 +67,6 @@ def _list_values(value: Any) -> list[str]:
 
 def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
     return doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-
-
-def _skill_hardened(skill: dict[str, Any]) -> bool:
-    return bool(
-        str(skill.get("instructions") or "").strip()
-        and (
-            str(skill.get("whenToUse") or skill.get("activationDescription") or "").strip()
-            or _list_values(skill.get("sourceTrajectoryIds"))
-        )
-        and (_list_values(skill.get("expectedArtifacts")) or _list_values(skill.get("preconditions")))
-    )
 
 
 def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
@@ -357,7 +347,7 @@ class AutomataAssistantTools:
         task_contracts_ready = sum(1 for task in task_docs if task_contract_ready(task))
         task_expected_artifacts = sorted({artifact for contract in task_contracts for artifact in _list_values(contract.get("expectedArtifacts"))})
         task_allowed_systems = sorted({system for contract in task_contracts for system in _list_values(contract.get("allowedSystems"))})
-        hardened_skills = sum(1 for skill in skill_docs if _skill_hardened(skill))
+        hardened_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)

@@ -31,6 +31,7 @@ from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 
 router = APIRouter()
@@ -147,17 +148,6 @@ def _normalized_list(values: Any) -> list[str]:
 
 def _task_metadata(task: dict[str, Any]) -> dict[str, Any]:
     return task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
-
-
-def _skill_hardening_ready(skill: dict[str, Any]) -> bool:
-    return bool(
-        str(skill.get("instructions") or "").strip()
-        and (
-            str(skill.get("whenToUse") or skill.get("activationDescription") or "").strip()
-            or _normalized_list(skill.get("sourceTrajectoryIds"))
-        )
-        and (_normalized_list(skill.get("expectedArtifacts")) or _normalized_list(skill.get("preconditions")))
-    )
 
 
 def _top_named_items(items: list[dict[str, Any]], *, name_key: str, count_key: str = "count", limit: int = 8) -> list[dict[str, Any]]:
@@ -399,7 +389,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         task_risks = [str(contract.get("riskClass") or "unspecified") for contract in task_contracts]
         benchmark_verticals = _sorted_counts([str(doc.get("vertical") or "general") for doc in benchmarks])
         skill_artifacts = sorted({artifact for skill in skills for artifact in _normalized_list(skill.get("expectedArtifacts"))})
-        hardened_skills = sum(1 for skill in skills if _skill_hardening_ready(skill))
+        hardened_skills = sum(1 for skill in skills if skill_reusability_ready(skill))
         side_effects = _sorted_counts([str(tool.get("sideEffects") or tool.get("sideEffect") or "unknown") for tool in tools])
         tool_entities = sorted(
             {
