@@ -32,6 +32,7 @@ from app.database import (
     work_items_collection,
 )
 from app.services.queue import enqueue_job
+from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
@@ -612,6 +613,7 @@ class AutomataAssistantTools:
         eval_run_docs = await _to_list(eval_runs_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         knowledge_docs = await _to_list(knowledge_documents_collection.find(scoped, {"_id": 0, "storagePath": 0}).sort("createdAt", -1), 1000)
         session_docs = await _to_list(sessions_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        artifact_docs = await _to_list(artifacts_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         work_docs = await _to_list(work_items_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         approval_docs = await _to_list(approvals_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         counts = {
@@ -626,7 +628,7 @@ class AutomataAssistantTools:
             "benchmarkTasks": await benchmark_tasks_collection.count_documents(scoped),
             "trajectories": await trajectories_collection.count_documents(scoped),
             "sessions": await sessions_collection.count_documents(scoped),
-            "artifacts": await artifacts_collection.count_documents(scoped),
+            "artifacts": len(artifact_docs),
             "workItems": await work_items_collection.count_documents(scoped),
             "pendingApprovals": pending_approvals,
         }
@@ -644,6 +646,7 @@ class AutomataAssistantTools:
         vertical_demos = _vertical_demo_summary(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         resource_map = _resource_governance_summary(knowledge_docs)
         session_contracts = _session_contract_summary(session_docs)
+        artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = _work_orchestration_contract_summary(work_docs)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
         browser_allowlisted = bool(_connector_domains(connector_docs) or _company_allowed_origin_hosts(company_doc))
@@ -726,6 +729,10 @@ class AutomataAssistantTools:
         if runtime_policy_map["gaps"]:
             first_gap = runtime_policy_map["gaps"][0]
             recommended_actions.append({"area": "runtime", "action": first_gap["label"], "reason": "Runtime policy map has an unresolved enterprise control gap."})
+        if artifact_outputs["total"] and artifact_outputs["runtimeLinked"] < artifact_outputs["total"]:
+            recommended_actions.append({"area": "runtime", "action": "Link business artifacts to their originating Runtime Lab sessions.", "reason": "Some artifacts are not traceable to a runtime session."})
+        if artifact_outputs["reviewRequired"]:
+            recommended_actions.insert(0, {"area": "approvals", "action": "Review pending business artifacts before reuse or delivery.", "reason": f"{artifact_outputs['reviewRequired']} artifact output(s) require human review."})
         if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
             recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
         if failing_runs:
@@ -747,6 +754,8 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
+                {"area": "artifacts", "severity": "medium", "message": "Some business artifacts require human review before reuse or delivery."} if artifact_outputs["reviewRequired"] else None,
+                {"area": "artifacts", "severity": "medium", "message": "Some business artifacts are missing Runtime Lab traceability."} if artifact_outputs["total"] and artifact_outputs["runtimeLinked"] < artifact_outputs["total"] else None,
                 {"area": "work", "severity": "medium", "message": "Some work items are missing normalized orchestration contracts."} if counts["workItems"] and work_contracts["withContract"] < counts["workItems"] else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
@@ -838,6 +847,7 @@ class AutomataAssistantTools:
                 "sessions": counts["sessions"],
                 "sessionContracts": session_contracts,
                 "artifacts": counts["artifacts"],
+                "artifactOutputs": artifact_outputs,
                 "passingEvalRuns": passing_runs,
                 "failingEvalRuns": failing_runs,
                 "pendingApprovals": pending_approvals,

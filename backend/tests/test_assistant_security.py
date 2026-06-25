@@ -284,7 +284,20 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             }
         ]
     )
-    artifacts = _Collection([{"email": "owner@example.com", "companyId": "company-1", "artifactId": "artifact-1"}])
+    artifacts = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "artifactId": "artifact-1",
+                "sessionId": "session-1",
+                "title": "Draft claim status reply",
+                "artifactType": "markdown",
+                "sourceTool": "smtp.draft_email",
+                "metadata": {"skillId": "skill-1", "trajectoryId": "traj-1", "workItemId": "work-1", "requiresReview": True},
+            }
+        ]
+    )
     eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
     approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending", "metadata": {"workItemId": "work-1"}}])
     trajectories = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "approved"}])
@@ -490,6 +503,14 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["total"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["capabilityLinked"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["workLinked"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["knowledgeReady"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["reviewRequired"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["sample"][0]["source"]["sourceTool"] == "smtp.draft_email"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1

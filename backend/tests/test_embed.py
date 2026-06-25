@@ -543,7 +543,24 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
             ]
         ),
     )
-    monkeypatch.setattr(companies, "artifacts_collection", _Collection([{"artifactId": "artifact-1", "companyId": "company-1", "email": "owner@example.com"}]))
+    monkeypatch.setattr(
+        companies,
+        "artifacts_collection",
+        _Collection(
+            [
+                {
+                    "artifactId": "artifact-1",
+                    "companyId": "company-1",
+                    "email": "owner@example.com",
+                    "sessionId": "session-browser",
+                    "title": "Draft claim reply",
+                    "artifactType": "markdown",
+                    "sourceTool": "smtp.draft_email",
+                    "metadata": {"skillId": "skill-1", "workItemId": "work-1", "requiresReview": True},
+                }
+            ]
+        ),
+    )
     monkeypatch.setattr(
         companies,
         "approvals_collection",
@@ -619,6 +636,14 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert result["contract"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert result["contract"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.5
+    assert result["contract"]["runtime"]["artifactOutputs"]["total"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["capabilityLinked"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["workLinked"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["knowledgeReady"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["reviewRequired"] == 1
+    assert result["contract"]["runtime"]["artifactOutputs"]["sample"][0]["source"]["sourceTool"] == "smtp.draft_email"
     assert result["contract"]["runtime"]["pendingApprovals"] == 2
     assert result["contract"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert result["contract"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True

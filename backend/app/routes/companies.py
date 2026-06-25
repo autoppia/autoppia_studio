@@ -30,6 +30,7 @@ from app.database import (
 from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
+from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -467,6 +468,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         eval_runs = await eval_runs_collection.find({"companyId": company_id, "email": email}, {"_id": 0, "actions": 0, "screenshots": 0}).to_list(length=1000)
         work_items = await work_items_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         approvals = await approvals_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
+        artifacts = await artifacts_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         knowledge_docs = await knowledge_documents_collection.find({"companyId": company_id, "email": email}, {"_id": 0, "storagePath": 0}).to_list(length=1000)
         vector_stores = await vector_databases_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
 
@@ -567,6 +569,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             or str(doc.get("workItemId") or "") in approval_work_item_ids
         ]
         session_contracts = _session_contract_summary(sessions)
+        artifact_outputs = summarize_artifact_outputs(artifacts)
         browser_allowlisted = bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins"))
         runtime_policy_map = summarize_runtime_policy_map(
             skills=skills,
@@ -608,7 +611,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "skills": len(skills),
             "readySkills": sum(1 for doc in skills if str(doc.get("status") or "") in {"ready", "approved"}),
             "sessions": len(sessions),
-            "artifacts": await _count({"companyId": company_id, "email": email}, artifacts_collection),
+            "artifacts": len(artifacts),
             "pendingApprovals": sum(1 for doc in approvals if str(doc.get("status") or "") == "pending"),
             "approvedApprovals": sum(1 for doc in approvals if str(doc.get("status") or "") == "approved"),
             "workItems": len(work_items),
@@ -773,6 +776,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "runtimeKinds": _sorted_counts(runtime_kinds),
                 "sessionContracts": session_contracts,
                 "artifacts": counts["artifacts"],
+                "artifactOutputs": artifact_outputs,
                 "pendingApprovals": counts["pendingApprovals"],
                 "approvedApprovals": counts["approvedApprovals"],
                 "workItems": counts["workItems"],
