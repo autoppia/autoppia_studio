@@ -1128,6 +1128,22 @@ export default function Work() {
                     {selectedItem.sourceBenchmarkId && <p>Benchmark: <span className="font-mono text-[11px] text-gray-700 dark:text-gray-200">{selectedItem.sourceBenchmarkId}</span></p>}
                     {selectedItem.sourceTaskId && <p>Task: <span className="font-mono text-[11px] text-gray-700 dark:text-gray-200">{selectedItem.sourceTaskId}</span></p>}
                   </div>
+                  {selectedItem.sourceBenchmarkId && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        onClick={() => navigate(`/evals?benchmark=${encodeURIComponent(selectedItem.sourceBenchmarkId || "")}`)}
+                        className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                      >
+                        Open benchmark
+                      </button>
+                      <button
+                        onClick={() => navigate(`/eval-runs?benchmark=${encodeURIComponent(selectedItem.sourceBenchmarkId || "")}`)}
+                        className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                      >
+                        Open recent runs
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 

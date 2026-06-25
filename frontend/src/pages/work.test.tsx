@@ -44,6 +44,8 @@ describe("Work page", () => {
                 workItemId: "work-1",
                 title: "Claim follow-up",
                 prompt: "Follow up a claim",
+                sourceBenchmarkId: "benchmark-1",
+                sourceTaskId: "task-1",
                 runTarget: "selected",
                 browserEnabled: false,
                 browserMode: "headless",
@@ -114,5 +116,7 @@ describe("Work page", () => {
     expect((await screen.findAllByText("Claim follow-up")).length).toBeGreaterThan(0);
     expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open tool" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open benchmark" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open recent runs" })).toBeInTheDocument();
   });
 });
