@@ -102,10 +102,18 @@ async def test_create_and_graph_company_entities(monkeypatch):
 
     assert created["success"] is True
     assert created["entity"]["name"] == "Poliza"
+    assert created["entity"]["entityMapping"]["businessObject"] == "Poliza"
+    assert created["entity"]["entityMapping"]["relationshipTargets"] == ["Cliente"]
+    assert "aliases" in created["entity"]["entityMapping"]["readiness"]["gaps"]
 
     await entities.create_company_entity(
         "co-1",
-        entities.EntityCreateRequest(email="user@example.com", name="Cliente"),
+        entities.EntityCreateRequest(
+            email="user@example.com",
+            name="Cliente",
+            sourceConnectorId="conn-1",
+            metadata={"aliases": ["Customer"], "permissions": {"scopes": ["crm:read"]}},
+        ),
         RequestScope(email="user@example.com", token_email="user@example.com"),
     )
     graph = await entities.company_entity_graph(
@@ -116,6 +124,9 @@ async def test_create_and_graph_company_entities(monkeypatch):
 
     assert {node["name"] for node in graph["nodes"]} == {"Cliente", "Poliza"}
     assert graph["edges"] == [{"from": "Poliza", "to": "Cliente", "name": "cliente", "kind": "belongsTo", "via": "clienteId", "description": ""}]
+    cliente = next(item for item in graph["entities"] if item["name"] == "Cliente")
+    assert cliente["entityMapping"]["aliases"] == ["Customer"]
+    assert cliente["entityMapping"]["permissions"]["scopes"] == ["crm:read"]
 
 
 @pytest.mark.asyncio

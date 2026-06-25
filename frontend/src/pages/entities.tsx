@@ -48,6 +48,13 @@ function sourceTone(source?: string) {
   return "bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border";
 }
 
+function mappingTone(status?: string) {
+  if ((status || "").toLowerCase() === "ready") {
+    return "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30";
+  }
+  return "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30";
+}
+
 async function responseErrorMessage(res: Response, fallback: string) {
   const text = await res.text();
   if (!text) return fallback;
@@ -330,6 +337,8 @@ function EntityCard({
 }) {
   const fields = entity.fields || [];
   const relationships = entity.relationships || [];
+  const mapping = entity.entityMapping;
+  const readiness = mapping?.readiness?.status || "needs_mapping";
   return (
     <div className="group flex flex-col text-left bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-3.5 hover:border-primary/40 hover:shadow-soft transition-all duration-200">
       <div className="flex items-start justify-between gap-2">
@@ -359,7 +368,23 @@ function EntityCard({
           <FontAwesomeIcon icon={faShareNodes} className="mr-1 text-[9px]" />{relationships.length} {relationships.length === 1 ? "rel" : "rels"}
         </span>
         <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sourceTone(entity.source)}`}>{(entity.source || "manual").replace(/_/g, " ")}</span>
+        <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${mappingTone(readiness)}`}>{readiness.replace(/_/g, " ")}</span>
       </div>
+
+      {(mapping?.aliases?.length || mapping?.permissions?.scopes?.length) ? (
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+          {(mapping.aliases || []).slice(0, 2).map((alias) => (
+            <span key={alias} className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 text-blue-600 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
+              alias {alias}
+            </span>
+          ))}
+          {(mapping.permissions?.scopes || []).slice(0, 2).map((scope) => (
+            <span key={scope} className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 text-gray-500 border-gray-200 dark:bg-dark-bg dark:text-gray-400 dark:border-dark-border">
+              scope {scope}
+            </span>
+          ))}
+        </div>
+      ) : null}
 
       {fields.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
@@ -424,6 +449,8 @@ function EntityDetailModal({
   const relationships = entity.relationships || [];
   const [rawOpen, setRawOpen] = useState(false);
   const metadataEntries = Object.entries(entity.metadata || {});
+  const mapping = entity.entityMapping;
+  const readiness = mapping?.readiness;
 
   return (
     <div className="fixed inset-0 z-[135] flex items-center justify-center p-4">
@@ -438,6 +465,7 @@ function EntityDetailModal({
               <h3 className="text-base font-semibold text-gray-900 dark:text-white truncate">{entity.name}</h3>
               <div className="flex items-center gap-2 mt-0.5">
                 <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${sourceTone(entity.source)}`}>{(entity.source || "manual").replace(/_/g, " ")}</span>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${mappingTone(readiness?.status)}`}>{(readiness?.status || "needs_mapping").replace(/_/g, " ")}</span>
                 <span className="text-[11px] text-gray-400">{fields.length} {fields.length === 1 ? "field" : "fields"} · {relationships.length} {relationships.length === 1 ? "rel" : "rels"}</span>
               </div>
             </div>
@@ -480,6 +508,40 @@ function EntityDetailModal({
                 <span className="font-mono text-[11px]">{typeof value === "string" ? value : JSON.stringify(value)}</span>
               </DetailRow>
             ))}
+          </div>
+
+          {/* Entity mapping contract */}
+          <div className="rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3.5">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <FontAwesomeIcon icon={faDiagramProject} className="text-[11px] text-gray-400" />
+                <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Entity mapping contract</p>
+              </div>
+              <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${mappingTone(readiness?.status)}`}>
+                {(readiness?.status || "needs_mapping").replace(/_/g, " ")}
+              </span>
+            </div>
+            <div className="grid gap-2 text-xs sm:grid-cols-2">
+              <DetailRow label="Aliases">{mapping?.aliases?.length ? mapping.aliases.join(", ") : "Not mapped"}</DetailRow>
+              <DetailRow label="System object">{mapping?.systemObjects?.schemaName || mapping?.systemObjects?.sourcePaths?.[0] || mapping?.systemObjects?.sourceConnectorId || "Not mapped"}</DetailRow>
+              <DetailRow label="Permissions">
+                {[
+                  ...(mapping?.permissions?.readTools || []).map((item) => `read:${item}`),
+                  ...(mapping?.permissions?.writeTools || []).map((item) => `write:${item}`),
+                  ...(mapping?.permissions?.scopes || []).map((item) => `scope:${item}`),
+                ].join(", ") || "Not mapped"}
+              </DetailRow>
+              <DetailRow label="Gaps">{readiness?.gaps?.length ? readiness.gaps.join(", ") : "None"}</DetailRow>
+            </div>
+            {mapping?.systemObjects?.sourcePaths?.length ? (
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {mapping.systemObjects.sourcePaths.slice(0, 5).map((path) => (
+                  <span key={path} className="rounded-md border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-[10px] text-gray-500 dark:border-dark-border dark:bg-dark-bg dark:text-gray-400">
+                    {path}
+                  </span>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           {/* Fields */}

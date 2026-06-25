@@ -74,19 +74,82 @@ def _clean_entity_name(value: str) -> str:
 
 
 def _serialize_entity(doc: dict[str, Any]) -> dict[str, Any]:
+    fields = doc.get("fields") if isinstance(doc.get("fields"), list) else []
+    relationships = doc.get("relationships") if isinstance(doc.get("relationships"), list) else []
+    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
+    entity_mapping = _entity_mapping_contract(doc, fields, relationships, metadata)
     return {
         "entityId": doc.get("entityId", ""),
         "companyId": doc.get("companyId", ""),
         "email": doc.get("email", ""),
         "name": doc.get("name", ""),
         "description": doc.get("description", ""),
-        "fields": doc.get("fields") if isinstance(doc.get("fields"), list) else [],
-        "relationships": doc.get("relationships") if isinstance(doc.get("relationships"), list) else [],
+        "fields": fields,
+        "relationships": relationships,
         "sourceConnectorId": doc.get("sourceConnectorId", ""),
         "source": doc.get("source", "manual"),
-        "metadata": doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {},
+        "metadata": metadata,
+        "entityMapping": entity_mapping,
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
+    }
+
+
+def _string_list(value: Any) -> list[str]:
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item).strip()]
+
+
+def _entity_mapping_contract(doc: dict[str, Any], fields: list[Any], relationships: list[Any], metadata: dict[str, Any]) -> dict[str, Any]:
+    aliases = _string_list(metadata.get("aliases") or metadata.get("businessAliases"))
+    source_paths = [
+        str(field.get("sourcePath") or "").strip()
+        for field in fields
+        if isinstance(field, dict) and str(field.get("sourcePath") or "").strip()
+    ]
+    schema_name = str(metadata.get("schemaName") or metadata.get("tableName") or metadata.get("objectName") or "").strip()
+    permissions = metadata.get("permissions") if isinstance(metadata.get("permissions"), dict) else {}
+    read_tools = _string_list(metadata.get("readTools") or permissions.get("readTools"))
+    write_tools = _string_list(metadata.get("writeTools") or permissions.get("writeTools"))
+    scopes = _string_list(metadata.get("scopes") or permissions.get("scopes"))
+    unresolved_targets = [
+        str(rel.get("target") or "").strip()
+        for rel in relationships
+        if isinstance(rel, dict) and str(rel.get("target") or "").strip()
+    ]
+    readiness_gaps = []
+    if not aliases:
+        readiness_gaps.append("aliases")
+    if not fields:
+        readiness_gaps.append("fields")
+    if not read_tools and not write_tools and not scopes:
+        readiness_gaps.append("permissions")
+    if not doc.get("sourceConnectorId"):
+        readiness_gaps.append("source connector")
+    return {
+        "businessObject": doc.get("name", ""),
+        "aliases": aliases,
+        "systemObjects": {
+            "sourceConnectorId": doc.get("sourceConnectorId", ""),
+            "source": doc.get("source", "manual"),
+            "schemaName": schema_name,
+            "sourcePaths": source_paths,
+        },
+        "relationshipTargets": unresolved_targets,
+        "permissions": {
+            "readTools": read_tools,
+            "writeTools": write_tools,
+            "scopes": scopes,
+        },
+        "readiness": {
+            "status": "ready" if not readiness_gaps else "needs_mapping",
+            "gaps": readiness_gaps,
+            "hasIdentifier": any(isinstance(field, dict) and field.get("role") == "identifier" for field in fields),
+            "hasRelationships": bool(relationships),
+        },
     }
 
 

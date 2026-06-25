@@ -52,4 +52,44 @@ describe("Entities page", () => {
       expect(screen.queryByText('{"detail":"Not Found"}')).not.toBeInTheDocument();
     });
   });
+
+  it("shows entity mapping readiness from the semantic contract", async () => {
+    global.fetch = jest.fn((url: string) => {
+      if (url.includes("/entities?")) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => ({
+            entities: [
+              {
+                entityId: "entity-1",
+                companyId: "company-1",
+                email: "demo@example.com",
+                name: "Policy",
+                description: "Insurance policy",
+                fields: [{ name: "id", role: "identifier" }],
+                relationships: [],
+                source: "openapi",
+                entityMapping: {
+                  aliases: ["Poliza"],
+                  permissions: { scopes: ["policy:read"] },
+                  readiness: { status: "ready", gaps: [] },
+                },
+              },
+            ],
+          }),
+        } as Response);
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ tools: [], skills: [], agents: [], connectors: [] }),
+      } as Response);
+    }) as jest.Mock;
+
+    render(<Entities />);
+
+    expect(await screen.findByText("Policy")).toBeInTheDocument();
+    expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.getByText("alias Poliza")).toBeInTheDocument();
+    expect(screen.getByText("scope policy:read")).toBeInTheDocument();
+  });
 });

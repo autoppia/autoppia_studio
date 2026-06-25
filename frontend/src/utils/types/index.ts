@@ -1104,6 +1104,28 @@ export interface EntityModel {
   sourceConnectorId?: string;
   source?: EntitySource;
   metadata?: Record<string, any>;
+  entityMapping?: {
+    businessObject?: string;
+    aliases?: string[];
+    systemObjects?: {
+      sourceConnectorId?: string;
+      source?: string;
+      schemaName?: string;
+      sourcePaths?: string[];
+    };
+    relationshipTargets?: string[];
+    permissions?: {
+      readTools?: string[];
+      writeTools?: string[];
+      scopes?: string[];
+    };
+    readiness?: {
+      status?: string;
+      gaps?: string[];
+      hasIdentifier?: boolean;
+      hasRelationships?: boolean;
+    };
+  };
   createdAt?: string;
   updatedAt?: string;
 }
