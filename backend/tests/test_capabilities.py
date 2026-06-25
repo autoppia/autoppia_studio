@@ -311,7 +311,35 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     monkeypatch.setattr(
         capabilities,
         "benchmarks_collection",
-        _Collection([{"benchmarkId": "bench-1", "companyId": "co-1", "email": "user@example.com", "name": "Claims Benchmark", "status": "draft"}]),
+        _Collection(
+            [
+                {
+                    "benchmarkId": "bench-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "name": "Claims Benchmark",
+                    "status": "draft",
+                    "metadata": {
+                        "vertical": "insurance",
+                        "verticalDemo": {
+                            "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+                            "runtimePath": "hybrid_api_first",
+                            "coverage": [
+                                {"key": "email_read", "label": "Email read", "evidence": "imap.search_emails"},
+                                {"key": "erp_lookup", "label": "ERP lookup", "evidence": "erp.search_claims"},
+                                {"key": "document_grounding", "label": "Document grounding", "evidence": "knowledge.search"},
+                                {"key": "draft_artifact", "label": "Draft artifact", "evidence": "draft_email artifact"},
+                                {"key": "approval_boundary", "label": "Approval boundary", "evidence": "smtp.send_email approval"},
+                                {"key": "benchmark", "label": "Benchmark", "evidence": "tasks"},
+                                {"key": "trajectory", "label": "Trajectory", "evidence": "approved trajectory"},
+                                {"key": "skill_promotion", "label": "Skill promotion", "evidence": "published skill"},
+                                {"key": "runtime_replay", "label": "Runtime replay", "evidence": "passing eval run"},
+                            ],
+                        },
+                    },
+                }
+            ]
+        ),
     )
     monkeypatch.setattr(
         capabilities,
@@ -327,17 +355,19 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "status": "harvested",
                     "trajectoryId": "traj-1",
                     "businessIntent": "Review claim status",
-                    "allowedSystems": ["claims_erp", "knowledge"],
-                    "expectedArtifacts": ["claim_summary"],
-                    "riskClass": "low",
+                    "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                    "expectedArtifacts": ["claim_summary", "draft_email"],
+                    "riskClass": "send",
                     "successCriteria": "Claim status is summarized without changing the claim",
                     "metadata": {
+                        "expectedTools": ["imap.search_emails", "erp.search_claims", "knowledge.search", "smtp.draft_email", "smtp.send_email"],
                         "taskContract": {
                             "businessIntent": "Review claim status",
-                            "allowedSystems": ["claims_erp", "knowledge"],
-                            "expectedArtifacts": ["claim_summary"],
-                            "riskClass": "low",
+                            "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                            "expectedArtifacts": ["claim_summary", "draft_email"],
+                            "riskClass": "send",
                             "successCriteria": "Claim status is summarized without changing the claim",
+                            "initialState": {"approvalBoundary": "send_requires_approval"},
                         }
                     },
                 }
@@ -396,8 +426,8 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "companyId": "co-1",
                     "email": "user@example.com",
                     "name": "Review claim skill",
-                    "status": "ready",
-                    "promotionStatus": "ready",
+                    "status": "published",
+                    "promotionStatus": "published",
                     "benchmarkId": "bench-1",
                     "evalId": "task-1",
                     "trajectoryIds": ["traj-1"],
@@ -506,16 +536,17 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     edge_relations = {edge["relation"] for edge in graph["edges"]}
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
-    assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "policy_boundary:write", "approval_mode:always", "approval_mode:auto", "browser_policy:domain_restricted", "benchmark:bench-1", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
+    assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "policy_boundary:write", "approval_mode:always", "approval_mode:auto", "browser_policy:domain_restricted", "benchmark:bench-1", "vertical_demo:bench-1:vertical_demo", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
     assert {"eval_run:eval-run-1", "session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
     assert {"backs_vector_store", "indexes_resource", "grounds_connector", "read_by_tool", "grounds_task"} <= edge_relations
     assert {"has_regression_run", "evaluated_by_run", "gates_skill", "replayed_session"} <= edge_relations
+    assert {"validates_vertical_demo", "covers_demo_step", "implements_demo_capability", "proves_demo_replay"} <= edge_relations
     assert {"governed_by_boundary", "uses_approval_mode", "requires_write_approval", "requires_send_approval", "uses_browser_policy", "requires_browser_sandbox", "restricted_to_domains"} <= edge_relations
     assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
     assert {"scheduled_from_benchmark", "scheduled_from_task", "opened_session", "orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} <= edge_relations
-    assert task_node["payload"]["taskContract"]["allowedSystems"] == ["claims_erp", "knowledge"]
-    assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary"]
+    assert task_node["payload"]["taskContract"]["allowedSystems"] == ["email", "insurance_erp", "knowledge"]
+    assert task_node["payload"]["taskContract"]["expectedArtifacts"] == ["claim_summary", "draft_email"]
     assert task_node["payload"]["successCriteria"] == "Claim status is summarized without changing the claim"
     assert graph["coverage"]["tools"]["governed"] == 1
     assert graph["coverage"]["policies"]["writeCapabilities"] >= 1
@@ -537,6 +568,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["resources"]["linkedToTools"] is True
     assert graph["coverage"]["resources"]["linkedToTasks"] is True
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
+    assert graph["coverage"]["verticalDemos"]["total"] == 1
+    assert graph["coverage"]["verticalDemos"]["ready"] == 1
+    assert graph["coverage"]["verticalDemos"]["runtimeReplayReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["linkedToBenchmarks"] is True
     assert graph["coverage"]["evals"]["runs"] == 1
     assert graph["coverage"]["evals"]["pass"] == 1
     assert graph["coverage"]["evals"]["fail"] == 0

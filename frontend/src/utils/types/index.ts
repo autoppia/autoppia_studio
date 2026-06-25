@@ -1390,6 +1390,14 @@ export interface CapabilityGraphCoverage {
     tasks?: number;
     tasksWithContracts?: number;
   };
+  verticalDemos?: {
+    total?: number;
+    ready?: number;
+    partial?: number;
+    missing?: number;
+    linkedToBenchmarks?: boolean;
+    runtimeReplayReady?: number;
+  };
   evals?: {
     runs?: number;
     pass?: number;

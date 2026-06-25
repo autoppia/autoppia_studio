@@ -814,6 +814,118 @@ def _browser_policy_payload(policy: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _vertical_demo_spec(benchmark: dict[str, Any]) -> dict[str, Any] | None:
+    metadata = _metadata(benchmark)
+    vertical_demo = metadata.get("verticalDemo")
+    if isinstance(vertical_demo, dict):
+        return vertical_demo
+    vertical_demo = benchmark.get("verticalDemo")
+    return vertical_demo if isinstance(vertical_demo, dict) else None
+
+
+def _vertical_demo_payload(
+    *,
+    benchmark: dict[str, Any],
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    metadata = _metadata(benchmark)
+    vertical_demo = _vertical_demo_spec(benchmark)
+    if not vertical_demo:
+        return None
+
+    task_metadata = [_metadata(task) for task in tasks]
+    task_contracts = [task_contract_from_record(task) for task in tasks]
+    expected_tools = _dedupe_strings([
+        tool
+        for task, task_meta in zip(tasks, task_metadata, strict=False)
+        for tool in [
+            *((task_meta.get("expectedTools") if isinstance(task_meta.get("expectedTools"), list) else []) or []),
+            *((task.get("expectedTools") if isinstance(task.get("expectedTools"), list) else []) or []),
+        ]
+    ])
+    allowed_systems = _dedupe_strings([
+        system
+        for contract in task_contracts
+        for system in (contract.get("allowedSystems") or [])
+    ])
+    expected_artifacts = _dedupe_strings([
+        artifact
+        for contract in task_contracts
+        for artifact in (contract.get("expectedArtifacts") or [])
+    ])
+    approval_boundaries = _dedupe_strings([
+        metadata_item.get("initialState", {}).get("approvalBoundary")
+        for metadata_item in task_metadata
+        if isinstance(metadata_item.get("initialState"), dict)
+    ])
+    risk_classes = _dedupe_strings([contract.get("riskClass") for contract in task_contracts])
+    skill_ids = _dedupe_strings([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
+    trajectory_ids = _dedupe_strings([
+        trajectory_id
+        for skill in skills
+        for trajectory_id in (skill.get("trajectoryIds") if isinstance(skill.get("trajectoryIds"), list) else [])
+    ])
+    labels = [str(run.get("label") or "pending").lower() for run in runs]
+    promoted_statuses = {"published", "approved", "active", "production"}
+    promoted_skills = [
+        skill
+        for skill in skills
+        if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in promoted_statuses or skill.get("skillPackage")
+    ]
+
+    expected_tool_set = set(expected_tools)
+    checks = {
+        "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & expected_tool_set) or "email" in allowed_systems,
+        "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
+        "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
+        "draft_artifact": "draft_email" in expected_artifacts,
+        "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & expected_tool_set) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
+        "benchmark": bool(tasks),
+        "trajectory": bool(trajectory_ids),
+        "skill_promotion": bool(promoted_skills),
+        "runtime_replay": labels.count("pass") > 0,
+    }
+
+    coverage: list[dict[str, Any]] = []
+    for item in vertical_demo.get("coverage") or []:
+        if not isinstance(item, dict):
+            continue
+        key = str(item.get("key") or "")
+        ready = bool(checks.get(key))
+        coverage.append({
+            "key": key,
+            "label": str(item.get("label") or key),
+            "expectedEvidence": str(item.get("evidence") or ""),
+            "ready": ready,
+            "status": "ready" if ready else "missing",
+        })
+    total = len(coverage)
+    ready_count = sum(1 for item in coverage if item.get("ready"))
+    missing = [str(item.get("key") or "") for item in coverage if not item.get("ready")]
+    return {
+        "objective": str(vertical_demo.get("objective") or ""),
+        "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
+        "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
+        "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
+        "readyCount": ready_count,
+        "total": total,
+        "missing": missing,
+        "coverage": coverage,
+        "evidence": {
+            "expectedTools": expected_tools,
+            "allowedSystems": allowed_systems,
+            "expectedArtifacts": expected_artifacts,
+            "approvalBoundaries": approval_boundaries,
+            "riskClasses": risk_classes,
+            "skillIds": skill_ids,
+            "trajectoryIds": trajectory_ids,
+            "passingRuns": labels.count("pass"),
+        },
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -829,6 +941,7 @@ def _capability_graph_coverage(
     approval_docs: list[dict[str, Any]],
     artifact_docs: list[dict[str, Any]],
     work_item_docs: list[dict[str, Any]],
+    vertical_demo_payloads: list[dict[str, Any]],
     edges: list[dict[str, Any]],
 ) -> dict[str, Any]:
     edge_relations = {edge.get("relation") for edge in edges}
@@ -889,6 +1002,14 @@ def _capability_graph_coverage(
             "approvalModes": sorted({str(policy.get("approvalMode") or "auto") for policy in skill_policies} | {str((tool.get("permissions") if isinstance(tool.get("permissions"), dict) else {}).get("approval") or "auto") for tool in tool_docs}),
         },
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
+        "verticalDemos": {
+            "total": len(vertical_demo_payloads),
+            "ready": sum(1 for item in vertical_demo_payloads if item.get("state") == "ready"),
+            "partial": sum(1 for item in vertical_demo_payloads if item.get("state") == "partial"),
+            "missing": sum(1 for item in vertical_demo_payloads if item.get("state") == "missing"),
+            "linkedToBenchmarks": "validates_vertical_demo" in edge_relations,
+            "runtimeReplayReady": sum(1 for item in vertical_demo_payloads if int((item.get("evidence") or {}).get("passingRuns") or 0) > 0),
+        },
         "evals": {
             "runs": len(eval_run_docs),
             "pass": sum(1 for run in eval_run_docs if _eval_run_label(run) == "pass"),
@@ -1683,6 +1804,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     resource_node_ids: list[str] = []
     task_nodes_by_eval_id: dict[str, str] = {}
     task_nodes_by_benchmark_id: dict[str, list[str]] = {}
+    task_docs_by_benchmark_id: dict[str, list[dict[str, Any]]] = {}
 
     def add_policy_edges(source_node: str, policy: dict[str, Any], *, boundary: str = "", evidence_source: str = "policy") -> None:
         clean_boundary = boundary if boundary in {"read", "draft", "write", "send"} else "read"
@@ -1797,6 +1919,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             benchmark_id = str(task.get("benchmarkId") or "")
             if benchmark_id:
                 task_nodes_by_benchmark_id.setdefault(benchmark_id, []).append(task_node)
+                task_docs_by_benchmark_id.setdefault(benchmark_id, []).append(task)
         _add_edge(edges, f"benchmark:{task.get('benchmarkId')}", task_node, "contains_task", {"source": "benchmark_tasks"})
         if task.get("trajectoryId"):
             _add_edge(edges, task_node, f"trajectory:{task.get('trajectoryId')}", "produced_trajectory", {"source": "task.trajectoryId"})
@@ -1819,6 +1942,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     serialized_skills = [await _serialize_skill(skill) for skill in skill_docs]
     skill_nodes_by_eval_id: dict[str, list[str]] = {}
     skill_nodes_by_benchmark_id: dict[str, list[str]] = {}
+    skill_docs_by_benchmark_id: dict[str, list[dict[str, Any]]] = {}
     for skill in serialized_skills:
         skill_id = str(skill.get("skillId") or skill.get("capabilityId") or "")
         skill_node = _add_node(nodes, "skill", skill_id, str(skill.get("name") or skill_id), skill)
@@ -1830,6 +1954,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             benchmark_id = str(skill.get("benchmarkId") or "")
             if benchmark_id:
                 skill_nodes_by_benchmark_id.setdefault(benchmark_id, []).append(skill_node)
+                skill_docs_by_benchmark_id.setdefault(benchmark_id, []).append(skill)
         for trajectory_id in skill.get("trajectoryIds") or []:
             _add_edge(edges, f"trajectory:{trajectory_id}", skill_node, "promoted_to", {"source": "skill.trajectoryIds"})
         for tool_ref in skill.get("toolIds") or []:
@@ -1851,6 +1976,8 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             entity_node = _add_node(nodes, "entity", entity_id, str((entity or {}).get("name") or output_entity), entity or {"name": output_entity})
             _add_edge(edges, skill_node, entity_node, "output_entity", {"source": "skill.outputEntity"})
 
+    eval_run_docs_by_benchmark_id: dict[str, list[dict[str, Any]]] = {}
+    passing_eval_run_nodes_by_benchmark_id: dict[str, list[str]] = {}
     for run in eval_run_docs:
         run_id = str(run.get("runId") or "")
         run_node = _add_node(nodes, "eval_run", run_id, str(run.get("agentTaskName") or run.get("evalId") or run_id), _eval_run_payload(run))
@@ -1858,6 +1985,9 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
         eval_id = str(run.get("evalId") or "")
         session_id = str(run.get("sessionId") or "")
         if benchmark_id:
+            eval_run_docs_by_benchmark_id.setdefault(benchmark_id, []).append(run)
+            if _eval_run_label(run) == "pass":
+                passing_eval_run_nodes_by_benchmark_id.setdefault(benchmark_id, []).append(run_node)
             _add_edge(edges, f"benchmark:{benchmark_id}", run_node, "has_regression_run", {"source": "eval_run.benchmarkId"})
         for task_node in _dedupe_strings([task_nodes_by_eval_id.get(eval_id, ""), *task_nodes_by_benchmark_id.get(benchmark_id, [])]):
             _add_edge(edges, task_node, run_node, "evaluated_by_run", {"source": "eval_run.evalId"})
@@ -1865,6 +1995,33 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             _add_edge(edges, run_node, skill_node, "gates_skill", {"source": "eval_run.evalId"})
         if session_id:
             _add_edge(edges, run_node, f"session:{session_id}", "replayed_session", {"source": "eval_run.sessionId"})
+
+    vertical_demo_payloads: list[dict[str, Any]] = []
+    for benchmark in benchmark_docs:
+        benchmark_id = str(benchmark.get("benchmarkId") or "")
+        demo_payload = _vertical_demo_payload(
+            benchmark=benchmark,
+            tasks=task_docs_by_benchmark_id.get(benchmark_id, []),
+            skills=skill_docs_by_benchmark_id.get(benchmark_id, []),
+            runs=eval_run_docs_by_benchmark_id.get(benchmark_id, []),
+        )
+        if not demo_payload:
+            continue
+        vertical_demo_payloads.append(demo_payload)
+        demo_node = _add_node(
+            nodes,
+            "vertical_demo",
+            f"{benchmark_id}:vertical_demo",
+            demo_payload.get("objective") or f"{benchmark_id} vertical demo",
+            demo_payload,
+        )
+        _add_edge(edges, f"benchmark:{benchmark_id}", demo_node, "validates_vertical_demo", {"source": "benchmark.metadata.verticalDemo"})
+        for task_node in task_nodes_by_benchmark_id.get(benchmark_id, []):
+            _add_edge(edges, task_node, demo_node, "covers_demo_step", {"source": "task.benchmarkId"})
+        for skill_node in skill_nodes_by_benchmark_id.get(benchmark_id, []):
+            _add_edge(edges, skill_node, demo_node, "implements_demo_capability", {"source": "skill.benchmarkId"})
+        for run_node in passing_eval_run_nodes_by_benchmark_id.get(benchmark_id, []):
+            _add_edge(edges, run_node, demo_node, "proves_demo_replay", {"source": "eval_run.label"})
 
     for session in session_docs:
         session_id = str(session.get("sessionId") or "")
@@ -1956,6 +2113,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
                 approval_docs=approval_docs,
                 artifact_docs=artifact_docs,
                 work_item_docs=work_item_docs,
+                vertical_demo_payloads=vertical_demo_payloads,
                 edges=edge_list,
             ),
         }

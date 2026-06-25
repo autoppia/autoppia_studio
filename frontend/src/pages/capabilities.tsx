@@ -2662,6 +2662,10 @@ export default function Capabilities(): React.ReactElement {
       domainRestricted: Boolean(coverage.policies?.domainRestricted),
       taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
       totalTasks: coverage.benchmarks?.tasks || 0,
+      verticalDemos: coverage.verticalDemos?.total || 0,
+      readyVerticalDemos: coverage.verticalDemos?.ready || 0,
+      verticalReplayReady: coverage.verticalDemos?.runtimeReplayReady || 0,
+      verticalDemoLinked: Boolean(coverage.verticalDemos?.linkedToBenchmarks),
       evalRuns: coverage.evals?.runs || 0,
       evalPass: coverage.evals?.pass || 0,
       evalFail: coverage.evals?.fail || 0,
@@ -3447,6 +3451,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.evalFail > 0 ? "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300" : backendGraphStats.evalLinked && backendGraphStats.evalPass > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.evalPass}/{backendGraphStats.evalRuns} eval pass · {backendGraphStats.evalFail} fail
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.verticalDemos > 0 && backendGraphStats.readyVerticalDemos === backendGraphStats.verticalDemos ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : backendGraphStats.verticalDemos > 0 && backendGraphStats.verticalDemoLinked ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
+                          {backendGraphStats.readyVerticalDemos}/{backendGraphStats.verticalDemos} vertical demos · {backendGraphStats.verticalReplayReady} replay
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.hasPromotionPath && backendGraphStats.reusableSkills > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.reusableSkills}/{backendGraphStats.totalSkills} reusable skills
