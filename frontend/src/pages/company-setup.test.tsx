@@ -61,6 +61,14 @@ describe("Company Setup page", () => {
                   indexed: 4,
                   withResourceContract: 5,
                   withVectorStore: 4,
+                  acl: {
+                    withAcl: 5,
+                    companyVisible: 5,
+                    restricted: 0,
+                    visibility: [{ name: "company", count: 5 }],
+                    roles: ["claims"],
+                    users: [],
+                  },
                   status: [{ name: "indexed", count: 4 }],
                   readTools: ["knowledge.claims.search", "knowledge.claims.read_document"],
                   sample: [
@@ -71,6 +79,7 @@ describe("Company Setup page", () => {
                       resourceKind: "document",
                       status: "indexed",
                       vectorDatabaseId: "vec-1",
+                      aclVisibility: "company",
                       readTools: ["knowledge.claims.search"],
                     },
                   ],
@@ -172,6 +181,13 @@ describe("Company Setup page", () => {
                 hostJwtConfigured: true,
                 discoveredDomains: ["erp.celeris.example"],
                 skillPolicies: [{ name: "approval_required", count: 2 }],
+                resourceAcl: {
+                  documents: 5,
+                  withAcl: 5,
+                  companyVisible: 5,
+                  restricted: 0,
+                  visibility: [{ name: "company", count: 5 }],
+                },
               },
               capabilityMap: {
                 taskContracts: {

@@ -197,6 +197,19 @@ def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
     return contract if isinstance(contract, dict) else {}
 
 
+def _resource_acl(doc: dict[str, Any]) -> dict[str, Any]:
+    contract = _resource_contract(doc)
+    governance = contract.get("governance") if isinstance(contract.get("governance"), dict) else {}
+    acl = governance.get("acl") if isinstance(governance.get("acl"), dict) else doc.get("acl") if isinstance(doc.get("acl"), dict) else {}
+    visibility = str(acl.get("visibility") or "").strip()
+    return {
+        "explicit": bool(acl),
+        "visibility": visibility or "unspecified",
+        "allowedRoles": _normalized_list(acl.get("allowedRoles")),
+        "allowedUsers": _normalized_list(acl.get("allowedUsers")),
+    }
+
+
 def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
     contract = _resource_contract(doc)
     return _normalized_list(contract.get("readTools") or doc.get("readTools"))
@@ -406,10 +419,18 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         docs_with_contract = sum(1 for doc in knowledge_docs if _resource_contract(doc))
         docs_with_vector_store = sum(1 for doc in knowledge_docs if _resource_vector_id(doc))
         indexed_docs = sum(1 for status in resource_statuses if str(status).lower() in {"indexed", "ready", "active", "completed"})
+        resource_acls = [_resource_acl(doc) for doc in knowledge_docs]
+        docs_with_acl = sum(1 for acl in resource_acls if acl.get("explicit"))
+        company_visible_docs = sum(1 for acl in resource_acls if acl.get("visibility") == "company")
+        restricted_docs = sum(1 for acl in resource_acls if acl.get("visibility") not in {"", "company", "unspecified"})
+        acl_roles = sorted({role for acl in resource_acls for role in _normalized_list(acl.get("allowedRoles"))})
+        acl_users = sorted({user for acl in resource_acls for user in _normalized_list(acl.get("allowedUsers"))})
+        acl_visibility_counts = _sorted_counts([str(acl.get("visibility") or "unspecified") for acl in resource_acls])
         resource_gaps = [
             gap
             for gap in [
                 {"key": "resource_contracts", "label": "Knowledge documents exist but no resource contracts are exposed.", "target": "knowledge"} if knowledge_docs and docs_with_contract == 0 else None,
+                {"key": "resource_acl", "label": "Knowledge resources need explicit ACL governance before broad runtime use.", "target": "knowledge"} if knowledge_docs and docs_with_acl < len(knowledge_docs) else None,
                 {"key": "resource_read_tools", "label": "Knowledge resources need read-only tools before they can support skills.", "target": "knowledge"} if knowledge_docs and not resource_read_tools else None,
                 {"key": "vector_index", "label": "Knowledge resources are not linked to vector stores.", "target": "knowledge"} if knowledge_docs and docs_with_vector_store == 0 else None,
                 {"key": "vector_store", "label": "Create a vector store for indexed business context.", "target": "knowledge"} if knowledge_docs and not vector_stores else None,
@@ -517,6 +538,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "runtime": counts["sessions"] > 0,
             "approvals": counts["pendingApprovals"] > 0 or counts["approvedApprovals"] > 0,
             "domainAllowlist": bool((company.get("embedSettings") or {}).get("allowedOrigins") or connector_domains),
+            "resourceAcl": not knowledge_docs or docs_with_acl == len(knowledge_docs),
         }
         readiness_gaps = []
         if not readiness_checks["systems"]:
@@ -539,6 +561,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             readiness_gaps.append({"key": "runtime", "label": "Run at least one governed runtime session.", "target": "runtime"})
         if not readiness_checks["domainAllowlist"]:
             readiness_gaps.append({"key": "domains", "label": "Define domain allowlists for browser/embed governance.", "target": "governance"})
+        if not readiness_checks["resourceAcl"]:
+            readiness_gaps.append({"key": "resource_acl", "label": "Define ACL visibility for every knowledge resource.", "target": "knowledge"})
         readiness_passed = sum(1 for value in readiness_checks.values() if value)
         readiness_score = round(readiness_passed / len(readiness_checks), 3) if readiness_checks else 0.0
 
@@ -588,6 +612,14 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "indexed": indexed_docs,
                     "withResourceContract": docs_with_contract,
                     "withVectorStore": docs_with_vector_store,
+                    "acl": {
+                        "withAcl": docs_with_acl,
+                        "companyVisible": company_visible_docs,
+                        "restricted": restricted_docs,
+                        "visibility": acl_visibility_counts,
+                        "roles": acl_roles[:20],
+                        "users": acl_users[:20],
+                    },
                     "status": _sorted_counts(resource_statuses),
                     "readTools": resource_read_tools[:20],
                     "sample": [
@@ -598,6 +630,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                             "resourceKind": str(doc.get("resourceKind") or _resource_contract(doc).get("resourceKind") or "document"),
                             "status": _resource_status(doc),
                             "vectorDatabaseId": _resource_vector_id(doc),
+                            "aclVisibility": _resource_acl(doc)["visibility"],
                             "readTools": _resource_read_tools(doc)[:8],
                         }
                         for doc in knowledge_docs[:8]
@@ -703,6 +736,13 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
                 "discoveredDomains": connector_domains,
                 "skillPolicies": policy_counts,
+                "resourceAcl": {
+                    "documents": len(knowledge_docs),
+                    "withAcl": docs_with_acl,
+                    "companyVisible": company_visible_docs,
+                    "restricted": restricted_docs,
+                    "visibility": acl_visibility_counts,
+                },
             },
             "integration": {
                 "systems": counts["connectors"],
@@ -718,10 +758,14 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "ownerEmail": email,
                     "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
                     "allowedOrigins": list((company.get("embedSettings") or {}).get("allowedOrigins") or []),
+                    "resourceVisibility": acl_visibility_counts,
+                    "resourcesWithAcl": docs_with_acl,
+                    "resourceAclComplete": not knowledge_docs or docs_with_acl == len(knowledge_docs),
                 },
                 "compliance": {
                     "browserRestrictedByDomain": bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins")),
                     "humanApprovalConfigured": bool(policy_counts or counts["pendingApprovals"] or counts["approvedApprovals"]),
+                    "resourceAclComplete": not knowledge_docs or docs_with_acl == len(knowledge_docs),
                     "auditEvidence": {
                         "sessions": counts["sessions"],
                         "artifacts": counts["artifacts"],

@@ -643,6 +643,14 @@ export interface CompanySetupContract {
       indexed: number;
       withResourceContract: number;
       withVectorStore: number;
+      acl?: {
+        withAcl: number;
+        companyVisible: number;
+        restricted: number;
+        visibility: CompanySetupCount[];
+        roles: string[];
+        users: string[];
+      };
       status: CompanySetupCount[];
       readTools: string[];
       sample: Array<{
@@ -652,6 +660,7 @@ export interface CompanySetupContract {
         resourceKind: string;
         status: string;
         vectorDatabaseId: string;
+        aclVisibility?: string;
         readTools: string[];
       }>;
     };
@@ -752,6 +761,13 @@ export interface CompanySetupContract {
     hostJwtConfigured: boolean;
     discoveredDomains: string[];
     skillPolicies: CompanySetupCount[];
+    resourceAcl?: {
+      documents: number;
+      withAcl: number;
+      companyVisible: number;
+      restricted: number;
+      visibility: CompanySetupCount[];
+    };
   };
   integration?: {
     systems: number;
@@ -767,10 +783,14 @@ export interface CompanySetupContract {
       ownerEmail: string;
       hostJwtConfigured: boolean;
       allowedOrigins: string[];
+      resourceVisibility?: CompanySetupCount[];
+      resourcesWithAcl?: number;
+      resourceAclComplete?: boolean;
     };
     compliance: {
       browserRestrictedByDomain: boolean;
       humanApprovalConfigured: boolean;
+      resourceAclComplete?: boolean;
       auditEvidence: {
         sessions: number;
         artifacts: number;
