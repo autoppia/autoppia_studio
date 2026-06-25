@@ -57,6 +57,11 @@ class BenchmarkTaskCreateRequest(BaseModel):
     successCriteria: str = ""
     initialUrl: str = ""
     judgeType: str = "manual"
+    businessIntent: str = ""
+    allowedSystems: list[str] = Field(default_factory=list)
+    expectedArtifacts: list[str] = Field(default_factory=list)
+    riskClass: str = ""
+    initialState: dict[str, Any] = Field(default_factory=dict)
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -115,19 +120,30 @@ async def _agent_name(agent_id: str, fallback: str = "") -> str:
 def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None) -> dict[str, Any]:
     metadata = task.get("metadata") if isinstance(task.get("metadata"), dict) else {}
     benchmark_doc = benchmark or {}
+    initial_url = metadata.get("startUrl") or metadata.get("iwaStartUrl") or benchmark_doc.get("websiteUrl") or ""
+    task_contract = {
+        "businessIntent": metadata.get("businessIntent") or task.get("businessIntent") or task.get("prompt", ""),
+        "initialState": metadata.get("initialState") if isinstance(metadata.get("initialState"), dict) else {},
+        "initialUrl": initial_url,
+        "allowedSystems": [str(item) for item in metadata.get("allowedSystems") or [] if item],
+        "expectedArtifacts": [str(item) for item in metadata.get("expectedArtifacts") or [] if item],
+        "successCriteria": task.get("successCriteria", ""),
+        "riskClass": str(metadata.get("riskClass") or ""),
+    }
     return {
         "evalId": task.get("taskId", ""),
         "taskId": task.get("taskId", ""),
         "email": task.get("email", ""),
         "companyId": task.get("companyId", ""),
         "prompt": task.get("prompt", ""),
-        "initialUrl": metadata.get("startUrl") or metadata.get("iwaStartUrl") or benchmark_doc.get("websiteUrl") or "",
+        "initialUrl": initial_url,
         "benchmarkId": task.get("benchmarkId", ""),
         "benchmarkName": benchmark_doc.get("name") or task.get("benchmarkName") or "Benchmark",
         "agentId": task.get("agentId", ""),
         "agentName": benchmark_doc.get("agentName", ""),
         "agentTaskName": task.get("taskName") or task.get("name") or "",
         "successCriteria": task.get("successCriteria", ""),
+        "taskContract": task_contract,
         "judgeType": _clean_judge_type(task.get("judgeType")),
         "status": task.get("status", ""),
         "source": task.get("source", "benchmark_task"),
@@ -364,6 +380,16 @@ async def create_benchmark_task(benchmark_id: str, body: BenchmarkTaskCreateRequ
     initial_url = body.initialUrl.strip()
     if initial_url:
         metadata["startUrl"] = initial_url
+    if body.businessIntent.strip():
+        metadata["businessIntent"] = body.businessIntent.strip()
+    if body.allowedSystems:
+        metadata["allowedSystems"] = [str(item).strip() for item in body.allowedSystems if str(item).strip()]
+    if body.expectedArtifacts:
+        metadata["expectedArtifacts"] = [str(item).strip() for item in body.expectedArtifacts if str(item).strip()]
+    if body.riskClass.strip():
+        metadata["riskClass"] = body.riskClass.strip()
+    if body.initialState:
+        metadata["initialState"] = body.initialState
     task = {
         "taskId": str(uuid4()),
         "email": body.email or benchmark.get("email", ""),

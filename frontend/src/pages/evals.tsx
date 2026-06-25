@@ -30,6 +30,10 @@ const apiUrl = getApiUrl();
 
 type TabKey = "benchmarks" | "runs";
 
+function parseCommaSeparated(value: string) {
+  return value.split(",").map((item) => item.trim()).filter(Boolean);
+}
+
 interface Benchmark {
   benchmarkId: string;
   name: string;
@@ -204,7 +208,17 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
 
   const [addTaskBenchmark, setAddTaskBenchmark] = useState<Benchmark | null>(null);
   const [addingTask, setAddingTask] = useState(false);
-  const [newTask, setNewTask] = useState({ name: "", prompt: "", successCriteria: "", initialUrl: "", judgeType: "manual" });
+  const [newTask, setNewTask] = useState({
+    name: "",
+    prompt: "",
+    businessIntent: "",
+    successCriteria: "",
+    initialUrl: "",
+    allowedSystems: "",
+    expectedArtifacts: "",
+    riskClass: "",
+    judgeType: "manual",
+  });
   const [judgingRunId, setJudgingRunId] = useState<string | null>(null);
   const [selectedRunGroupId, setSelectedRunGroupId] = useState<string | null>(null);
   const [selectedConnectorBenchmarkKey, setSelectedConnectorBenchmarkKey] = useState("email");
@@ -628,14 +642,18 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
           agentId: addTaskBenchmark.agentId,
           name: newTask.name.trim(),
           prompt: newTask.prompt.trim(),
+          businessIntent: newTask.businessIntent.trim(),
           successCriteria: newTask.successCriteria.trim(),
           initialUrl: newTask.initialUrl.trim(),
+          allowedSystems: parseCommaSeparated(newTask.allowedSystems),
+          expectedArtifacts: parseCommaSeparated(newTask.expectedArtifacts),
+          riskClass: newTask.riskClass.trim(),
           judgeType: newTask.judgeType,
         }),
       });
       if (!res.ok) throw new Error(await res.text());
       setAddTaskBenchmark(null);
-      setNewTask({ name: "", prompt: "", successCriteria: "", initialUrl: "", judgeType: "manual" });
+      setNewTask({ name: "", prompt: "", businessIntent: "", successCriteria: "", initialUrl: "", allowedSystems: "", expectedArtifacts: "", riskClass: "", judgeType: "manual" });
       await fetchData();
     } catch (err) {
       console.error("Failed to add benchmark task:", err);
@@ -1173,8 +1191,26 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                               <span className={`px-2 py-0.5 rounded-md border text-[10px] font-semibold ${judgeClass(task.judgeType)}`}>
                                 {(task.judgeType || "manual") === "llm" ? "LLMJudge" : "Manual"}
                               </span>
+                              {task.taskContract?.riskClass && (
+                                <span className="px-2 py-0.5 rounded-md border border-amber-200 bg-amber-50 text-[10px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                  {task.taskContract.riskClass}
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
+                            {task.taskContract && (
+                              <div className="mt-2 flex flex-wrap gap-1.5">
+                                {(task.taskContract.allowedSystems || []).slice(0, 3).map((system) => (
+                                  <span key={system} className="rounded-md border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">{system}</span>
+                                ))}
+                                {(task.taskContract.expectedArtifacts || []).slice(0, 3).map((artifact) => (
+                                  <span key={artifact} className="rounded-md border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[10px] font-medium text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300">{artifact}</span>
+                                ))}
+                                {task.taskContract.businessIntent && (
+                                  <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">business intent</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1419,6 +1455,15 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                   className={`${fieldBase} resize-none`}
                 />
               </FormField>
+              <FormField label="Business intent">
+                <textarea
+                  value={newTask.businessIntent}
+                  onChange={(e) => setNewTask((p) => ({ ...p, businessIntent: e.target.value }))}
+                  placeholder="What business outcome this task validates"
+                  rows={2}
+                  className={`${fieldBase} resize-none`}
+                />
+              </FormField>
               <FormField label="Success criteria">
                 <textarea
                   value={newTask.successCriteria}
@@ -1427,6 +1472,39 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                   rows={2}
                   className={`${fieldBase} resize-none`}
                 />
+              </FormField>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <FormField label="Allowed systems">
+                  <input
+                    type="text"
+                    value={newTask.allowedSystems}
+                    onChange={(e) => setNewTask((p) => ({ ...p, allowedSystems: e.target.value }))}
+                    placeholder="email, erp, knowledge"
+                    className={fieldClass}
+                  />
+                </FormField>
+                <FormField label="Expected artifacts">
+                  <input
+                    type="text"
+                    value={newTask.expectedArtifacts}
+                    onChange={(e) => setNewTask((p) => ({ ...p, expectedArtifacts: e.target.value }))}
+                    placeholder="draft_email, claim_summary"
+                    className={fieldClass}
+                  />
+                </FormField>
+              </div>
+              <FormField label="Risk class">
+                <select
+                  value={newTask.riskClass}
+                  onChange={(e) => setNewTask((p) => ({ ...p, riskClass: e.target.value }))}
+                  className={fieldClass}
+                >
+                  <option value="">Unspecified</option>
+                  <option value="read">Read</option>
+                  <option value="draft">Draft</option>
+                  <option value="write">Write</option>
+                  <option value="send">Send</option>
+                </select>
               </FormField>
               <FormField label="Judge">
                 <select

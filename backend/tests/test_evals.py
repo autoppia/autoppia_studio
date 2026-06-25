@@ -162,6 +162,11 @@ async def test_create_benchmark_and_task(monkeypatch):
             prompt="What is the travel approval policy?",
             successCriteria="Answer cites the policy.",
             initialUrl="https://example.com/start",
+            businessIntent="Answer a policy question with citations",
+            allowedSystems=["knowledge", "email"],
+            expectedArtifacts=["answer_summary"],
+            riskClass="read",
+            initialState={"documentSet": "travel-policy"},
         ),
     )
 
@@ -170,9 +175,18 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert created["benchmark"]["agentName"] == "Second Agent"
     assert tasks.docs[0]["benchmarkId"] == benchmark_id
     assert tasks.docs[0]["metadata"]["startUrl"] == "https://example.com/start"
+    assert tasks.docs[0]["metadata"]["businessIntent"] == "Answer a policy question with citations"
+    assert tasks.docs[0]["metadata"]["allowedSystems"] == ["knowledge", "email"]
+    assert tasks.docs[0]["metadata"]["expectedArtifacts"] == ["answer_summary"]
+    assert tasks.docs[0]["metadata"]["riskClass"] == "read"
+    assert tasks.docs[0]["metadata"]["initialState"] == {"documentSet": "travel-policy"}
     assert tasks.docs[0]["judgeType"] == "manual"
     assert task["task"]["agentTaskName"] == "Answer policy question"
     assert task["task"]["initialUrl"] == "https://example.com/start"
+    assert task["task"]["taskContract"]["businessIntent"] == "Answer a policy question with citations"
+    assert task["task"]["taskContract"]["allowedSystems"] == ["knowledge", "email"]
+    assert task["task"]["taskContract"]["expectedArtifacts"] == ["answer_summary"]
+    assert task["task"]["taskContract"]["riskClass"] == "read"
 
 
 @pytest.mark.asyncio

@@ -121,6 +121,15 @@ export interface EvalItem {
   agentName?: string;
   agentTaskName?: string;
   successCriteria?: string;
+  taskContract?: {
+    businessIntent?: string;
+    initialState?: Record<string, any>;
+    initialUrl?: string;
+    allowedSystems?: string[];
+    expectedArtifacts?: string[];
+    successCriteria?: string;
+    riskClass?: string;
+  };
   judgeType?: "manual" | "llm" | string;
   status?: string;
   source?: string;
