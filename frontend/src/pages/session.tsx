@@ -704,8 +704,8 @@ function Session(): React.ReactElement {
   const hasBrowserContent = Boolean(liveUrl) || Boolean(displayedScreenshot);
   const hasBrowserActions = runtimeTimeline.some((step) => step.activity === "browser");
   const browserAvailable = Boolean(initialUrl || lastUrl || hasBrowserContent || hasBrowserActions);
-  const connectorActionCount = runtimeTimeline.filter((step) => step.activity === "tool").length;
-  const browserActionCount = runtimeTimeline.filter((step) => step.activity === "browser").length;
+  const connectorActionCount = Number(loadedSession?.connectorActionCount ?? runtimeTimeline.filter((step) => step.activity === "tool").length);
+  const browserActionCount = Number(loadedSession?.browserActionCount ?? runtimeTimeline.filter((step) => step.activity === "browser").length);
   const matchedSkillName = String(loadedSession?.matchedSkillName || runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
   const matchedSkillId = String(loadedSession?.matchedSkillId || runtimeState?.matchedSkillId || locationState?.skillId || "");
   const benchmarkId = String(locationState?.benchmarkId || "");

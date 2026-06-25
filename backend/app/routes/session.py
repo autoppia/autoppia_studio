@@ -97,16 +97,19 @@ def _serialize_session_summary(doc: dict) -> dict:
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
     runtime_state = doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}
     approved_calls = runtime_state.get("approvedConnectorToolCalls") if isinstance(runtime_state.get("approvedConnectorToolCalls"), list) else []
-    has_browser_activity = any(str(item.get("action") or "").startswith("browser.") for item in action_history if isinstance(item, dict))
-    has_connector_activity = any(
-        not action.startswith(("browser.", "router.", "runtime.", "user."))
-        and action not in {"skill.use", "Initialize", "Continue", ""}
-        for action in (
-            str(item.get("action") or "")
-            for item in action_history
-            if isinstance(item, dict)
-        )
+    browser_action_count = sum(
+        1 for item in action_history
+        if isinstance(item, dict) and str(item.get("action") or "").startswith("browser.")
     )
+    connector_action_count = sum(
+        1
+        for item in action_history
+        if isinstance(item, dict)
+        and not str(item.get("action") or "").startswith(("browser.", "router.", "runtime.", "user."))
+        and str(item.get("action") or "") not in {"skill.use", "Initialize", "Continue", ""}
+    )
+    has_browser_activity = browser_action_count > 0
+    has_connector_activity = connector_action_count > 0
     source_kind = str(runtime_state.get("sourceKind") or "")
     work_item_id = str(runtime_state.get("workItemId") or "")
     run_id = str(runtime_state.get("runId") or "")
@@ -127,6 +130,8 @@ def _serialize_session_summary(doc: dict) -> dict:
         "actionCount": len(action_history),
         "chatCount": len(chat_history),
         "runtimeKind": runtime_kind,
+        "browserActionCount": browser_action_count,
+        "connectorActionCount": connector_action_count,
         "hasBrowserActivity": has_browser_activity,
         "hasConnectorActivity": has_connector_activity,
         "matchedSkillId": str(runtime_state.get("matchedSkillId") or ""),

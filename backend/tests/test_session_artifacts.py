@@ -159,6 +159,8 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["chatCount"] == 2
     assert session["actionCount"] == 2
     assert session["runtimeKind"] == "hybrid"
+    assert session["browserActionCount"] == 1
+    assert session["connectorActionCount"] == 1
     assert session["hasBrowserActivity"] is True
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"
@@ -271,6 +273,8 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["chatCount"] == 2
     assert session["actionCount"] == 2
     assert session["runtimeKind"] == "hybrid"
+    assert session["browserActionCount"] == 1
+    assert session["connectorActionCount"] == 1
     assert session["hasBrowserActivity"] is True
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"

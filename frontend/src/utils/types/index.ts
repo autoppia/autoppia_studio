@@ -14,6 +14,8 @@ export interface SessionItem {
     actionCount?: number;
     chatCount?: number;
     runtimeKind?: "browser" | "api" | "hybrid";
+    browserActionCount?: number;
+    connectorActionCount?: number;
     hasBrowserActivity?: boolean;
     hasConnectorActivity?: boolean;
     matchedSkillId?: string;
