@@ -176,6 +176,13 @@ function approvalLabel(mode: ApprovalMode) {
   return "approval auto";
 }
 
+function runtimePolicyLabel(skill: CompanySkill) {
+  const policy = skill.runtimePolicy;
+  if (!policy) return skill.riskPolicy ? skill.riskPolicy.replace(/_/g, " ") : "runtime policy";
+  const approvals = policy.approvalRequiredFor?.length ? `approval: ${policy.approvalRequiredFor.join("/")}` : "approval: none";
+  return `${policy.runtimeClass || "api"} · ${policy.approvalMode || "auto"} · ${approvals}`;
+}
+
 function humanizeName(value?: string) {
   return (value || "")
     .replace(/[_-]+/g, " ")
@@ -1252,6 +1259,30 @@ function CapabilityDetailModal({
                     </span>
                     <span className="mt-1 block text-[11px] leading-4 text-gray-400 dark:text-gray-500">{item.hint}</span>
                   </button>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {isSkill && (
+            <section>
+              <div className="flex items-center justify-between gap-3 mb-2">
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime policy</p>
+                <span className={`px-2 py-0.5 rounded-md text-[10px] font-medium border ${approvalTone((detail.item.runtimePolicy?.approvalMode as ApprovalMode) || approvalMode(detail.item))}`}>
+                  {detail.item.runtimePolicy?.runtimeClass || "api"}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                {[
+                  { label: "Approval mode", value: detail.item.runtimePolicy?.approvalMode || approvalMode(detail.item) },
+                  { label: "Approval scopes", value: detail.item.runtimePolicy?.approvalRequiredFor?.join(", ") || "none" },
+                  { label: "Runtime class", value: detail.item.runtimePolicy?.runtimeClass || "api" },
+                  { label: "Browser runtime", value: detail.item.runtimePolicy?.browserRuntime ? "yes" : "no" },
+                ].map((item) => (
+                  <div key={item.label} className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{item.label}</p>
+                    <p className="mt-1 truncate text-xs font-semibold text-gray-800 dark:text-gray-100">{item.value}</p>
+                  </div>
                 ))}
               </div>
             </section>
@@ -3438,6 +3469,16 @@ export default function Capabilities(): React.ReactElement {
                                     <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">{nodeWork.length} jobs</span>
                                     {skill.riskPolicy && (
                                       <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionState === "fail" ? regressionTone("fail") : approvalTone(approvalMode(skill))}`}>{skill.riskPolicy.replace(/_/g, " ")}</span>
+                                    )}
+                                    {skill.runtimePolicy && (
+                                      <>
+                                        <span className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1 text-[10px] font-medium text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+                                          runtime {skill.runtimePolicy.runtimeClass}
+                                        </span>
+                                        <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${approvalTone(skill.runtimePolicy.approvalMode as ApprovalMode)}`}>
+                                          {runtimePolicyLabel(skill)}
+                                        </span>
+                                      </>
                                     )}
                                     {regressionState && (
                                       <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone(regressionState)}`}>regression {regressionState}</span>
