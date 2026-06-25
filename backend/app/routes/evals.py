@@ -17,6 +17,7 @@ from app.database import (
 from app.services.eval_judge import judge_eval_run
 from app.services.connector_benchmarks import audit_connector_benchmark_matrix, connector_benchmark_catalog, harvest_and_smoke_connector_benchmark, run_connector_runtime_smoke, seed_connector_benchmark
 from app.services.task_contracts import task_contract_from_record
+from app.services.vertical_demos import vertical_demo_payload
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -359,96 +360,6 @@ def _benchmark_coverage_summary(
     }
 
 
-def _task_metadata_list(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return [task.get("metadata") if isinstance(task.get("metadata"), dict) else {} for task in tasks]
-
-
-def _vertical_demo_readiness(
-    *,
-    benchmark: dict[str, Any],
-    tasks: list[dict[str, Any]],
-    skills: list[dict[str, Any]],
-    runs: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    metadata = benchmark.get("metadata") if isinstance(benchmark.get("metadata"), dict) else {}
-    vertical_demo = metadata.get("verticalDemo") if isinstance(metadata.get("verticalDemo"), dict) else benchmark.get("verticalDemo") if isinstance(benchmark.get("verticalDemo"), dict) else None
-    if not vertical_demo:
-        return None
-    task_metadata = _task_metadata_list(tasks)
-    task_contracts = [task_contract_from_record(task) for task in tasks]
-    expected_tools = _dedupe_strings([tool for metadata in task_metadata for tool in (metadata.get("expectedTools") or [])])
-    allowed_systems = _dedupe_strings([system for contract in task_contracts for system in (contract.get("allowedSystems") or [])])
-    expected_artifacts = _dedupe_strings([artifact for contract in task_contracts for artifact in (contract.get("expectedArtifacts") or [])])
-    approval_boundaries = _dedupe_strings([
-        metadata.get("initialState", {}).get("approvalBoundary")
-        for metadata in task_metadata
-        if isinstance(metadata.get("initialState"), dict)
-    ])
-    risk_classes = _dedupe_strings([contract.get("riskClass") for contract in task_contracts])
-    skill_ids = _dedupe_strings([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
-    trajectory_ids = _dedupe_strings([trajectory_id for skill in skills for trajectory_id in (skill.get("trajectoryIds") or [])])
-    labels = [str(run.get("label") or "pending").lower() for run in runs]
-    published_statuses = {"published", "approved", "active", "production"}
-    promoted_skills = [
-        skill
-        for skill in skills
-        if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in published_statuses or skill.get("skillPackage")
-    ]
-
-    checks = {
-        "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & set(expected_tools)) or "email" in allowed_systems,
-        "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
-        "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
-        "draft_artifact": "draft_email" in expected_artifacts,
-        "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & set(expected_tools)) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
-        "benchmark": bool(tasks),
-        "trajectory": bool(trajectory_ids),
-        "skill_promotion": bool(promoted_skills),
-        "runtime_replay": labels.count("pass") > 0,
-    }
-
-    coverage = []
-    for item in vertical_demo.get("coverage") or []:
-        if not isinstance(item, dict):
-            continue
-        key = str(item.get("key") or "")
-        ready = bool(checks.get(key))
-        coverage.append({
-            "key": key,
-            "label": str(item.get("label") or key),
-            "expectedEvidence": str(item.get("evidence") or ""),
-            "ready": ready,
-            "status": "ready" if ready else "missing",
-        })
-    total = len(coverage)
-    ready_count = sum(1 for item in coverage if item.get("ready"))
-    missing = [item["key"] for item in coverage if not item.get("ready")]
-    next_actions = []
-    if missing:
-        next_actions.append(f"Complete vertical demo evidence for: {', '.join(missing)}.")
-    else:
-        next_actions.append("Vertical demo has benchmark, skill and runtime replay evidence.")
-    return {
-        "objective": str(vertical_demo.get("objective") or ""),
-        "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
-        "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
-        "readyCount": ready_count,
-        "total": total,
-        "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
-        "coverage": coverage,
-        "evidence": {
-            "expectedTools": expected_tools,
-            "allowedSystems": allowed_systems,
-            "expectedArtifacts": expected_artifacts,
-            "approvalBoundaries": approval_boundaries,
-            "skillIds": skill_ids,
-            "trajectoryIds": trajectory_ids,
-            "passingRuns": labels.count("pass"),
-        },
-        "nextActions": next_actions,
-    }
-
-
 def _coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     latest_runs = [
         item.get("runCoverage") or {}
@@ -743,7 +654,7 @@ async def list_benchmarks(email: str, companyId: str = ""):
                 runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
                 benchmark=benchmark,
             ),
-            "verticalDemoReadiness": _vertical_demo_readiness(
+            "verticalDemoReadiness": vertical_demo_payload(
                 benchmark=benchmark,
                 tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
                 skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),

@@ -32,6 +32,7 @@ from app.routes.connectors import connector_toolkit
 from app.services.runtime_policy import serialize_runtime_policy
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.vertical_demos import vertical_demo_payload
 
 router = APIRouter()
 
@@ -831,118 +832,6 @@ def _browser_policy_payload(policy: dict[str, Any]) -> dict[str, Any]:
         "allowedDomains": browser.get("allowedDomains") if isinstance(browser.get("allowedDomains"), list) else [],
         "requiresSandbox": bool(browser.get("requiresSandbox")),
         "leastPrivilege": bool(browser.get("leastPrivilege", True)),
-    }
-
-
-def _vertical_demo_spec(benchmark: dict[str, Any]) -> dict[str, Any] | None:
-    metadata = _metadata(benchmark)
-    vertical_demo = metadata.get("verticalDemo")
-    if isinstance(vertical_demo, dict):
-        return vertical_demo
-    vertical_demo = benchmark.get("verticalDemo")
-    return vertical_demo if isinstance(vertical_demo, dict) else None
-
-
-def _vertical_demo_payload(
-    *,
-    benchmark: dict[str, Any],
-    tasks: list[dict[str, Any]],
-    skills: list[dict[str, Any]],
-    runs: list[dict[str, Any]],
-) -> dict[str, Any] | None:
-    metadata = _metadata(benchmark)
-    vertical_demo = _vertical_demo_spec(benchmark)
-    if not vertical_demo:
-        return None
-
-    task_metadata = [_metadata(task) for task in tasks]
-    task_contracts = [task_contract_from_record(task) for task in tasks]
-    expected_tools = _dedupe_strings([
-        tool
-        for task, task_meta in zip(tasks, task_metadata, strict=False)
-        for tool in [
-            *((task_meta.get("expectedTools") if isinstance(task_meta.get("expectedTools"), list) else []) or []),
-            *((task.get("expectedTools") if isinstance(task.get("expectedTools"), list) else []) or []),
-        ]
-    ])
-    allowed_systems = _dedupe_strings([
-        system
-        for contract in task_contracts
-        for system in (contract.get("allowedSystems") or [])
-    ])
-    expected_artifacts = _dedupe_strings([
-        artifact
-        for contract in task_contracts
-        for artifact in (contract.get("expectedArtifacts") or [])
-    ])
-    approval_boundaries = _dedupe_strings([
-        metadata_item.get("initialState", {}).get("approvalBoundary")
-        for metadata_item in task_metadata
-        if isinstance(metadata_item.get("initialState"), dict)
-    ])
-    risk_classes = _dedupe_strings([contract.get("riskClass") for contract in task_contracts])
-    skill_ids = _dedupe_strings([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
-    trajectory_ids = _dedupe_strings([
-        trajectory_id
-        for skill in skills
-        for trajectory_id in (skill.get("trajectoryIds") if isinstance(skill.get("trajectoryIds"), list) else [])
-    ])
-    labels = [str(run.get("label") or "pending").lower() for run in runs]
-    promoted_statuses = {"published", "approved", "active", "production"}
-    promoted_skills = [
-        skill
-        for skill in skills
-        if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in promoted_statuses or skill.get("skillPackage")
-    ]
-
-    expected_tool_set = set(expected_tools)
-    checks = {
-        "email_read": bool({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & expected_tool_set) or "email" in allowed_systems,
-        "erp_lookup": any(tool.startswith("erp.") for tool in expected_tools) or "insurance_erp" in allowed_systems,
-        "document_grounding": any(tool.startswith("knowledge.") for tool in expected_tools) or "knowledge" in allowed_systems,
-        "draft_artifact": "draft_email" in expected_artifacts,
-        "approval_boundary": bool({"api.human_approval", "smtp.send_email", "gmail.send_email"} & expected_tool_set) or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries),
-        "benchmark": bool(tasks),
-        "trajectory": bool(trajectory_ids),
-        "skill_promotion": bool(promoted_skills),
-        "runtime_replay": labels.count("pass") > 0,
-    }
-
-    coverage: list[dict[str, Any]] = []
-    for item in vertical_demo.get("coverage") or []:
-        if not isinstance(item, dict):
-            continue
-        key = str(item.get("key") or "")
-        ready = bool(checks.get(key))
-        coverage.append({
-            "key": key,
-            "label": str(item.get("label") or key),
-            "expectedEvidence": str(item.get("evidence") or ""),
-            "ready": ready,
-            "status": "ready" if ready else "missing",
-        })
-    total = len(coverage)
-    ready_count = sum(1 for item in coverage if item.get("ready"))
-    missing = [str(item.get("key") or "") for item in coverage if not item.get("ready")]
-    return {
-        "objective": str(vertical_demo.get("objective") or ""),
-        "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
-        "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
-        "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
-        "readyCount": ready_count,
-        "total": total,
-        "missing": missing,
-        "coverage": coverage,
-        "evidence": {
-            "expectedTools": expected_tools,
-            "allowedSystems": allowed_systems,
-            "expectedArtifacts": expected_artifacts,
-            "approvalBoundaries": approval_boundaries,
-            "riskClasses": risk_classes,
-            "skillIds": skill_ids,
-            "trajectoryIds": trajectory_ids,
-            "passingRuns": labels.count("pass"),
-        },
     }
 
 
@@ -2237,7 +2126,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     vertical_demo_payloads: list[dict[str, Any]] = []
     for benchmark in benchmark_docs:
         benchmark_id = str(benchmark.get("benchmarkId") or "")
-        demo_payload = _vertical_demo_payload(
+        demo_payload = vertical_demo_payload(
             benchmark=benchmark,
             tasks=task_docs_by_benchmark_id.get(benchmark_id, []),
             skills=skill_docs_by_benchmark_id.get(benchmark_id, []),
