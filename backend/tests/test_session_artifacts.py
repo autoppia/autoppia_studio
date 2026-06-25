@@ -174,6 +174,8 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
     assert session["creditsSpent"] == 2.5
+    assert session["latestAction"] == "imap.search_emails"
+    assert session["latestActivityLabel"] == "imap.search_emails"
 
 
 @pytest.mark.asyncio
@@ -288,6 +290,8 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
     assert session["creditsSpent"] == 2.5
+    assert session["latestAction"] == "imap.search_emails"
+    assert session["latestActivityLabel"] == "imap.search_emails"
 
 
 @pytest.mark.asyncio

@@ -92,6 +92,17 @@ def _serialize_session_artifact(doc: dict) -> dict:
     }
 
 
+def _pretty_session_action(action: str) -> str:
+    if not action:
+        return "Waiting for task"
+    if action == "skill.use":
+        return "Using skill"
+    if action.startswith("browser.") or action.startswith("user."):
+        normalized = action.replace("browser.", "").replace("user.", "")
+        return " ".join(word[:1].upper() + word[1:] for word in normalized.split("_") if word)
+    return action
+
+
 def _serialize_session_summary(doc: dict) -> dict:
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
@@ -115,6 +126,12 @@ def _serialize_session_summary(doc: dict) -> dict:
     run_id = str(runtime_state.get("runId") or "")
     credits_spent = float(runtime_state.get("creditsSpent") or 0.0)
     runtime_kind = "hybrid" if has_browser_activity and has_connector_activity else "browser" if has_browser_activity else "api"
+    latest_action = ""
+    for item in reversed(action_history):
+        if isinstance(item, dict):
+            latest_action = str(item.get("action") or "")
+            if latest_action:
+                break
     return {
         "sessionId": doc.get("sessionId", ""),
         "email": doc.get("email", ""),
@@ -143,6 +160,8 @@ def _serialize_session_summary(doc: dict) -> dict:
         "workItemId": work_item_id,
         "runId": run_id,
         "creditsSpent": credits_spent,
+        "latestAction": latest_action,
+        "latestActivityLabel": _pretty_session_action(latest_action),
     }
 
 

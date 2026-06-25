@@ -29,6 +29,8 @@ export interface SessionItem {
     workItemId?: string;
     runId?: string;
     creditsSpent?: number;
+    latestAction?: string;
+    latestActivityLabel?: string;
     createdAt?: string | Date;
 }
 

@@ -733,7 +733,10 @@ function Session(): React.ReactElement {
           : browserActionCount > 0
             ? "Browser runtime"
             : "API runtime";
-  const latestActivityLabel = runtimeTimeline.length > 0 ? runtimeTimeline[runtimeTimeline.length - 1].label : "Waiting for task";
+  const latestActivityLabel = String(
+    loadedSession?.latestActivityLabel ||
+    (runtimeTimeline.length > 0 ? runtimeTimeline[runtimeTimeline.length - 1].label : "Waiting for task"),
+  );
   const runtimeTimestamp = String(latestAssistantTiming?.emittedAt || "");
   const runtimeOverview = (
     <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)]">
