@@ -37,6 +37,9 @@ from app.services.resource_governance import resource_payload
 from app.services.resource_governance import resource_read_tools
 from app.services.resource_governance import resource_vector_id
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_manifests import skill_io_contract
+from app.services.skill_manifests import skill_package_manifest
+from app.services.skill_manifests import skill_production_gate
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_from_record, task_contract_ready
 from app.services.vertical_demos import vertical_demo_payload
@@ -342,7 +345,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
     hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
     runtime_policy = serialize_runtime_policy(doc)
     version_history = _skill_version_history(doc, version=version, promotion_status=_skill_promotion_status(doc))
-    package = _skill_package_manifest(
+    package = skill_package_manifest(
         doc,
         version=version,
         promotion_status=_skill_promotion_status(doc),
@@ -837,7 +840,7 @@ def _skill_package_coverage(
         or str(run.get("benchmarkId") or "") in set(benchmark_ids)
     ]
     latest_regression = skill.get("latestRegression") if isinstance(skill.get("latestRegression"), dict) else package_evidence.get("latestRegression") if isinstance(package_evidence.get("latestRegression"), dict) else {}
-    io_contract = _skill_io_contract(skill)
+    io_contract = skill_io_contract(skill)
     io_declared = bool(io_contract.get("declared") or package_io.get("declared"))
     expected_artifacts = _dedupe_strings([
         *[str(value or "") for value in skill.get("expectedArtifacts") or []],
@@ -1165,159 +1168,6 @@ def _append_skill_version_event(
     return history[-25:]
 
 
-def _skill_io_contract(skill: dict[str, Any]) -> dict[str, Any]:
-    input_entities = skill.get("inputEntities", [])
-    preconditions = skill.get("preconditions", [])
-    output_entity = skill.get("outputEntity", "")
-    expected_artifacts = skill.get("expectedArtifacts", [])
-    output_card = skill.get("outputCard", {})
-    return {
-        "inputs": {
-            "entities": input_entities,
-            "preconditions": preconditions,
-        },
-        "outputs": {
-            "entity": output_entity,
-            "artifacts": expected_artifacts,
-            "outputCard": output_card,
-        },
-        "declared": bool(input_entities or preconditions or output_entity or expected_artifacts or output_card),
-    }
-
-
-def _skill_production_gate(
-    *,
-    hardening: dict[str, Any],
-    latest_regression: dict[str, Any] | None,
-    io_contract: dict[str, Any],
-) -> dict[str, Any]:
-    checks = hardening.get("checks") if isinstance(hardening.get("checks"), dict) else {}
-    required = {
-        "activation": bool(checks.get("activation")),
-        "instructions": bool(checks.get("instructions")),
-        "riskPolicy": bool(checks.get("riskPolicy")),
-        "sourceTrajectory": bool(checks.get("lineage")),
-        "ioContract": bool(io_contract.get("declared")),
-        "publishableRegression": bool(checks.get("publishableRegression")),
-    }
-    blockers = [key for key, ready in required.items() if not ready]
-    next_actions: list[str] = []
-    if not required["activation"]:
-        next_actions.append("Declare when the skill should activate.")
-    if not required["instructions"]:
-        next_actions.append("Add reusable execution instructions.")
-    if not required["riskPolicy"]:
-        next_actions.append("Define the runtime risk and approval policy.")
-    if not required["sourceTrajectory"]:
-        next_actions.append("Attach at least one approved source trajectory.")
-    if not required["ioContract"]:
-        next_actions.append("Declare inputs, preconditions, output entity, expected artifacts, or output card.")
-    if latest_regression is None:
-        next_actions.append("Run a linked benchmark regression.")
-    elif latest_regression.get("label") != "pass":
-        next_actions.append("Fix the latest linked benchmark regression before publishing.")
-    elif not required["publishableRegression"]:
-        next_actions.append("Link a passing benchmark regression to the skill.")
-
-    if blockers:
-        if blockers == ["publishableRegression"] and latest_regression is None:
-            state = "needs_regression"
-        else:
-            state = "blocked"
-    else:
-        state = "publishable"
-
-    return {
-        "state": state,
-        "canPublish": state == "publishable",
-        "blockers": blockers,
-        "nextActions": next_actions,
-        "checks": required,
-        "latestRegression": latest_regression,
-    }
-
-
-def _skill_package_manifest(
-    skill: dict[str, Any],
-    *,
-    version: int,
-    promotion_status: str,
-    runtime_policy: dict[str, Any],
-    lineage: dict[str, Any],
-    hardening: dict[str, Any],
-    latest_regression: dict[str, Any] | None,
-    source_trajectories: list[dict[str, Any]],
-    regression_cases: list[dict[str, Any]],
-    version_history: list[dict[str, Any]],
-) -> dict[str, Any]:
-    package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
-    input_entities = skill.get("inputEntities", [])
-    preconditions = skill.get("preconditions", [])
-    output_entity = skill.get("outputEntity", "")
-    expected_artifacts = skill.get("expectedArtifacts", [])
-    output_card = skill.get("outputCard", {})
-    io_contract = _skill_io_contract(skill)
-    production_gate = _skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
-    return {
-        "format": "autoppia.agent_skill",
-        "manifestVersion": 1,
-        "packageId": package_id,
-        "metadata": {
-            "name": skill.get("name", ""),
-            "description": skill.get("description", ""),
-            "version": version,
-            "versionLabel": skill.get("versionLabel") or f"v{version}",
-            "promotionStatus": promotion_status,
-            "source": skill.get("source", ""),
-            "createdAt": skill.get("createdAt"),
-            "updatedAt": skill.get("updatedAt"),
-        },
-        "activation": {
-            "description": skill.get("whenToUse", ""),
-            "preconditions": preconditions,
-        },
-        "interface": {
-            "inputEntities": input_entities,
-            "outputEntity": output_entity,
-            "expectedArtifacts": expected_artifacts,
-            "outputCard": output_card,
-            "ioContract": io_contract,
-        },
-        "ioContract": io_contract,
-        "execution": {
-            "instructions": skill.get("instructions", ""),
-            "connectorIds": lineage.get("connectorIds", []),
-            "toolIds": lineage.get("toolIds", []),
-            "trajectoryIds": lineage.get("trajectoryIds", []),
-            "runtimeRequirements": skill.get("runtimeRequirements", []),
-            "runtime": skill.get("runtime", ""),
-        },
-        "policies": {
-            "riskPolicy": skill.get("riskPolicy", ""),
-            "permissions": skill.get("permissions", {}),
-            "runtimePolicy": runtime_policy,
-        },
-        "productionGate": production_gate,
-        "evidence": {
-            "lineage": lineage,
-            "sourceTrajectories": source_trajectories,
-            "latestRegression": latest_regression,
-            "hardeningStatus": hardening,
-            "versionHistory": version_history,
-            "regressionSuite": {
-                "benchmarkIds": lineage.get("benchmarkIds", []),
-                "evalIds": lineage.get("evalIds", []),
-                "cases": regression_cases,
-                "publishable": bool(latest_regression and latest_regression.get("label") == "pass"),
-            },
-        },
-        "progressiveDisclosure": {
-            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
-            "fullFields": ["execution", "evidence"],
-        },
-    }
-
-
 def _source_trajectory_evidence(trajectory_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
     evidence: list[dict[str, Any]] = []
     for trajectory in trajectory_docs:
@@ -1537,10 +1387,10 @@ async def _assert_skill_publishable(skill: dict[str, Any], trajectory_docs: list
             detail=f"Skill cannot be published because the latest benchmark run is {latest.get('label') or 'pending'}.",
         )
     hardening = _skill_hardening_status(skill, trajectory_docs=trajectory_docs, latest_regression=latest)
-    gate = _skill_production_gate(
+    gate = skill_production_gate(
         hardening=hardening,
         latest_regression=latest,
-        io_contract=_skill_io_contract(skill),
+        io_contract=skill_io_contract(skill),
     )
     missing = gate.get("blockers") or []
     if missing:
