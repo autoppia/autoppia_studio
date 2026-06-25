@@ -8,12 +8,14 @@ import {
   faBook,
   faBriefcase,
   faCheckCircle,
+  faCopy,
   faCubes,
   faGear,
   faGlobe,
   faKey,
   faPlug,
   faRobot,
+  faSpinner,
   faTriangleExclamation,
   faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
@@ -21,8 +23,23 @@ import SectionTitle from "../components/layout/section-title";
 import InfoIcon from "../components/common/info-icon";
 import { Company, CompanySetupContract } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
+import { useToast } from "../components/common/toast";
 
 const apiUrl = getApiUrl();
+
+function generatePublicToken() {
+  try {
+    if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+      return `pk_${crypto.randomUUID().replace(/-/g, "")}`;
+    }
+  } catch {
+    // fall through to manual generation
+  }
+  let token = "pk_";
+  const chars = "abcdef0123456789";
+  for (let i = 0; i < 32; i++) token += chars[Math.floor(Math.random() * chars.length)];
+  return token;
+}
 
 function SummaryCard({
   label,
@@ -78,11 +95,23 @@ function statusTone(status: string) {
 export default function CompanySetup(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
+  const { showToast } = useToast();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [company, setCompany] = useState<Company | null>(null);
   const [contract, setContract] = useState<CompanySetupContract | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [savingProfile, setSavingProfile] = useState(false);
+  const [savingGovernance, setSavingGovernance] = useState(false);
+  const [copiedSnippet, setCopiedSnippet] = useState(false);
+  const [companyName, setCompanyName] = useState("");
+  const [companyIndustry, setCompanyIndustry] = useState("");
+  const [companyDescription, setCompanyDescription] = useState("");
+  const [embedEnabled, setEmbedEnabled] = useState(false);
+  const [publicToken, setPublicToken] = useState("");
+  const [originsText, setOriginsText] = useState("");
+  const [hostJwtSecret, setHostJwtSecret] = useState("");
+  const [clearHostJwtSecret, setClearHostJwtSecret] = useState(false);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -136,6 +165,17 @@ export default function CompanySetup(): React.ReactElement {
     loadSetup();
   }, [loadSetup]);
 
+  useEffect(() => {
+    setCompanyName(company?.name || "");
+    setCompanyIndustry(company?.industry || "");
+    setCompanyDescription(company?.description || "");
+    setEmbedEnabled(Boolean(company?.embedSettings?.enabled));
+    setPublicToken(company?.embedSettings?.publicToken || "");
+    setOriginsText((company?.embedSettings?.allowedOrigins || []).join("\n"));
+    setHostJwtSecret("");
+    setClearHostJwtSecret(false);
+  }, [company]);
+
   const quickActions = useMemo(() => ([
     { label: "Connectors", icon: faPlug, path: "/connectors" },
     { label: "Resources", icon: faBook, path: "/knowledge" },
@@ -179,6 +219,71 @@ export default function CompanySetup(): React.ReactElement {
   }
 
   const governanceReady = contract.governance.credentials > 0 && contract.systems.summary.connectedConnectors > 0;
+  const snippetNeedsHostJwt = Boolean(company.embedSettings?.hostJwtConfigured || hostJwtSecret.trim());
+  const embedSnippet = `<script src="${apiUrl}/embed/v1/widget.js" data-token="${publicToken || "YOUR_PUBLIC_TOKEN"}"${snippetNeedsHostJwt ? ' data-user-ref="EMPLOYEE_ID" data-host-jwt="SIGNED_EMPLOYEE_JWT"' : ""} async></script>`;
+
+  const saveProfile = async () => {
+    if (!company || savingProfile) return;
+    setSavingProfile(true);
+    setError("");
+    try {
+      const res = await fetch(`${apiUrl}/companies/${company.companyId}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: companyName.trim(),
+          industry: companyIndustry.trim(),
+          description: companyDescription.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error("Could not save company profile.");
+      await loadSetup();
+      showToast("Company profile saved.", "success");
+    } catch (err: any) {
+      console.error("Failed to save company profile:", err);
+      setError(err?.message || "Could not save company profile.");
+    } finally {
+      setSavingProfile(false);
+    }
+  };
+
+  const saveGovernance = async () => {
+    if (!company || savingGovernance) return;
+    setSavingGovernance(true);
+    setError("");
+    try {
+      const allowedOrigins = originsText.split("\n").map((line) => line.trim()).filter(Boolean);
+      const res = await fetch(`${apiUrl}/companies/${company.companyId}/embed-settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: embedEnabled,
+          publicToken: publicToken.trim(),
+          allowedOrigins,
+          hostJwtSecret,
+          clearHostJwtSecret,
+        }),
+      });
+      if (!res.ok) throw new Error("Could not save governance settings.");
+      await loadSetup();
+      showToast("Governance settings saved.", "success");
+    } catch (err: any) {
+      console.error("Failed to save governance settings:", err);
+      setError(err?.message || "Could not save governance settings.");
+    } finally {
+      setSavingGovernance(false);
+    }
+  };
+
+  const copySnippet = async () => {
+    try {
+      await navigator.clipboard.writeText(embedSnippet);
+      setCopiedSnippet(true);
+      window.setTimeout(() => setCopiedSnippet(false), 2000);
+    } catch {
+      showToast("Could not copy embed snippet.", "error");
+    }
+  };
 
   return (
     <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
@@ -321,6 +426,144 @@ export default function CompanySetup(): React.ReactElement {
                     </span>
                   ))}
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="grid gap-6 xl:grid-cols-2">
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">Company Profile</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Define the business context that anchors the integration contract.</p>
+              </div>
+              <button
+                type="button"
+                onClick={saveProfile}
+                disabled={savingProfile || !companyName.trim()}
+                className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                <FontAwesomeIcon icon={savingProfile ? faSpinner : faCheckCircle} className={savingProfile ? "animate-spin text-xs" : "text-xs"} />
+                Save profile
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4">
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Company name</span>
+                <input
+                  value={companyName}
+                  onChange={(event) => setCompanyName(event.target.value)}
+                  className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Industry</span>
+                <input
+                  value={companyIndustry}
+                  onChange={(event) => setCompanyIndustry(event.target.value)}
+                  placeholder="Insurance, fintech, healthcare..."
+                  className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Business description</span>
+                <textarea
+                  value={companyDescription}
+                  onChange={(event) => setCompanyDescription(event.target.value)}
+                  rows={5}
+                  placeholder="What systems, workflows and operating constraints define this company?"
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900 dark:text-white">Governance Controls</h2>
+                <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">Manage embed/browser allowlists and host authentication without leaving Company Setup.</p>
+              </div>
+              <button
+                type="button"
+                onClick={saveGovernance}
+                disabled={savingGovernance}
+                className="inline-flex h-9 items-center gap-2 rounded-xl bg-gradient-primary px-4 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                <FontAwesomeIcon icon={savingGovernance ? faSpinner : faCheckCircle} className={savingGovernance ? "animate-spin text-xs" : "text-xs"} />
+                Save governance
+              </button>
+            </div>
+            <div className="mt-5 grid gap-4">
+              <label className="flex items-center justify-between rounded-2xl border border-gray-200 bg-gray-50 px-4 py-3 dark:border-dark-border dark:bg-dark-bg">
+                <div>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Enable embed runtime</p>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Required when Studio should be mounted inside a customer host app.</p>
+                </div>
+                <input type="checkbox" checked={embedEnabled} onChange={(event) => setEmbedEnabled(event.target.checked)} className="h-4 w-4 accent-primary" />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Public token</span>
+                <div className="flex gap-2">
+                  <input
+                    value={publicToken}
+                    onChange={(event) => setPublicToken(event.target.value)}
+                    placeholder="pk_..."
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setPublicToken(generatePublicToken())}
+                    className="rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                  >
+                    Generate
+                  </button>
+                </div>
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Allowed origins</span>
+                <textarea
+                  value={originsText}
+                  onChange={(event) => setOriginsText(event.target.value)}
+                  rows={4}
+                  placeholder={"https://erp.example.com\nhttps://backoffice.example.com"}
+                  className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                />
+              </label>
+              <label className="grid gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-gray-400">Host JWT secret</span>
+                <input
+                  value={hostJwtSecret}
+                  onChange={(event) => setHostJwtSecret(event.target.value)}
+                  placeholder={company.embedSettings?.hostJwtConfigured ? "Enter a new secret to rotate" : "Optional HS256 shared secret"}
+                  className="h-11 rounded-xl border border-gray-200 bg-gray-50 px-3 text-sm text-gray-800 outline-none transition focus:border-primary focus:bg-white dark:border-dark-border dark:bg-dark-bg dark:text-gray-100"
+                />
+              </label>
+              {company.embedSettings?.hostJwtConfigured ? (
+                <label className="inline-flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+                  <input type="checkbox" checked={clearHostJwtSecret} onChange={(event) => setClearHostJwtSecret(event.target.checked)} className="h-4 w-4 accent-primary" />
+                  Clear existing Host JWT secret
+                </label>
+              ) : null}
+              <div className="rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold text-gray-900 dark:text-white">Embed snippet</p>
+                    <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">Operational hand-off for the host application team.</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={copySnippet}
+                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                  >
+                    <FontAwesomeIcon icon={faCopy} className="text-[10px]" />
+                    {copiedSnippet ? "Copied" : "Copy"}
+                  </button>
+                </div>
+                <pre className="mt-3 overflow-x-auto rounded-xl bg-gray-950 p-3 text-xs leading-relaxed text-gray-100">
+                  <code>{embedSnippet}</code>
+                </pre>
               </div>
             </div>
           </div>
