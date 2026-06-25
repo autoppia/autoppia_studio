@@ -176,4 +176,82 @@ describe("ActivityCenter", () => {
       expect(mockNavigate).toHaveBeenCalledWith("/runtime?sessionIds=work-work-42-run-7");
     });
   });
+
+  it("keeps scoped approval notifications on the approvals surface", async () => {
+    global.fetch = jest.fn().mockImplementation((input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/activity-summary?")) {
+        return jsonResponse({
+          status: {
+            runningTasks: 0,
+            queuedTasks: 0,
+            reviewTasks: 0,
+            doneTasks: 0,
+            failedTasks: 0,
+            scheduledDue: 0,
+            scheduledUpcoming: 0,
+            activeSessions: 1,
+            evalRunsPending: 0,
+            evalRunsPassed: 0,
+            evalRunsFailed: 0,
+            harvestersRunning: 0,
+            harvestersCompleted: 0,
+            harvestersFailed: 0,
+          },
+          running: [],
+          notifications: {
+            unreadCount: 1,
+            recent: [
+              {
+                notificationId: "notif-approval-1",
+                title: "Approve send",
+                message: "Confirm send.",
+                level: "warning",
+                source: "approval",
+                entityType: "approval",
+                entityId: "approval-1",
+                actionUrl: "/approvals?status=pending&sessionId=session-42",
+                metadata: { sessionId: "session-42", runId: "run-9", sourceKind: "session" },
+                read: false,
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          },
+        });
+      }
+      if (url.includes("/notifications?")) {
+        return jsonResponse({
+          notifications: [
+            {
+              notificationId: "notif-approval-1",
+              title: "Approve send",
+              message: "Confirm send.",
+              level: "warning",
+              source: "approval",
+              entityType: "approval",
+              entityId: "approval-1",
+              actionUrl: "/approvals?status=pending&sessionId=session-42",
+              metadata: { sessionId: "session-42", runId: "run-9", sourceKind: "session" },
+              read: false,
+              createdAt: new Date().toISOString(),
+            },
+          ],
+          unreadCount: 1,
+        });
+      }
+      if (url.includes("/notifications/notif-approval-1/read")) {
+        return jsonResponse({ success: true });
+      }
+      return jsonResponse({});
+    }) as jest.Mock;
+
+    render(<ActivityCenter />);
+
+    fireEvent.click(await screen.findByTitle("Notifications"));
+    fireEvent.click(await screen.findByText("Approve send"));
+
+    await waitFor(() => {
+      expect(mockNavigate).toHaveBeenCalledWith("/approvals?status=pending&sessionId=session-42");
+    });
+  });
 });

@@ -64,6 +64,9 @@ function runtimeActionUrl(args: { sessionId?: string; workItemId?: string; runId
 }
 
 function notificationActionUrl(notification: AppNotification): string {
+  if (notification.source === "approval" || notification.entityType === "approval") {
+    return notification.actionUrl || "";
+  }
   const metadata = notification.metadata && typeof notification.metadata === "object" ? notification.metadata : {};
   const sessionId = String(
     (metadata as Record<string, any>).sessionId ||
