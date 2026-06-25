@@ -197,6 +197,31 @@ class _Agents:
         return None
 
 
+class _Tools:
+    def __init__(self):
+        self.docs = [
+            {"toolId": "tool-1", "name": "crm.lookup"},
+            {"toolId": "tool-2", "name": "email.reply"},
+        ]
+
+    def find(self, query, projection=None):
+        docs = []
+        for doc in self.docs:
+            matched = True
+            for key, value in query.items():
+                actual = doc.get(key)
+                if isinstance(value, dict) and "$in" in value:
+                    if actual not in value["$in"]:
+                        matched = False
+                        break
+                elif actual != value:
+                    matched = False
+                    break
+            if matched:
+                docs.append(dict(doc))
+        return _Cursor(docs)
+
+
 @pytest.mark.asyncio
 async def test_create_and_list_work_items(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
@@ -542,6 +567,7 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     monkeypatch.setattr(work_items, "approvals_collection", approvals)
     monkeypatch.setattr(work_items, "sessions_collection", _Sessions())
     monkeypatch.setattr(work_items, "artifacts_collection", artifacts)
+    monkeypatch.setattr(work_items, "tools_collection", _Tools())
 
     collection.docs["work-1"] = {
         "workItemId": "work-1",
@@ -575,6 +601,7 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
                     "result": {
                         "artifacts": [{"artifactType": "markdown"}],
                         "state_out": {"matchedSkillId": "skill-1", "matchedSkillName": "Resolve claim"},
+                        "capability_match": {"skillId": "skill-1", "trajectoryId": "trajectory-1"},
                     },
                 }
             ],
@@ -598,6 +625,9 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["latestToolCallCount"] == 1
     assert operational["latestMatchedSkillIds"] == ["skill-1"]
     assert operational["latestMatchedSkillNames"] == ["Resolve claim"]
+    assert operational["latestMatchedTrajectoryIds"] == ["trajectory-1"]
+    assert operational["latestToolNames"] == ["crm.lookup"]
+    assert operational["latestToolIds"] == ["tool-1"]
     assert operational["latestCreditsSpent"] == 0.42
     assert operational["persistedArtifactCount"] == 1
     assert operational["reviewBlocked"] is True

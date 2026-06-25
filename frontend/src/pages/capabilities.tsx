@@ -461,6 +461,7 @@ function CapabilityDetailModal({
   onOpenSession,
   onOpenApprovals,
   onOpenArtifacts,
+  onOpenWork,
   onOpenRuntime,
   onOpenCapability,
   onOpenBenchmarkOps,
@@ -491,6 +492,7 @@ function CapabilityDetailModal({
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onOpenArtifacts: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
+  onOpenWork: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onOpenRuntime: (params: { skillId?: string; sessionIds?: string[] }) => void;
   onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
   onOpenBenchmarkOps: (params: { mode: "benchmarks" | "runs"; benchmarkId?: string }) => void;
@@ -880,6 +882,18 @@ function CapabilityDetailModal({
                   className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
                 >
                   Open Runtime Lab
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenWork({
+                    skillId: isSkill ? detail.item.skillId : "",
+                    trajectoryId: isTrajectory ? detail.item.trajectoryId : "",
+                    toolId: isTool ? detail.item.toolId : "",
+                    sessionId: runtimeUsage.sessions.length === 1 ? runtimeUsage.sessions[0]?.sessionId || "" : "",
+                  })}
+                  className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+                >
+                  Open Work
                 </button>
               </div>
             )}
@@ -3229,6 +3243,14 @@ export default function Capabilities(): React.ReactElement {
               if (trajectoryId) params.set("trajectoryId", trajectoryId);
               if (toolId) params.set("toolId", toolId);
               navigate(`/artifacts${params.toString() ? `?${params.toString()}` : ""}`);
+            }}
+            onOpenWork={({ sessionId, skillId, trajectoryId, toolId }) => {
+              const params = new URLSearchParams();
+              if (sessionId) params.set("sessionId", sessionId);
+              if (skillId) params.set("skillId", skillId);
+              if (trajectoryId) params.set("trajectoryId", trajectoryId);
+              if (toolId) params.set("toolId", toolId);
+              navigate(`/work${params.toString() ? `?${params.toString()}` : ""}`);
             }}
             onOpenRuntime={({ skillId, sessionIds }) => {
               const params = new URLSearchParams();

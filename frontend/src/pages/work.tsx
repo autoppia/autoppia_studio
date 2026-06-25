@@ -126,6 +126,10 @@ export default function Work() {
   const [selectedItemId, setSelectedItemId] = useState("");
   const [drawerDraft, setDrawerDraft] = useState<Partial<WorkItem>>({});
   const [draft, setDraft] = useState(emptyDraft);
+  const sessionFilter = searchParams.get("sessionId") || "";
+  const skillFilter = searchParams.get("skillId") || "";
+  const trajectoryFilter = searchParams.get("trajectoryId") || "";
+  const toolFilter = searchParams.get("toolId") || "";
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -194,12 +198,17 @@ export default function Work() {
   const filteredItems = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter((item) => {
+      const operational = item.operational || {};
+      const sessionMatch = !sessionFilter || (operational.latestSessionIds || []).includes(sessionFilter);
+      const skillScopeMatch = !skillFilter || (operational.latestMatchedSkillIds || []).includes(skillFilter);
+      const trajectoryScopeMatch = !trajectoryFilter || (operational.latestMatchedTrajectoryIds || []).includes(trajectoryFilter);
+      const toolScopeMatch = !toolFilter || (operational.latestToolIds || []).includes(toolFilter);
       const textMatch = !q || [item.title, item.prompt, item.successCriteria || "", item.agentName || ""].join(" ").toLowerCase().includes(q);
       const agentMatch = !agentFilter || item.agentId === agentFilter || (agentFilter === "all" && item.runTarget === "all");
       const scheduleMatch = scheduleFilter === "all" || (scheduleFilter === "scheduled" ? item.triggerType === "scheduled" : item.triggerType !== "scheduled");
-      return textMatch && agentMatch && scheduleMatch;
+      return sessionMatch && skillScopeMatch && trajectoryScopeMatch && toolScopeMatch && textMatch && agentMatch && scheduleMatch;
     });
-  }, [items, search, agentFilter, scheduleFilter]);
+  }, [items, search, agentFilter, scheduleFilter, sessionFilter, skillFilter, trajectoryFilter, toolFilter]);
 
   const grouped = useMemo(() => {
     const result: Record<WorkStatus, WorkItem[]> = { TODO: [], RUNNING: [], REVIEW: [], DONE: [], FAILED: [] };
@@ -457,6 +466,32 @@ export default function Work() {
         </div>
 
         <div className="flex-1 overflow-auto px-4 sm:px-6 py-5">
+          {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
+              <div>
+                <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime filter active</p>
+                <p className="text-xs text-gray-500 dark:text-gray-400">
+                  {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
+                  {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                  {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                  {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  const next = new URLSearchParams(searchParams);
+                  next.delete("sessionId");
+                  next.delete("skillId");
+                  next.delete("trajectoryId");
+                  next.delete("toolId");
+                  setSearchParams(next);
+                }}
+                className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"
+              >
+                Clear filter
+              </button>
+            </div>
+          )}
           <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
             {[
               {

@@ -441,6 +441,9 @@ export interface WorkItem {
     latestToolCallCount?: number;
     latestMatchedSkillIds?: string[];
     latestMatchedSkillNames?: string[];
+    latestMatchedTrajectoryIds?: string[];
+    latestToolNames?: string[];
+    latestToolIds?: string[];
     latestSessionIds?: string[];
     latestCreditsSpent?: number;
     reviewBlocked?: boolean;

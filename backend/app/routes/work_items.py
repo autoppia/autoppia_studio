@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pymongo import ReturnDocument
 from pydantic import BaseModel, Field, field_validator
 
-from app.database import agents_collection, approvals_collection, artifacts_collection, sessions_collection, work_boards_collection, work_items_collection
+from app.database import agents_collection, approvals_collection, artifacts_collection, sessions_collection, tools_collection, work_boards_collection, work_items_collection
 from app.repositories import WorkBoardRepository, WorkItemRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.routes.notifications import create_notification
@@ -234,6 +234,8 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
     tool_call_count = 0
     matched_skill_ids: list[str] = []
     matched_skill_names: list[str] = []
+    matched_trajectory_ids: list[str] = []
+    tool_names: list[str] = []
     session_ids: list[str] = []
 
     for entry in results:
@@ -249,13 +251,32 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
             tool_call_count += len(payload.get("tool_calls") if isinstance(payload.get("tool_calls"), list) else [])
 
         state_out = payload.get("state_out") if isinstance(payload.get("state_out"), dict) else {}
+        capability_match = payload.get("capability_match") if isinstance(payload.get("capability_match"), dict) else {}
         matched_skill_id = str(state_out.get("matchedSkillId") or payload.get("matchedSkillId") or "")
         matched_skill_name = str(state_out.get("matchedSkillName") or state_out.get("matchedSkill") or payload.get("matchedSkillName") or "")
+        matched_trajectory_id = str(
+            capability_match.get("trajectoryId")
+            or state_out.get("matchedTrajectoryId")
+            or payload.get("matchedTrajectoryId")
+            or payload.get("trajectoryId")
+            or ""
+        )
         session_id = str(payload.get("sessionId") or payload.get("session_id") or state_out.get("sessionId") or "")
+        for step in entry.get("steps") if isinstance(entry.get("steps"), list) else []:
+            if not isinstance(step, dict):
+                continue
+            for call in step.get("toolCalls") if isinstance(step.get("toolCalls"), list) else []:
+                if not isinstance(call, dict):
+                    continue
+                tool_name = str(call.get("name") or call.get("action") or "")
+                if tool_name and tool_name not in tool_names:
+                    tool_names.append(tool_name)
         if matched_skill_id and matched_skill_id not in matched_skill_ids:
             matched_skill_ids.append(matched_skill_id)
         if matched_skill_name and matched_skill_name not in matched_skill_names:
             matched_skill_names.append(matched_skill_name)
+        if matched_trajectory_id and matched_trajectory_id not in matched_trajectory_ids:
+            matched_trajectory_ids.append(matched_trajectory_id)
         if session_id and session_id not in session_ids:
             session_ids.append(session_id)
     current_session_id = str(doc.get("currentSessionId") or "")
@@ -276,6 +297,9 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
         "latestToolCallCount": tool_call_count,
         "latestMatchedSkillIds": matched_skill_ids,
         "latestMatchedSkillNames": matched_skill_names,
+        "latestMatchedTrajectoryIds": matched_trajectory_ids,
+        "latestToolNames": tool_names,
+        "latestToolIds": [],
         "latestSessionIds": session_ids,
         "latestCreditsSpent": float((doc.get("report") if isinstance(doc.get("report"), dict) else {}).get("creditsSpent") or 0.0),
         "persistedArtifactCount": 0,
@@ -315,11 +339,31 @@ async def _serialized_work_items_with_operational_data(docs: list[dict[str, Any]
         artifact_count_by_work_item[work_item_id] = artifact_count_by_work_item.get(work_item_id, 0) + 1
 
     serialized: list[dict[str, Any]] = []
+    tool_names: set[str] = set()
     for doc in docs:
         item = _serialize(doc)
         item["operational"] = _work_operational_summary(doc, approvals_by_work_item.get(item["workItemId"], []))
         item["operational"]["persistedArtifactCount"] = artifact_count_by_work_item.get(item["workItemId"], 0)
+        tool_names.update(str(name) for name in item["operational"].get("latestToolNames", []) if name)
         serialized.append(item)
+
+    tool_ids_by_name: dict[str, list[str]] = {}
+    if tool_names:
+        tool_docs = await tools_collection.find({"name": {"$in": sorted(tool_names)}}, {"_id": 0, "name": 1, "toolId": 1}).to_list(length=2000)
+        for tool in tool_docs:
+            name = str(tool.get("name") or "")
+            tool_id = str(tool.get("toolId") or "")
+            if not name or not tool_id:
+                continue
+            tool_ids_by_name.setdefault(name, []).append(tool_id)
+
+    for item in serialized:
+        mapped_tool_ids: list[str] = []
+        for name in item["operational"].get("latestToolNames", []) or []:
+            for tool_id in tool_ids_by_name.get(str(name), []):
+                if tool_id not in mapped_tool_ids:
+                    mapped_tool_ids.append(tool_id)
+        item["operational"]["latestToolIds"] = mapped_tool_ids
     return serialized
 
 
