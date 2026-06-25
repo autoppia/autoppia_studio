@@ -77,6 +77,7 @@ function ApprovalCard({
   onApprove,
   onReject,
   onOpenSession,
+  onOpenRuntime,
   onOpenWorkItem,
   onOpenCapability,
 }: {
@@ -85,6 +86,7 @@ function ApprovalCard({
   onApprove: () => void;
   onReject: () => void;
   onOpenSession: (sessionId: string) => void;
+  onOpenRuntime: (args: { sessionId?: string; workItemId?: string }) => void;
   onOpenWorkItem: (workItemId: string) => void;
   onOpenCapability: (kind: "tool" | "trajectory" | "skill", id: string) => void;
 }) {
@@ -166,6 +168,14 @@ function ApprovalCard({
               className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
             >
               Open session
+            </button>
+          )}
+          {(sessionId || workItemId) && (
+            <button
+              onClick={() => onOpenRuntime({ sessionId, workItemId })}
+              className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
+            >
+              Open Runtime Lab
             </button>
           )}
           {skillId && (
@@ -508,6 +518,15 @@ export default function Approvals(): React.ReactElement {
                       onApprove={() => decide(approval.approvalId, "approve")}
                       onReject={() => decide(approval.approvalId, "reject")}
                       onOpenSession={(sessionId) => navigate(`/session/${sessionId}`)}
+                      onOpenRuntime={({ sessionId, workItemId }) => {
+                        if (sessionId) {
+                          navigate(`/runtime?sessionIds=${encodeURIComponent(sessionId)}`);
+                          return;
+                        }
+                        if (workItemId) {
+                          navigate(`/runtime?workItemId=${encodeURIComponent(workItemId)}`);
+                        }
+                      }}
                       onOpenWorkItem={(workItemId) => navigate(`/work?item=${workItemId}`)}
                       onOpenCapability={(kind, id) => navigate(`/capabilities/${kind}/${id}`)}
                     />

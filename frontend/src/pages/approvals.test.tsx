@@ -8,9 +8,10 @@ jest.mock("react-redux", () => ({
 
 let mockSearch = "";
 const mockSetSearchParams = jest.fn();
+const mockNavigate = jest.fn();
 
 jest.mock("react-router-dom", () => ({
-  useNavigate: () => jest.fn(),
+  useNavigate: () => mockNavigate,
   useSearchParams: () => [new URLSearchParams(mockSearch), mockSetSearchParams],
 }), { virtual: true });
 
@@ -24,6 +25,7 @@ describe("Approvals page", () => {
   beforeEach(() => {
     mockSearch = "";
     mockSetSearchParams.mockReset();
+    mockNavigate.mockReset();
     localStorage.setItem("automata_company_id", "company-1");
     mockedUseSelector.mockImplementation((selector: any) =>
       selector({ user: { email: "demo@example.com" } }),
@@ -140,5 +142,33 @@ describe("Approvals page", () => {
         runtimeStatePatch: { approvedConnectorToolCalls: ["smtp.send_email:0:abc"] },
       }),
     );
+  });
+
+  it("opens Runtime Lab from an approval with session context", async () => {
+    const approval = {
+      approvalId: "approval-2",
+      companyId: "company-1",
+      email: "demo@example.com",
+      agentId: "agent-1",
+      sessionId: "session-42",
+      sourceKind: "session",
+      approvalKey: "gmail.send_email:0:def",
+      toolName: "gmail.send_email",
+      title: "Approve send",
+      proposedAction: { name: "gmail.send_email", arguments: { to: "client@example.com" } },
+      status: "pending",
+      metadata: { sessionId: "session-42", sourceKind: "session", workItemId: "work-42" },
+      auditTrail: [],
+    };
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ approvals: [approval] }),
+    }) as jest.Mock;
+
+    renderApprovals();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Open Runtime Lab" }));
+
+    expect(mockNavigate).toHaveBeenCalledWith("/runtime?sessionIds=session-42");
   });
 });
