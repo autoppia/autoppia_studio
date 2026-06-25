@@ -655,6 +655,15 @@ async def test_list_work_items_includes_operational_summary(monkeypatch):
     assert operational["orchestration"]["automationGate"]["canRunUnattended"] is False
     assert operational["orchestration"]["automationGate"]["blockers"] == ["pending_approval"]
     assert operational["orchestration"]["automationGate"]["policy"]["maxSteps"] == 4
+    assert operational["orchestration"]["auditTrail"]["uniform"] is True
+    assert operational["orchestration"]["auditTrail"]["hasApprovalCheckpoint"] is True
+    assert operational["orchestration"]["auditTrail"]["hasBudgetCheckpoint"] is True
+    assert operational["orchestration"]["auditTrail"]["eventCount"] == 3
+    assert [event["event"] for event in operational["orchestration"]["auditTrail"]["events"]] == [
+        "work.queued",
+        "work.budget",
+        "work.approval_block",
+    ]
 
 
 @pytest.mark.asyncio
@@ -709,6 +718,12 @@ async def test_list_work_items_marks_overdue_scheduled_sla(monkeypatch):
     assert orchestration["automationGate"]["state"] == "scheduled"
     assert orchestration["automationGate"]["canRunUnattended"] is True
     assert orchestration["automationGate"]["nextActions"] == ["Scheduled work is overdue; confirm the worker is healthy or run it manually."]
+    assert orchestration["auditTrail"]["hasScheduleCheckpoint"] is True
+    assert [event["event"] for event in orchestration["auditTrail"]["events"]] == [
+        "work.queued",
+        "work.scheduled",
+        "work.budget",
+    ]
 
 
 @pytest.mark.asyncio
@@ -766,3 +781,5 @@ async def test_scheduled_browser_work_requires_domain_allowlist_for_unattended_g
     assert orchestration["automationGate"]["canRunUnattended"] is False
     assert orchestration["automationGate"]["blockers"] == ["missing_browser_allowlist"]
     assert orchestration["automationGate"]["policy"]["requiresBrowserAllowlist"] is True
+    assert orchestration["auditTrail"]["hasBrowserPolicyCheckpoint"] is True
+    assert orchestration["auditTrail"]["events"][-1]["event"] == "work.browser_policy"

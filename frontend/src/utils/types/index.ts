@@ -1017,6 +1017,25 @@ export interface WorkItem {
           maxSteps?: number;
         };
       };
+      auditTrail?: {
+        uniform?: boolean;
+        eventCount?: number;
+        events?: Array<{
+          event?: string;
+          actor?: string;
+          state?: string;
+          count?: number;
+          creditsSpent?: number;
+          pendingApprovalCount?: number;
+          at?: string;
+          description?: string;
+        }>;
+        hasApprovalCheckpoint?: boolean;
+        hasBudgetCheckpoint?: boolean;
+        hasRetryCheckpoint?: boolean;
+        hasScheduleCheckpoint?: boolean;
+        hasBrowserPolicyCheckpoint?: boolean;
+      };
     };
   };
   lastRunId?: string;

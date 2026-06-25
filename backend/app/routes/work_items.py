@@ -263,6 +263,93 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _orchestration_audit_trail(
+    doc: dict[str, Any],
+    *,
+    queue_state: str,
+    trigger_type: str,
+    deadline_state: str,
+    pending_approval_count: int,
+    latest_credits_spent: float,
+    budget_exhausted: bool,
+    retry_count: int,
+    review_blocked: bool,
+    browser_policy_state: str,
+) -> dict[str, Any]:
+    events: list[dict[str, Any]] = [
+        {
+            "event": "work.queued",
+            "actor": "work_orchestration",
+            "state": queue_state,
+            "at": doc.get("createdAt"),
+            "description": "Work item entered the orchestration queue.",
+        }
+    ]
+    if trigger_type == "scheduled":
+        events.append(
+            {
+                "event": "work.scheduled",
+                "actor": "scheduler",
+                "state": deadline_state,
+                "at": doc.get("nextRunAt", ""),
+                "description": "Scheduled run window tracked by Work Orchestration.",
+            }
+        )
+    if retry_count > 0:
+        events.append(
+            {
+                "event": "work.retry",
+                "actor": "worker",
+                "state": "retry_recorded",
+                "count": retry_count,
+                "at": doc.get("updatedAt"),
+                "description": f"{retry_count} retry attempt(s) recorded.",
+            }
+        )
+    if latest_credits_spent > 0 or budget_exhausted:
+        events.append(
+            {
+                "event": "work.budget",
+                "actor": "metering",
+                "state": "exhausted" if budget_exhausted else "tracked",
+                "creditsSpent": latest_credits_spent,
+                "at": doc.get("updatedAt"),
+                "description": "Runtime budget usage captured for this work item.",
+            }
+        )
+    if pending_approval_count or review_blocked:
+        events.append(
+            {
+                "event": "work.approval_block",
+                "actor": "human",
+                "state": "pending",
+                "pendingApprovalCount": pending_approval_count,
+                "at": doc.get("updatedAt"),
+                "description": "Work item is blocked on human review or approval.",
+            }
+        )
+    if browser_policy_state == "unrestricted":
+        events.append(
+            {
+                "event": "work.browser_policy",
+                "actor": "control_plane",
+                "state": "unrestricted",
+                "at": doc.get("updatedAt"),
+                "description": "Browser-enabled work has no domain allowlist.",
+            }
+        )
+    return {
+        "uniform": True,
+        "eventCount": len(events),
+        "events": events,
+        "hasApprovalCheckpoint": bool(pending_approval_count or review_blocked),
+        "hasBudgetCheckpoint": bool(latest_credits_spent > 0 or budget_exhausted),
+        "hasRetryCheckpoint": retry_count > 0,
+        "hasScheduleCheckpoint": trigger_type == "scheduled",
+        "hasBrowserPolicyCheckpoint": browser_policy_state != "disabled",
+    }
+
+
 def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int, latest_credits_spent: float, review_blocked: bool) -> dict[str, Any]:
     max_budget = _safe_float(doc.get("maxBudgetCredits", doc.get("maxCreditsPerRun", 0.0)))
     max_per_run = _safe_float(doc.get("maxCreditsPerRun"))
@@ -320,6 +407,18 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
         next_actions.append("Scheduled work can run under the current budget, retry and approval policy.")
     gate_state = "blocked" if blockers else "scheduled" if trigger_type == "scheduled" else "manual_ready"
     sla_state = "blocked" if review_blocked else deadline_state if trigger_type == "scheduled" else "manual"
+    audit_trail = _orchestration_audit_trail(
+        doc,
+        queue_state=queue_state,
+        trigger_type=trigger_type,
+        deadline_state=deadline_state,
+        pending_approval_count=pending_approval_count,
+        latest_credits_spent=latest_credits_spent,
+        budget_exhausted=budget_exhausted,
+        retry_count=retry_count,
+        review_blocked=review_blocked,
+        browser_policy_state=browser_policy_state,
+    )
     return {
         "queueState": queue_state,
         "triggerType": trigger_type,
@@ -377,6 +476,7 @@ def _orchestration_contract(doc: dict[str, Any], *, pending_approval_count: int,
                 "maxSteps": max_steps,
             },
         },
+        "auditTrail": audit_trail,
     }
 
 

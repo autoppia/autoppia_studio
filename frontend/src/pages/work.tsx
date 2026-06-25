@@ -1399,6 +1399,21 @@ export default function Work() {
                       </p>
                     </div>
                   )}
+                  {selectedItem.operational.orchestration.auditTrail && (
+                    <div className="mt-3 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-semibold text-gray-800 dark:text-gray-100">
+                          Audit trail: {selectedItem.operational.orchestration.auditTrail.eventCount || 0} event(s)
+                        </p>
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                          {selectedItem.operational.orchestration.auditTrail.uniform ? "uniform" : "legacy"}
+                        </p>
+                      </div>
+                      <p className="mt-1 truncate text-gray-500 dark:text-gray-400">
+                        {(selectedItem.operational.orchestration.auditTrail.events || []).slice(-1)[0]?.description || "Queue, schedule, budget, retry and approval checkpoints are tracked here."}
+                      </p>
+                    </div>
+                  )}
                 </div>
               )}
 
