@@ -722,11 +722,17 @@ function Session(): React.ReactElement {
   const workItemId = String(loadedSession?.workItemId || runtimeState?.workItemId || "");
   const runId = String(loadedSession?.runId || runtimeState?.runId || "");
   const creditsLabel = formatCredits(loadedSession?.creditsSpent ?? runtimeState?.creditsSpent);
-  const runtimeKind = browserActionCount > 0 && connectorActionCount > 0
+  const runtimeKind = loadedSession?.runtimeKind === "hybrid"
     ? "Hybrid runtime"
-    : browserActionCount > 0
+    : loadedSession?.runtimeKind === "browser"
       ? "Browser runtime"
-      : "API runtime";
+      : loadedSession?.runtimeKind === "api"
+        ? "API runtime"
+        : browserActionCount > 0 && connectorActionCount > 0
+          ? "Hybrid runtime"
+          : browserActionCount > 0
+            ? "Browser runtime"
+            : "API runtime";
   const latestActivityLabel = runtimeTimeline.length > 0 ? runtimeTimeline[runtimeTimeline.length - 1].label : "Waiting for task";
   const runtimeTimestamp = String(latestAssistantTiming?.emittedAt || "");
   const runtimeOverview = (

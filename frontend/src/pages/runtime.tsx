@@ -52,6 +52,7 @@ function metricTone(kind: "neutral" | "good" | "accent") {
 }
 
 function runtimeKind(session: SessionItem): "browser" | "api" | "hybrid" {
+  if (session.runtimeKind) return session.runtimeKind;
   if (session.hasBrowserActivity && session.hasConnectorActivity) return "hybrid";
   if (session.hasBrowserActivity) return "browser";
   return "api";

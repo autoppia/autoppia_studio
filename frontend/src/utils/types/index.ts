@@ -13,6 +13,7 @@ export interface SessionItem {
     runtimeState?: Record<string, any>;
     actionCount?: number;
     chatCount?: number;
+    runtimeKind?: "browser" | "api" | "hybrid";
     hasBrowserActivity?: boolean;
     hasConnectorActivity?: boolean;
     matchedSkillId?: string;

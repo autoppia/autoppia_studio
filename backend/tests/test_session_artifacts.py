@@ -158,6 +158,7 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["lastUrl"] == "https://erp.example.com/claims/1/summary"
     assert session["chatCount"] == 2
     assert session["actionCount"] == 2
+    assert session["runtimeKind"] == "hybrid"
     assert session["hasBrowserActivity"] is True
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"
@@ -269,6 +270,7 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["agentName"] == "Claims Agent"
     assert session["chatCount"] == 2
     assert session["actionCount"] == 2
+    assert session["runtimeKind"] == "hybrid"
     assert session["hasBrowserActivity"] is True
     assert session["hasConnectorActivity"] is True
     assert session["matchedSkillId"] == "skill-1"

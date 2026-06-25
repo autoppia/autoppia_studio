@@ -111,6 +111,7 @@ def _serialize_session_summary(doc: dict) -> dict:
     work_item_id = str(runtime_state.get("workItemId") or "")
     run_id = str(runtime_state.get("runId") or "")
     credits_spent = float(runtime_state.get("creditsSpent") or 0.0)
+    runtime_kind = "hybrid" if has_browser_activity and has_connector_activity else "browser" if has_browser_activity else "api"
     return {
         "sessionId": doc.get("sessionId", ""),
         "email": doc.get("email", ""),
@@ -125,6 +126,7 @@ def _serialize_session_summary(doc: dict) -> dict:
         "runtimeState": runtime_state,
         "actionCount": len(action_history),
         "chatCount": len(chat_history),
+        "runtimeKind": runtime_kind,
         "hasBrowserActivity": has_browser_activity,
         "hasConnectorActivity": has_connector_activity,
         "matchedSkillId": str(runtime_state.get("matchedSkillId") or ""),
