@@ -1911,6 +1911,7 @@ export default function Capabilities(): React.ReactElement {
             || (skill.trajectoryIds || []).some((trajectoryId) => trajectoryIds.has(trajectoryId))
           : false,
       );
+      const blockedSkills = skills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "fail");
       const promotableTrajectories = trajectories.filter((trajectory) =>
         !skills.some((skill) => (skill.trajectoryIds || []).includes(trajectory.trajectoryId))
         && trajectoryJudgeLabel(trajectory) === "pass",
@@ -1924,7 +1925,9 @@ export default function Capabilities(): React.ReactElement {
         tools: toolIds.size,
         trajectories: trajectories.length,
         skills: skills.length,
+        blockedSkills: blockedSkills.length,
         regressionReady: skills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "pass").length,
+        primaryBlockedSkillId: blockedSkills[0]?.skillId || "",
         primarySkillId: skills[0]?.skillId || "",
         primaryTrajectoryId: promotableTrajectories[0]?.trajectoryId || trajectories[0]?.trajectoryId || "",
       };
@@ -2011,6 +2014,7 @@ export default function Capabilities(): React.ReactElement {
       const passingTrajectories = benchmarkTrajectories.filter((trajectory) => trajectoryJudgeLabel(trajectory) === "pass");
       const promotedTrajectoryIds = new Set(benchmarkSkills.flatMap((skill) => skill.trajectoryIds || []));
       const promotable = passingTrajectories.filter((trajectory) => !promotedTrajectoryIds.has(trajectory.trajectoryId));
+      const blockedSkills = benchmarkSkills.filter((skill) => regression.bySkillId.get(skill.skillId)?.latestLabel === "fail");
       const runFailures = benchmarkRuns.filter((run) => ["failed", "error"].includes((run.status || "").toLowerCase()) || (run.errors || []).length > 0);
       const stage: "published" | "ready" | "needs_review" | "needs_harvest" =
         benchmarkSkills.length > 0 ? "published"
@@ -2029,8 +2033,10 @@ export default function Capabilities(): React.ReactElement {
         trajectoryCount: benchmarkTrajectories.length,
         passingCount: passingTrajectories.length,
         skillCount: benchmarkSkills.length,
+        blockedSkills: blockedSkills.length,
         runCount: benchmarkRuns.length,
         runFailures: runFailures.length,
+        primaryBlockedSkillId: blockedSkills[0]?.skillId || "",
         primarySkillId: benchmarkSkills[0]?.skillId || "",
         primaryPromotableTrajectoryId: promotable[0]?.trajectoryId || "",
         primaryTrajectoryId: benchmarkTrajectories[0]?.trajectoryId || "",
@@ -2048,7 +2054,7 @@ export default function Capabilities(): React.ReactElement {
         if (b.trajectoryCount !== a.trajectoryCount) return b.trajectoryCount - a.trajectoryCount;
         return a.name.localeCompare(b.name);
       });
-  }, [benchmarks, connectorFilter, filteredRuns, filteredSkills, filteredTrajectories]);
+  }, [benchmarks, connectorFilter, filteredRuns, filteredSkills, filteredTrajectories, regression.bySkillId]);
 
   // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
   // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
@@ -2445,6 +2451,11 @@ export default function Capabilities(): React.ReactElement {
                           <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${regressionTone(row.regressionReady > 0 ? "pass" : "")}`}>
                             {row.regressionReady} regression-ready
                           </span>
+                          {row.blockedSkills > 0 && (
+                            <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${regressionTone("fail")}`}>
+                              {row.blockedSkills} regression-blocked
+                            </span>
+                          )}
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2 text-[11px]">
                           <div className="rounded-lg border border-gray-200 bg-white px-2 py-2 dark:border-dark-border dark:bg-dark-surface">
@@ -2479,6 +2490,14 @@ export default function Capabilities(): React.ReactElement {
                           )}
                         </div>
                         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-gray-200 pt-3 dark:border-dark-border">
+                          {row.primaryBlockedSkillId && (
+                            <button
+                              onClick={() => openCapabilityByRef("skill", row.primaryBlockedSkillId)}
+                              className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                            >
+                              Fix regression
+                            </button>
+                          )}
                           {(row.primarySkillId || row.primaryTrajectoryId) && (
                             <button
                               onClick={() => row.primarySkillId
@@ -2591,9 +2610,16 @@ export default function Capabilities(): React.ReactElement {
                                 {row.taskCount} {row.taskCount === 1 ? "task" : "tasks"} · {row.trajectoryCount} trajectories · {row.skillCount} skills
                               </p>
                             </div>
-                            <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-semibold ${stageTone(row.stage)}`}>
-                              {stageLabel(row.stage)}
-                            </span>
+                            <div className="flex flex-wrap items-center justify-end gap-1.5">
+                              {row.blockedSkills > 0 && (
+                                <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-semibold ${regressionTone("fail")}`}>
+                                  Regression blocked
+                                </span>
+                              )}
+                              <span className={`inline-flex items-center rounded-lg border px-2 py-1 text-[10px] font-semibold ${stageTone(row.stage)}`}>
+                                {stageLabel(row.stage)}
+                              </span>
+                            </div>
                           </div>
                           <div className="mt-3 grid grid-cols-4 gap-2 text-center">
                             {[
@@ -2615,9 +2641,22 @@ export default function Capabilities(): React.ReactElement {
                                   {gap}
                                 </span>
                               ))}
+                              {row.blockedSkills > 0 && (
+                                <span className={`rounded-md border px-2 py-1 text-[10px] font-medium ${regressionTone("fail")}`}>
+                                  {row.blockedSkills} blocked {row.blockedSkills === 1 ? "skill" : "skills"}
+                                </span>
+                              )}
                             </div>
                           )}
                           <div className="mt-3 flex flex-wrap items-center gap-2">
+                            {row.primaryBlockedSkillId && (
+                              <button
+                                onClick={() => openCapabilityByRef("skill", row.primaryBlockedSkillId)}
+                                className="inline-flex h-8 items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-600 transition-colors hover:bg-red-100 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300"
+                              >
+                                Fix regression
+                              </button>
+                            )}
                             {(row.primarySkillId || row.primaryPromotableTrajectoryId || row.primaryTrajectoryId) && (
                               <button
                                 onClick={() => row.primarySkillId
