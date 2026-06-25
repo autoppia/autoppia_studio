@@ -32,6 +32,7 @@ from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
+from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
@@ -465,6 +466,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         tools = await tools_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
         benchmarks = await benchmarks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=500)
         benchmark_tasks = await benchmark_tasks_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
+        trajectories = await trajectories_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         eval_runs = await eval_runs_collection.find({"companyId": company_id, "email": email}, {"_id": 0, "actions": 0, "screenshots": 0}).to_list(length=1000)
         work_items = await work_items_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
         approvals = await approvals_collection.find({"companyId": company_id, "email": email}, {"_id": 0}).to_list(length=1000)
@@ -483,6 +485,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
         task_contracts_ready = sum(1 for task in benchmark_tasks if task_contract_ready(task))
         task_contracts = [task_contract_from_record(task) for task in benchmark_tasks]
+        promotion_pipeline = summarize_promotion_pipeline(tasks=benchmark_tasks, trajectories=trajectories, skills=skills)
         task_artifacts = sorted({artifact for contract in task_contracts for artifact in _normalized_list(contract.get("expectedArtifacts"))})
         task_allowed_systems = sorted({system for contract in task_contracts for system in _normalized_list(contract.get("allowedSystems"))})
         task_business_intents = [
@@ -606,8 +609,8 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "benchmarkTasks": len(benchmark_tasks),
             "evalRuns": len(eval_runs),
             "evals": await _count({"companyId": company_id, "email": email}, evals_collection),
-            "trajectories": await _count({"companyId": company_id, "email": email}, trajectories_collection),
-            "approvedTrajectories": await _count({"companyId": company_id, "email": email, "status": "approved"}, trajectories_collection),
+            "trajectories": len(trajectories),
+            "approvedTrajectories": sum(1 for doc in trajectories if str(doc.get("status") or "").lower() in {"approved", "accepted"}),
             "skills": len(skills),
             "readySkills": sum(1 for doc in skills if str(doc.get("status") or "") in {"ready", "approved"}),
             "sessions": len(sessions),
@@ -883,6 +886,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "evalRuns": counts["evalRuns"],
                 },
                 "evalGate": eval_gate,
+                "promotionPipeline": promotion_pipeline,
                 "tools": {
                     "total": counts["tools"],
                     "typed": counts["typedTools"],

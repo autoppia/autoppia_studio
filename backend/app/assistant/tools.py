@@ -35,6 +35,7 @@ from app.services.queue import enqueue_job
 from app.services.artifact_outputs import summarize_artifact_outputs
 from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
+from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
@@ -599,7 +600,6 @@ class AutomataAssistantTools:
         scoped = {"email": self.context.email, **({"companyId": company_id} if company_id else {})}
         connected_connectors = await self._count(connectors_collection, {**scoped, "status": {"$in": ["connected", "ready", "active", "authenticated"]}})
         approved_skills = await self._count(capabilities_collection, {**scoped, "capabilityKind": "skill", "status": {"$in": ["approved", "published", "production"]}})
-        approved_trajectories = await self._count(trajectories_collection, {**scoped, "status": {"$in": ["approved", "accepted"]}})
         passing_runs = await self._count(eval_runs_collection, {**scoped, "label": "pass"})
         failing_runs = await self._count(eval_runs_collection, {**scoped, "label": "fail"})
         pending_approvals = await self._count(approvals_collection, {**scoped, "status": "pending"})
@@ -610,6 +610,7 @@ class AutomataAssistantTools:
         tool_docs = await _to_list(tools_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         benchmark_docs = await _to_list(benchmarks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 500)
         task_docs = await _to_list(benchmark_tasks_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
+        trajectory_docs = await _to_list(trajectories_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         eval_run_docs = await _to_list(eval_runs_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
         knowledge_docs = await _to_list(knowledge_documents_collection.find(scoped, {"_id": 0, "storagePath": 0}).sort("createdAt", -1), 1000)
         session_docs = await _to_list(sessions_collection.find(scoped, {"_id": 0}).sort("createdAt", -1), 1000)
@@ -626,7 +627,7 @@ class AutomataAssistantTools:
             "skills": await capabilities_collection.count_documents({**scoped, "capabilityKind": "skill"}),
             "tools": await tools_collection.count_documents(scoped),
             "benchmarkTasks": await benchmark_tasks_collection.count_documents(scoped),
-            "trajectories": await trajectories_collection.count_documents(scoped),
+            "trajectories": len(trajectory_docs),
             "sessions": await sessions_collection.count_documents(scoped),
             "artifacts": len(artifact_docs),
             "workItems": await work_items_collection.count_documents(scoped),
@@ -640,6 +641,7 @@ class AutomataAssistantTools:
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         connector_map = summarize_connector_factory(connector_docs, sample_limit=5)
+        promotion_pipeline = summarize_promotion_pipeline(tasks=task_docs, trajectories=trajectory_docs, skills=skill_docs, sample_limit=5)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
@@ -726,6 +728,9 @@ class AutomataAssistantTools:
             recommended_actions.append({"area": "evals", "action": "Link promoted skills to benchmark regressions before treating them as production capabilities.", "reason": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."})
         if counts["skills"] and skill_eval_gate["blockedByRegression"]:
             recommended_actions.insert(0, {"area": "evals", "action": "Resolve regression-blocked skills before publishing or widening runtime access.", "reason": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."})
+        if promotion_pipeline["gaps"]:
+            first_gap = promotion_pipeline["gaps"][0]
+            recommended_actions.append({"area": "capabilities", "action": first_gap["label"], "reason": "The Task -> Trajectory -> Skill promotion path is incomplete."})
         if runtime_policy_map["gaps"]:
             first_gap = runtime_policy_map["gaps"][0]
             recommended_actions.append({"area": "runtime", "action": first_gap["label"], "reason": "Runtime policy map has an unresolved enterprise control gap."})
@@ -752,6 +757,7 @@ class AutomataAssistantTools:
                 {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
+                {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts require human review before reuse or delivery."} if artifact_outputs["reviewRequired"] else None,
@@ -815,7 +821,7 @@ class AutomataAssistantTools:
                 "tools": counts["tools"],
                 "benchmarkTasks": counts["benchmarkTasks"],
                 "trajectories": counts["trajectories"],
-                "approvedTrajectories": approved_trajectories,
+                "approvedTrajectories": promotion_pipeline["trajectories"]["approved"],
                 "skills": counts["skills"],
                 "approvedSkills": approved_skills,
             },
@@ -840,6 +846,7 @@ class AutomataAssistantTools:
                 },
                 "evalGate": skill_eval_gate,
                 "verticalDemos": vertical_demos,
+                "promotionPipeline": promotion_pipeline,
             },
             "resourceMap": resource_map,
             "runtime": {

@@ -487,7 +487,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
         "trajectories_collection",
         _Collection(
             [
-                {"trajectoryId": "traj-1", "companyId": "company-1", "email": "owner@example.com", "status": "approved"},
+                {"trajectoryId": "traj-1", "taskId": "task-1", "companyId": "company-1", "email": "owner@example.com", "status": "approved"},
                 {"trajectoryId": "traj-2", "companyId": "company-1", "email": "owner@example.com", "status": "draft"},
             ]
         ),
@@ -700,6 +700,12 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["capabilityMap"]["evalGate"]["passing"] == 1
     assert result["contract"]["capabilityMap"]["evalGate"]["missing"] == 1
     assert result["contract"]["capabilityMap"]["evalGate"]["blockedByRegression"] == 0
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["tasks"]["withTrajectory"] == 1
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["trajectories"]["approved"] == 1
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["skills"]["withApprovedTrajectory"] == 1
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["skills"]["published"] == 2
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["path"]["taskToTrajectory"] is True
+    assert result["contract"]["capabilityMap"]["promotionPipeline"]["gaps"][0]["key"] == "trajectory_approval"
     assert result["contract"]["capabilityMap"]["tools"]["typed"] == 1
     assert "Claim" in result["contract"]["capabilityMap"]["tools"]["mappedEntities"]
     assert result["contract"]["capabilityMap"]["skills"]["hardened"] == 1

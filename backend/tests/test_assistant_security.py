@@ -300,7 +300,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     )
     eval_runs = _Collection([{"email": "owner@example.com", "companyId": "company-1", "label": "fail"}])
     approvals = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "pending", "metadata": {"workItemId": "work-1"}}])
-    trajectories = _Collection([{"email": "owner@example.com", "companyId": "company-1", "status": "approved"}])
+    trajectories = _Collection([{"email": "owner@example.com", "companyId": "company-1", "trajectoryId": "traj-1", "taskId": "task-claim", "status": "approved"}])
     benchmark_tasks = _Collection(
         [
             {
@@ -464,6 +464,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
+    assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["tasks"]["withTrajectory"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["trajectories"]["approved"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["skills"]["withApprovedTrajectory"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["skills"]["reusable"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["path"]["trajectoryToSkill"] is True
     assert snapshot["operatingState"]["resourceMap"]["total"] == 1
     assert snapshot["operatingState"]["resourceMap"]["indexed"] == 0
     assert snapshot["operatingState"]["resourceMap"]["citable"] == 0
