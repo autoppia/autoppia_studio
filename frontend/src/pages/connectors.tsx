@@ -516,6 +516,22 @@ export default function Connectors(): React.ReactElement {
           )}
         </div>
         <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
+        {connector.capabilityDiscovery && (
+          <div className="mt-2 grid grid-cols-3 gap-1.5">
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[9px] uppercase tracking-wide text-gray-400">Docs</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.docs?.available ? "ready" : "missing"}</p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[9px] uppercase tracking-wide text-gray-400">Tools</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.toolSynthesis?.toolCount || connector.toolkit.tools.length}</p>
+            </div>
+            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
+              <p className="text-[9px] uppercase tracking-wide text-gray-400">Gaps</p>
+              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.gaps?.length || 0}</p>
+            </div>
+          </div>
+        )}
         {connector.type === "knowledge" && connector.vectorIndex && (
           <div className="mt-2 rounded-lg bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border px-2 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector DB</p>
@@ -849,6 +865,50 @@ export default function Connectors(): React.ReactElement {
               </div>
 
               <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4 bg-gray-50 dark:bg-dark-bg">
+                {selected.capabilityDiscovery && (
+                  <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">Capability discovery</p>
+                        <p className="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">
+                          {selected.capabilityDiscovery.mode || "official_toolkit"} · {selected.capabilityDiscovery.surface || selected.type}
+                        </p>
+                      </div>
+                      <span className={`rounded-md border px-2 py-0.5 text-[10px] font-medium ${selected.capabilityDiscovery.gaps?.length ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300" : "border-green-200 bg-green-50 text-green-700 dark:border-green-500/30 dark:bg-green-500/10 dark:text-green-300"}`}>
+                        {selected.capabilityDiscovery.status || (selected.capabilityDiscovery.gaps?.length ? "pending" : "ready")}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Docs/OpenAPI</p>
+                        <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.docs?.available ? "available" : "missing"}</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Auth</p>
+                        <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">
+                          {selected.capabilityDiscovery.auth?.configuredFields || 0}/{selected.capabilityDiscovery.auth?.totalFields || 0}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Entity source</p>
+                        <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.entityDiscovery?.source || "toolkit"}</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 dark:border-dark-border dark:bg-dark-bg">
+                        <p className="text-[10px] uppercase tracking-wide text-gray-400">Write tools</p>
+                        <p className="mt-1 font-semibold text-gray-800 dark:text-gray-100">{selected.capabilityDiscovery.toolSynthesis?.writeToolCount || 0}</p>
+                      </div>
+                    </div>
+                    {(selected.capabilityDiscovery.gaps || []).length > 0 && (
+                      <div className="mt-3 space-y-1.5">
+                        {(selected.capabilityDiscovery.gaps || []).map((gap) => (
+                          <p key={gap.key || gap.label} className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                            {gap.label || gap.key}
+                          </p>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
                     <FontAwesomeIcon icon={faWrench} className="text-primary text-xs" />

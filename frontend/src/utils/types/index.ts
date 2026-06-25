@@ -629,6 +629,39 @@ export interface Connector {
   discoveryStatus?: string;
   discoveryMode?: string;
   runtimeRequirements?: string[];
+  capabilityDiscovery?: {
+    mode?: string;
+    status?: string;
+    surface?: string;
+    docs?: {
+      available?: boolean;
+      urls?: string[];
+      surfaceUrls?: string[];
+      generationStatus?: string;
+    };
+    auth?: {
+      required?: boolean;
+      requiredFields?: string[];
+      configuredFields?: number;
+      totalFields?: number;
+    };
+    entityDiscovery?: {
+      source?: string;
+      status?: string;
+    };
+    toolSynthesis?: {
+      toolCount?: number;
+      writeToolCount?: number;
+      writeTools?: string[];
+      runtimeRequirements?: string[];
+    };
+    candidateTasks?: {
+      recommended?: boolean;
+      source?: string;
+      reason?: string;
+    };
+    gaps?: { key?: string; label?: string; target?: string }[];
+  };
   config?: Record<string, any>;
   vectorIndex?: VectorIndex;
   credentialFields?: Record<string, { configured: boolean }>;

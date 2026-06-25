@@ -62,6 +62,36 @@ def test_custom_api_toolkit_exposes_docs_generation_tools():
     ]
 
 
+def test_connector_serializer_exposes_capability_discovery_contract():
+    connector = connectors_route._serialize(
+        {
+            "connectorId": "conn-1",
+            "email": "user@example.com",
+            "companyId": "company-1",
+            "name": "Claims ERP",
+            "type": "api",
+            "category": "software",
+            "status": "needs_auth",
+            "provider": "custom",
+            "generationStatus": "needs_docs",
+            "discoveryMode": "task_scoped",
+            "config": {"baseUrl": "https://erp.example.com"},
+            "credentialRefs": {},
+        }
+    )
+
+    discovery = connector["capabilityDiscovery"]
+
+    assert discovery["mode"] == "task_scoped"
+    assert discovery["docs"]["available"] is False
+    assert discovery["docs"]["surfaceUrls"] == ["https://erp.example.com"]
+    assert discovery["auth"]["required"] is True
+    assert discovery["auth"]["configuredFields"] == 0
+    assert discovery["toolSynthesis"]["toolCount"] == 2
+    assert discovery["candidateTasks"]["recommended"] is True
+    assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
+
+
 @pytest.mark.parametrize(
     ("connector_type", "expected_tool", "expected_auth_field"),
     [

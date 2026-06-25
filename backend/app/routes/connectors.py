@@ -355,6 +355,73 @@ def _public_config(config: dict[str, Any], credential_refs: dict[str, str] | Non
     return public
 
 
+def _connector_capability_discovery(connector: dict[str, Any], toolkit: dict[str, Any]) -> dict[str, Any]:
+    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    connector_type = str(connector.get("type") or "api").lower()
+    provider = str(connector.get("provider") or "official").lower()
+    docs_urls = [
+        str(config.get(key) or "").strip()
+        for key in ("openApiUrl", "docsUrl", "sourceUrl")
+        if str(config.get(key) or "").strip()
+    ]
+    surface_urls = [
+        str(config.get(key) or "").strip()
+        for key in ("startUrl", "baseUrl", "loginUrl")
+        if str(config.get(key) or "").strip()
+    ]
+    auth_fields = list(toolkit.get("authFields") or [])
+    credential_fields = connector.get("credentialFields") if isinstance(connector.get("credentialFields"), dict) else {}
+    configured_auth = sum(1 for field in auth_fields if credential_fields.get(field, {}).get("configured") or config.get(field) == SECRET_PLACEHOLDER or bool(config.get(field)))
+    tool_specs = list(toolkit.get("tools") or [])
+    write_tools = [
+        tool.get("name", "")
+        for tool in tool_specs
+        if str(tool.get("sideEffects") or "").lower() in {"write", "writes", "send", "mutates"}
+    ]
+    discovery_gaps = []
+    if provider == "custom" and connector_type == "api" and not docs_urls:
+        discovery_gaps.append({"key": "docs", "label": "Add OpenAPI or documentation URL.", "target": "config.openApiUrl"})
+    if provider == "custom" and connector_type == "web" and not (config.get("startUrl") or config.get("baseUrl")):
+        discovery_gaps.append({"key": "startUrl", "label": "Add the web app start URL.", "target": "config.startUrl"})
+    if auth_fields and configured_auth < len(auth_fields):
+        discovery_gaps.append({"key": "auth", "label": "Configure required auth fields.", "target": "credentials"})
+    if not tool_specs:
+        discovery_gaps.append({"key": "tools", "label": "Publish or synthesize callable tools.", "target": "capabilities"})
+    return {
+        "mode": connector.get("discoveryMode") or ("task_scoped" if provider == "custom" else "official_toolkit"),
+        "status": connector.get("discoveryStatus") or ("pending" if discovery_gaps else "ready"),
+        "surface": connector.get("surface") or ("browser" if connector_type == "web" else "api" if connector_type == "api" else connector_type),
+        "docs": {
+            "available": bool(docs_urls),
+            "urls": docs_urls,
+            "surfaceUrls": surface_urls,
+            "generationStatus": connector.get("generationStatus", ""),
+        },
+        "auth": {
+            "required": bool(auth_fields) or bool(connector.get("authRequired")),
+            "requiredFields": auth_fields,
+            "configuredFields": configured_auth,
+            "totalFields": len(auth_fields),
+        },
+        "entityDiscovery": {
+            "source": "openapi" if connector_type == "api" and docs_urls else "runtime_observation" if connector_type == "web" else "toolkit",
+            "status": "available" if docs_urls or provider != "custom" else "pending",
+        },
+        "toolSynthesis": {
+            "toolCount": len(tool_specs),
+            "writeToolCount": len(write_tools),
+            "writeTools": write_tools,
+            "runtimeRequirements": toolkit.get("runtimeRequirements", []),
+        },
+        "candidateTasks": {
+            "recommended": provider == "custom",
+            "source": "benchmarks",
+            "reason": "Custom connectors should generate capabilities from benchmark tasks." if provider == "custom" else "Official toolkit is ready for connector benchmark seeding.",
+        },
+        "gaps": discovery_gaps,
+    }
+
+
 async def _extract_connector_credentials(
     *,
     existing: dict[str, Any] | None,
@@ -440,6 +507,7 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
             ),
         }
     connector["toolkit"] = connector_toolkit(connector)
+    connector["capabilityDiscovery"] = _connector_capability_discovery(connector, connector["toolkit"])
     return connector
 
 
