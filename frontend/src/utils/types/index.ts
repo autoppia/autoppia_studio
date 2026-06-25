@@ -31,6 +31,7 @@ export interface SessionItem {
     creditsSpent?: number;
     latestAction?: string;
     latestActivityLabel?: string;
+    latestActivityAt?: string;
     createdAt?: string | Date;
 }
 

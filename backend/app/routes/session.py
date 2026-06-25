@@ -103,6 +103,14 @@ def _pretty_session_action(action: str) -> str:
     return action
 
 
+def _session_action_timestamp(entry: dict[str, Any]) -> str:
+    for key in ("emittedAt", "createdAt", "timestamp", "at"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
 def _serialize_session_summary(doc: dict) -> dict:
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
@@ -127,8 +135,11 @@ def _serialize_session_summary(doc: dict) -> dict:
     credits_spent = float(runtime_state.get("creditsSpent") or 0.0)
     runtime_kind = "hybrid" if has_browser_activity and has_connector_activity else "browser" if has_browser_activity else "api"
     latest_action = ""
+    latest_activity_at = ""
     for item in reversed(action_history):
         if isinstance(item, dict):
+            if not latest_activity_at:
+                latest_activity_at = _session_action_timestamp(item)
             latest_action = str(item.get("action") or "")
             if latest_action:
                 break
@@ -162,6 +173,7 @@ def _serialize_session_summary(doc: dict) -> dict:
         "creditsSpent": credits_spent,
         "latestAction": latest_action,
         "latestActivityLabel": _pretty_session_action(latest_action),
+        "latestActivityAt": latest_activity_at,
     }
 
 

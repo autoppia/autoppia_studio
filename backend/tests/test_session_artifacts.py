@@ -133,8 +133,8 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
                     "provider": "autoppia",
                     "chatHistory": [{"role": "user"}, {"role": "assistant"}],
                     "actionHistory": [
-                        {"action": "browser.navigate"},
-                        {"action": "imap.search_emails"},
+                        {"action": "browser.navigate", "emittedAt": "2026-06-19T10:01:00Z"},
+                        {"action": "imap.search_emails", "emittedAt": "2026-06-19T10:02:00Z"},
                     ],
                     "runtimeState": {
                         "sourceKind": "work",
@@ -176,6 +176,7 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
+    assert session["latestActivityAt"] == "2026-06-19T10:02:00Z"
 
 
 @pytest.mark.asyncio
@@ -250,8 +251,8 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
                     "provider": "autoppia",
                     "chatHistory": [{"role": "user"}, {"role": "assistant"}],
                     "actionHistory": [
-                        {"action": "browser.navigate"},
-                        {"action": "imap.search_emails"},
+                        {"action": "browser.navigate", "emittedAt": "2026-06-19T10:01:00Z"},
+                        {"action": "imap.search_emails", "emittedAt": "2026-06-19T10:02:00Z"},
                     ],
                     "runtimeState": {
                         "sourceKind": "work",
@@ -292,6 +293,7 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["creditsSpent"] == 2.5
     assert session["latestAction"] == "imap.search_emails"
     assert session["latestActivityLabel"] == "imap.search_emails"
+    assert session["latestActivityAt"] == "2026-06-19T10:02:00Z"
 
 
 @pytest.mark.asyncio

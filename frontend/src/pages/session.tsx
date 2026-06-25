@@ -742,7 +742,7 @@ function Session(): React.ReactElement {
     latestActions[latestActions.length - 1] ||
     "",
   );
-  const runtimeTimestamp = String(latestAssistantTiming?.emittedAt || "");
+  const runtimeTimestamp = String(loadedSession?.latestActivityAt || latestAssistantTiming?.emittedAt || "");
   const runtimeOverview = (
     <div className="mb-3 grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1.8fr)]">
       <div className="rounded-xl border border-gray-200 bg-white/80 p-4 backdrop-blur-sm dark:border-dark-border dark:bg-dark-surface/80">
