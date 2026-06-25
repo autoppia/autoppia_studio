@@ -21,6 +21,19 @@ export interface SessionItem {
         stepLatencyCount?: number;
         traceIds?: string[];
     };
+    runtimePolicyBoundary?: {
+        boundaries?: {
+            read?: number;
+            draft?: number;
+            write?: number;
+            send?: number;
+        };
+        approvalRequiredFor?: string[];
+        pendingApprovalCount?: number;
+        approvedApprovalCount?: number;
+        artifactCount?: number;
+        hasHumanBoundary?: boolean;
+    };
     runtimeTimeline?: {
         index?: number;
         action?: string;

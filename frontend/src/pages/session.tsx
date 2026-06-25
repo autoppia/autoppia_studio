@@ -733,6 +733,9 @@ function Session(): React.ReactElement {
   const workItemId = String(loadedSession?.workItemId || runtimeState?.workItemId || "");
   const runId = String(loadedSession?.runId || runtimeState?.runId || "");
   const creditsLabel = formatCredits(loadedSession?.creditsSpent ?? runtimeState?.creditsSpent);
+  const runtimePolicyBoundary = loadedSession?.runtimePolicyBoundary;
+  const boundaryCounts = runtimePolicyBoundary?.boundaries || {};
+  const approvalRequiredFor = runtimePolicyBoundary?.approvalRequiredFor || [];
   const runtimeKind = loadedSession?.runtimeKind === "hybrid"
     ? "Hybrid runtime"
     : loadedSession?.runtimeKind === "browser"
@@ -797,6 +800,20 @@ function Session(): React.ReactElement {
           {workItemId ? <span> · Work item {workItemId}</span> : null}
           {runId ? <span> · Run {runId}</span> : null}
         </div>
+        {runtimePolicyBoundary && (
+          <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-dark-bg">
+            <div className="flex flex-wrap items-center gap-2 text-[11px]">
+              {(["read", "draft", "write", "send"] as const).map((boundary) => (
+                <span key={boundary} className={`rounded-lg border px-2 py-1 font-semibold ${approvalRequiredFor.includes(boundary) ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300" : "border-gray-200 bg-white text-gray-600 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"}`}>
+                  {boundary}: {boundaryCounts[boundary] || 0}
+                </span>
+              ))}
+              <span className={`rounded-lg border px-2 py-1 font-semibold ${runtimePolicyBoundary.hasHumanBoundary ? "border-primary/30 bg-primary/10 text-primary" : "border-gray-200 bg-white text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300"}`}>
+                approvals {runtimePolicyBoundary.pendingApprovalCount || 0} pending · {runtimePolicyBoundary.approvedApprovalCount || 0} approved
+              </span>
+            </div>
+          </div>
+        )}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {pendingConnectorApproval && (
             <button

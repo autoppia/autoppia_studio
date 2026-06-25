@@ -243,6 +243,70 @@ def _session_runtime_timeline(action_history: list[Any]) -> list[dict[str, Any]]
     return timeline
 
 
+def _session_action_policy_boundary(action: str) -> str:
+    normalized = str(action or "").strip().lower()
+    if not normalized:
+        return "read"
+    if any(token in normalized for token in ("send", "submit", "publish")):
+        return "send"
+    if any(token in normalized for token in ("update", "delete", "write", "post", "create", "save", "upload")):
+        return "write"
+    if any(token in normalized for token in ("draft", "artifact", "compose", "prepare")):
+        return "draft"
+    return "read"
+
+
+def _session_runtime_policy_boundary(
+    *,
+    action_history: list[Any],
+    runtime_state: dict[str, Any],
+    artifact_count: int = 0,
+    pending_approval_count: int = 0,
+) -> dict[str, Any]:
+    boundary_counts = {"read": 0, "draft": 0, "write": 0, "send": 0}
+    approval_boundaries: set[str] = set()
+    approved_calls = runtime_state.get("approvedConnectorToolCalls") if isinstance(runtime_state.get("approvedConnectorToolCalls"), list) else []
+    pending_approval = str(runtime_state.get("pendingConnectorApproval") or "").strip()
+    for item in action_history:
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or item.get("name") or "").strip()
+        if not action:
+            continue
+        boundary = _session_action_policy_boundary(action)
+        boundary_counts[boundary] += 1
+        if item.get("approvalKey") or item.get("approvalRequired"):
+            approval_boundaries.add(boundary)
+    if artifact_count:
+        boundary_counts["draft"] += artifact_count
+    if pending_approval:
+        approval_boundaries.add(_session_action_policy_boundary(pending_approval))
+    for call in approved_calls:
+        approval_boundaries.add(_session_action_policy_boundary(str(call or "")))
+    return {
+        "boundaries": boundary_counts,
+        "approvalRequiredFor": sorted(approval_boundaries, key=["read", "draft", "write", "send"].index),
+        "pendingApprovalCount": pending_approval_count,
+        "approvedApprovalCount": len(approved_calls),
+        "artifactCount": artifact_count,
+        "hasHumanBoundary": bool(pending_approval_count or pending_approval or approved_calls or approval_boundaries),
+    }
+
+
+def _attach_session_runtime_counts(summary: dict[str, Any], *, artifact_count: int, pending_approval_count: int) -> dict[str, Any]:
+    runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
+    summary["artifactCount"] = artifact_count
+    summary["pendingApprovalCount"] = pending_approval_count
+    summary["runtimePolicyBoundary"] = _session_runtime_policy_boundary(
+        action_history=summary.get("_actionHistory", []),
+        runtime_state=runtime_state,
+        artifact_count=artifact_count,
+        pending_approval_count=pending_approval_count,
+    )
+    summary.pop("_actionHistory", None)
+    return summary
+
+
 def _serialize_session_summary(doc: dict) -> dict:
     action_history = doc.get("actionHistory") if isinstance(doc.get("actionHistory"), list) else []
     chat_history = doc.get("chatHistory") if isinstance(doc.get("chatHistory"), list) else []
@@ -313,11 +377,16 @@ def _serialize_session_summary(doc: dict) -> dict:
         "runId": run_id,
         "creditsSpent": credits_spent,
         "runtimeMetrics": runtime_metrics,
+        "runtimePolicyBoundary": _session_runtime_policy_boundary(
+            action_history=action_history,
+            runtime_state=runtime_state,
+        ),
         "runtimeTimeline": runtime_timeline,
         "traceIds": runtime_metrics["traceIds"],
         "latestAction": latest_action,
         "latestActivityLabel": _pretty_session_action(latest_action),
         "latestActivityAt": latest_activity_at,
+        "_actionHistory": action_history,
     }
 
 
@@ -382,8 +451,11 @@ async def get_sessions(email: str, companyId: str = ""):
             session_id = summary.get("sessionId", "")
             artifact_query = {"sessionId": session_id, "email": email}
             pending_approval_query = {"sessionId": session_id, "email": email, "status": "pending"}
-            summary["artifactCount"] = await artifacts_collection.count_documents(artifact_query)
-            summary["pendingApprovalCount"] = await approvals_collection.count_documents(pending_approval_query)
+            summary = _attach_session_runtime_counts(
+                summary,
+                artifact_count=await artifacts_collection.count_documents(artifact_query),
+                pending_approval_count=await approvals_collection.count_documents(pending_approval_query),
+            )
             sessions.append(summary)
         return {"sessions": sessions}
     except Exception as e:
@@ -448,6 +520,11 @@ async def get_session(session_id: str, email: str = "", companyId: str = ""):
         scoped_email = email or str(doc.get("email") or "")
         artifact_query = {"sessionId": session_id, "email": scoped_email}
         pending_approval_query = {"sessionId": session_id, "email": scoped_email, "status": "pending"}
+        summary = _attach_session_runtime_counts(
+            summary,
+            artifact_count=await artifacts_collection.count_documents(artifact_query),
+            pending_approval_count=await approvals_collection.count_documents(pending_approval_query),
+        )
         return {
             "session": {
                 **summary,
@@ -456,8 +533,6 @@ async def get_session(session_id: str, email: str = "", companyId: str = ""):
                 "chatHistory": doc.get("chatHistory", []),
                 "actionHistory": doc.get("actionHistory", []),
                 "contextId": doc.get("contextId", ""),
-                "artifactCount": await artifacts_collection.count_documents(artifact_query),
-                "pendingApprovalCount": await approvals_collection.count_documents(pending_approval_query),
             }
         }
     except HTTPException:

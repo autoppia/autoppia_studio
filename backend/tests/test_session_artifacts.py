@@ -170,6 +170,12 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
     assert session["artifactCount"] == 2
     assert session["pendingApprovalCount"] == 1
+    assert session["runtimePolicyBoundary"]["boundaries"]["read"] == 2
+    assert session["runtimePolicyBoundary"]["boundaries"]["draft"] == 2
+    assert session["runtimePolicyBoundary"]["approvalRequiredFor"] == ["send"]
+    assert session["runtimePolicyBoundary"]["pendingApprovalCount"] == 1
+    assert session["runtimePolicyBoundary"]["approvedApprovalCount"] == 1
+    assert session["runtimePolicyBoundary"]["hasHumanBoundary"] is True
     assert session["sourceKind"] == "work"
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
@@ -298,6 +304,11 @@ async def test_get_session_exposes_runtime_summary(monkeypatch):
     assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
     assert session["artifactCount"] == 2
     assert session["pendingApprovalCount"] == 1
+    assert session["runtimePolicyBoundary"]["boundaries"]["read"] == 2
+    assert session["runtimePolicyBoundary"]["boundaries"]["draft"] == 2
+    assert session["runtimePolicyBoundary"]["approvalRequiredFor"] == ["send"]
+    assert session["runtimePolicyBoundary"]["pendingApprovalCount"] == 1
+    assert session["runtimePolicyBoundary"]["approvedApprovalCount"] == 1
     assert session["sourceKind"] == "work"
     assert session["workItemId"] == "work-42"
     assert session["runId"] == "run-9"
