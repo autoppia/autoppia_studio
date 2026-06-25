@@ -100,6 +100,18 @@ function latestWorkSessionId(item: WorkItem) {
   return item.operational?.latestSessionIds?.[0] || "";
 }
 
+function firstMatchedSkillId(item: WorkItem) {
+  return item.operational?.latestMatchedSkillIds?.[0] || "";
+}
+
+function firstMatchedTrajectoryId(item: WorkItem) {
+  return item.operational?.latestMatchedTrajectoryIds?.[0] || "";
+}
+
+function firstMatchedToolId(item: WorkItem) {
+  return item.operational?.latestToolIds?.[0] || "";
+}
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
@@ -1142,6 +1154,34 @@ export default function Work() {
                         <p>No matched skills recorded in the latest report.</p>
                       )}
                     </div>
+                    {(firstMatchedSkillId(selectedItem) || firstMatchedTrajectoryId(selectedItem) || firstMatchedToolId(selectedItem)) && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {firstMatchedSkillId(selectedItem) && (
+                          <button
+                            onClick={() => navigate(`/capabilities/skill/${firstMatchedSkillId(selectedItem)}`)}
+                            className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                          >
+                            Open skill
+                          </button>
+                        )}
+                        {!firstMatchedSkillId(selectedItem) && firstMatchedTrajectoryId(selectedItem) && (
+                          <button
+                            onClick={() => navigate(`/capabilities/trajectory/${firstMatchedTrajectoryId(selectedItem)}`)}
+                            className="h-8 rounded-lg border border-primary/30 bg-primary/5 px-3 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                          >
+                            Open trajectory
+                          </button>
+                        )}
+                        {firstMatchedToolId(selectedItem) && (
+                          <button
+                            onClick={() => navigate(`/capabilities/tool/${firstMatchedToolId(selectedItem)}`)}
+                            className="h-8 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
+                          >
+                            Open tool
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

@@ -105,4 +105,14 @@ describe("Work page", () => {
       expect(screen.queryByText("Other workflow")).not.toBeInTheDocument();
     });
   });
+
+  it("shows reverse capability links from the selected work item", async () => {
+    mockSearch = "item=work-1";
+
+    render(<Work />);
+
+    expect((await screen.findAllByText("Claim follow-up")).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open tool" })).toBeInTheDocument();
+  });
 });
