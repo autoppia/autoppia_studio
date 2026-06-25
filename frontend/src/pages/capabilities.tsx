@@ -35,6 +35,7 @@ import {
   EvalRun,
   HarvesterRun,
   SessionItem,
+  WorkItem,
 } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SelectDropdown from "../components/common/select-dropdown";
@@ -487,12 +488,13 @@ function CapabilityDetailModal({
     sessions: SessionItem[];
     approvals: ApprovalRequest[];
     artifacts: Artifact[];
+    workItems: WorkItem[];
   };
   userEmail: string;
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onOpenArtifacts: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
-  onOpenWork: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
+  onOpenWork: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string; workItemId?: string }) => void;
   onOpenRuntime: (params: { skillId?: string; sessionIds?: string[] }) => void;
   onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
   onOpenBenchmarkOps: (params: { mode: "benchmarks" | "runs"; benchmarkId?: string }) => void;
@@ -527,6 +529,7 @@ function CapabilityDetailModal({
   const recentSessions = runtimeUsage.sessions.slice(0, 4);
   const recentApprovals = runtimeUsage.approvals.slice(0, 4);
   const recentArtifacts = runtimeUsage.artifacts.slice(0, 4);
+  const recentWorkItems = runtimeUsage.workItems.slice(0, 4);
   const regressionSummary = isSkill
     ? regression.bySkillId.get(detail.item.skillId)
     : isTrajectory
@@ -850,7 +853,7 @@ function CapabilityDetailModal({
           <section>
             <div className="flex items-center justify-between gap-3 mb-2">
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Runtime usage</p>
-              {(recentSessions.length > 0 || recentApprovals.length > 0 || recentArtifacts.length > 0) && (
+              {(recentSessions.length > 0 || recentApprovals.length > 0 || recentArtifacts.length > 0 || recentWorkItems.length > 0) && (
                 <div className="flex flex-wrap items-center gap-2">
                   {recentSessions.length > 0 && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border">
@@ -865,6 +868,11 @@ function CapabilityDetailModal({
                   {recentArtifacts.length > 0 && (
                     <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-500/30">
                       {runtimeUsage.artifacts.length} artifacts
+                    </span>
+                  )}
+                  {recentWorkItems.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
+                      {runtimeUsage.workItems.length} jobs
                     </span>
                   )}
                 </div>
@@ -897,13 +905,13 @@ function CapabilityDetailModal({
                 </button>
               </div>
             )}
-            {recentSessions.length === 0 && recentApprovals.length === 0 && recentArtifacts.length === 0 ? (
+            {recentSessions.length === 0 && recentApprovals.length === 0 && recentArtifacts.length === 0 && recentWorkItems.length === 0 ? (
               <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-4 text-xs text-gray-400">
                 No runtime evidence is linked to this capability yet.
               </div>
             ) : (
               <div className="space-y-4">
-                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Sessions</p>
                     <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.sessions.length}</p>
@@ -919,8 +927,13 @@ function CapabilityDetailModal({
                     <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.artifacts.length}</p>
                     <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Business outputs from linked runtime sessions.</p>
                   </div>
+                  <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Jobs</p>
+                    <p className="mt-1 text-lg font-semibold text-gray-900 dark:text-white">{runtimeUsage.workItems.length}</p>
+                    <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">Work items whose latest execution referenced this capability.</p>
+                  </div>
                 </div>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-1 gap-4 xl:grid-cols-4">
                 <div className="space-y-2">
                   <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent sessions</p>
                   {recentSessions.length === 0 ? (
@@ -938,6 +951,44 @@ function CapabilityDetailModal({
                           <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{session.prompt || "Runtime session"}</p>
                           <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
                             {formatRuntimeDate(session.createdAt)} · {session.agentName || session.provider || "autoppia"}
+                          </p>
+                        </div>
+                        <span className="text-[10px] text-primary">Open</span>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent jobs</p>
+                    {runtimeUsage.workItems.length > 0 && (
+                      <button
+                        onClick={() => onOpenWork({
+                          skillId: isSkill ? detail.item.skillId : "",
+                          trajectoryId: isTrajectory ? detail.item.trajectoryId : isSkill ? linkedTrajectory?.trajectoryId || "" : "",
+                          toolId: isTool ? detail.item.toolId : "",
+                        })}
+                        className="text-[11px] font-semibold text-primary"
+                      >
+                        Open work
+                      </button>
+                    )}
+                  </div>
+                  {recentWorkItems.length === 0 ? (
+                    <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
+                      No work evidence linked yet.
+                    </div>
+                  ) : recentWorkItems.map((item) => (
+                    <button
+                      key={item.workItemId}
+                      onClick={() => onOpenWork({ workItemId: item.workItemId })}
+                      className="w-full rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-left transition-colors hover:border-primary/30"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold text-gray-900 dark:text-white">{item.title || "Work item"}</p>
+                          <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                            {item.status} · {formatDate(item.updatedAt || item.createdAt)}
                           </p>
                         </div>
                         <span className="text-[10px] text-primary">Open</span>
@@ -1333,6 +1384,7 @@ export default function Capabilities(): React.ReactElement {
   const [sessions, setSessions] = useState<SessionItem[]>([]);
   const [approvals, setApprovals] = useState<ApprovalRequest[]>([]);
   const [artifacts, setArtifacts] = useState<Artifact[]>([]);
+  const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<ViewKey>("tools");
   const [expandedToolConnectorKeys, setExpandedToolConnectorKeys] = useState<Set<string>>(new Set());
@@ -1364,6 +1416,7 @@ export default function Capabilities(): React.ReactElement {
       setSessions([]);
       setApprovals([]);
       setArtifacts([]);
+      setWorkItems([]);
       setLoading(false);
       return;
     }
@@ -1372,7 +1425,7 @@ export default function Capabilities(): React.ReactElement {
       const params = new URLSearchParams({ email: user.email });
       const connectorParams = new URLSearchParams({ email: user.email, companyId });
       const approvalParams = new URLSearchParams({ email: user.email, companyId, includeRuntime: "true", status: "" });
-      const [capRes, runsRes, connectorsRes, connectorBenchmarksRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes] = await Promise.all([
+      const [capRes, runsRes, connectorsRes, connectorBenchmarksRes, evalsRes, evalRunsRes, sessionsRes, approvalsRes, artifactsRes, workItemsRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/harvester-runs?${params.toString()}`),
         fetch(`${apiUrl}/connectors?${connectorParams.toString()}`),
@@ -1382,6 +1435,7 @@ export default function Capabilities(): React.ReactElement {
         fetch(`${apiUrl}/sessions?${connectorParams.toString()}`),
         fetch(`${apiUrl}/approvals?${approvalParams.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`),
+        fetch(`${apiUrl}/work-items?${connectorParams.toString()}`),
       ]);
       if (capRes.ok) {
         const data = await capRes.json();
@@ -1420,6 +1474,10 @@ export default function Capabilities(): React.ReactElement {
       if (artifactsRes.ok) {
         const data = await artifactsRes.json();
         setArtifacts(data.artifacts || []);
+      }
+      if (workItemsRes.ok) {
+        const data = await workItemsRes.json();
+        setWorkItems(data.workItems || []);
       }
     } catch (err) {
       console.error("Failed to load capabilities:", err);
@@ -1779,6 +1837,9 @@ export default function Capabilities(): React.ReactElement {
 
     const sessionsByTrajectoryId = new Map<string, SessionItem[]>();
     const sessionsByToolId = new Map<string, SessionItem[]>();
+    const workItemsBySkillId = new Map<string, WorkItem[]>();
+    const workItemsByTrajectoryId = new Map<string, WorkItem[]>();
+    const workItemsByToolId = new Map<string, WorkItem[]>();
     const artifactsBySkillId = new Map<string, Artifact[]>();
     const artifactsByTrajectoryId = new Map<string, Artifact[]>();
     const artifactsByToolId = new Map<string, Artifact[]>();
@@ -1803,6 +1864,20 @@ export default function Capabilities(): React.ReactElement {
       if (toolId) {
         if (!artifactsByToolId.has(toolId)) artifactsByToolId.set(toolId, []);
         artifactsByToolId.get(toolId)!.push(artifact);
+      }
+    }
+    for (const item of workItems) {
+      for (const skillId of item.operational?.latestMatchedSkillIds || []) {
+        if (!workItemsBySkillId.has(skillId)) workItemsBySkillId.set(skillId, []);
+        workItemsBySkillId.get(skillId)!.push(item);
+      }
+      for (const trajectoryId of item.operational?.latestMatchedTrajectoryIds || []) {
+        if (!workItemsByTrajectoryId.has(trajectoryId)) workItemsByTrajectoryId.set(trajectoryId, []);
+        workItemsByTrajectoryId.get(trajectoryId)!.push(item);
+      }
+      for (const toolId of item.operational?.latestToolIds || []) {
+        if (!workItemsByToolId.has(toolId)) workItemsByToolId.set(toolId, []);
+        workItemsByToolId.get(toolId)!.push(item);
       }
     }
     for (const trajectory of trajectories) {
@@ -1830,12 +1905,15 @@ export default function Capabilities(): React.ReactElement {
       approvalsBySkillId,
       approvalsByTrajectoryId,
       approvalsByToolId,
+      workItemsBySkillId,
+      workItemsByTrajectoryId,
+      workItemsByToolId,
       artifactsBySkillId,
       artifactsByTrajectoryId,
       artifactsByToolId,
       artifactsBySessionId,
     };
-  }, [approvals, artifacts, sessions, skills, tools, trajectories]);
+  }, [approvals, artifacts, sessions, skills, tools, trajectories, workItems]);
 
   const mergeArtifacts = useCallback((directArtifacts: Artifact[], sessionItems: SessionItem[]) => {
     return Array.from(new Map([
@@ -3207,6 +3285,7 @@ export default function Capabilities(): React.ReactElement {
                       ...(runtimeUsage.artifactsByToolId.get(detail.item.toolId) || []),
                       ...((runtimeUsage.sessionsByToolId.get(detail.item.toolId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
                     ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                    workItems: runtimeUsage.workItemsByToolId.get(detail.item.toolId) || [],
                   }
                 : detail.kind === "trajectory"
                   ? {
@@ -3216,6 +3295,7 @@ export default function Capabilities(): React.ReactElement {
                         ...(runtimeUsage.artifactsByTrajectoryId.get(detail.item.trajectoryId) || []),
                         ...((runtimeUsage.sessionsByTrajectoryId.get(detail.item.trajectoryId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
                       ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                      workItems: runtimeUsage.workItemsByTrajectoryId.get(detail.item.trajectoryId) || [],
                     }
                   : {
                       sessions: runtimeUsage.sessionsBySkillId.get(detail.item.skillId) || [],
@@ -3224,6 +3304,7 @@ export default function Capabilities(): React.ReactElement {
                         ...(runtimeUsage.artifactsBySkillId.get(detail.item.skillId) || []),
                         ...((runtimeUsage.sessionsBySkillId.get(detail.item.skillId) || []).flatMap((session) => runtimeUsage.artifactsBySessionId.get(session.sessionId) || [])),
                       ].map((artifact) => [artifact.artifactId, artifact])).values()),
+                      workItems: runtimeUsage.workItemsBySkillId.get(detail.item.skillId) || [],
                     }
             }
             userEmail={user.email}
@@ -3244,8 +3325,13 @@ export default function Capabilities(): React.ReactElement {
               if (toolId) params.set("toolId", toolId);
               navigate(`/artifacts${params.toString() ? `?${params.toString()}` : ""}`);
             }}
-            onOpenWork={({ sessionId, skillId, trajectoryId, toolId }) => {
+            onOpenWork={({ sessionId, skillId, trajectoryId, toolId, workItemId }) => {
               const params = new URLSearchParams();
+              if (workItemId) {
+                params.set("item", workItemId);
+                navigate(`/work?${params.toString()}`);
+                return;
+              }
               if (sessionId) params.set("sessionId", sessionId);
               if (skillId) params.set("skillId", skillId);
               if (trajectoryId) params.set("trajectoryId", trajectoryId);
