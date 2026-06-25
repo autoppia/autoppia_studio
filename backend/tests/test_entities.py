@@ -178,6 +178,43 @@ async def test_generate_entities_from_openapi_applies_to_company(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_generate_entities_can_resolve_source_from_connector(monkeypatch):
+    monkeypatch.setattr(entities, "companies_collection", _Collection([{"companyId": "co-1", "email": "user@example.com"}]))
+    monkeypatch.setattr(
+        entities,
+        "connectors_collection",
+        _Collection(
+            [
+                {
+                    "connectorId": "conn-1",
+                    "companyId": "co-1",
+                    "email": "user@example.com",
+                    "config": {"openApiUrl": "https://erp.example.com/openapi.json"},
+                }
+            ]
+        ),
+    )
+    entity_collection = _Collection()
+    monkeypatch.setattr(entities, "entities_collection", entity_collection)
+
+    async def fake_propose(source_url):
+        return [{"name": "Siniestro", "metadata": {"sourceUrl": source_url}}]
+
+    monkeypatch.setattr(entities, "propose_entities_from_openapi_url", fake_propose)
+
+    result = await entities.generate_company_entities(
+        "co-1",
+        entities.EntityGenerateRequest(email="user@example.com", sourceConnectorId="conn-1", apply=True),
+        RequestScope(email="user@example.com", token_email="user@example.com"),
+    )
+
+    assert result["sourceUrl"] == "https://erp.example.com/openapi.json"
+    assert result["sourceConnectorId"] == "conn-1"
+    assert entity_collection.docs[0]["sourceConnectorId"] == "conn-1"
+    assert entity_collection.docs[0]["metadata"]["sourceConnectorId"] == "conn-1"
+
+
+@pytest.mark.asyncio
 async def test_runtime_capability_context_includes_relevant_entity_graph(monkeypatch):
     monkeypatch.setattr(agent_runtime, "capabilities_collection", _Collection())
     monkeypatch.setattr(

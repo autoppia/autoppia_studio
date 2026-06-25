@@ -25,7 +25,7 @@ import {
   faRobot,
   faArrowUpRightFromSquare,
 } from "@fortawesome/free-solid-svg-icons";
-import { AgentConfig, CompanySkill, CompanyTool, EntityField, EntityModel, EntityRelationship } from "../utils/types";
+import { AgentConfig, CompanySkill, CompanyTool, Connector, EntityField, EntityModel, EntityRelationship } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import { getApiUrl } from "../utils/api-url";
 
@@ -221,16 +221,22 @@ function EntityFormModal({
 function EntityGenerateModal({
   saving,
   preview,
+  connectors,
   sourceUrl,
+  sourceConnectorId,
   onSourceUrlChange,
+  onSourceConnectorChange,
   onPreview,
   onApply,
   onClose,
 }: {
   saving: boolean;
   preview: EntityModel[];
+  connectors: Connector[];
   sourceUrl: string;
+  sourceConnectorId: string;
   onSourceUrlChange: (value: string) => void;
+  onSourceConnectorChange: (value: string) => void;
   onPreview: () => void;
   onApply: () => void;
   onClose: () => void;
@@ -256,8 +262,19 @@ function EntityGenerateModal({
 
         <div className="overflow-auto p-5 space-y-4">
           <label className="block">
+            <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Source connector</span>
+            <select value={sourceConnectorId} onChange={(e) => onSourceConnectorChange(e.target.value)} className={inputClass}>
+              <option value="">Use manual docs URL</option>
+              {connectors.map((connector) => (
+                <option key={connector.connectorId} value={connector.connectorId}>
+                  {connector.name} · {connector.type}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
             <span className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">OpenAPI or Swagger docs URL</span>
-            <input value={sourceUrl} onChange={(e) => onSourceUrlChange(e.target.value)} className={inputClass} placeholder="https://app.celeris.ad/openapi.json" autoFocus />
+            <input value={sourceUrl} onChange={(e) => onSourceUrlChange(e.target.value)} className={inputClass} placeholder="https://app.celeris.ad/openapi.json" autoFocus={!sourceConnectorId} />
           </label>
 
           <div className="flex items-center justify-between gap-3">
@@ -265,11 +282,11 @@ function EntityGenerateModal({
               Preview first, then create the proposed entity models in this company.
             </p>
             <div className="flex items-center gap-2 flex-shrink-0">
-              <button onClick={onPreview} disabled={saving || !sourceUrl.trim()} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60">
+              <button onClick={onPreview} disabled={saving || (!sourceUrl.trim() && !sourceConnectorId)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-dark-border text-xs font-semibold text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-border disabled:opacity-60">
                 {saving ? <FontAwesomeIcon icon={faSpinner} className="animate-spin mr-2 text-[10px]" /> : null}
                 Preview
               </button>
-              <button onClick={onApply} disabled={saving || !sourceUrl.trim()} className="h-9 px-3 rounded-lg bg-gradient-primary text-white text-xs font-semibold shadow-glow disabled:opacity-60">
+              <button onClick={onApply} disabled={saving || (!sourceUrl.trim() && !sourceConnectorId)} className="h-9 px-3 rounded-lg bg-gradient-primary text-white text-xs font-semibold shadow-glow disabled:opacity-60">
                 Create entities
               </button>
             </div>
@@ -689,6 +706,7 @@ export default function Entities(): React.ReactElement {
   const [tools, setTools] = useState<CompanyTool[]>([]);
   const [skills, setSkills] = useState<CompanySkill[]>([]);
   const [agents, setAgents] = useState<AgentConfig[]>([]);
+  const [connectors, setConnectors] = useState<Connector[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [tab, setTab] = useState<EntitiesTab>("list");
@@ -700,6 +718,7 @@ export default function Entities(): React.ReactElement {
   const [detailTarget, setDetailTarget] = useState<EntityModel | null>(null);
   const [generateOpen, setGenerateOpen] = useState(false);
   const [generateUrl, setGenerateUrl] = useState("");
+  const [generateConnectorId, setGenerateConnectorId] = useState("");
   const [generatePreview, setGeneratePreview] = useState<EntityModel[]>([]);
   const [generating, setGenerating] = useState(false);
 
@@ -709,6 +728,7 @@ export default function Entities(): React.ReactElement {
       setTools([]);
       setSkills([]);
       setAgents([]);
+      setConnectors([]);
       setLoading(false);
       return;
     }
@@ -716,10 +736,11 @@ export default function Entities(): React.ReactElement {
     try {
       const params = new URLSearchParams({ email: user.email });
       const scoped = new URLSearchParams({ email: user.email, companyId });
-      const [entitiesRes, capabilitiesRes, agentsRes] = await Promise.all([
+      const [entitiesRes, capabilitiesRes, agentsRes, connectorsRes] = await Promise.all([
         fetch(`${apiUrl}/companies/${companyId}/entities?${params.toString()}`),
         fetch(`${apiUrl}/companies/${companyId}/capabilities?${params.toString()}`),
         fetch(`${apiUrl}/agents?${scoped.toString()}`),
+        fetch(`${apiUrl}/connectors?${scoped.toString()}`),
       ]);
       if (entitiesRes.status === 404) {
         setEntities([]);
@@ -741,6 +762,12 @@ export default function Entities(): React.ReactElement {
         setAgents(agentData.agents || []);
       } else {
         setAgents([]);
+      }
+      if (connectorsRes.ok) {
+        const connectorData = await connectorsRes.json();
+        setConnectors(connectorData.connectors || []);
+      } else {
+        setConnectors([]);
       }
     } catch (err: any) {
       console.error("Failed to load entities:", err);
@@ -812,7 +839,7 @@ export default function Entities(): React.ReactElement {
   };
 
   const generateEntities = async (apply: boolean) => {
-    if (!companyId || !user.email || generating || !generateUrl.trim()) return;
+    if (!companyId || !user.email || generating || (!generateUrl.trim() && !generateConnectorId)) return;
     setGenerating(true);
     setError("");
     try {
@@ -822,6 +849,7 @@ export default function Entities(): React.ReactElement {
         body: JSON.stringify({
           email: user.email,
           sourceUrl: generateUrl.trim(),
+          sourceConnectorId: generateConnectorId,
           apply,
           limit: 50,
         }),
@@ -834,6 +862,7 @@ export default function Entities(): React.ReactElement {
       if (apply) {
         setGenerateOpen(false);
         setGeneratePreview([]);
+        setGenerateConnectorId("");
         await loadEntities();
       }
     } catch (err: any) {
@@ -1106,13 +1135,17 @@ export default function Entities(): React.ReactElement {
         <EntityGenerateModal
           saving={generating}
           preview={generatePreview}
+          connectors={connectors}
           sourceUrl={generateUrl}
+          sourceConnectorId={generateConnectorId}
           onSourceUrlChange={setGenerateUrl}
+          onSourceConnectorChange={setGenerateConnectorId}
           onPreview={() => generateEntities(false)}
           onApply={() => generateEntities(true)}
           onClose={() => {
             setGenerateOpen(false);
             setGeneratePreview([]);
+            setGenerateConnectorId("");
           }}
         />
       )}

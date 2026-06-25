@@ -8,7 +8,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field, field_validator
 
-from app.database import companies_collection, entities_collection
+from app.database import companies_collection, connectors_collection, entities_collection
 from app.models.entity import EntityField, EntityRelationship
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.entity_mapper import propose_entities_from_openapi_url
@@ -57,7 +57,7 @@ class EntityUpdateRequest(BaseModel):
 
 class EntityGenerateRequest(BaseModel):
     email: str
-    sourceUrl: str
+    sourceUrl: str = ""
     apply: bool = False
     replaceExisting: bool = False
     sourceConnectorId: str = ""
@@ -110,6 +110,27 @@ async def _owned_entity(entity_id: str, scope: RequestScope | None = None) -> di
     if not doc:
         raise HTTPException(status_code=404, detail="Entity not found")
     return doc
+
+
+async def _resolve_entity_generation_source(company_id: str, email: str, body: EntityGenerateRequest) -> tuple[str, str]:
+    source_url = body.sourceUrl.strip()
+    connector_id = body.sourceConnectorId.strip()
+    if source_url:
+        return source_url, connector_id
+    if not connector_id:
+        raise HTTPException(status_code=400, detail="sourceUrl or sourceConnectorId is required")
+    connector = await connectors_collection.find_one(
+        {"companyId": company_id, "email": email, "connectorId": connector_id},
+        {"_id": 0},
+    )
+    if not connector:
+        raise HTTPException(status_code=404, detail="Connector not found")
+    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
+    for key in ("openApiUrl", "docsUrl", "sourceUrl"):
+        candidate = str(config.get(key) or "").strip()
+        if candidate:
+            return candidate, connector_id
+    raise HTTPException(status_code=400, detail="Connector has no OpenAPI or documentation URL")
 
 
 def _relationship_edges(entity: dict[str, Any]) -> list[dict[str, Any]]:
@@ -174,7 +195,8 @@ async def generate_company_entities(company_id: str, body: EntityGenerateRequest
     scope = coerce_request_scope(scope)
     email = scope.require_email(body.email)
     await _ensure_company(company_id, scope)
-    proposals = (await propose_entities_from_openapi_url(body.sourceUrl.strip()))[: body.limit]
+    source_url, source_connector_id = await _resolve_entity_generation_source(company_id, email, body)
+    proposals = (await propose_entities_from_openapi_url(source_url))[: body.limit]
     existing = await entities_collection.find({"companyId": company_id, "email": email}, {"_id": 0, "name": 1}).to_list(length=500)
     existing_names = {str(doc.get("name") or "") for doc in existing}
     generated = []
@@ -193,9 +215,13 @@ async def generate_company_entities(company_id: str, body: EntityGenerateRequest
             "description": str(proposal.get("description") or "").strip(),
             "fields": proposal.get("fields") if isinstance(proposal.get("fields"), list) else [],
             "relationships": proposal.get("relationships") if isinstance(proposal.get("relationships"), list) else [],
-            "sourceConnectorId": body.sourceConnectorId,
+            "sourceConnectorId": source_connector_id,
             "source": "openapi",
-            "metadata": proposal.get("metadata") if isinstance(proposal.get("metadata"), dict) else {},
+            "metadata": {
+                **(proposal.get("metadata") if isinstance(proposal.get("metadata"), dict) else {}),
+                "sourceUrl": source_url,
+                **({"sourceConnectorId": source_connector_id} if source_connector_id else {}),
+            },
             "createdAt": now,
             "updatedAt": now,
         }
@@ -222,7 +248,8 @@ async def generate_company_entities(company_id: str, body: EntityGenerateRequest
         "applied": body.apply,
         "entities": generated,
         "skipped": skipped,
-        "sourceUrl": body.sourceUrl,
+        "sourceUrl": source_url,
+        "sourceConnectorId": source_connector_id,
     }
 
 
