@@ -1442,6 +1442,11 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                                   {task.taskContract.riskClass}
                                 </span>
                               )}
+                              {task.evaluationHarness?.strategy && (
+                                <span className="px-2 py-0.5 rounded-md border border-blue-200 bg-blue-50 text-[10px] font-semibold text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300">
+                                  {task.evaluationHarness.strategy} eval
+                                </span>
+                              )}
                             </div>
                             <p className="text-sm text-gray-900 dark:text-white truncate">{task.prompt}</p>
                             {task.taskContract && (
@@ -1455,6 +1460,11 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
                                 {task.taskContract.businessIntent && (
                                   <span className="rounded-md border border-primary/20 bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">business intent</span>
                                 )}
+                                {(task.evaluationHarness?.layers || []).filter((layer) => layer.enabled).slice(0, 4).map((layer) => (
+                                  <span key={layer.key || layer.label} className="rounded-md border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-300" title={layer.summary || ""}>
+                                    {layer.label || layer.key}
+                                  </span>
+                                ))}
                               </div>
                             )}
                           </div>

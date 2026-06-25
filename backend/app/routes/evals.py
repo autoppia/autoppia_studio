@@ -132,6 +132,7 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
         "riskClass": str(metadata.get("riskClass") or ""),
     }
     task_contract["completeness"] = _task_contract_completeness(task_contract)
+    judge_type = _clean_judge_type(task.get("judgeType"))
     return {
         "evalId": task.get("taskId", ""),
         "taskId": task.get("taskId", ""),
@@ -146,7 +147,8 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
         "agentTaskName": task.get("taskName") or task.get("name") or "",
         "successCriteria": task.get("successCriteria", ""),
         "taskContract": task_contract,
-        "judgeType": _clean_judge_type(task.get("judgeType")),
+        "judgeType": judge_type,
+        "evaluationHarness": _evaluation_harness(task_contract, judge_type),
         "status": task.get("status", ""),
         "source": task.get("source", "benchmark_task"),
         "createdAt": task.get("createdAt"),
@@ -186,6 +188,51 @@ def _task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
         "totalChecks": total,
         "score": round(passed / total, 3) if total else 0.0,
         "state": "complete" if passed == total else "incomplete",
+    }
+
+
+def _evaluation_harness(contract: dict[str, Any], judge_type: str) -> dict[str, Any]:
+    deterministic_ready = bool(str(contract.get("successCriteria") or "").strip())
+    stateful_ready = bool(contract.get("initialUrl") or contract.get("initialState"))
+    llm_enabled = judge_type == "llm"
+    layers = [
+        {
+            "key": "deterministic",
+            "label": "Deterministic checks",
+            "enabled": deterministic_ready,
+            "role": "first_pass",
+            "summary": "Success criteria can be checked before model judging." if deterministic_ready else "Add success criteria for deterministic checks.",
+        },
+        {
+            "key": "stateful",
+            "label": "Stateful evaluator",
+            "enabled": stateful_ready,
+            "role": "environment_replay",
+            "summary": "Initial URL/state can drive replay or stateful evaluation." if stateful_ready else "Add initial URL or state for replay.",
+        },
+        {
+            "key": "llm",
+            "label": "LLM judge",
+            "enabled": llm_enabled,
+            "role": "semantic_review",
+            "summary": "LLMJudge is enabled as semantic review." if llm_enabled else "LLMJudge is disabled unless this task needs semantic review.",
+        },
+        {
+            "key": "manual",
+            "label": "Human review",
+            "enabled": True,
+            "role": "override",
+            "summary": "Manual review remains available for overrides and unresolved cases.",
+        },
+    ]
+    return {
+        "strategy": "layered",
+        "preferredOrder": [layer["key"] for layer in layers if layer["enabled"]],
+        "deterministicFirst": deterministic_ready,
+        "statefulReplay": stateful_ready,
+        "llmAsComplement": llm_enabled,
+        "humanOverride": True,
+        "layers": layers,
     }
 
 

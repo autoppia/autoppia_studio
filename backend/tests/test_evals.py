@@ -213,6 +213,11 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert task["task"]["taskContract"]["riskClass"] == "read"
     assert task["task"]["taskContract"]["completeness"]["state"] == "complete"
     assert task["task"]["taskContract"]["completeness"]["passedChecks"] == 6
+    assert task["task"]["evaluationHarness"]["strategy"] == "layered"
+    assert task["task"]["evaluationHarness"]["deterministicFirst"] is True
+    assert task["task"]["evaluationHarness"]["statefulReplay"] is True
+    assert task["task"]["evaluationHarness"]["llmAsComplement"] is False
+    assert task["task"]["evaluationHarness"]["preferredOrder"] == ["deterministic", "stateful", "manual"]
 
 
 @pytest.mark.asyncio

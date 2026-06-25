@@ -255,6 +255,21 @@ export interface EvalItem {
     };
   };
   judgeType?: "manual" | "llm" | string;
+  evaluationHarness?: {
+    strategy?: string;
+    preferredOrder?: string[];
+    deterministicFirst?: boolean;
+    statefulReplay?: boolean;
+    llmAsComplement?: boolean;
+    humanOverride?: boolean;
+    layers?: Array<{
+      key?: string;
+      label?: string;
+      enabled?: boolean;
+      role?: string;
+      summary?: string;
+    }>;
+  };
   status?: string;
   source?: string;
   createdAt?: string;
