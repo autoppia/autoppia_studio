@@ -107,6 +107,10 @@ def _serialize_session_summary(doc: dict) -> dict:
             if isinstance(item, dict)
         )
     )
+    source_kind = str(runtime_state.get("sourceKind") or "")
+    work_item_id = str(runtime_state.get("workItemId") or "")
+    run_id = str(runtime_state.get("runId") or "")
+    credits_spent = float(runtime_state.get("creditsSpent") or 0.0)
     return {
         "sessionId": doc.get("sessionId", ""),
         "email": doc.get("email", ""),
@@ -127,6 +131,10 @@ def _serialize_session_summary(doc: dict) -> dict:
         "matchedSkillName": str(runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or ""),
         "approvedConnectorToolCallCount": len(approved_calls),
         "pendingConnectorApproval": str(runtime_state.get("pendingConnectorApproval") or ""),
+        "sourceKind": source_kind,
+        "workItemId": work_item_id,
+        "runId": run_id,
+        "creditsSpent": credits_spent,
     }
 
 
@@ -271,6 +279,10 @@ async def get_session(session_id: str, email: str = "", companyId: str = ""):
                 "provider": doc.get("provider", "autoppia"),
                 "agentId": doc.get("agentId", ""),
                 "agentName": doc.get("agentName", ""),
+                "sourceKind": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("sourceKind") or ""),
+                "workItemId": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("workItemId") or ""),
+                "runId": str((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("runId") or ""),
+                "creditsSpent": float(((doc.get("runtimeState") if isinstance(doc.get("runtimeState"), dict) else {}).get("creditsSpent") or 0.0)),
             }
         }
     except HTTPException:

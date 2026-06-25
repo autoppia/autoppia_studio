@@ -39,6 +39,12 @@ function hostLabel(value?: string) {
   }
 }
 
+function formatCredits(value?: number) {
+  const amount = Number(value || 0);
+  if (amount <= 0) return "";
+  return `${amount.toFixed(2)} cr`;
+}
+
 function metricTone(kind: "neutral" | "good" | "accent") {
   if (kind === "good") return "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-300 dark:border-emerald-500/30";
   if (kind === "accent") return "bg-primary/10 text-primary border-primary/20";
@@ -86,17 +92,23 @@ function SessionCard({
   onOpen,
   onOpenApprovals,
   onOpenArtifacts,
+  onOpenWorkItem,
 }: {
   session: SessionItem;
   onOpen: (sessionId: string) => void;
   onOpenApprovals: (sessionId: string) => void;
   onOpenArtifacts: (sessionId: string) => void;
+  onOpenWorkItem: (workItemId: string) => void;
 }) {
   const initialHost = hostLabel(session.initialUrl);
   const lastHost = hostLabel(session.lastUrl);
   const runtimeState = session.runtimeState || {};
   const matchedSkillName = String(session.matchedSkillName || runtimeState.matchedSkillName || runtimeState.matchedSkill || "");
   const kind = runtimeKind(session);
+  const workItemId = String(session.workItemId || runtimeState.workItemId || "");
+  const runId = String(session.runId || runtimeState.runId || "");
+  const sourceKind = String(session.sourceKind || runtimeState.sourceKind || "");
+  const creditsLabel = formatCredits(session.creditsSpent ?? runtimeState.creditsSpent);
 
   return (
     <div className="w-full rounded-2xl border border-gray-200 bg-white p-4 text-left transition-colors hover:border-primary/30 hover:bg-primary/5 dark:border-dark-border dark:bg-dark-surface dark:hover:border-primary/30 dark:hover:bg-primary/5">
@@ -166,6 +178,18 @@ function SessionCard({
             {session.artifactCount} artifacts
           </span>
         )}
+        {sourceKind === "work" && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("accent")}`}>
+            <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
+            Work orchestration
+          </span>
+        )}
+        {creditsLabel && (
+          <span className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] ${metricTone("neutral")}`}>
+            <FontAwesomeIcon icon={faShapes} className="text-[10px]" />
+            {creditsLabel} spent
+          </span>
+        )}
       </div>
 
       <div className="mt-4 grid gap-3 text-xs text-gray-500 dark:text-gray-400 sm:grid-cols-3">
@@ -179,7 +203,14 @@ function SessionCard({
         </div>
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-dark-bg">
           <p className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">Provider</p>
-          <p className="mt-1 truncate text-gray-700 dark:text-gray-200">{session.provider || "autoppia"}</p>
+          <p className="mt-1 truncate text-gray-700 dark:text-gray-200">
+            {sourceKind === "work" ? "Work Orchestration" : session.provider || "autoppia"}
+          </p>
+          {workItemId ? (
+            <p className="mt-1 truncate text-[11px] text-gray-400 dark:text-gray-500">
+              {workItemId}{runId ? ` · ${runId}` : ""}
+            </p>
+          ) : null}
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-dark-border">
@@ -203,6 +234,16 @@ function SessionCard({
             >
               <FontAwesomeIcon icon={faFileLines} className="text-[10px]" />
               Artifacts
+            </button>
+          )}
+          {workItemId && (
+            <button
+              type="button"
+              onClick={() => onOpenWorkItem(workItemId)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-200 dark:hover:bg-dark-surface"
+            >
+              <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
+              Open job
             </button>
           )}
           <button
@@ -366,6 +407,7 @@ export default function Runtime(): React.ReactElement {
                 onOpen={(sessionId) => navigate(`/session/${sessionId}`)}
                 onOpenApprovals={(sessionId) => navigate(`/approvals?status=pending&sessionId=${encodeURIComponent(sessionId)}`)}
                 onOpenArtifacts={(sessionId) => navigate(`/artifacts?sessionId=${encodeURIComponent(sessionId)}`)}
+                onOpenWorkItem={(workItemId) => navigate(`/work?item=${encodeURIComponent(workItemId)}`)}
               />
             )) : (
               <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-6 py-10 text-center dark:border-dark-border dark:bg-dark-bg">

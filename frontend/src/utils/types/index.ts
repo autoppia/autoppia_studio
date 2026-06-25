@@ -21,6 +21,10 @@ export interface SessionItem {
     pendingConnectorApproval?: string;
     pendingApprovalCount?: number;
     artifactCount?: number;
+    sourceKind?: string;
+    workItemId?: string;
+    runId?: string;
+    creditsSpent?: number;
     createdAt?: string | Date;
 }
 

@@ -137,6 +137,10 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
                         {"action": "imap.search_emails"},
                     ],
                     "runtimeState": {
+                        "sourceKind": "work",
+                        "workItemId": "work-42",
+                        "runId": "run-9",
+                        "creditsSpent": 2.5,
                         "matchedSkillId": "skill-1",
                         "matchedSkillName": "Handle claim summary",
                         "pendingConnectorApproval": "smtp.send_email:0:abc",
@@ -162,6 +166,10 @@ async def test_get_sessions_exposes_runtime_summary(monkeypatch):
     assert session["pendingConnectorApproval"] == "smtp.send_email:0:abc"
     assert session["artifactCount"] == 2
     assert session["pendingApprovalCount"] == 1
+    assert session["sourceKind"] == "work"
+    assert session["workItemId"] == "work-42"
+    assert session["runId"] == "run-9"
+    assert session["creditsSpent"] == 2.5
 
 
 @pytest.mark.asyncio

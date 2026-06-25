@@ -95,6 +95,12 @@ function formatRuntimeDate(value?: string) {
   return date.toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+function formatCredits(value?: number) {
+  const amount = Number(value || 0);
+  if (amount <= 0) return "";
+  return `${amount.toFixed(2)} credits`;
+}
+
 function artifactRows(content: string) {
   return content
     .split(/\r?\n/)
@@ -694,6 +700,10 @@ function Session(): React.ReactElement {
   const matchedSkillName = String(runtimeState?.matchedSkillName || runtimeState?.matchedSkill || locationState?.skillName || "");
   const pendingConnectorApproval = String(runtimeState?.pendingConnectorApproval || "");
   const approvedConnectorToolCalls = Array.isArray(runtimeState?.approvedConnectorToolCalls) ? runtimeState.approvedConnectorToolCalls : [];
+  const sourceKind = String(runtimeState?.sourceKind || "");
+  const workItemId = String(runtimeState?.workItemId || "");
+  const runId = String(runtimeState?.runId || "");
+  const creditsLabel = formatCredits(runtimeState?.creditsSpent);
   const runtimeKind = browserActionCount > 0 && connectorActionCount > 0
     ? "Hybrid runtime"
     : browserActionCount > 0
@@ -729,12 +739,20 @@ function Session(): React.ReactElement {
                 Approval pending
               </span>
             )}
+            {sourceKind === "work" && (
+              <span className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-primary/10 px-2 py-1 text-[11px] text-primary">
+                <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
+                Work orchestration
+              </span>
+            )}
           </div>
         </div>
         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
           Latest activity: <span className="font-semibold text-gray-800 dark:text-gray-100">{latestActivityLabel}</span>
           {agentName ? <span> · AgentRuntime: {agentName}</span> : null}
           {lastUrl ? <span> · Last URL recorded</span> : null}
+          {workItemId ? <span> · Work item {workItemId}</span> : null}
+          {runId ? <span> · Run {runId}</span> : null}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           {pendingConnectorApproval && (
@@ -757,13 +775,34 @@ function Session(): React.ReactElement {
               View persisted artifacts
             </button>
           )}
+          {workItemId && (
+            <button
+              type="button"
+              onClick={() => navigate(`/work?item=${encodeURIComponent(workItemId)}`)}
+              className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
+            >
+              <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
+              Open job
+            </button>
+          )}
         </div>
       </div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <RuntimeMetricCard label="Tool Calls" value={connectorActionCount} hint="Typed connector actions executed in this session." />
         <RuntimeMetricCard label="Browser Steps" value={browserActionCount} hint="UI actions executed through browser runtime." tone={browserActionCount > 0 ? "accent" : "neutral"} />
         <RuntimeMetricCard label="Artifacts" value={sessionArtifacts.length} hint="Business outputs separated from the trace." tone={sessionArtifacts.length > 0 ? "good" : "neutral"} />
-        <RuntimeMetricCard label="Approvals" value={pendingConnectorApproval ? "Pending" : approvedConnectorToolCalls.length} hint={pendingConnectorApproval ? "Waiting for human approval before write/send." : `${approvedConnectorToolCalls.length} approved connector calls recorded.`} tone={pendingConnectorApproval ? "accent" : approvedConnectorToolCalls.length > 0 ? "good" : "neutral"} />
+        <RuntimeMetricCard
+          label={creditsLabel ? "Credits" : "Approvals"}
+          value={creditsLabel || (pendingConnectorApproval ? "Pending" : approvedConnectorToolCalls.length)}
+          hint={
+            creditsLabel
+              ? `Source: ${sourceKind === "work" ? "Work Orchestration" : "runtime session"}${runId ? ` · ${runId}` : ""}`
+              : pendingConnectorApproval
+                ? "Waiting for human approval before write/send."
+                : `${approvedConnectorToolCalls.length} approved connector calls recorded.`
+          }
+          tone={creditsLabel ? "good" : pendingConnectorApproval ? "accent" : approvedConnectorToolCalls.length > 0 ? "good" : "neutral"}
+        />
       </div>
     </div>
   );
