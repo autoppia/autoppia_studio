@@ -751,6 +751,69 @@ def _eval_run_payload(run: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _capability_boundary(doc: dict[str, Any]) -> str:
+    explicit = str(doc.get("policyBoundary") or (doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {}).get("policyBoundary") or "").strip().lower()
+    if explicit in {"read", "draft", "write", "send"}:
+        return explicit
+    side_effects = str(doc.get("sideEffects") or "").strip().lower()
+    if side_effects in {"sends", "send"}:
+        return "send"
+    if side_effects in {"writes", "write", "deletes", "delete", "mutates", "payments"}:
+        return "write"
+    if side_effects in {"drafts", "draft"}:
+        return "draft"
+    return "read"
+
+
+def _policy_boundary_payload(boundary: str) -> dict[str, Any]:
+    labels = {
+        "read": "Read-only boundary",
+        "draft": "Draft artifact boundary",
+        "write": "Write side-effect boundary",
+        "send": "External send boundary",
+    }
+    return {
+        "boundary": boundary,
+        "label": labels.get(boundary, boundary),
+        "requiresApprovalByDefault": boundary in {"write", "send"},
+        "ordered": boundary in {"read", "draft", "write", "send"},
+    }
+
+
+def _approval_mode_payload(mode: str) -> dict[str, Any]:
+    clean = mode if mode in {"always", "auto", "never"} else "auto"
+    return {
+        "approvalMode": clean,
+        "label": f"Approval {clean}",
+        "humanRequired": clean in {"always", "auto"},
+    }
+
+
+def _browser_policy_id(policy: dict[str, Any]) -> str:
+    if not policy.get("browserRuntime"):
+        return "none"
+    browser = policy.get("browserPolicy") if isinstance(policy.get("browserPolicy"), dict) else {}
+    if browser.get("restrictedByDomain"):
+        return "domain_restricted"
+    if browser.get("requiresSandbox"):
+        return "sandbox_required"
+    return "browser_allowed"
+
+
+def _browser_policy_payload(policy: dict[str, Any]) -> dict[str, Any]:
+    browser = policy.get("browserPolicy") if isinstance(policy.get("browserPolicy"), dict) else {}
+    policy_id = _browser_policy_id(policy)
+    return {
+        "browserPolicy": policy_id,
+        "browserRuntime": bool(policy.get("browserRuntime")),
+        "defaultUse": browser.get("defaultUse") or "none",
+        "restrictedByDomain": bool(browser.get("restrictedByDomain")),
+        "allowedDomains": browser.get("allowedDomains") if isinstance(browser.get("allowedDomains"), list) else [],
+        "requiresSandbox": bool(browser.get("requiresSandbox")),
+        "leastPrivilege": bool(browser.get("leastPrivilege", True)),
+    }
+
+
 def _capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -773,6 +836,25 @@ def _capability_graph_coverage(
     ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
     reusable_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
     complete_tasks = sum(1 for task in task_docs if task_contract_ready(task))
+    tool_policies = [(tool, serialize_runtime_policy(tool)) for tool in tool_docs]
+    write_tools = [tool for tool in tool_docs if _capability_boundary(tool) in {"write", "send"}]
+    skill_policies = [serialize_runtime_policy(skill) for skill in skill_docs]
+    write_skills = [policy for policy in skill_policies if {"write", "send"} & set(policy.get("approvalRequiredFor") or [])]
+    browser_skill_policies = [policy for policy in skill_policies if policy.get("browserRuntime")]
+    browser_work_items = [item for item in work_item_docs if bool(item.get("browserEnabled", True))]
+    write_tools_protected = all(
+        "write" in set(policy.get("approvalRequiredFor") or [])
+        for tool, policy in tool_policies
+        if _capability_boundary(tool) == "write"
+    )
+    send_tools_protected = all(
+        "send" in set(policy.get("approvalRequiredFor") or [])
+        for tool, policy in tool_policies
+        if _capability_boundary(tool) == "send"
+    )
+    write_skills_protected = all("write" in set(policy.get("approvalRequiredFor") or []) for policy in skill_policies)
+    send_skills_protected = all("send" in set(policy.get("approvalRequiredFor") or []) for policy in skill_policies)
+    browser_skills_sandboxed = all(bool((policy.get("browserPolicy") if isinstance(policy.get("browserPolicy"), dict) else {}).get("requiresSandbox")) for policy in browser_skill_policies)
     vector_store_ids = {str(store.get("vectorDatabaseId") or "") for store in vector_store_docs if str(store.get("vectorDatabaseId") or "")}
     resource_vector_ids = {
         str(resource.get("vectorDatabaseId") or _resource_indexing(resource).get("vectorDatabaseId") or "")
@@ -795,6 +877,17 @@ def _capability_graph_coverage(
             "linkedToSkills": "grounds_skill" in edge_relations,
         },
         "tools": {"total": len(tool_docs), "ready": ready_tools, "governed": sum(1 for tool in tool_docs if isinstance(tool.get("toolContract"), dict))},
+        "policies": {
+            "policyNodes": sum(1 for relation in edge_relations if relation in {"governed_by_boundary", "uses_approval_mode", "uses_browser_policy"}),
+            "writeCapabilities": len(write_tools) + len(write_skills),
+            "writesProtected": write_tools_protected and write_skills_protected,
+            "sendProtected": send_tools_protected and send_skills_protected,
+            "browserCapabilities": len(browser_skill_policies) + len(browser_work_items),
+            "browserSandboxed": browser_skills_sandboxed and all(bool(item.get("browserEnabled", True)) for item in browser_work_items),
+            "domainRestricted": "restricted_to_domains" in edge_relations,
+            "highRiskTools": sum(1 for tool in tool_docs if str(tool.get("riskLevel") or "").lower() in {"high", "critical"}),
+            "approvalModes": sorted({str(policy.get("approvalMode") or "auto") for policy in skill_policies} | {str((tool.get("permissions") if isinstance(tool.get("permissions"), dict) else {}).get("approval") or "auto") for tool in tool_docs}),
+        },
         "benchmarks": {"total": len(benchmark_docs), "tasks": len(task_docs), "tasksWithContracts": complete_tasks},
         "evals": {
             "runs": len(eval_run_docs),
@@ -1591,6 +1684,28 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     task_nodes_by_eval_id: dict[str, str] = {}
     task_nodes_by_benchmark_id: dict[str, list[str]] = {}
 
+    def add_policy_edges(source_node: str, policy: dict[str, Any], *, boundary: str = "", evidence_source: str = "policy") -> None:
+        clean_boundary = boundary if boundary in {"read", "draft", "write", "send"} else "read"
+        boundary_node = _add_node(nodes, "policy_boundary", clean_boundary, f"{clean_boundary} boundary", _policy_boundary_payload(clean_boundary))
+        _add_edge(edges, source_node, boundary_node, "governed_by_boundary", {"source": evidence_source})
+        approval_mode = str(policy.get("approvalMode") or "auto")
+        approval_node = _add_node(nodes, "approval_mode", approval_mode, f"approval {approval_mode}", _approval_mode_payload(approval_mode))
+        _add_edge(edges, source_node, approval_node, "uses_approval_mode", {"source": evidence_source})
+        approval_required_for = set(policy.get("approvalRequiredFor") if isinstance(policy.get("approvalRequiredFor"), list) else [])
+        if "write" in approval_required_for:
+            _add_edge(edges, source_node, boundary_node, "requires_write_approval", {"source": evidence_source})
+        if "send" in approval_required_for:
+            _add_edge(edges, source_node, boundary_node, "requires_send_approval", {"source": evidence_source})
+        if policy.get("browserRuntime"):
+            browser_policy_id = _browser_policy_id(policy)
+            browser_node = _add_node(nodes, "browser_policy", browser_policy_id, browser_policy_id.replace("_", " "), _browser_policy_payload(policy))
+            _add_edge(edges, source_node, browser_node, "uses_browser_policy", {"source": evidence_source})
+            browser = policy.get("browserPolicy") if isinstance(policy.get("browserPolicy"), dict) else {}
+            if browser.get("requiresSandbox"):
+                _add_edge(edges, source_node, browser_node, "requires_browser_sandbox", {"source": evidence_source})
+            if browser.get("restrictedByDomain"):
+                _add_edge(edges, source_node, browser_node, "restricted_to_domains", {"source": evidence_source})
+
     for connector in connector_docs:
         connector_id = str(connector.get("connectorId") or "")
         _add_node(nodes, "connector", connector_id, str(connector.get("name") or connector_id), {
@@ -1638,6 +1753,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
         tool_id = str(tool.get("toolId") or "")
         tool_node = _add_node(nodes, "tool", tool_id, str(tool.get("name") or tool_id), _serialize_tool(tool))
         _add_edge(edges, f"connector:{tool.get('connectorId')}", tool_node, "exposes_tool", {"source": "tool.connectorId"})
+        add_policy_edges(tool_node, serialize_runtime_policy(tool), boundary=_capability_boundary(tool), evidence_source="tool.policy")
         for entity_name in tool.get("inputEntities") or []:
             entity = entity_by_name.get(str(entity_name).lower())
             entity_id = str((entity or {}).get("entityId") or entity_name)
@@ -1706,6 +1822,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     for skill in serialized_skills:
         skill_id = str(skill.get("skillId") or skill.get("capabilityId") or "")
         skill_node = _add_node(nodes, "skill", skill_id, str(skill.get("name") or skill_id), skill)
+        add_policy_edges(skill_node, skill.get("runtimePolicy") if isinstance(skill.get("runtimePolicy"), dict) else serialize_runtime_policy(skill), boundary="write" if "write" in ((skill.get("runtimePolicy") or {}).get("approvalRequiredFor") or []) else "read", evidence_source="skill.runtimePolicy")
         if skill_node:
             eval_id = str(skill.get("evalId") or "")
             if eval_id:
@@ -1788,6 +1905,19 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
     for work_item in work_item_docs:
         work_item_id = str(work_item.get("workItemId") or "")
         work_node = _add_node(nodes, "work_item", work_item_id, str(work_item.get("title") or work_item_id), _work_item_payload(work_item))
+        work_policy = {
+            "approvalMode": "auto",
+            "approvalRequiredFor": ["write", "send"],
+            "browserRuntime": bool(work_item.get("browserEnabled", True)),
+            "browserPolicy": {
+                "defaultUse": work_item.get("browserDefaultUse") or "exception",
+                "restrictedByDomain": bool(work_item.get("browserRestrictedByDomain")) or bool(work_item.get("allowedDomains")),
+                "allowedDomains": work_item.get("allowedDomains") if isinstance(work_item.get("allowedDomains"), list) else [],
+                "requiresSandbox": bool(work_item.get("browserEnabled", True)),
+                "leastPrivilege": True,
+            },
+        }
+        add_policy_edges(work_node, work_policy, boundary="write", evidence_source="work.policy")
         source_benchmark_id = str(work_item.get("sourceBenchmarkId") or "")
         source_task_id = str(work_item.get("sourceTaskId") or "")
         if source_benchmark_id:

@@ -1374,6 +1374,17 @@ export interface CapabilityGraphCoverage {
     ready?: number;
     governed?: number;
   };
+  policies?: {
+    policyNodes?: number;
+    writeCapabilities?: number;
+    writesProtected?: boolean;
+    sendProtected?: boolean;
+    browserCapabilities?: number;
+    browserSandboxed?: boolean;
+    domainRestricted?: boolean;
+    highRiskTools?: number;
+    approvalModes?: string[];
+  };
   benchmarks?: {
     total?: number;
     tasks?: number;

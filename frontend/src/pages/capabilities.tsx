@@ -2654,6 +2654,12 @@ export default function Capabilities(): React.ReactElement {
       ),
       governedTools: coverage.tools?.governed || 0,
       totalTools: coverage.tools?.total || 0,
+      writeCapabilities: coverage.policies?.writeCapabilities || 0,
+      highRiskTools: coverage.policies?.highRiskTools || 0,
+      writesProtected: Boolean(coverage.policies?.writesProtected),
+      sendProtected: Boolean(coverage.policies?.sendProtected),
+      browserSandboxed: Boolean(coverage.policies?.browserSandboxed),
+      domainRestricted: Boolean(coverage.policies?.domainRestricted),
       taskContracts: coverage.benchmarks?.tasksWithContracts || 0,
       totalTasks: coverage.benchmarks?.tasks || 0,
       evalRuns: coverage.evals?.runs || 0,
@@ -3432,6 +3438,9 @@ export default function Capabilities(): React.ReactElement {
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.governedTools === backendGraphStats.totalTools && backendGraphStats.totalTools > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
                           {backendGraphStats.governedTools}/{backendGraphStats.totalTools} governed tools
+                        </span>
+                        <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.writesProtected && backendGraphStats.sendProtected && backendGraphStats.browserSandboxed ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"}`}>
+                          {backendGraphStats.writeCapabilities} protected writes · {backendGraphStats.highRiskTools} high risk · {backendGraphStats.domainRestricted ? "domains locked" : "domains open"}
                         </span>
                         <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold ${backendGraphStats.taskContracts === backendGraphStats.totalTasks && backendGraphStats.totalTasks > 0 ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300" : "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300"}`}>
                           {backendGraphStats.taskContracts}/{backendGraphStats.totalTasks} task contracts
