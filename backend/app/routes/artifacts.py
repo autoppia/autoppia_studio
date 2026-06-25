@@ -114,13 +114,27 @@ async def _owned_artifact(artifact_id: str, scope: RequestScope) -> dict[str, An
 
 
 @router.get("/companies/{company_id}/artifacts")
-async def list_company_artifacts(company_id: str, email: str = "", sessionId: str = "", scope: RequestScope = Depends(get_request_scope)):
+async def list_company_artifacts(
+    company_id: str,
+    email: str = "",
+    sessionId: str = "",
+    skillId: str = "",
+    trajectoryId: str = "",
+    toolId: str = "",
+    scope: RequestScope = Depends(get_request_scope),
+):
     scope = coerce_request_scope(scope)
     scoped_email = scope.require_email(email)
     await _ensure_company(company_id, scope)
     query: dict[str, Any] = {"companyId": company_id, "email": scoped_email}
     if sessionId:
         query["sessionId"] = sessionId
+    if skillId:
+        query["metadata.skillId"] = skillId
+    if trajectoryId:
+        query["metadata.trajectoryId"] = trajectoryId
+    if toolId:
+        query["metadata.toolId"] = toolId
     docs = await artifacts_collection.find(
         query,
         {"_id": 0},

@@ -202,6 +202,9 @@ export default function Artifacts(): React.ReactElement {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const sessionFilter = searchParams.get("sessionId") || "";
+  const skillFilter = searchParams.get("skillId") || "";
+  const trajectoryFilter = searchParams.get("trajectoryId") || "";
+  const toolFilter = searchParams.get("toolId") || "";
 
   const selected = useMemo(() => artifacts.find((artifact) => artifact.artifactId === selectedId), [artifacts, selectedId]);
   const selectedSkillId = String(selected?.metadata?.skillId || "");
@@ -219,6 +222,9 @@ export default function Artifacts(): React.ReactElement {
     try {
       const params = new URLSearchParams({ email: user.email });
       if (sessionFilter) params.set("sessionId", sessionFilter);
+      if (skillFilter) params.set("skillId", skillFilter);
+      if (trajectoryFilter) params.set("trajectoryId", trajectoryFilter);
+      if (toolFilter) params.set("toolId", toolFilter);
       const res = await fetch(`${apiUrl}/companies/${companyId}/artifacts?${params.toString()}`);
       if (res.status === 404) {
         setArtifacts([]);
@@ -245,7 +251,7 @@ export default function Artifacts(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  }, [companyId, selectedId, sessionFilter, user.email]);
+  }, [companyId, selectedId, sessionFilter, skillFilter, toolFilter, trajectoryFilter, user.email]);
 
   useEffect(() => {
     loadArtifacts();
@@ -376,9 +382,12 @@ export default function Artifacts(): React.ReactElement {
           <aside className="flex min-h-[280px] flex-col rounded-xl border border-gray-200 bg-white dark:border-dark-border dark:bg-dark-surface">
             <div className="border-b border-gray-200 p-4 dark:border-dark-border">
               <p className="text-sm font-semibold text-gray-900 dark:text-white">Workspace artifacts</p>
-              {sessionFilter && (
+              {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Focused on session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span>.
+                  {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
+                  {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                  {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                  {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
                 </p>
               )}
               <div className="mt-3 grid grid-cols-2 gap-2">
@@ -428,18 +437,24 @@ export default function Artifacts(): React.ReactElement {
           </aside>
 
           <main className="min-w-0 space-y-4">
-            {sessionFilter && (
+            {(sessionFilter || skillFilter || trajectoryFilter || toolFilter) && (
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 dark:border-dark-border dark:bg-dark-surface">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Session filter active</p>
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Runtime filter active</p>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    Showing persisted artifacts linked to runtime session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span>.
+                    {sessionFilter ? <>Session <span className="font-mono text-gray-700 dark:text-gray-200">{sessionFilter}</span></> : null}
+                    {skillFilter ? <> {sessionFilter ? "· " : ""}Skill <span className="font-mono text-gray-700 dark:text-gray-200">{skillFilter}</span></> : null}
+                    {trajectoryFilter ? <> {(sessionFilter || skillFilter) ? "· " : ""}Trajectory <span className="font-mono text-gray-700 dark:text-gray-200">{trajectoryFilter}</span></> : null}
+                    {toolFilter ? <> {(sessionFilter || skillFilter || trajectoryFilter) ? "· " : ""}Tool <span className="font-mono text-gray-700 dark:text-gray-200">{toolFilter}</span></> : null}
                   </p>
                 </div>
                 <button
                   onClick={() => {
                     const next = new URLSearchParams(searchParams);
                     next.delete("sessionId");
+                    next.delete("skillId");
+                    next.delete("trajectoryId");
+                    next.delete("toolId");
                     setSearchParams(next);
                   }}
                   className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-dark-bg"

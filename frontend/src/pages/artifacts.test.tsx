@@ -87,9 +87,24 @@ describe("Artifacts page", () => {
 
     render(<Artifacts />);
 
-    expect(await screen.findByText("Session filter active")).toBeInTheDocument();
+    expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
     expect(global.fetch).toHaveBeenCalledWith(
       expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&sessionId=session-7"),
+    );
+  });
+
+  it("passes capability filters through to the artifacts query", async () => {
+    mockSearch = "skillId=skill-9&trajectoryId=trajectory-4&toolId=tool-2";
+    global.fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ artifacts: [] }),
+    }) as jest.Mock;
+
+    render(<Artifacts />);
+
+    expect(await screen.findByText("Runtime filter active")).toBeInTheDocument();
+    expect(global.fetch).toHaveBeenCalledWith(
+      expect.stringContaining("/companies/company-1/artifacts?email=demo%40example.com&skillId=skill-9&trajectoryId=trajectory-4&toolId=tool-2"),
     );
   });
 });

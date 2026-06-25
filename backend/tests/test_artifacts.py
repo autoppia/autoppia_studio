@@ -51,7 +51,16 @@ class _Collection:
 
 
 def _matches(doc, query):
-    return all(doc.get(key) == value for key, value in query.items())
+    return all(_lookup(doc, key) == value for key, value in query.items())
+
+
+def _lookup(doc, key):
+    value = doc
+    for part in key.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
 
 
 @pytest.mark.asyncio
@@ -86,3 +95,42 @@ async def test_artifact_crud_and_download(monkeypatch):
     assert downloaded.body == b"<h1>Q2</h1>"
     assert downloaded.media_type.startswith("text/html")
     assert deleted == {"success": True}
+
+
+@pytest.mark.asyncio
+async def test_artifact_listing_supports_capability_filters(monkeypatch):
+    monkeypatch.setattr(artifacts, "companies_collection", _Collection([{"companyId": "co-1", "email": "user@example.com"}]))
+    artifact_collection = _Collection([
+        {
+            "artifactId": "artifact-skill",
+            "companyId": "co-1",
+            "email": "user@example.com",
+            "title": "Skill artifact",
+            "artifactType": "markdown",
+            "content": "# Skill",
+            "sessionId": "session-1",
+            "metadata": {"skillId": "skill-1", "trajectoryId": "trajectory-1", "toolId": "tool-1"},
+            "updatedAt": "2026-06-25T10:00:00+00:00",
+        },
+        {
+            "artifactId": "artifact-other",
+            "companyId": "co-1",
+            "email": "user@example.com",
+            "title": "Other artifact",
+            "artifactType": "markdown",
+            "content": "# Other",
+            "sessionId": "session-2",
+            "metadata": {"skillId": "skill-2", "trajectoryId": "trajectory-2", "toolId": "tool-2"},
+            "updatedAt": "2026-06-25T09:00:00+00:00",
+        },
+    ])
+    monkeypatch.setattr(artifacts, "artifacts_collection", artifact_collection)
+    scope = RequestScope(email="user@example.com", token_email="user@example.com")
+
+    by_skill = await artifacts.list_company_artifacts("co-1", email="user@example.com", skillId="skill-1", scope=scope)
+    by_trajectory = await artifacts.list_company_artifacts("co-1", email="user@example.com", trajectoryId="trajectory-1", scope=scope)
+    by_tool = await artifacts.list_company_artifacts("co-1", email="user@example.com", toolId="tool-1", scope=scope)
+
+    assert [item["artifactId"] for item in by_skill["artifacts"]] == ["artifact-skill"]
+    assert [item["artifactId"] for item in by_trajectory["artifacts"]] == ["artifact-skill"]
+    assert [item["artifactId"] for item in by_tool["artifacts"]] == ["artifact-skill"]

@@ -460,6 +460,7 @@ function CapabilityDetailModal({
   userEmail,
   onOpenSession,
   onOpenApprovals,
+  onOpenArtifacts,
   onOpenRuntime,
   onOpenCapability,
   onOpenBenchmarkOps,
@@ -489,6 +490,7 @@ function CapabilityDetailModal({
   userEmail: string;
   onOpenSession: (sessionId: string) => void;
   onOpenApprovals: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
+  onOpenArtifacts: (params: { sessionId?: string; skillId?: string; trajectoryId?: string; toolId?: string }) => void;
   onOpenRuntime: (params: { skillId?: string; sessionIds?: string[] }) => void;
   onOpenCapability: (next: Exclude<CapabilityDetail, null>) => void;
   onOpenBenchmarkOps: (params: { mode: "benchmarks" | "runs"; benchmarkId?: string }) => void;
@@ -971,7 +973,22 @@ function CapabilityDetailModal({
                   ))}
                 </div>
                 <div className="space-y-2">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent artifacts</p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Recent artifacts</p>
+                    {runtimeUsage.artifacts.length > 0 && (
+                      <button
+                        onClick={() => onOpenArtifacts({
+                          skillId: isSkill ? detail.item.skillId : "",
+                          trajectoryId: isTrajectory ? detail.item.trajectoryId : isSkill ? linkedTrajectory?.trajectoryId || "" : "",
+                          toolId: isTool ? detail.item.toolId : "",
+                          sessionId: runtimeUsage.sessions.length === 1 ? runtimeUsage.sessions[0]?.sessionId || "" : "",
+                        })}
+                        className="text-[11px] font-semibold text-primary"
+                      >
+                        Open artifacts
+                      </button>
+                    )}
+                  </div>
                   {recentArtifacts.length === 0 ? (
                     <div className="rounded-lg border border-dashed border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg p-3 text-xs text-gray-400">
                       No persisted artifacts linked yet.
@@ -3204,6 +3221,14 @@ export default function Capabilities(): React.ReactElement {
               if (trajectoryId) params.set("trajectoryId", trajectoryId);
               if (toolId) params.set("toolId", toolId);
               navigate(`/approvals?${params.toString()}`);
+            }}
+            onOpenArtifacts={({ sessionId, skillId, trajectoryId, toolId }) => {
+              const params = new URLSearchParams();
+              if (sessionId) params.set("sessionId", sessionId);
+              if (skillId) params.set("skillId", skillId);
+              if (trajectoryId) params.set("trajectoryId", trajectoryId);
+              if (toolId) params.set("toolId", toolId);
+              navigate(`/artifacts${params.toString() ? `?${params.toString()}` : ""}`);
             }}
             onOpenRuntime={({ skillId, sessionIds }) => {
               const params = new URLSearchParams();
