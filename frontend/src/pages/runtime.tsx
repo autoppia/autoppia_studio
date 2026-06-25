@@ -107,6 +107,8 @@ function SessionCard({
   const lastHost = hostLabel(session.lastUrl);
   const matchedSkillId = String(session.matchedSkillId || "");
   const matchedSkillName = String(session.matchedSkillName || "");
+  const latestActivityLabel = String(session.latestActivityLabel || "");
+  const latestActivityAt = session.latestActivityAt;
   const kind = runtimeKind(session);
   const workItemId = String(session.workItemId || "");
   const runId = String(session.runId || "");
@@ -216,6 +218,12 @@ function SessionCard({
           ) : null}
         </div>
       </div>
+      {latestActivityLabel && (
+        <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+          Latest activity: <span className="font-semibold text-gray-800 dark:text-gray-100">{latestActivityLabel}</span>
+          {latestActivityAt ? <span> · {formatDate(latestActivityAt)}</span> : null}
+        </div>
+      )}
       <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-dark-border">
         <span className="text-[11px] text-gray-400">Session {session.sessionId.slice(0, 8)}</span>
         <div className="flex flex-wrap items-center gap-2">
@@ -343,6 +351,7 @@ export default function Runtime(): React.ReactElement {
         session.provider || "",
         session.matchedSkillName || "",
         session.workItemId || "",
+        session.latestActivityLabel || "",
       ].join(" ").toLowerCase().includes(q)
       );
     });

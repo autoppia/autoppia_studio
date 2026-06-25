@@ -35,6 +35,8 @@ describe("Runtime page", () => {
             workItemId: "work-1",
             matchedSkillId: "skill-1",
             matchedSkillName: "Resolve claim",
+            latestActivityLabel: "Read email",
+            latestActivityAt: "2026-06-25T10:02:00Z",
             actionCount: 1,
             chatCount: 1,
           },
@@ -65,5 +67,12 @@ describe("Runtime page", () => {
     expect(await screen.findByText("Claim session")).toBeInTheDocument();
     expect(screen.queryByText("Other session")).not.toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
+  });
+
+  it("shows latest activity summaries from the session snapshot", async () => {
+    render(<Runtime />);
+
+    expect(await screen.findByText("Latest activity:")).toBeInTheDocument();
+    expect(await screen.findByText("Read email")).toBeInTheDocument();
   });
 });
