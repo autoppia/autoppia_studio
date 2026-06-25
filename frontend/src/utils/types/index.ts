@@ -1242,6 +1242,30 @@ export interface CompanySkill {
       outputEntity?: string;
       expectedArtifacts?: string[];
       outputCard?: Record<string, any>;
+      ioContract?: {
+        inputs?: {
+          entities?: string[];
+          preconditions?: string[];
+        };
+        outputs?: {
+          entity?: string;
+          artifacts?: string[];
+          outputCard?: Record<string, any>;
+        };
+        declared?: boolean;
+      };
+    };
+    ioContract?: {
+      inputs?: {
+        entities?: string[];
+        preconditions?: string[];
+      };
+      outputs?: {
+        entity?: string;
+        artifacts?: string[];
+        outputCard?: Record<string, any>;
+      };
+      declared?: boolean;
     };
     execution?: {
       instructions?: string;

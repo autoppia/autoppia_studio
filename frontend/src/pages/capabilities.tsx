@@ -610,6 +610,7 @@ function CapabilityDetailModal({
   const hardeningChecks = hardeningStatus?.checks || {};
   const skillPackage = isSkill ? detail.item.skillPackage : null;
   const packageRegressionSuite = skillPackage?.evidence?.regressionSuite;
+  const packageIoContract = skillPackage?.ioContract || skillPackage?.interface?.ioContract;
   const versionHistory = isSkill ? detail.item.versionHistory || skillPackage?.evidence?.versionHistory || [] : [];
   const hardeningChecklist = isSkill ? [
     { key: "activation", label: "Activation" },
@@ -997,6 +998,15 @@ function CapabilityDetailModal({
                   </p>
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">IO contract</p>
+                  <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                    {packageIoContract?.declared ? "Declared" : "Missing"}
+                  </p>
+                  <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">
+                    {(packageIoContract?.inputs?.entities || []).length} inputs · {(packageIoContract?.outputs?.artifacts || []).length} outputs
+                  </p>
+                </div>
+                <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-3 dark:border-dark-border dark:bg-dark-bg">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Disclosure</p>
                   <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">{skillPackage.progressiveDisclosure?.summaryFields?.length || 0} summary fields</p>
                   <p className="mt-1 text-[11px] text-gray-500 dark:text-gray-400">{skillPackage.progressiveDisclosure?.fullFields?.join(", ") || "execution, evidence"}</p>
@@ -1007,6 +1017,7 @@ function CapabilityDetailModal({
                   value={{
                     metadata: skillPackage.metadata || {},
                     interface: skillPackage.interface || {},
+                    ioContract: packageIoContract || {},
                     policies: skillPackage.policies || {},
                   }}
                 />

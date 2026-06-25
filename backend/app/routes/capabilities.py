@@ -458,6 +458,23 @@ def _skill_package_manifest(
     version_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
+    input_entities = skill.get("inputEntities", [])
+    preconditions = skill.get("preconditions", [])
+    output_entity = skill.get("outputEntity", "")
+    expected_artifacts = skill.get("expectedArtifacts", [])
+    output_card = skill.get("outputCard", {})
+    io_contract = {
+        "inputs": {
+            "entities": input_entities,
+            "preconditions": preconditions,
+        },
+        "outputs": {
+            "entity": output_entity,
+            "artifacts": expected_artifacts,
+            "outputCard": output_card,
+        },
+        "declared": bool(input_entities or preconditions or output_entity or expected_artifacts or output_card),
+    }
     return {
         "format": "autoppia.agent_skill",
         "manifestVersion": 1,
@@ -474,14 +491,16 @@ def _skill_package_manifest(
         },
         "activation": {
             "description": skill.get("whenToUse", ""),
-            "preconditions": skill.get("preconditions", []),
+            "preconditions": preconditions,
         },
         "interface": {
-            "inputEntities": skill.get("inputEntities", []),
-            "outputEntity": skill.get("outputEntity", ""),
-            "expectedArtifacts": skill.get("expectedArtifacts", []),
-            "outputCard": skill.get("outputCard", {}),
+            "inputEntities": input_entities,
+            "outputEntity": output_entity,
+            "expectedArtifacts": expected_artifacts,
+            "outputCard": output_card,
+            "ioContract": io_contract,
         },
+        "ioContract": io_contract,
         "execution": {
             "instructions": skill.get("instructions", ""),
             "connectorIds": lineage.get("connectorIds", []),
@@ -507,7 +526,7 @@ def _skill_package_manifest(
             },
         },
         "progressiveDisclosure": {
-            "summaryFields": ["metadata", "activation", "interface", "policies"],
+            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
             "fullFields": ["execution", "evidence"],
         },
     }

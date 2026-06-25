@@ -277,6 +277,12 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["metadata"]["versionLabel"] == "v2"
     assert skill["skillPackage"]["activation"]["description"] == "Use for customer renewal follow-up"
     assert skill["skillPackage"]["interface"]["expectedArtifacts"] == ["draft_email", "renewal_summary"]
+    assert skill["skillPackage"]["ioContract"]["declared"] is True
+    assert skill["skillPackage"]["ioContract"]["inputs"]["entities"] == ["Customer", "Policy"]
+    assert skill["skillPackage"]["ioContract"]["inputs"]["preconditions"] == ["Customer identity verified", "Policy number available"]
+    assert skill["skillPackage"]["ioContract"]["outputs"]["entity"] == "Draft email"
+    assert skill["skillPackage"]["ioContract"]["outputs"]["artifacts"] == ["draft_email", "renewal_summary"]
+    assert skill["skillPackage"]["interface"]["ioContract"]["declared"] is True
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1", "traj-2"]
     assert skill["skillPackage"]["policies"]["runtimePolicy"]["runtimeClass"] == "hybrid"
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
