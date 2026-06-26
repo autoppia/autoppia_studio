@@ -164,6 +164,18 @@ _READINESS_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
     ("runtime", "Runtime controls", ("draft_artifact", "approval_boundary", "runtime_replay")),
 )
 
+INSURANCE_FLOW_STEPS: tuple[tuple[str, str], ...] = (
+    ("email_read", "Email read"),
+    ("erp_lookup", "ERP lookup"),
+    ("document_grounding", "Document grounding"),
+    ("draft_artifact", "Draft artifact"),
+    ("approval_boundary", "Approval boundary"),
+    ("benchmark", "Benchmark"),
+    ("trajectory", "Trajectory"),
+    ("skill_promotion", "Skill promotion"),
+    ("runtime_replay", "Runtime replay"),
+)
+
 
 def _readiness_state(total: int, ready: int) -> str:
     if not total:
@@ -262,6 +274,64 @@ def _vertical_smoke_gate(
             {"gap": key, "count": 1, "area": "vertical_demo", "severity": "high", "action": actions[key]}
             for key in missing
         ],
+    }
+
+
+def _insurance_flow_proof_gate(
+    *,
+    objective: str,
+    coverage: list[dict[str, Any]],
+    smoke_gate: dict[str, Any],
+) -> dict[str, Any]:
+    coverage_by_key = {str(item.get("key") or ""): item for item in coverage if isinstance(item, dict)}
+    steps: list[dict[str, Any]] = []
+    for key, label in INSURANCE_FLOW_STEPS:
+        item = coverage_by_key.get(key) or {}
+        steps.append(
+            {
+                "key": key,
+                "label": label,
+                "ready": bool(item.get("ready")),
+                "evidenceFound": item.get("evidenceFound") if isinstance(item.get("evidenceFound"), dict) else {},
+                "missingEvidence": item.get("missingEvidence") if isinstance(item.get("missingEvidence"), list) else [],
+            }
+        )
+    missing_steps = [step["key"] for step in steps if not step["ready"]]
+    smoke_ready = bool(smoke_gate.get("ready"))
+    missing = [*missing_steps, *(["smoke_gate"] if not smoke_ready else [])]
+    playbook: list[dict[str, Any]] = []
+    for key in missing_steps:
+        metadata = VERTICAL_DEMO_ACTIONS.get(key, {})
+        playbook.append(
+            {
+                "gap": key,
+                "count": 1,
+                "group": metadata.get("group", "factory"),
+                "area": metadata.get("area", "vertical_demo"),
+                "severity": metadata.get("severity", "high"),
+                "action": metadata.get("action", "Complete missing insurance flow proof evidence."),
+            }
+        )
+    if not smoke_ready:
+        playbook.append(
+            {
+                "gap": "smoke_gate",
+                "count": 1,
+                "group": "runtime",
+                "area": "vertical_demo",
+                "severity": "high",
+                "action": "Complete the draft-only approval-safe smoke gate before using the insurance flow as enterprise proof.",
+            }
+        )
+    return {
+        "state": "ready" if not missing else "needs_hardening",
+        "ready": not missing,
+        "objective": objective,
+        "steps": steps,
+        "readySteps": sum(1 for step in steps if step["ready"]),
+        "totalSteps": len(steps),
+        "missing": missing,
+        "hardeningPlaybook": playbook,
     }
 
 
@@ -438,6 +508,11 @@ def vertical_demo_payload(
         risk_classes=risk_classes,
         passing_runs=passing_runs,
     )
+    insurance_flow_proof_gate = _insurance_flow_proof_gate(
+        objective=objective,
+        coverage=coverage,
+        smoke_gate=smoke_gate,
+    )
     return {
         "benchmarkId": str(benchmark.get("benchmarkId") or ""),
         "objective": objective,
@@ -450,6 +525,7 @@ def vertical_demo_payload(
         "coverage": coverage,
         "operationalReadiness": operational_readiness,
         "smokeGate": smoke_gate,
+        "insuranceFlowProofGate": insurance_flow_proof_gate,
         "evidence": {
             "expectedTools": expected_tools,
             "allowedSystems": allowed_systems,
@@ -509,6 +585,8 @@ def summarize_vertical_demos(
         "missing": sum(1 for demo in demos if demo.get("state") == "missing"),
         "smokeReady": sum(1 for demo in demos if bool((demo.get("smokeGate") or {}).get("ready"))),
         "smokeBlocked": sum(1 for demo in demos if demo.get("smokeGate") and not (demo.get("smokeGate") or {}).get("ready")),
+        "proofReady": sum(1 for demo in demos if bool((demo.get("insuranceFlowProofGate") or {}).get("ready"))),
+        "proofBlocked": sum(1 for demo in demos if demo.get("insuranceFlowProofGate") and not (demo.get("insuranceFlowProofGate") or {}).get("ready")),
         "enterpriseReady": sum(1 for demo in demos if bool((demo.get("operationalReadiness") or {}).get("enterpriseReady"))),
         "integrationReady": sum(1 for demo in demos if _operational_group_ready(demo, "integration")),
         "factoryReady": sum(1 for demo in demos if _operational_group_ready(demo, "factory")),

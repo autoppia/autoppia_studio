@@ -599,11 +599,24 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["smokeReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["smokeBlocked"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["proofReady"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["proofBlocked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["enterpriseReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["integrationReady"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["factoryReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["runtimeReady"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["insuranceFlowProofGate"]["state"] == "needs_hardening"
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["insuranceFlowProofGate"]["readySteps"] == 3
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["insuranceFlowProofGate"]["missing"] == [
+        "document_grounding",
+        "approval_boundary",
+        "benchmark",
+        "trajectory",
+        "skill_promotion",
+        "runtime_replay",
+        "smoke_gate",
+    ]
     assert {
         "gap": "skill_promotion",
         "count": 1,
@@ -1117,7 +1130,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "skills": {"total": 4, "withApprovedTrajectory": 2},
                         "gaps": [{"key": "skill_hardening", "label": "Some promoted skills are missing reusable package hardening."}],
                     },
-                    "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1, "smokeReady": 1},
+                    "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1, "smokeReady": 1, "proofReady": 1},
                     "verticalDemoGaps": [{"group": "factory", "label": "Capability factory"}],
                 },
                 "resourceMap": {
@@ -1199,7 +1212,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
-    assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready." in reply
+    assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
