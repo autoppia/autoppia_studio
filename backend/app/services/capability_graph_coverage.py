@@ -116,6 +116,16 @@ def _vertical_demo_runtime_replay_ready(payload: dict[str, Any]) -> bool:
     return int((payload.get("evidence") or {}).get("passingRuns") or 0) > 0
 
 
+def _vertical_demo_business_output_contract(payload: dict[str, Any]) -> dict[str, Any]:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    output_contract = (
+        proof_gate.get("businessOutputContract")
+        if isinstance(proof_gate.get("businessOutputContract"), dict)
+        else {}
+    )
+    return output_contract
+
+
 def _capability_boundary(doc: dict[str, Any]) -> str:
     explicit = str(doc.get("policyBoundary") or (doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {}).get("policyBoundary") or "").strip().lower()
     if explicit in {"read", "draft", "write", "send"}:
@@ -529,6 +539,16 @@ def capability_graph_coverage(
             "linkedToBenchmarks": "validates_vertical_demo" in edge_relations,
             "linkedToProofGate": "gated_by_proof" in edge_relations,
             "runtimeReplayReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_runtime_replay_ready(item)),
+            "businessOutputContractReady": sum(
+                1 for item in vertical_demo_payloads if bool(_vertical_demo_business_output_contract(item).get("ready"))
+            ),
+            "businessOutputContractBlocked": sum(
+                1
+                for item in vertical_demo_payloads
+                if _vertical_demo_business_output_contract(item)
+                and not bool(_vertical_demo_business_output_contract(item).get("ready"))
+            ),
+            "linkedToBusinessOutputContract": "requires_business_output_contract" in edge_relations,
         },
         "evals": {
             "runs": len(eval_run_docs),

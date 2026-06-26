@@ -989,6 +989,26 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
                 proof_gate,
             )
             _add_edge(edges, demo_node, proof_node, "gated_by_proof", {"source": "vertical_demo.insuranceFlowProofGate"})
+            output_contract = (
+                proof_gate.get("businessOutputContract")
+                if isinstance(proof_gate.get("businessOutputContract"), dict)
+                else {}
+            )
+            if output_contract:
+                output_node = _add_node(
+                    nodes,
+                    "vertical_demo_business_output_contract",
+                    f"{benchmark_id}:business_output_contract",
+                    f"{demo_payload.get('objective') or benchmark_id} business output contract",
+                    output_contract,
+                )
+                _add_edge(
+                    edges,
+                    proof_node,
+                    output_node,
+                    "requires_business_output_contract",
+                    {"source": "vertical_demo.insuranceFlowProofGate.businessOutputContract"},
+                )
         for task_node in task_nodes_by_benchmark_id.get(benchmark_id, []):
             _add_edge(edges, task_node, demo_node, "covers_demo_step", {"source": "task.benchmarkId"})
         for skill_node in skill_nodes_by_benchmark_id.get(benchmark_id, []):

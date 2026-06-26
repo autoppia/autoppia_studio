@@ -197,7 +197,11 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                     "runtimeReplayContract": {
                         "ready": False,
                         "missing": ["approvedSkillAvailable"],
-                    }
+                    },
+                    "businessOutputContract": {
+                        "ready": False,
+                        "missing": ["passingReplayAssertsOutput"],
+                    },
                 },
             }
         ],
@@ -216,6 +220,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
             {"relation": "opened_session"},
             {"relation": "orchestrates_skill"},
             {"relation": "validates_vertical_demo"},
+            {"relation": "requires_business_output_contract"},
             {"relation": "restricted_to_domains"},
         ],
     )
@@ -250,6 +255,9 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     ]
     assert coverage["runtime"]["sessionContracts"]["selectedSkill"] == 1
     assert coverage["verticalDemos"]["runtimeReplayReady"] == 0
+    assert coverage["verticalDemos"]["businessOutputContractReady"] == 0
+    assert coverage["verticalDemos"]["businessOutputContractBlocked"] == 1
+    assert coverage["verticalDemos"]["linkedToBusinessOutputContract"] is True
     assert coverage["work"]["scheduled"] == 1
     assert coverage["promotionPath"]["hasTrajectoryToSkill"] is True
     assert coverage["operationalGraphGate"] == {
