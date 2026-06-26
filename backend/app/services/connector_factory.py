@@ -23,6 +23,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
     candidate_tasks_ready = 0
     ingestion_ready = 0
     ingestion_blocked = 0
+    total_synthesized_tools = 0
     ready_stage_count = 0
     total_stage_count = 0
     gaps: list[dict[str, str]] = []
@@ -39,6 +40,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         typed_tool_count = int(tool_synthesis.get("typedToolCount") or 0)
         hardened_count = int(tool_synthesis.get("hardenedToolCount") or 0)
         needs_hardening = int(tool_synthesis.get("needsHardeningCount") or 0)
+        total_synthesized_tools += hardened_count + needs_hardening
         hardened_tool_count += hardened_count
         needs_hardening_count += needs_hardening
         hardening_gaps = tool_synthesis.get("hardeningGaps") if isinstance(tool_synthesis.get("hardeningGaps"), dict) else {}
@@ -106,6 +108,11 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                     "totalStages": total_stages,
                 }
             )
+    tool_gate_blockers = {
+        **hardening_gap_counts,
+        **({"tool_synthesis_pending": tool_synthesis_pending} if tool_synthesis_pending else {}),
+    }
+    tool_gate_ready = bool(total_synthesized_tools) and not needs_hardening_count and not tool_synthesis_pending
     return {
         "total": len(connectors),
         "entityMapped": entity_mapped,
@@ -120,6 +127,24 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             for key in sorted(hardening_gap_counts, key=lambda item: (-hardening_gap_counts[item], item))
         ],
         "toolHardeningPlaybook": tool_hardening_playbook(hardening_gap_counts),
+        "toolProductionGate": {
+            "state": "ready" if tool_gate_ready else ("no_tools" if not total_synthesized_tools else "needs_hardening"),
+            "ready": tool_gate_ready,
+            "totalTools": total_synthesized_tools,
+            "hardenedTools": hardened_tool_count,
+            "needsHardening": needs_hardening_count,
+            "typedConnectorCoverage": {"ready": typed_tool_ready, "total": len(connectors)},
+            "checks": {
+                "typedTools": bool(total_synthesized_tools) and tool_synthesis_pending == 0,
+                "hardenedContracts": bool(total_synthesized_tools) and needs_hardening_count == 0,
+                "schemasPoliciesScopesEntities": bool(total_synthesized_tools) and not hardening_gap_counts,
+            },
+            "blockers": [
+                {"name": key, "count": tool_gate_blockers[key]}
+                for key in sorted(tool_gate_blockers, key=lambda item: (-tool_gate_blockers[item], item))
+            ],
+            "hardeningPlaybook": tool_hardening_playbook(tool_gate_blockers),
+        },
         "candidateTasksReady": candidate_tasks_ready,
         "ingestionReady": ingestion_ready,
         "ingestionBlocked": ingestion_blocked,

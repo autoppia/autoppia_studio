@@ -1427,6 +1427,12 @@ class AutomataAssistantService:
                 first_hardening_gap = hardening_gaps[0] if hardening_gaps and isinstance(hardening_gaps[0], dict) else {}
                 if first_hardening_gap:
                     factory_text += f" First tool hardening gap: {first_hardening_gap.get('name') or 'runtime_policy'}."
+            tool_gate = connector_map.get("toolProductionGate") if isinstance(connector_map.get("toolProductionGate"), dict) else {}
+            if tool_gate:
+                factory_text += (
+                    f" Tool production gate: {tool_gate.get('state', 'unknown')}, "
+                    f"{tool_gate.get('hardenedTools', 0)}/{tool_gate.get('totalTools', 0)} tool(s) hardened."
+                )
             blocked_count = int(connector_map.get("entityPending") or 0) + int(connector_map.get("toolSynthesisPending") or 0) + int(connector_map.get("ingestionBlocked") or 0)
             if blocked_count:
                 factory_text += (

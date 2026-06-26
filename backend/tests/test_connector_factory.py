@@ -68,6 +68,24 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
         "severity": "medium",
         "action": "Bind input and output business entities before promoting reusable skills.",
     }
+    assert summary["toolProductionGate"] == {
+        "state": "needs_hardening",
+        "ready": False,
+        "totalTools": 3,
+        "hardenedTools": 1,
+        "needsHardening": 2,
+        "typedConnectorCoverage": {"ready": 2, "total": 2},
+        "checks": {
+            "typedTools": True,
+            "hardenedContracts": False,
+            "schemasPoliciesScopesEntities": False,
+        },
+        "blockers": [
+            {"name": "entity_bindings", "count": 2},
+            {"name": "approval_policy", "count": 1},
+        ],
+        "hardeningPlaybook": summary["toolHardeningPlaybook"],
+    }
     assert summary["ingestionPlaybook"] == [
         {
             "connectorId": "conn-2",

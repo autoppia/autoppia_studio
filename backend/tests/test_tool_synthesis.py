@@ -93,6 +93,28 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
             "action": "Define a typed input schema with required business identifiers.",
         },
     ]
+    assert summary["productionGate"] == {
+        "state": "needs_hardening",
+        "ready": False,
+        "checks": {
+            "typedInputSchemas": False,
+            "typedOutputSchemas": False,
+            "sideEffectsDeclared": False,
+            "riskClassified": True,
+            "approvalPolicies": False,
+            "scopesDeclared": False,
+            "entityBindings": False,
+        },
+        "blockers": [
+            {"name": "entity_bindings", "count": 2},
+            {"name": "scopes", "count": 2},
+            {"name": "typed_input_schema", "count": 2},
+            {"name": "typed_output_schema", "count": 2},
+            {"name": "approval_policy", "count": 1},
+            {"name": "side_effects", "count": 1},
+        ],
+        "hardeningPlaybook": summary["hardeningPlaybook"],
+    }
     assert summary["promotionReadiness"] == {
         "publishable": ["claims.search_claims"],
         "hardened": ["claims.search_claims"],

@@ -49,6 +49,11 @@ HARDENING_GAP_PLAYBOOK = {
         "severity": "medium",
         "action": "Bind input and output business entities before promoting reusable skills.",
     },
+    "tool_synthesis_pending": {
+        "area": "capabilities",
+        "severity": "high",
+        "action": "Generate typed atomic tools with schemas, side effects, scopes and entity bindings.",
+    },
 }
 
 
@@ -276,6 +281,38 @@ def tool_hardening_playbook(hardening_gaps: dict[str, int]) -> list[dict[str, An
     return playbook
 
 
+def _tool_production_gate(
+    tools: list[dict[str, Any]],
+    hardening_gaps: dict[str, int],
+    needs_hardening_tools: list[dict[str, Any]],
+) -> dict[str, Any]:
+    checks = {
+        "typedInputSchemas": bool(tools) and "typed_input_schema" not in hardening_gaps,
+        "typedOutputSchemas": bool(tools) and "typed_output_schema" not in hardening_gaps,
+        "sideEffectsDeclared": bool(tools) and "side_effects" not in hardening_gaps,
+        "riskClassified": bool(tools) and "risk_classification" not in hardening_gaps,
+        "approvalPolicies": bool(tools) and "approval_policy" not in hardening_gaps,
+        "scopesDeclared": bool(tools) and "scopes" not in hardening_gaps,
+        "entityBindings": bool(tools) and "entity_bindings" not in hardening_gaps,
+    }
+    ready = bool(tools) and all(checks.values()) and not needs_hardening_tools
+    blockers = [
+        {"name": key, "count": hardening_gaps[key]}
+        for key in sorted(hardening_gaps, key=lambda item: (-hardening_gaps[item], item))
+    ]
+    if not tools:
+        blockers.append({"name": "tool_synthesis_pending", "count": 1})
+    return {
+        "state": "ready" if ready else ("no_tools" if not tools else "needs_hardening"),
+        "ready": ready,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": tool_hardening_playbook(
+            hardening_gaps if tools else {**hardening_gaps, "tool_synthesis_pending": 1}
+        ),
+    }
+
+
 def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requirements: list[Any] | None = None) -> dict[str, Any]:
     tools = [tool_synthesis_contract(tool) for tool in tool_specs if isinstance(tool, dict)]
     typed_tools = [tool["toolName"] for tool in tools if tool["typed"]]
@@ -345,6 +382,7 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
         "hardenedTools": hardened_tools,
         "hardeningGaps": hardening_gaps,
         "hardeningPlaybook": tool_hardening_playbook(hardening_gaps),
+        "productionGate": _tool_production_gate(tools, hardening_gaps, needs_hardening_tools),
         "promotionReadiness": {
             "publishable": _dedupe_values([*publishable_tools, *safe_atomic_tools]),
             "hardened": publishable_tools,
