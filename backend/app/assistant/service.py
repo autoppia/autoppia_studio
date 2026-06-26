@@ -45,6 +45,42 @@ def _coverage_gap_label(eval_coverage: dict[str, Any]) -> str:
     return ", ".join(missing)
 
 
+def _surface_evidence_label(surface: str, evidence: dict[str, Any]) -> str:
+    if not evidence:
+        return ""
+    if surface == "Company Setup":
+        return (
+            f"{evidence.get('systems', 0)} system(s), {evidence.get('secrets', 0)} secret(s), "
+            f"{evidence.get('allowedDomains', 0)} allowed domain(s), setup gate {evidence.get('setupGate', 'unknown')}"
+        )
+    if surface == "Capability Factory":
+        return (
+            f"{evidence.get('connectors', 0)} connector(s), {evidence.get('typedTools', 0)} typed tool(s), "
+            f"{evidence.get('entities', 0)} entity record(s), {evidence.get('benchmarkTasks', 0)} benchmark task(s), "
+            f"{evidence.get('approvedTrajectories', 0)} approved trajectories, {evidence.get('skills', 0)} skill(s), "
+            f"{evidence.get('proofReady', 0)} proof-ready, {evidence.get('proofBlocked', 0)} proof-blocked"
+        )
+    if surface == "Runtime Lab":
+        return (
+            f"{evidence.get('sessions', 0)} session(s), {evidence.get('replayReadySessions', 0)} replay-ready, "
+            f"{evidence.get('pendingApprovals', 0)} pending approval(s), {evidence.get('artifacts', 0)} artifact(s), "
+            f"{evidence.get('reviewRequiredArtifacts', 0)} requiring review"
+        )
+    if surface == "Work Orchestration":
+        return (
+            f"{evidence.get('workItems', 0)} work item(s), {evidence.get('contractReady', 0)} contract-ready, "
+            f"{evidence.get('scheduledDue', 0)} due, {evidence.get('approvalBlocked', 0)} approval-blocked, "
+            f"{evidence.get('budgetExhausted', 0)} budget-exhausted, {evidence.get('retries', 0)} retries"
+        )
+    if surface == "Automata":
+        return (
+            f"{evidence.get('riskAlerts', 0)} risk alert(s), "
+            f"{evidence.get('recommendedActionCandidates', 0)} action candidate(s), "
+            f"{evidence.get('failurePrompts', 0)} failure prompt(s)"
+        )
+    return ", ".join(f"{key}={value}" for key, value in evidence.items())
+
+
 def normalize_assistant_model(model: str) -> str:
     clean = (model or "").strip().lower().replace("_", "-")
     aliases = {
@@ -1424,7 +1460,21 @@ class AutomataAssistantService:
             )
             blockers = studio_os_gate.get("blockers") if isinstance(studio_os_gate.get("blockers"), list) else []
             if blockers:
-                studio_os_text += f" First surface blocker: {blockers[0]}."
+                first_surface = str(blockers[0])
+                studio_os_text += f" First surface blocker: {first_surface}."
+                surface_playbook = guidance.get("surfacePlaybook") if isinstance(guidance.get("surfacePlaybook"), list) else []
+                surface_card = next(
+                    (
+                        item
+                        for item in surface_playbook
+                        if isinstance(item, dict) and item.get("surface") == first_surface
+                    ),
+                    {},
+                )
+                surface_evidence = surface_card.get("evidence") if isinstance(surface_card.get("evidence"), dict) else {}
+                evidence_label = _surface_evidence_label(first_surface, surface_evidence)
+                if evidence_label:
+                    studio_os_text += f" Surface evidence: {evidence_label}."
         company_setup_text = ""
         setup_gate = company_setup.get("setupGate") if isinstance(company_setup.get("setupGate"), dict) else {}
         integration = company_setup.get("integration") if isinstance(company_setup.get("integration"), dict) else {}

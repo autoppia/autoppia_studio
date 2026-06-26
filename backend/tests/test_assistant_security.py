@@ -1259,6 +1259,22 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 "automataGuidance": {
                     "primaryNextAction": {"area": "evals", "action": "Inspect failed traces before publishing."},
                     "riskAlerts": [{"area": "evals", "severity": "high", "message": "1 failing eval."}],
+                    "surfacePlaybook": [
+                        {
+                            "surface": "Capability Factory",
+                            "status": "needs_work",
+                            "evidence": {
+                                "connectors": 3,
+                                "typedTools": 2,
+                                "entities": 4,
+                                "benchmarkTasks": 7,
+                                "approvedTrajectories": 3,
+                                "skills": 4,
+                                "proofReady": 1,
+                                "proofBlocked": 1,
+                            },
+                        }
+                    ],
                 },
             },
         }
@@ -1267,6 +1283,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Readiness is 60%" in reply
     assert "Studio OS gate: blocked, 2/5 surface(s) ready." in reply
     assert "First surface blocker: Capability Factory." in reply
+    assert "Surface evidence: 3 connector(s), 2 typed tool(s), 4 entity record(s), 7 benchmark task(s), 3 approved trajectories, 4 skill(s), 1 proof-ready, 1 proof-blocked." in reply
     assert "Company Setup gate: partial, 2 system(s), 1 secret(s), 2 allowed domain(s)." in reply
     assert "First setup blocker: resource_acl." in reply
     assert "Factory pipeline: 1/3 connector(s) entity-mapped, 2 with typed tools, 1 with candidate tasks." in reply
