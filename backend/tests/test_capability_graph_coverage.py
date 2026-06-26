@@ -24,9 +24,26 @@ def test_session_contract_coverage_counts_runtime_contract_fields():
         "pendingApprovals": 2,
         "artifactOutputs": 3,
         "traceIds": 2,
-        "replayReady": True,
+        "replayReady": False,
         "creditsSpent": 1.25,
     }
+
+
+def test_session_contract_coverage_requires_resolved_approvals_for_replay_ready():
+    coverage = session_contract_coverage(
+        {
+            "sessionId": "session-1",
+            "sessionContract": {
+                "selectedSkill": {"matched": True, "skillId": "skill-1"},
+                "approvalState": {"pending": 0},
+                "artifactState": {"count": 1},
+                "traceState": {"traceIds": ["trace-1"], "replayReady": True},
+                "replayContract": {"ready": True},
+            },
+        }
+    )
+
+    assert coverage["replayReady"] is True
 
 
 def test_skill_package_coverage_detects_publishable_skill_package():
@@ -328,6 +345,13 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
             "area": "evals",
             "severity": "high",
             "action": "Inspect recent failing eval runs before publishing or widening runtime access.",
+        },
+        {
+            "gap": "runtime_replay",
+            "count": 1,
+            "area": "runtime",
+            "severity": "medium",
+            "action": "Capture replay-ready traces for Runtime Lab sessions.",
         },
         {
             "gap": "pending_approvals",

@@ -148,16 +148,19 @@ def session_contract_coverage(doc: dict[str, Any]) -> dict[str, Any]:
     artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
     cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
     trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
+    replay_contract = contract.get("replayContract") if isinstance(contract.get("replayContract"), dict) else {}
     runtime_state = _runtime_state(doc)
     trace_ids = _string_list(trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else doc.get("traceIds"))
     skill_id = str(skill.get("skillId") or doc.get("matchedSkillId") or runtime_state.get("matchedSkillId") or "").strip()
+    pending_approvals = int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0)
+    replay_flag = replay_contract.get("ready") if replay_contract else trace.get("replayReady")
     return {
         "withContract": bool(contract),
         "selectedSkill": bool(skill.get("matched") or skill_id),
-        "pendingApprovals": int(approvals.get("pending") or doc.get("pendingApprovalCount") or 0),
+        "pendingApprovals": pending_approvals,
         "artifactOutputs": int(artifacts.get("count") or doc.get("artifactCount") or 0),
         "traceIds": len(trace_ids),
-        "replayReady": bool(trace.get("replayReady")),
+        "replayReady": bool(replay_flag and trace_ids and pending_approvals == 0),
         "creditsSpent": _safe_float(cost.get("creditsSpent") or doc.get("creditsSpent")),
     }
 

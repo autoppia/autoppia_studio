@@ -651,7 +651,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["runtime"]["sessionContracts"]["pendingApprovals"] == 1
     assert graph["coverage"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert graph["coverage"]["runtime"]["sessionContracts"]["traceIds"] == 1
-    assert graph["coverage"]["runtime"]["sessionContracts"]["replayReady"] == 1
+    assert graph["coverage"]["runtime"]["sessionContracts"]["replayReady"] == 0
     assert graph["coverage"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.75
     assert graph["coverage"]["runtime"]["approvals"] == 1
     assert graph["coverage"]["runtime"]["pendingApprovals"] == 1
