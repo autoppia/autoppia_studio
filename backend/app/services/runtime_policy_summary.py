@@ -22,6 +22,17 @@ def _approval_boundary_counts(policies: list[dict[str, Any]]) -> list[dict[str, 
     ]
 
 
+def _missing_observed_approval_boundaries(policies: list[dict[str, Any]]) -> list[str]:
+    missing: set[str] = set()
+    for policy in policies:
+        approval_policy = policy.get("approvalPolicy") if isinstance(policy.get("approvalPolicy"), dict) else {}
+        for boundary in approval_policy.get("missingObservedApproval") or []:
+            clean = str(boundary or "").strip()
+            if clean:
+                missing.add(clean)
+    return sorted(missing)
+
+
 def normalize_runtime_domains(values: list[Any]) -> list[str]:
     domains: set[str] = set()
     for value in values:
@@ -98,6 +109,7 @@ def summarize_runtime_policy_map(
     skill_policies = [serialize_runtime_policy(skill) for skill in skills]
     tool_policies = [serialize_runtime_policy(tool) for tool in tools]
     all_policies = [*skill_policies, *tool_policies]
+    missing_observed_approval = _missing_observed_approval_boundaries(all_policies)
     browser_policy_count = sum(1 for policy in all_policies if policy.get("browserRuntime"))
     api_policy_count = sum(1 for policy in all_policies if policy.get("runtimeClass") == "api")
     browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime", "browser", "hybrid"})
@@ -111,6 +123,7 @@ def summarize_runtime_policy_map(
         for gap in [
             {"key": "browser_allowlist", "label": "Browser-capable runtime exists but no domain allowlist is configured.", "target": "governance"} if (browser_policy_count or browser_session_count) and not restricted_by_domain else None,
             {"key": "browser_domain_coverage", "label": "Browser runtime observed domains outside the configured allowlist.", "target": "governance"} if browser_session_count and uncovered_domains else None,
+            {"key": "side_effect_approval_coverage", "label": "Write or send capability boundaries were observed without matching approval requirements.", "target": "capabilities"} if missing_observed_approval else None,
             {"key": "write_approval", "label": "Writable tools or skills exist without write approval boundaries.", "target": "capabilities"} if all_policies and not any("write" in (policy.get("approvalRequiredFor") or []) for policy in all_policies) else None,
             {"key": "runtime_policy", "label": "No tool or skill runtime policies are available yet.", "target": "capabilities"} if not all_policies else None,
         ]
@@ -138,6 +151,8 @@ def summarize_runtime_policy_map(
             "skills": _approval_boundary_counts(skill_policies),
             "tools": _approval_boundary_counts(tool_policies),
             "all": _approval_boundary_counts(all_policies),
+            "missingObservedApproval": missing_observed_approval,
+            "sideEffectsProtected": not missing_observed_approval,
         },
         "humanApproval": {
             "pending": pending_approvals,

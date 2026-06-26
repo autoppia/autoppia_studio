@@ -132,7 +132,24 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         "coverageRatio": 0.5,
         "sessionsRequireAllowlist": True,
     }
+    assert summary["approvalBoundaries"]["missingObservedApproval"] == []
+    assert summary["approvalBoundaries"]["sideEffectsProtected"] is True
     assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
+
+
+def test_runtime_policy_summary_flags_observed_side_effects_without_approval():
+    summary = summarize_runtime_policy_map(
+        skills=[],
+        tools=[{"policyBoundary": "write", "riskPolicy": "autonomous", "permissions": {"approval": "never"}}],
+        runtime_kinds=["api"],
+        browser_allowlisted=False,
+        pending_approvals=0,
+        approved_approvals=0,
+    )
+
+    assert summary["approvalBoundaries"]["missingObservedApproval"] == ["write"]
+    assert summary["approvalBoundaries"]["sideEffectsProtected"] is False
+    assert any(gap["key"] == "side_effect_approval_coverage" for gap in summary["gaps"])
 
 
 def test_observed_browser_domains_extracts_urls_only_from_browser_sessions():
