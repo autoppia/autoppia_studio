@@ -917,6 +917,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "defaultBrowserUse": "exception",
                         "runtimeClasses": {"browserSessions": 1},
                         "humanApproval": {"writesProtected": True, "sendsProtected": True},
+                        "approvalBoundaries": {"sideEffectsProtected": False, "missingObservedApproval": ["write"]},
                         "browserDomainGovernance": {
                             "allowedDomains": ["erp.example.com"],
                             "observedDomains": ["erp.example.com", "unknown.example.net"],
@@ -971,6 +972,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
     assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
+    assert "Side-effect approvals: incomplete." in reply
+    assert "Missing approval boundary: write." in reply
     assert "Browser domain governance: 1/2 observed domain(s) covered, 1 allowed." in reply
     assert "First uncovered browser domain: unknown.example.net." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply

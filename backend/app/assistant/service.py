@@ -1528,6 +1528,14 @@ class AutomataAssistantService:
                 f"{classes.get('browserSessions', 0)} browser sessions, "
                 f"write/send {'protected' if human.get('writesProtected') and human.get('sendsProtected') else 'incomplete'}."
             )
+            approval_boundaries = runtime_policy.get("approvalBoundaries") if isinstance(runtime_policy.get("approvalBoundaries"), dict) else {}
+            if approval_boundaries:
+                missing_approvals = approval_boundaries.get("missingObservedApproval") if isinstance(approval_boundaries.get("missingObservedApproval"), list) else []
+                runtime_text += (
+                    f" Side-effect approvals: {'protected' if approval_boundaries.get('sideEffectsProtected') else 'incomplete'}."
+                )
+                if missing_approvals:
+                    runtime_text += f" Missing approval boundary: {missing_approvals[0]}."
             browser_governance = runtime_policy.get("browserDomainGovernance") if isinstance(runtime_policy.get("browserDomainGovernance"), dict) else {}
             if browser_governance:
                 uncovered_domains = browser_governance.get("uncoveredDomains") if isinstance(browser_governance.get("uncoveredDomains"), list) else []
