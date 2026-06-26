@@ -440,6 +440,11 @@ class AutomataAssistantTools:
             if proof_blocked_demos and isinstance(proof_blocked_demos[0].get("insuranceFlowProofGate"), dict)
             else {}
         )
+        first_replay_contract = (
+            first_proof_gate.get("runtimeReplayContract")
+            if isinstance(first_proof_gate.get("runtimeReplayContract"), dict)
+            else {}
+        )
         resource_map = summarize_resource_governance(knowledge_docs)
         connector_domain_hosts = _connector_domains(connector_docs)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
@@ -560,6 +565,7 @@ class AutomataAssistantTools:
         if resource_map["total"] and not resource_map["ready"]:
             first_gap = resource_map["gaps"][0]["label"] if resource_map["gaps"] else "Knowledge resources are not ready for governed runtime grounding."
             recommended_actions.insert(0, {"area": "knowledge", "action": "Finish resource governance before relying on knowledge grounding in skills.", "reason": first_gap})
+        replay_contract_action: dict[str, str] | None = None
         if vertical_demos["total"] and vertical_demos["ready"] < vertical_demos["total"]:
             missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
@@ -579,6 +585,24 @@ class AutomataAssistantTools:
                     "reason": f"Insurance flow proof gate is {first_proof_gate.get('state') or 'blocked'}; missing {proof_missing or 'proof evidence'}.",
                 },
             )
+        if first_replay_contract and not first_replay_contract.get("ready"):
+            replay_missing = ", ".join(first_replay_contract.get("missing") or [])
+            replay_playbook = (
+                first_replay_contract.get("hardeningPlaybook")
+                if isinstance(first_replay_contract.get("hardeningPlaybook"), list)
+                else []
+            )
+            first_replay_action = (
+                replay_playbook[0].get("action")
+                if replay_playbook and isinstance(replay_playbook[0], dict) and replay_playbook[0].get("action")
+                else "Complete the AgentRuntime replay contract for the insurance flow."
+            )
+            replay_contract_action = {
+                "area": "runtime",
+                "action": first_replay_action,
+                "reason": f"Insurance replay contract is {first_replay_contract.get('state') or 'blocked'}; missing {replay_missing or 'runtime replay evidence'}.",
+            }
+            recommended_actions.insert(0, replay_contract_action)
         if vertical_demo_gaps:
             first_gap = vertical_demo_gaps[0]
             recommended_actions.insert(
@@ -636,6 +660,9 @@ class AutomataAssistantTools:
             recommended_actions.append({"area": "work", "action": first_action, "reason": f"Work operations gate is {work_operations_gate.get('state') or 'blocked'}."})
         if failing_runs:
             recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
+        if replay_contract_action:
+            recommended_actions = [action for action in recommended_actions if action != replay_contract_action]
+            recommended_actions.insert(1 if failing_runs else 0, replay_contract_action)
         risk_alerts = [
             alert
             for alert in [
@@ -662,6 +689,7 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
                 {"area": "vertical_demo", "severity": "high", "message": "The insurance flow is not proof-ready across email, ERP, documents, approvals, benchmark, trajectory, skill and replay."} if proof_blocked_demos else None,
+                {"area": "runtime", "severity": "high", "message": "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present."} if first_replay_contract and not first_replay_contract.get("ready") else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Runtime Lab sessions are not yet durable, replay-ready evidence."} if runtime_session_gate and not runtime_session_gate.get("ready") else None,
                 {

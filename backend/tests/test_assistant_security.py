@@ -798,6 +798,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Work operations gate is not ready for unattended orchestration." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
@@ -811,6 +812,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         action["area"] == "vertical_demo"
         and action["action"] == "Attach governed knowledge resources or read tools for document grounding."
         and action["reason"] == "Insurance flow proof gate is needs_hardening; missing document_grounding, approval_boundary, benchmark, trajectory, skill_promotion, runtime_replay, smoke_gate."
+        for action in snapshot["operatingState"]["recommendedNextActions"]
+    )
+    assert any(
+        action["area"] == "runtime"
+        and action["reason"].startswith("Insurance replay contract is needs_hardening; missing ")
         for action in snapshot["operatingState"]["recommendedNextActions"]
     )
     company_setup = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Company Setup")
