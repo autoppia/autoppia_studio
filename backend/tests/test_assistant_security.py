@@ -1228,6 +1228,16 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "runtimePolicyMap": {
                         "defaultBrowserUse": "exception",
                         "runtimeClasses": {"browserSessions": 1},
+                        "runtimeTaxonomy": {
+                            "defaultMode": "api_runtime",
+                            "browserDefault": "exception",
+                            "apiFirst": True,
+                            "modes": [
+                                {"runtimeType": "api_runtime", "capabilities": 2, "observedSessions": 1},
+                                {"runtimeType": "browser_runtime", "capabilities": 1, "observedSessions": 0},
+                                {"runtimeType": "hybrid_runtime", "capabilities": 1, "observedSessions": 1},
+                            ],
+                        },
                         "runtimeClassGate": {
                             "state": "needs_hardening",
                             "blockers": [{"name": "browserDomainGoverned", "count": 1}],
@@ -1326,6 +1336,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
     assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
+    assert "Runtime taxonomy: default api_runtime, API-first yes, browser default exception." in reply
+    assert "Runtime modes: api_runtime 2 cap/1 session(s), browser_runtime 1 cap/0 session(s), hybrid_runtime 1 cap/1 session(s)." in reply
     assert "Runtime class gate: needs_hardening." in reply
     assert "First runtime class blocker: browserDomainGoverned." in reply
     assert "Side-effect approvals: incomplete." in reply

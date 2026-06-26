@@ -1691,6 +1691,24 @@ class AutomataAssistantService:
                 f"{classes.get('browserSessions', 0)} browser sessions, "
                 f"write/send {'protected' if human.get('writesProtected') and human.get('sendsProtected') else 'incomplete'}."
             )
+            taxonomy = runtime_policy.get("runtimeTaxonomy") if isinstance(runtime_policy.get("runtimeTaxonomy"), dict) else {}
+            taxonomy_modes = taxonomy.get("modes") if isinstance(taxonomy.get("modes"), list) else []
+            if taxonomy:
+                runtime_text += (
+                    f" Runtime taxonomy: default {taxonomy.get('defaultMode', 'api_runtime')}, "
+                    f"API-first {'yes' if taxonomy.get('apiFirst') else 'no'}, "
+                    f"browser default {taxonomy.get('browserDefault', runtime_policy.get('defaultBrowserUse', 'exception'))}."
+                )
+                if taxonomy_modes:
+                    mode_counts = []
+                    for mode in taxonomy_modes:
+                        if isinstance(mode, dict):
+                            mode_counts.append(
+                                f"{mode.get('runtimeType', 'unknown')} "
+                                f"{mode.get('capabilities', 0)} cap/{mode.get('observedSessions', 0)} session(s)"
+                            )
+                    if mode_counts:
+                        runtime_text += f" Runtime modes: {', '.join(mode_counts)}."
             class_gate = runtime_policy.get("runtimeClassGate") if isinstance(runtime_policy.get("runtimeClassGate"), dict) else {}
             if class_gate:
                 runtime_text += f" Runtime class gate: {class_gate.get('state', 'unknown')}."
