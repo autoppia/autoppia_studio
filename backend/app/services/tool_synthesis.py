@@ -217,7 +217,7 @@ def capability_tool_synthesis_contract(tool: dict[str, Any]) -> dict[str, Any]:
         gaps.append("side effects")
     if not risk_level:
         gaps.append("risk classification")
-    if side_effects.lower() in {"writes", "deletes", "sends"} and not approval:
+    if side_effects.lower() in {"write", "writes", "delete", "deletes", "send", "sends"} and not approval:
         gaps.append("approval policy")
     if not scopes and not read_tools and not write_tools:
         gaps.append("scopes or permissions")

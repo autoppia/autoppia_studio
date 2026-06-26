@@ -223,3 +223,5 @@ def test_capability_tool_synthesis_requires_approval_for_singular_write_send_eff
 
     assert write_contract["riskClassification"]["requiresApproval"] is True
     assert send_contract["riskClassification"]["requiresApproval"] is True
+    assert "approval policy" in write_contract["readiness"]["gaps"]
+    assert "approval policy" in send_contract["readiness"]["gaps"]
