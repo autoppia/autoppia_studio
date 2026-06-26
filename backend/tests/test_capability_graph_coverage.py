@@ -229,3 +229,19 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["runtime"]["sessionContracts"]["selectedSkill"] == 1
     assert coverage["work"]["scheduled"] == 1
     assert coverage["promotionPath"]["hasTrajectoryToSkill"] is True
+    assert coverage["coveragePlaybook"] == [
+        {
+            "gap": "failing_regressions",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Inspect recent failing eval runs before publishing or widening runtime access.",
+        },
+        {
+            "gap": "pending_approvals",
+            "count": 1,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Resolve pending approvals blocking write/send boundaries.",
+        },
+    ]

@@ -260,6 +260,82 @@ def work_orchestration_coverage(work_item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _coverage_playbook(
+    *,
+    task_total: int,
+    task_complete: int,
+    skill_total: int,
+    publishable_skills: int,
+    recent_failures: int,
+    session_total: int,
+    replay_ready_sessions: int,
+    pending_approvals: int,
+    work_blockers: dict[str, int],
+) -> list[dict[str, Any]]:
+    gaps: list[dict[str, Any]] = []
+    if task_total > task_complete:
+        gaps.append(
+            {
+                "gap": "incomplete_task_contracts",
+                "count": task_total - task_complete,
+                "area": "evals",
+                "severity": "high",
+                "action": "Complete task contracts before using benchmarks as production gates.",
+            }
+        )
+    if skill_total > publishable_skills:
+        gaps.append(
+            {
+                "gap": "skill_hardening",
+                "count": skill_total - publishable_skills,
+                "area": "capabilities",
+                "severity": "high",
+                "action": "Harden skill packages with IO, policy, source trajectories and passing regression evidence.",
+            }
+        )
+    if recent_failures:
+        gaps.append(
+            {
+                "gap": "failing_regressions",
+                "count": recent_failures,
+                "area": "evals",
+                "severity": "high",
+                "action": "Inspect recent failing eval runs before publishing or widening runtime access.",
+            }
+        )
+    if session_total > replay_ready_sessions:
+        gaps.append(
+            {
+                "gap": "runtime_replay",
+                "count": session_total - replay_ready_sessions,
+                "area": "runtime",
+                "severity": "medium",
+                "action": "Capture replay-ready traces for Runtime Lab sessions.",
+            }
+        )
+    if pending_approvals:
+        gaps.append(
+            {
+                "gap": "pending_approvals",
+                "count": pending_approvals,
+                "area": "approvals",
+                "severity": "high",
+                "action": "Resolve pending approvals blocking write/send boundaries.",
+            }
+        )
+    for blocker in sorted(work_blockers, key=lambda item: (-work_blockers[item], item)):
+        gaps.append(
+            {
+                "gap": f"work_{blocker}",
+                "count": work_blockers[blocker],
+                "area": "work",
+                "severity": "high" if blocker in {"pending_approval", "budget_exhausted"} else "medium",
+                "action": "Resolve Work Orchestration blockers before unattended operation.",
+            }
+        )
+    return gaps
+
+
 def capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -321,6 +397,9 @@ def capability_graph_coverage(
             work_automation_blockers[blocker] = work_automation_blockers.get(blocker, 0) + 1
     recent_eval_runs = sorted(eval_run_docs, key=_eval_run_timestamp, reverse=True)
     recent_eval_failures = [run for run in recent_eval_runs if _eval_run_label(run) == "fail"]
+    publishable_skills = sum(1 for item in skill_packages if item["publishable"])
+    replay_ready_sessions = sum(1 for item in session_contracts if item["replayReady"])
+    pending_approvals = sum(1 for item in approval_docs if str(item.get("status") or "").lower() == "pending")
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
@@ -386,7 +465,7 @@ def capability_graph_coverage(
                 "riskPolicies": sum(1 for item in skill_packages if item["riskPolicy"]),
                 "sourceTrajectories": sum(1 for item in skill_packages if item["sourceTrajectories"]),
                 "regressionSuites": sum(1 for item in skill_packages if item["regressionSuite"]),
-                "publishable": sum(1 for item in skill_packages if item["publishable"]),
+                "publishable": publishable_skills,
                 "versioned": sum(1 for item in skill_packages if item["versioned"]),
                 "releaseStatus": _sorted_counts(skill_release_statuses),
                 "releaseReadiness": {
@@ -407,11 +486,11 @@ def capability_graph_coverage(
                 "pendingApprovals": sum(item["pendingApprovals"] for item in session_contracts),
                 "artifactOutputs": sum(item["artifactOutputs"] for item in session_contracts),
                 "traceIds": sum(item["traceIds"] for item in session_contracts),
-                "replayReady": sum(1 for item in session_contracts if item["replayReady"]),
+                "replayReady": replay_ready_sessions,
                 "creditsSpent": round(sum(item["creditsSpent"] for item in session_contracts), 4),
             },
             "approvals": len(approval_docs),
-            "pendingApprovals": sum(1 for item in approval_docs if str(item.get("status") or "").lower() == "pending"),
+            "pendingApprovals": pending_approvals,
             "artifacts": len(artifact_docs),
             "linkedSessions": "exercised_skill" in edge_relations or "exercised_trajectory" in edge_relations or "exercised_tool" in edge_relations,
             "linkedApprovals": "requires_approval" in edge_relations,
@@ -449,4 +528,15 @@ def capability_graph_coverage(
             "hasTrajectoryToSkill": "promoted_to" in edge_relations,
             "hasToolToSkill": "used_by_skill" in edge_relations,
         },
+        "coveragePlaybook": _coverage_playbook(
+            task_total=len(task_docs),
+            task_complete=complete_tasks,
+            skill_total=len(skill_docs),
+            publishable_skills=publishable_skills,
+            recent_failures=len(recent_eval_failures),
+            session_total=len(session_docs),
+            replay_ready_sessions=replay_ready_sessions,
+            pending_approvals=pending_approvals,
+            work_blockers=work_automation_blockers,
+        ),
     }
