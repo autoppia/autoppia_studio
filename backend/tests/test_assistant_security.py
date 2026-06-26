@@ -897,6 +897,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "sessionContracts": {
                         "timeline": {"steps": 6, "toolSteps": 3, "skillSteps": 1, "replayReadySessions": 1},
                     },
+                    "artifactOutputs": {"total": 3, "runtimeLinked": 2, "reviewRequired": 1, "blockedForReuse": 1},
                 },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
@@ -934,6 +935,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
+    assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
+    assert "Artifact reuse blocked: 1." in reply
     assert "Work attention items: 3." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automation gate: 1 unattended-ready, 2 blocked." in reply

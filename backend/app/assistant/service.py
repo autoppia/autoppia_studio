@@ -1488,6 +1488,15 @@ class AutomataAssistantService:
                     f"{timeline.get('toolSteps', 0)} tool, {timeline.get('skillSteps', 0)} skill, "
                     f"{timeline.get('replayReadySessions', 0)} replay-ready sessions."
                 )
+            artifact_outputs = runtime.get("artifactOutputs") if isinstance(runtime.get("artifactOutputs"), dict) else {}
+            if artifact_outputs:
+                runtime_text += (
+                    f" Artifact outputs: {artifact_outputs.get('total', 0)} business output(s), "
+                    f"{artifact_outputs.get('runtimeLinked', 0)} runtime-linked, "
+                    f"{artifact_outputs.get('reviewRequired', 0)} pending review."
+                )
+                if int(artifact_outputs.get("blockedForReuse") or 0):
+                    runtime_text += f" Artifact reuse blocked: {artifact_outputs.get('blockedForReuse', 0)}."
         work_text = ""
         if sla:
             work_text = f" Work attention items: {sla.get('needsAttention', 0)}."
