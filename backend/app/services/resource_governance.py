@@ -211,7 +211,11 @@ def build_resource_contract(resource: dict[str, Any]) -> dict[str, Any]:
 
 def resource_contract(resource: dict[str, Any]) -> dict[str, Any]:
     contract = resource.get("resourceContract")
-    return contract if isinstance(contract, dict) else {}
+    if isinstance(contract, dict):
+        return contract
+    metadata = resource.get("metadata") if isinstance(resource.get("metadata"), dict) else {}
+    metadata_contract = metadata.get("resourceContract")
+    return metadata_contract if isinstance(metadata_contract, dict) else {}
 
 
 def resource_indexing(resource: dict[str, Any]) -> dict[str, Any]:
@@ -223,7 +227,10 @@ def resource_indexing(resource: dict[str, Any]) -> dict[str, Any]:
 def resource_governance(resource: dict[str, Any]) -> dict[str, Any]:
     contract = resource_contract(resource)
     governance = contract.get("governance")
-    return governance if isinstance(governance, dict) else {}
+    if isinstance(governance, dict):
+        return governance
+    metadata = resource.get("metadata") if isinstance(resource.get("metadata"), dict) else {}
+    return metadata if metadata else {}
 
 
 def resource_acl(resource: dict[str, Any]) -> dict[str, Any]:
@@ -240,7 +247,8 @@ def resource_acl(resource: dict[str, Any]) -> dict[str, Any]:
 
 def resource_read_tools(resource: dict[str, Any]) -> list[str]:
     contract = resource_contract(resource)
-    return _list_values(contract.get("readTools") or resource.get("readTools"))
+    metadata = resource.get("metadata") if isinstance(resource.get("metadata"), dict) else {}
+    return _list_values(contract.get("readTools") or resource.get("readTools") or metadata.get("readTools"))
 
 
 def resource_vector_id(resource: dict[str, Any]) -> str:

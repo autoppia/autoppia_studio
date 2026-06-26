@@ -267,6 +267,9 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     )
 
     assert coverage["resources"]["linkedVectorStores"] == 1
+    assert coverage["resources"]["withResourceContract"] == 1
+    assert coverage["resources"]["withReadTools"] == 1
+    assert coverage["resources"]["citable"] == 1
     assert coverage["tools"]["ready"] == 1
     assert coverage["policies"]["sendProtected"] is True
     assert coverage["benchmarks"]["tasksWithContracts"] == 1

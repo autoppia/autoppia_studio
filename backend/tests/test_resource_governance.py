@@ -1,4 +1,4 @@
-from app.services.resource_governance import build_resource_contract, build_resource_gate, resource_payload, resource_tool_segment, summarize_resource_governance
+from app.services.resource_governance import build_resource_contract, build_resource_gate, resource_contract, resource_payload, resource_read_tools, resource_tool_segment, summarize_resource_governance
 
 
 def _resource():
@@ -42,6 +42,29 @@ def test_resource_payload_exposes_governed_runtime_resource_contract():
     assert payload["sourceUrl"] == "https://docs.example.com/claims"
     assert payload["freshnessStatus"] == "current"
     assert payload["readTools"] == ["knowledge.claims.search"]
+
+
+def test_resource_governance_accepts_legacy_metadata_contract_shape():
+    resource = {
+        "documentId": "doc-legacy",
+        "filename": "legacy-claims.md",
+        "status": "indexed",
+        "vectorDatabaseId": "vector-claims",
+        "metadata": {
+            "resourceContract": {"declared": True, "resourceKind": "document"},
+            "citability": {"citable": True, "citationLabel": "Legacy claims"},
+            "readTools": ["knowledge.legacy_claims.search"],
+        },
+    }
+
+    summary = summarize_resource_governance([resource])
+
+    assert resource_contract(resource) == {"declared": True, "resourceKind": "document"}
+    assert resource_read_tools(resource) == ["knowledge.legacy_claims.search"]
+    assert summary["withResourceContract"] == 1
+    assert summary["citable"] == 1
+    assert summary["readTools"] == ["knowledge.legacy_claims.search"]
+    assert summary["grounding"]["requirements"]["readTools"] == 1
 
 
 def test_build_resource_contract_declares_versioned_acl_citable_resource_gate():
