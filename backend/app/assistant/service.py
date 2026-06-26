@@ -1559,15 +1559,31 @@ class AutomataAssistantService:
                     if first_gap:
                         coverage_text += f" First promotion blocker: {first_gap.get('label') or first_gap.get('key') or 'promotion evidence'}."
             if vertical_demos:
+                demo_items = vertical_demos.get("demos") if isinstance(vertical_demos.get("demos"), list) else []
+                first_proof_blocked = next(
+                    (
+                        demo
+                        for demo in demo_items
+                        if isinstance(demo, dict)
+                        and isinstance(demo.get("insuranceFlowProofGate"), dict)
+                        and not (demo.get("insuranceFlowProofGate") or {}).get("ready")
+                    ),
+                    {},
+                )
                 coverage_text += (
                     f" Vertical demos: {vertical_demos.get('ready', 0)}/{vertical_demos.get('total', 0)} ready, "
                     f"{vertical_demos.get('enterpriseReady', 0)} enterprise-ready, "
                     f"{vertical_demos.get('smokeReady', 0)} smoke-ready, "
-                    f"{vertical_demos.get('proofReady', 0)} proof-ready."
+                    f"{vertical_demos.get('proofReady', 0)} proof-ready, "
+                    f"{vertical_demos.get('proofBlocked', 0)} proof-blocked."
                 )
                 if vertical_demo_gaps:
                     first_gap = vertical_demo_gaps[0] if isinstance(vertical_demo_gaps[0], dict) else {}
                     coverage_text += f" First demo blocker: {first_gap.get('label') or first_gap.get('group') or 'operational evidence'}."
+                if first_proof_blocked:
+                    proof_gate = first_proof_blocked.get("insuranceFlowProofGate") or {}
+                    missing = proof_gate.get("missing") if isinstance(proof_gate.get("missing"), list) else []
+                    coverage_text += f" First proof blocker: {missing[0] if missing else proof_gate.get('state') or 'proof evidence'}."
         resource_text = ""
         if resource_map:
             resource_text = (
