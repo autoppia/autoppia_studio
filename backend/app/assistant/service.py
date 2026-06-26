@@ -1577,6 +1577,10 @@ class AutomataAssistantService:
                         f" Skill releases: {release.get('published', 0)} published, "
                         f"{release.get('readyForPublish', 0)} ready for publish, {release.get('draft', 0)} draft."
                     )
+                    coverage_text += (
+                        f" Skill lifecycle: {packages.get('versioned', 0)}/{packages.get('total', skills.get('total', 0))} versioned, "
+                        f"{release.get('withVersionHistory', 0)} with version history."
+                    )
                 release_gate = packages.get("releaseGate") if isinstance(packages.get("releaseGate"), dict) else {}
                 if release_gate:
                     coverage_text += f" Skill release gate: {release_gate.get('state', 'unknown')}."

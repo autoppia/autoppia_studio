@@ -1179,7 +1179,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                             "assets": 1,
                             "resources": 1,
                             "scripts": 1,
-                            "releaseReadiness": {"published": 1, "readyForPublish": 2, "draft": 1},
+                            "versioned": 3,
+                            "releaseReadiness": {"published": 1, "readyForPublish": 2, "draft": 1, "withVersionHistory": 2},
                             "releaseGate": {"state": "needs_hardening", "ready": False},
                         },
                     },
@@ -1352,6 +1353,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First entity blocker: read_access." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions, 1 with assets (1 resources, 1 scripts)." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
+    assert "Skill lifecycle: 3/4 versioned, 2 with version history." in reply
     assert "Skill release gate: needs_hardening." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
