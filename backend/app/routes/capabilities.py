@@ -29,6 +29,7 @@ from app.harvesters.base import connector_surface
 from app.harvesters.toolkit import ToolkitHarvester
 from app.connectors import execute_connector_tool
 from app.routes.connectors import connector_toolkit
+from app.services.capability_graph_coverage import capability_graph_coverage
 from app.services.resource_governance import resource_citable
 from app.services.resource_governance import resource_contract
 from app.services.resource_governance import resource_governance
@@ -1745,7 +1746,7 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             "companyId": company_id,
             "nodes": list(nodes.values()),
             "edges": edge_list,
-            "coverage": _capability_graph_coverage(
+            "coverage": capability_graph_coverage(
                 entity_docs=entity_docs,
                 resource_docs=resource_docs,
                 vector_store_docs=vector_store_docs,
