@@ -88,7 +88,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "runtimeRequirements": ["bot_token", "network"],
         "tools": [
             {"name": "telegram.get_chat", "description": "Fetch Telegram chat metadata for the configured or provided chat.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}}}},
-            {"name": "telegram.send_message", "description": "Send a Telegram message after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}, "message": {"type": "string"}}}},
+            {"name": "telegram.send_message", "description": "Send a Telegram message after approval.", "sideEffects": "send", "inputSchema": {"type": "object", "properties": {"chatId": {"type": "string"}, "message": {"type": "string"}}}},
         ],
     },
     "web": {
@@ -161,7 +161,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "tools": [
             _tool("slack.search_messages", "Search Slack messages."),
             _tool("slack.read_channel", "Read messages from a Slack channel."),
-            _tool("slack.send_message", "Send a Slack message after approval.", "writes"),
+            _tool("slack.send_message", "Send a Slack message after approval.", "send"),
         ],
     },
     "discord": {
@@ -169,7 +169,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "authFields": ["botToken"],
         "configFields": ["defaultChannelId"],
         "runtimeRequirements": ["bot_token", "network"],
-        "tools": [_tool("discord.read_channel", "Read Discord messages."), _tool("discord.send_message", "Send a Discord message after approval.", "writes")],
+        "tools": [_tool("discord.read_channel", "Read Discord messages."), _tool("discord.send_message", "Send a Discord message after approval.", "send")],
     },
     "matrix": _api_toolkit("Matrix", "matrix", ["accessToken"], ["homeserverUrl", "defaultRoomId"], ["messaging_credentials", "network"]),
     "signal": _api_toolkit("Signal", "signal", ["apiToken"], ["baseUrl", "account"], ["messaging_bridge", "network"]),

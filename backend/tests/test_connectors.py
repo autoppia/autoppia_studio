@@ -230,6 +230,36 @@ def test_gmail_toolkit_marks_send_as_send_boundary():
 
 
 @pytest.mark.parametrize(
+    ("connector_type", "send_tool_name"),
+    [
+        ("slack", "slack.send_message"),
+        ("discord", "discord.send_message"),
+        ("telegram", "telegram.send_message"),
+    ],
+)
+def test_messaging_toolkits_mark_send_message_as_send_boundary(connector_type, send_tool_name):
+    toolkit = connectors_route.connector_toolkit(
+        {
+            "connectorId": f"{connector_type}-1",
+            "name": connector_type,
+            "type": connector_type,
+            "category": "communication",
+            "status": "connected",
+            "provider": "official",
+            "config": {},
+        }
+    )
+
+    send_tool = next(tool for tool in toolkit["tools"] if tool["name"] == send_tool_name)
+
+    assert send_tool["sideEffects"] == "send"
+    assert send_tool["toolContract"]["sideEffects"] == "send"
+    assert send_tool["toolContract"]["policyBoundary"] == "send"
+    assert send_tool["toolContract"]["approvalPolicy"]["required"] is True
+    assert send_tool["toolContract"]["permissions"]["requiresApproval"] is True
+
+
+@pytest.mark.parametrize(
     ("connector_type", "expected_tool", "expected_auth_field"),
     [
         ("cloudflare", "cloudflare.search", "apiToken"),
