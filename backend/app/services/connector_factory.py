@@ -15,6 +15,9 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
     entity_pending = 0
     typed_tool_ready = 0
     tool_synthesis_pending = 0
+    hardened_tool_count = 0
+    needs_hardening_count = 0
+    hardening_gap_counts: dict[str, int] = {}
     candidate_tasks_ready = 0
     ingestion_ready = 0
     ingestion_blocked = 0
@@ -31,6 +34,16 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         entity_status = str(entity_mapping.get("status") or "").strip().lower()
         ingestion_state = str(ingestion.get("state") or "").strip().lower()
         typed_tool_count = int(tool_synthesis.get("typedToolCount") or 0)
+        hardened_count = int(tool_synthesis.get("hardenedToolCount") or 0)
+        needs_hardening = int(tool_synthesis.get("needsHardeningCount") or 0)
+        hardened_tool_count += hardened_count
+        needs_hardening_count += needs_hardening
+        hardening_gaps = tool_synthesis.get("hardeningGaps") if isinstance(tool_synthesis.get("hardeningGaps"), dict) else {}
+        for key, value in hardening_gaps.items():
+            clean_key = str(key or "").strip()
+            if not clean_key:
+                continue
+            hardening_gap_counts[clean_key] = hardening_gap_counts.get(clean_key, 0) + int(value or 0)
         ready_stages = int(ingestion.get("readyStages") or 0)
         total_stages = int(ingestion.get("totalStages") or 0)
         ready_stage_count += ready_stages
@@ -55,6 +68,8 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             gaps.append({"key": "entity_mapping", "label": f"{doc.get('name') or 'Connector'} needs business entity mapping.", "target": "connectors"})
         if discovery and typed_tool_count == 0:
             gaps.append({"key": "tool_synthesis", "label": f"{doc.get('name') or 'Connector'} has no typed synthesized tools yet.", "target": "connectors"})
+        if needs_hardening:
+            gaps.append({"key": "tool_hardening", "label": f"{doc.get('name') or 'Connector'} has {needs_hardening} synthesized tool(s) needing hardening.", "target": "connectors"})
         if ingestion_state == "blocked":
             next_stage = ingestion.get("nextStage") if isinstance(ingestion.get("nextStage"), dict) else {}
             label = str(next_stage.get("summary") or next_stage.get("label") or "ingestion pipeline is blocked")
@@ -69,6 +84,9 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                     "readyForToolBinding": bool(entity_mapping.get("readyForToolBinding")),
                     "typedToolCount": typed_tool_count,
                     "governedToolCount": int(tool_synthesis.get("governedToolCount") or 0),
+                    "hardenedToolCount": hardened_count,
+                    "needsHardeningCount": needs_hardening,
+                    "hardeningGaps": hardening_gaps,
                     "candidateTasksRecommended": bool(candidate_tasks.get("recommended")),
                     "ingestionState": ingestion_state or "unknown",
                     "readyStages": ready_stages,
@@ -82,6 +100,12 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         "entityPending": entity_pending,
         "typedToolReady": typed_tool_ready,
         "toolSynthesisPending": tool_synthesis_pending,
+        "hardenedToolCount": hardened_tool_count,
+        "needsHardeningCount": needs_hardening_count,
+        "toolHardeningGaps": [
+            {"name": key, "count": hardening_gap_counts[key]}
+            for key in sorted(hardening_gap_counts, key=lambda item: (-hardening_gap_counts[item], item))
+        ],
         "candidateTasksReady": candidate_tasks_ready,
         "ingestionReady": ingestion_ready,
         "ingestionBlocked": ingestion_blocked,
