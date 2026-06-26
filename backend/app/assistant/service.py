@@ -1677,6 +1677,13 @@ class AutomataAssistantService:
                 if first_proof_blocked:
                     proof_gate = first_proof_blocked.get("insuranceFlowProofGate") or {}
                     missing = proof_gate.get("missing") if isinstance(proof_gate.get("missing"), list) else []
+                    ready_steps = int(proof_gate.get("readySteps") or 0)
+                    total_steps = int(proof_gate.get("totalSteps") or 0)
+                    if total_steps:
+                        coverage_text += (
+                            f" Insurance proof gate: {proof_gate.get('state') or 'blocked'}, "
+                            f"{ready_steps}/{total_steps} proof step(s) ready."
+                        )
                     coverage_text += f" First proof blocker: {missing[0] if missing else proof_gate.get('state') or 'proof evidence'}."
         resource_text = ""
         if resource_map:
