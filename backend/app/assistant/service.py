@@ -1516,6 +1516,13 @@ class AutomataAssistantService:
                         f" Regression gate: {regression_gate.get('gatedCapabilities', 0)}/{regression_gate.get('totalCapabilities', 0)} "
                         f"capabilities gated, state {regression_gate.get('state', 'unknown')}."
                     )
+                judge_gate = benchmark_portfolio.get("judgeStrategyGate") if isinstance(benchmark_portfolio.get("judgeStrategyGate"), dict) else {}
+                if judge_gate:
+                    coverage_text += (
+                        f" Judge strategy gate: {judge_gate.get('state', 'unknown')}, "
+                        f"{judge_gate.get('deterministic', 0)}/{judge_gate.get('total', 0)} deterministic, "
+                        f"{judge_gate.get('stateful', 0)} stateful."
+                    )
             if promotion_pipeline:
                 pipeline_tasks = promotion_pipeline.get("tasks") if isinstance(promotion_pipeline.get("tasks"), dict) else {}
                 pipeline_trajectories = promotion_pipeline.get("trajectories") if isinstance(promotion_pipeline.get("trajectories"), dict) else {}

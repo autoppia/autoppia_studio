@@ -4,6 +4,7 @@ from typing import Any
 
 from app.services.task_contracts import task_contract_from_record
 from app.services.task_contracts import task_contract_hardening
+from app.services.task_contracts import task_evaluation_harness
 
 
 BENCHMARK_PORTFOLIO_ACTIONS = {
@@ -61,6 +62,21 @@ BENCHMARK_PORTFOLIO_ACTIONS = {
         "area": "evals",
         "severity": "medium",
         "action": "Reference connectors, entities or skills from benchmarks before evaluating coverage.",
+    },
+    "judge_strategy": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Declare deterministic or stateful judge layers before relying on benchmark promotion gates.",
+    },
+    "deterministic_judge": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Add success criteria or rules-based assertions so deterministic checks run before replay or LLM judging.",
+    },
+    "llm_only_judge": {
+        "area": "evals",
+        "severity": "medium",
+        "action": "Add deterministic checks or stateful replay so LLM judges remain complementary.",
     },
 }
 
@@ -127,6 +143,60 @@ def _benchmark_portfolio_playbook(gap_counts: dict[str, int]) -> list[dict[str, 
             }
         )
     return playbook
+
+
+def _judge_type(contract: dict[str, Any]) -> str:
+    config = contract.get("evaluatorConfig") if isinstance(contract.get("evaluatorConfig"), dict) else {}
+    return str(config.get("judge") or config.get("judgeType") or config.get("evaluator") or config.get("type") or "").strip().lower()
+
+
+def judge_strategy_gate(contracts: list[dict[str, Any]]) -> dict[str, Any]:
+    harnesses = [task_evaluation_harness(contract, judge_type=_judge_type(contract)) for contract in contracts]
+    total = len(harnesses)
+    deterministic = sum(1 for harness in harnesses if harness.get("deterministicFirst"))
+    stateful = sum(1 for harness in harnesses if harness.get("statefulReplay"))
+    llm = sum(1 for harness in harnesses if harness.get("llmAsComplement"))
+    layered = sum(
+        1
+        for harness in harnesses
+        if harness.get("deterministicFirst") or harness.get("statefulReplay")
+    )
+    llm_only = sum(
+        1
+        for harness in harnesses
+        if harness.get("llmAsComplement") and not harness.get("deterministicFirst") and not harness.get("statefulReplay")
+    )
+    checks = {
+        "tasksHaveJudgeStrategy": bool(total) and layered == total,
+        "deterministicFirst": bool(total) and deterministic == total,
+        "statefulReplayAvailable": bool(total) and stateful == total,
+        "llmAsComplementOnly": llm_only == 0,
+    }
+    blockers = []
+    if not checks["tasksHaveJudgeStrategy"]:
+        blockers.append("judge_strategy")
+    if not checks["deterministicFirst"]:
+        blockers.append("deterministic_judge")
+    if not checks["llmAsComplementOnly"]:
+        blockers.append("llm_only_judge")
+    ready = bool(total) and not blockers
+    gap_counts = {
+        "judge_strategy": max(0, total - layered),
+        "deterministic_judge": max(0, total - deterministic),
+        "llm_only_judge": llm_only,
+    }
+    return {
+        "state": "ready" if ready else ("no_tasks" if not total else "needs_hardening"),
+        "ready": ready,
+        "total": total,
+        "deterministic": deterministic,
+        "stateful": stateful,
+        "llm": llm,
+        "llmOnly": llm_only,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": _benchmark_portfolio_playbook({key: count for key, count in gap_counts.items() if count}),
+    }
 
 
 def promotion_gate(
@@ -197,6 +267,7 @@ def benchmark_coverage_summary(
         unique_skills.append(skill)
     skills = unique_skills
     contracts = [_task_contract_for_coverage(task, benchmark) for task in tasks]
+    judge_gate = judge_strategy_gate(contracts)
     completeness = [contract.get("completeness") or task_contract_completeness(contract) for contract in contracts]
     systems = _dedupe_strings([system for contract in contracts for system in (contract.get("allowedSystems") or [])])
     expected_inputs = _dedupe_strings([input_name for contract in contracts for input_name in (contract.get("expectedInputs") or [])])
@@ -243,6 +314,7 @@ def benchmark_coverage_summary(
                 "readyForReplay": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("readyForReplay")),
             },
         },
+        "judgeStrategyGate": judge_gate,
         "systems": systems,
         "expectedInputs": expected_inputs,
         "expectedArtifacts": _dedupe_strings([*task_artifacts, *skill_artifacts]),
@@ -298,6 +370,14 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     run_pass = sum(int((item.get("runCoverage") or {}).get("pass") or 0) for item in coverage_items)
     run_fail = sum(int((item.get("runCoverage") or {}).get("fail") or 0) for item in coverage_items)
     run_pending = sum(int((item.get("runCoverage") or {}).get("pending") or 0) for item in coverage_items)
+    judge_totals = [item.get("judgeStrategyGate") or {} for item in coverage_items]
+    judge_total_tasks = sum(int(item.get("total") or 0) for item in judge_totals)
+    judge_gap_counts: dict[str, int] = {}
+    for item in judge_totals:
+        for playbook_item in item.get("hardeningPlaybook") or []:
+            key = str(playbook_item.get("gap") or "").strip()
+            if key:
+                judge_gap_counts[key] = judge_gap_counts.get(key, 0) + int(playbook_item.get("count") or 1)
     skill_ids = _dedupe_strings([
         skill_id
         for item in coverage_items
@@ -340,6 +420,16 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
                 for item in latest_runs[:5]
             ],
         },
+        "judgeStrategyGate": {
+            "state": "ready" if judge_total_tasks and not judge_gap_counts else ("no_tasks" if not judge_total_tasks else "needs_hardening"),
+            "ready": bool(judge_total_tasks) and not judge_gap_counts,
+            "total": judge_total_tasks,
+            "deterministic": sum(int(item.get("deterministic") or 0) for item in judge_totals),
+            "stateful": sum(int(item.get("stateful") or 0) for item in judge_totals),
+            "llm": sum(int(item.get("llm") or 0) for item in judge_totals),
+            "llmOnly": sum(int(item.get("llmOnly") or 0) for item in judge_totals),
+            "hardeningPlaybook": _benchmark_portfolio_playbook(judge_gap_counts),
+        },
         "promotionGate": promotion_gate(
             task_total=task_total,
             task_complete=task_complete,
@@ -369,6 +459,8 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         else:
             gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
     regression_gate = portfolio["regressionGate"]
+    for key, count in judge_gap_counts.items():
+        gap_counts[key] = gap_counts.get(key, 0) + count
     if regression_gate.get("state") == "empty":
         gap_counts["empty_regression_matrix"] = max(1, len(coverage_items))
     for blocker in regression_gate.get("blockers") or []:

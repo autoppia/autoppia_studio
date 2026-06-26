@@ -1,6 +1,7 @@
 from app.services.benchmark_coverage import (
     benchmark_coverage_summary,
     coverage_portfolio,
+    judge_strategy_gate,
     regression_gate_from_matrix,
     task_contract_completeness,
 )
@@ -68,6 +69,23 @@ def test_benchmark_coverage_summary_builds_eval_gate_evidence():
         "withSeed": 1,
         "readyForReplay": 1,
     }
+    assert coverage["judgeStrategyGate"] == {
+        "state": "ready",
+        "ready": True,
+        "total": 1,
+        "deterministic": 1,
+        "stateful": 1,
+        "llm": 0,
+        "llmOnly": 0,
+        "checks": {
+            "tasksHaveJudgeStrategy": True,
+            "deterministicFirst": True,
+            "statefulReplayAvailable": True,
+            "llmAsComplementOnly": True,
+        },
+        "blockers": [],
+        "hardeningPlaybook": [],
+    }
     assert coverage["systems"] == ["email", "erp"]
     assert coverage["expectedInputs"] == ["claim_id", "customer_email"]
     assert coverage["expectedArtifacts"] == ["draft_email", "claim_summary"]
@@ -75,6 +93,43 @@ def test_benchmark_coverage_summary_builds_eval_gate_evidence():
     assert coverage["skillCoverage"]["published"] == 1
     assert coverage["runCoverage"]["pass"] == 1
     assert coverage["promotionGate"]["state"] == "published"
+
+
+def test_judge_strategy_gate_blocks_llm_only_evaluators():
+    gate = judge_strategy_gate(
+        [
+            {
+                "businessIntent": "Classify customer message",
+                "evaluatorConfig": {"evaluator": "llm"},
+            }
+        ]
+    )
+
+    assert gate["state"] == "needs_hardening"
+    assert gate["blockers"] == ["judge_strategy", "deterministic_judge", "llm_only_judge"]
+    assert gate["hardeningPlaybook"] == [
+        {
+            "gap": "deterministic_judge",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Add success criteria or rules-based assertions so deterministic checks run before replay or LLM judging.",
+        },
+        {
+            "gap": "judge_strategy",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Declare deterministic or stateful judge layers before relying on benchmark promotion gates.",
+        },
+        {
+            "gap": "llm_only_judge",
+            "count": 1,
+            "area": "evals",
+            "severity": "medium",
+            "action": "Add deterministic checks or stateful replay so LLM judges remain complementary.",
+        },
+    ]
 
 
 def test_coverage_portfolio_rolls_up_matrix_and_blockers():
@@ -88,6 +143,14 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
                 "expectedArtifacts": ["draft_email"],
                 "skillCoverage": {"skillIds": ["skill-1"], "ready": 0, "published": 0},
                 "runCoverage": {"total": 1, "pass": 0, "fail": 1, "pending": 0, "latestRunId": "run-1", "latestLabel": "fail"},
+                "judgeStrategyGate": {
+                    "total": 1,
+                    "deterministic": 0,
+                    "stateful": 0,
+                    "llm": 1,
+                    "llmOnly": 1,
+                    "hardeningPlaybook": [{"gap": "llm_only_judge", "count": 1}],
+                },
             }
         ]
     )
@@ -111,6 +174,8 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
     assert portfolio["regressionGate"]["state"] == "failing"
     assert portfolio["regressionGate"]["ready"] is False
     assert portfolio["regressionGate"]["blockers"] == ["failing_regression", "skill_hardening"]
+    assert portfolio["judgeStrategyGate"]["state"] == "needs_hardening"
+    assert portfolio["judgeStrategyGate"]["llmOnly"] == 1
     assert portfolio["regressionGate"]["failingRegression"] == [
         {"kind": "connectors", "count": 1},
         {"kind": "entities", "count": 1},
@@ -123,6 +188,13 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
         "severity": "high",
         "action": "Inspect failing regression traces before publishing or widening runtime access.",
     }
+    assert {
+        "gap": "llm_only_judge",
+        "count": 1,
+        "area": "evals",
+        "severity": "medium",
+        "action": "Add deterministic checks or stateful replay so LLM judges remain complementary.",
+    } in portfolio["hardeningPlaybook"]
     assert portfolio["regressionGate"]["failingSamples"][0]["id"] == "email-1"
     assert "Inspect failing regression traces and fix the underlying capability before publishing." in portfolio["regressionGate"]["nextActions"]
 

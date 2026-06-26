@@ -581,6 +581,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["regressionGate"]["nextActions"] == [
         "Create benchmarks that reference connectors, entities or skills before evaluating coverage."
     ]
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["state"] == "needs_hardening"
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["deterministic"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["stateful"] == 1
     assert {
         "gap": "no_regression_runs",
         "count": 1,
@@ -1074,6 +1077,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "tasks": 7,
                         "promotionGate": {"state": "blocked"},
                         "regressionGate": {"state": "needs_regression", "gatedCapabilities": 3, "totalCapabilities": 5},
+                        "judgeStrategyGate": {"state": "needs_hardening", "total": 7, "deterministic": 4, "stateful": 6},
                     },
                     "promotionPipeline": {
                         "ready": False,
@@ -1156,6 +1160,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
+    assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready." in reply
