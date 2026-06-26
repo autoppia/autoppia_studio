@@ -37,6 +37,69 @@ def vertical_demo_spec(benchmark: dict[str, Any]) -> dict[str, Any] | None:
     return vertical_demo if isinstance(vertical_demo, dict) else None
 
 
+def _check_evidence(
+    key: str,
+    *,
+    expected_tools: list[str],
+    allowed_systems: list[str],
+    expected_artifacts: list[str],
+    approval_boundaries: list[str],
+    risk_classes: list[str],
+    skill_ids: list[str],
+    trajectory_ids: list[str],
+    passing_runs: int,
+    task_count: int,
+) -> dict[str, Any]:
+    email_tools = sorted({"imap.search_emails", "imap.read_email", "gmail.search_emails", "gmail.read_email"} & set(expected_tools))
+    approval_tools = sorted({"api.human_approval", "smtp.send_email", "gmail.send_email"} & set(expected_tools))
+    evidence: dict[str, list[str] | int] = {
+        "tools": [],
+        "systems": [],
+        "artifacts": [],
+        "boundaries": [],
+        "riskClasses": [],
+        "skillIds": [],
+        "trajectoryIds": [],
+        "passingRuns": passing_runs,
+        "tasks": task_count,
+    }
+    missing: list[str] = []
+    if key == "email_read":
+        evidence["tools"] = email_tools
+        evidence["systems"] = ["email"] if "email" in allowed_systems else []
+        missing = [] if email_tools or "email" in allowed_systems else ["email system or read tool"]
+    elif key == "erp_lookup":
+        evidence["tools"] = [tool for tool in expected_tools if tool.startswith("erp.")]
+        evidence["systems"] = ["insurance_erp"] if "insurance_erp" in allowed_systems else []
+        missing = [] if evidence["tools"] or "insurance_erp" in allowed_systems else ["insurance ERP system or ERP lookup tool"]
+    elif key == "document_grounding":
+        evidence["tools"] = [tool for tool in expected_tools if tool.startswith("knowledge.")]
+        evidence["systems"] = ["knowledge"] if "knowledge" in allowed_systems else []
+        missing = [] if evidence["tools"] or "knowledge" in allowed_systems else ["knowledge system or document search tool"]
+    elif key == "draft_artifact":
+        evidence["artifacts"] = [artifact for artifact in expected_artifacts if artifact == "draft_email"]
+        missing = [] if "draft_email" in expected_artifacts else ["draft_email artifact"]
+    elif key == "approval_boundary":
+        evidence["tools"] = approval_tools
+        evidence["boundaries"] = approval_boundaries
+        evidence["riskClasses"] = [risk for risk in risk_classes if risk == "send"]
+        missing = [] if approval_tools or "send" in risk_classes or any("approval" in item or "send" in item for item in approval_boundaries) else ["human approval or send boundary"]
+    elif key == "benchmark":
+        missing = [] if task_count else ["benchmark task"]
+    elif key == "trajectory":
+        evidence["trajectoryIds"] = trajectory_ids
+        missing = [] if trajectory_ids else ["approved/source trajectory"]
+    elif key == "skill_promotion":
+        evidence["skillIds"] = skill_ids
+        missing = [] if skill_ids else ["promoted skill package"]
+    elif key == "runtime_replay":
+        missing = [] if passing_runs else ["passing replay/eval run"]
+    return {
+        "found": {k: v for k, v in evidence.items() if v},
+        "missing": missing,
+    }
+
+
 def vertical_demo_payload(
     *,
     benchmark: dict[str, Any],
@@ -74,6 +137,7 @@ def vertical_demo_payload(
     skill_ids = _dedupe([skill.get("capabilityId") or skill.get("skillId") for skill in skills])
     trajectory_ids = _dedupe([trajectory_id for skill in skills for trajectory_id in _list_values(skill.get("trajectoryIds"))])
     labels = [str(run.get("label") or "pending").lower() for run in runs]
+    passing_runs = labels.count("pass")
     promoted_statuses = {"published", "approved", "active", "production"}
     promoted_skills = [
         skill
@@ -100,6 +164,18 @@ def vertical_demo_payload(
             continue
         key = str(item.get("key") or "")
         ready = bool(checks.get(key))
+        check_evidence = _check_evidence(
+            key,
+            expected_tools=expected_tools,
+            allowed_systems=allowed_systems,
+            expected_artifacts=expected_artifacts,
+            approval_boundaries=approval_boundaries,
+            risk_classes=risk_classes,
+            skill_ids=skill_ids,
+            trajectory_ids=trajectory_ids,
+            passing_runs=passing_runs,
+            task_count=len(tasks),
+        )
         coverage.append(
             {
                 "key": key,
@@ -107,6 +183,8 @@ def vertical_demo_payload(
                 "expectedEvidence": str(item.get("evidence") or ""),
                 "ready": ready,
                 "status": "ready" if ready else "missing",
+                "evidenceFound": check_evidence["found"],
+                "missingEvidence": check_evidence["missing"],
             }
         )
     total = len(coverage)
@@ -130,7 +208,7 @@ def vertical_demo_payload(
             "riskClasses": risk_classes,
             "skillIds": skill_ids,
             "trajectoryIds": trajectory_ids,
-            "passingRuns": labels.count("pass"),
+            "passingRuns": passing_runs,
         },
         "nextActions": [
             f"Complete vertical demo evidence for: {', '.join(missing)}."

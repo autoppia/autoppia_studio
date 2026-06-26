@@ -425,6 +425,9 @@ async def test_list_benchmarks_exposes_vertical_demo_readiness(monkeypatch):
     assert readiness["runtimePath"] == "hybrid_api_first"
     assert readiness["evidence"]["trajectoryIds"] == ["traj-claim"]
     assert readiness["evidence"]["passingRuns"] == 1
+    coverage_by_key = {item["key"]: item for item in readiness["coverage"]}
+    assert coverage_by_key["approval_boundary"]["evidenceFound"]["tools"] == ["api.human_approval"]
+    assert coverage_by_key["runtime_replay"]["evidenceFound"]["passingRuns"] == 1
     assert {item["key"] for item in readiness["coverage"] if item["ready"]} == {
         "email_read",
         "erp_lookup",

@@ -63,6 +63,11 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
     assert payload["evidence"]["skillIds"] == ["skill-claim-status"]
     assert payload["evidence"]["trajectoryIds"] == ["traj-claim-status"]
     assert payload["evidence"]["passingRuns"] == 1
+    coverage_by_key = {item["key"]: item for item in payload["coverage"]}
+    assert coverage_by_key["email_read"]["evidenceFound"]["tools"] == ["imap.search_emails"]
+    assert coverage_by_key["erp_lookup"]["evidenceFound"]["systems"] == ["insurance_erp"]
+    assert coverage_by_key["draft_artifact"]["evidenceFound"]["artifacts"] == ["draft_email"]
+    assert coverage_by_key["runtime_replay"]["evidenceFound"]["passingRuns"] == 1
 
 
 def test_summarize_vertical_demos_counts_partial_and_missing_states():
@@ -82,3 +87,8 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["ready"] == 0
     assert summary["partial"] == 1
     assert summary["missing"] == 1
+    partial_demo = summary["demos"][0]
+    missing_by_key = {item["key"]: item for item in partial_demo["coverage"]}
+    assert missing_by_key["trajectory"]["missingEvidence"] == ["approved/source trajectory"]
+    assert missing_by_key["skill_promotion"]["missingEvidence"] == ["promoted skill package"]
+    assert missing_by_key["runtime_replay"]["missingEvidence"] == ["passing replay/eval run"]
