@@ -60,6 +60,12 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
     assert payload["state"] == "ready"
     assert payload["readyCount"] == payload["total"] == 9
     assert payload["missing"] == []
+    assert payload["operationalReadiness"]["enterpriseReady"] is True
+    assert payload["operationalReadiness"]["state"] == "ready"
+    readiness_by_key = {item["key"]: item for item in payload["operationalReadiness"]["groups"]}
+    assert readiness_by_key["integration"]["state"] == "ready"
+    assert readiness_by_key["factory"]["state"] == "ready"
+    assert readiness_by_key["runtime"]["state"] == "ready"
     assert payload["evidence"]["skillIds"] == ["skill-claim-status"]
     assert payload["evidence"]["trajectoryIds"] == ["traj-claim-status"]
     assert payload["evidence"]["passingRuns"] == 1
@@ -88,6 +94,12 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["partial"] == 1
     assert summary["missing"] == 1
     partial_demo = summary["demos"][0]
+    assert partial_demo["operationalReadiness"]["enterpriseReady"] is False
+    readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}
+    assert readiness_by_key["integration"]["state"] == "ready"
+    assert readiness_by_key["factory"]["state"] == "partial"
+    assert readiness_by_key["runtime"]["state"] == "partial"
+    assert partial_demo["operationalReadiness"]["missingGroups"] == ["factory", "runtime"]
     missing_by_key = {item["key"]: item for item in partial_demo["coverage"]}
     assert missing_by_key["trajectory"]["missingEvidence"] == ["approved/source trajectory"]
     assert missing_by_key["skill_promotion"]["missingEvidence"] == ["promoted skill package"]

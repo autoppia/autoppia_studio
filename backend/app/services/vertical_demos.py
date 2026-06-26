@@ -100,6 +100,49 @@ def _check_evidence(
     }
 
 
+_READINESS_GROUPS: tuple[tuple[str, str, tuple[str, ...]], ...] = (
+    ("integration", "Integration surface", ("email_read", "erp_lookup", "document_grounding")),
+    ("factory", "Capability factory", ("benchmark", "trajectory", "skill_promotion")),
+    ("runtime", "Runtime controls", ("draft_artifact", "approval_boundary", "runtime_replay")),
+)
+
+
+def _readiness_state(total: int, ready: int) -> str:
+    if not total:
+        return "missing"
+    return "ready" if ready == total else "partial" if ready else "missing"
+
+
+def _operational_readiness(coverage: list[dict[str, Any]]) -> dict[str, Any]:
+    coverage_by_key = {str(item.get("key") or ""): item for item in coverage}
+    groups: list[dict[str, Any]] = []
+    for key, label, coverage_keys in _READINESS_GROUPS:
+        items = [coverage_by_key[item_key] for item_key in coverage_keys if item_key in coverage_by_key]
+        ready_count = sum(1 for item in items if item.get("ready"))
+        missing = [str(item.get("key") or "") for item in items if not item.get("ready")]
+        groups.append(
+            {
+                "key": key,
+                "label": label,
+                "state": _readiness_state(len(items), ready_count),
+                "readyCount": ready_count,
+                "total": len(items),
+                "missing": missing,
+            }
+        )
+    total = sum(int(group["total"]) for group in groups)
+    ready_count = sum(int(group["readyCount"]) for group in groups)
+    missing_groups = [str(group["key"]) for group in groups if group.get("state") != "ready"]
+    return {
+        "state": _readiness_state(total, ready_count),
+        "readyCount": ready_count,
+        "total": total,
+        "groups": groups,
+        "missingGroups": missing_groups,
+        "enterpriseReady": bool(total and ready_count == total and not missing_groups),
+    }
+
+
 def vertical_demo_payload(
     *,
     benchmark: dict[str, Any],
@@ -190,16 +233,18 @@ def vertical_demo_payload(
     total = len(coverage)
     ready_count = sum(1 for item in coverage if item.get("ready"))
     missing = [str(item.get("key") or "") for item in coverage if not item.get("ready")]
+    operational_readiness = _operational_readiness(coverage)
     return {
         "benchmarkId": str(benchmark.get("benchmarkId") or ""),
         "objective": str(vertical_demo.get("objective") or ""),
         "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
         "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
-        "state": "ready" if total and ready_count == total else "partial" if ready_count else "missing",
+        "state": _readiness_state(total, ready_count),
         "readyCount": ready_count,
         "total": total,
         "missing": missing,
         "coverage": coverage,
+        "operationalReadiness": operational_readiness,
         "evidence": {
             "expectedTools": expected_tools,
             "allowedSystems": allowed_systems,

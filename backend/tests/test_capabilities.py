@@ -597,6 +597,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["benchmarks"]["tasksWithContracts"] == 1
     assert graph["coverage"]["verticalDemos"]["total"] == 1
     assert graph["coverage"]["verticalDemos"]["ready"] == 1
+    assert graph["coverage"]["verticalDemos"]["enterpriseReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["integrationReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["factoryReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["runtimeReady"] == 1
     assert graph["coverage"]["verticalDemos"]["runtimeReplayReady"] == 1
     assert graph["coverage"]["verticalDemos"]["linkedToBenchmarks"] is True
     assert graph["coverage"]["evals"]["runs"] == 1

@@ -93,6 +93,16 @@ def _work_operational(doc: dict[str, Any]) -> dict[str, Any]:
     return operational if isinstance(operational, dict) else {}
 
 
+def _vertical_demo_group_ready(payload: dict[str, Any], key: str) -> bool:
+    readiness = payload.get("operationalReadiness")
+    if not isinstance(readiness, dict):
+        return False
+    groups = readiness.get("groups")
+    if not isinstance(groups, list):
+        return False
+    return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
+
+
 def _capability_boundary(doc: dict[str, Any]) -> str:
     explicit = str(doc.get("policyBoundary") or (doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {}).get("policyBoundary") or "").strip().lower()
     if explicit in {"read", "draft", "write", "send"}:
@@ -344,6 +354,10 @@ def capability_graph_coverage(
             "ready": sum(1 for item in vertical_demo_payloads if item.get("state") == "ready"),
             "partial": sum(1 for item in vertical_demo_payloads if item.get("state") == "partial"),
             "missing": sum(1 for item in vertical_demo_payloads if item.get("state") == "missing"),
+            "enterpriseReady": sum(1 for item in vertical_demo_payloads if bool((item.get("operationalReadiness") or {}).get("enterpriseReady"))),
+            "integrationReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_group_ready(item, "integration")),
+            "factoryReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_group_ready(item, "factory")),
+            "runtimeReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_group_ready(item, "runtime")),
             "linkedToBenchmarks": "validates_vertical_demo" in edge_relations,
             "runtimeReplayReady": sum(1 for item in vertical_demo_payloads if int((item.get("evidence") or {}).get("passingRuns") or 0) > 0),
         },
