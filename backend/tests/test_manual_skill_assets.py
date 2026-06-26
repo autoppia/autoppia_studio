@@ -132,5 +132,14 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
         "ready": 1,
         "archived": 0,
     }
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "publishableRegression",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Run or link a passing regression before publishing this skill.",
+        }
+    ]
     assert summary["sample"][1]["promotionStatus"] == "published"
     assert summary["packages"][1]["release"]["latestEvent"]["reason"] == "promotion"

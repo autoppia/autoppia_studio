@@ -535,6 +535,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseStatus"] == [{"name": "draft", "count": 1}]
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["readyForPublish"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["draft"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["hardeningPlaybook"][0] == {
+        "gap": "release_status",
+        "count": 1,
+        "area": "release",
+        "severity": "medium",
+        "action": "Move publishable skills from draft to ready or published once review is complete.",
+    }
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["totalSkills"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["passing"] == 1

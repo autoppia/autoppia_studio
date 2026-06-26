@@ -7,6 +7,60 @@ from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
 
 
+SKILL_PACKAGE_HARDENING_ACTIONS = {
+    "activation": {
+        "area": "capabilities",
+        "severity": "medium",
+        "action": "Add an activation description that explains when the AgentRuntime should load this skill.",
+    },
+    "instructions": {
+        "area": "capabilities",
+        "severity": "high",
+        "action": "Add reusable workflow instructions before treating the skill as an operational capability.",
+    },
+    "riskPolicy": {
+        "area": "security",
+        "severity": "high",
+        "action": "Declare runtime risk policy and approval boundaries for this skill.",
+    },
+    "sourceTrajectory": {
+        "area": "evidence",
+        "severity": "high",
+        "action": "Attach approved source trajectories so the skill is backed by execution evidence.",
+    },
+    "ioContract": {
+        "area": "interface",
+        "severity": "high",
+        "action": "Declare typed inputs and outputs for portable skill reuse.",
+    },
+    "expectedArtifacts": {
+        "area": "artifacts",
+        "severity": "medium",
+        "action": "Declare expected business artifacts or output cards for this skill.",
+    },
+    "regressionSuite": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Link benchmark tasks or regression cases before promotion.",
+    },
+    "publishableRegression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Run or link a passing regression before publishing this skill.",
+    },
+    "release_status": {
+        "area": "release",
+        "severity": "medium",
+        "action": "Move publishable skills from draft to ready or published once review is complete.",
+    },
+    "published_not_publishable": {
+        "area": "release",
+        "severity": "high",
+        "action": "Unpublish or remediate published skills that no longer satisfy production gates.",
+    },
+}
+
+
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -19,6 +73,29 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
         key = str(value or "unknown").strip() or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _skill_package_hardening_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = SKILL_PACKAGE_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Review skill package hardening before production promotion.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
@@ -103,6 +180,15 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
     ready_for_publish = sum(1 for item in packages if item["release"].get("readyForPublish"))
     published = sum(1 for item in packages if item["release"].get("published"))
     with_version_history = sum(1 for item in packages if int(item["release"].get("historyCount") or 0) > 1)
+    gap_counts: dict[str, int] = {}
+    for item in packages:
+        for blocker in item["blockers"]:
+            gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
+        promotion_status = str(item["release"].get("promotionStatus") or "draft")
+        if item["publishable"] and not item["release"].get("readyForPublish"):
+            gap_counts["release_status"] = gap_counts.get("release_status", 0) + 1
+        if promotion_status == "published" and not item["publishable"]:
+            gap_counts["published_not_publishable"] = gap_counts.get("published_not_publishable", 0) + 1
     sample = [
         {
             "skillId": item["skillId"],
@@ -139,5 +225,6 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
         "ioContracts": with_io_contract,
         "expectedArtifacts": with_expected_artifacts,
         "regressionSuites": with_regression_suite,
+        "hardeningPlaybook": _skill_package_hardening_playbook(gap_counts),
         "sample": sample,
     }
