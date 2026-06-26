@@ -96,3 +96,66 @@ async def test_approve_trajectory_as_skill_persists_ready_skill_package(monkeypa
     assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["actionCount"] == 1
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["benchmarkIds"] == ["bench-1"]
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is False
+
+
+@pytest.mark.asyncio
+async def test_approve_trajectory_as_skill_uses_shared_lifecycle_for_existing_skill(monkeypatch):
+    agents = _Collection([{"agentId": "agent-1", "companyId": "co-1", "email": "owner@example.com"}])
+    trajectories = _Collection(
+        [
+            {
+                "trajectoryId": "traj-2",
+                "agentId": "agent-1",
+                "companyId": "co-1",
+                "email": "owner@example.com",
+                "benchmarkId": "bench-2",
+                "evalId": "task-2",
+                "taskName": "Reply to claim",
+                "prompt": "Draft another claim reply.",
+                "actions": [{"name": "imap.read_email", "arguments": {}}],
+            }
+        ]
+    )
+    capabilities = _Collection(
+        [
+            {
+                "capabilityId": "agent-1:reply_to_claim",
+                "agentId": "agent-1",
+                "name": "Reply to claim",
+                "toolName": "skill.reply_to_claim",
+                "status": "draft",
+                "promotionStatus": "draft",
+                "version": "2",
+                "versionLabel": "v2",
+                "trajectoryIds": ["traj-1"],
+                "versionHistory": [
+                    {
+                        "version": 1,
+                        "versionLabel": "v1",
+                        "promotionStatus": "draft",
+                        "reason": "manual_skill_created",
+                        "createdAt": "t-1",
+                    }
+                ],
+            }
+        ]
+    )
+    monkeypatch.setattr(skills, "agents_collection", agents)
+    monkeypatch.setattr(skills, "trajectories_collection", trajectories)
+    monkeypatch.setattr(skills, "capabilities_collection", capabilities)
+
+    capability_id = await approve_trajectory_as_skill(trajectories.docs[0], judge={"label": "pass"})
+
+    skill = capabilities.docs[0]
+    assert capability_id == "agent-1:reply_to_claim"
+    assert skill["version"] == 2
+    assert skill["versionLabel"] == "v2"
+    assert skill["promotionStatus"] == "ready"
+    assert skill["readyAt"]
+    assert skill["lastPromotedAt"]
+    assert skill["trajectoryIds"] == ["traj-1", "traj-2"]
+    assert skill["versionHistory"][-1]["version"] == 2
+    assert skill["versionHistory"][-1]["promotionStatus"] == "ready"
+    assert skill["versionHistory"][-1]["reason"] == "trajectory_approved"
+    assert skill["skillPackage"]["metadata"]["version"] == 2
+    assert skill["skillPackage"]["metadata"]["promotionStatus"] == "ready"
