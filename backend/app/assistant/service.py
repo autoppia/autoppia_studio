@@ -1619,6 +1619,10 @@ class AutomataAssistantService:
             class_gate = runtime_policy.get("runtimeClassGate") if isinstance(runtime_policy.get("runtimeClassGate"), dict) else {}
             if class_gate:
                 runtime_text += f" Runtime class gate: {class_gate.get('state', 'unknown')}."
+                class_blockers = class_gate.get("blockers") if isinstance(class_gate.get("blockers"), list) else []
+                first_class_blocker = class_blockers[0] if class_blockers and isinstance(class_blockers[0], dict) else {}
+                if first_class_blocker:
+                    runtime_text += f" First runtime class blocker: {first_class_blocker.get('name') or 'runtime policy'}."
             approval_boundaries = runtime_policy.get("approvalBoundaries") if isinstance(runtime_policy.get("approvalBoundaries"), dict) else {}
             if approval_boundaries:
                 missing_approvals = approval_boundaries.get("missingObservedApproval") if isinstance(approval_boundaries.get("missingObservedApproval"), list) else []

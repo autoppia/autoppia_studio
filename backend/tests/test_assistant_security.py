@@ -1169,7 +1169,10 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "runtimePolicyMap": {
                         "defaultBrowserUse": "exception",
                         "runtimeClasses": {"browserSessions": 1},
-                        "runtimeClassGate": {"state": "needs_hardening"},
+                        "runtimeClassGate": {
+                            "state": "needs_hardening",
+                            "blockers": [{"name": "browserDomainGoverned", "count": 1}],
+                        },
                         "humanApproval": {"writesProtected": True, "sendsProtected": True},
                         "approvalBoundaries": {"sideEffectsProtected": False, "missingObservedApproval": ["write"]},
                         "browserDomainGovernance": {
@@ -1246,6 +1249,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
     assert "Runtime class gate: needs_hardening." in reply
+    assert "First runtime class blocker: browserDomainGoverned." in reply
     assert "Side-effect approvals: incomplete." in reply
     assert "Missing approval boundary: write." in reply
     assert "Browser domain governance: 1/2 observed domain(s) covered, 1 allowed." in reply
