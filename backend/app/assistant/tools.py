@@ -774,6 +774,11 @@ class AutomataAssistantTools:
             recommended_actions.append({"area": "runtime", "action": "Link business artifacts to their originating Runtime Lab sessions.", "reason": "Some artifacts are not traceable to a runtime session."})
         if artifact_outputs["reviewRequired"]:
             recommended_actions.insert(0, {"area": "approvals", "action": "Review pending business artifacts before reuse or delivery.", "reason": f"{artifact_outputs['reviewRequired']} artifact output(s) require human review."})
+        artifact_delivery_gate = (
+            artifact_outputs.get("businessOutputDeliveryGate")
+            if isinstance(artifact_outputs.get("businessOutputDeliveryGate"), dict)
+            else {}
+        )
         if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
             recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
         if work_operations_gate and not work_operations_gate.get("ready"):
@@ -827,6 +832,7 @@ class AutomataAssistantTools:
                 {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts require human review before reuse or delivery."} if artifact_outputs["reviewRequired"] else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts are missing Runtime Lab traceability."} if artifact_outputs["total"] and artifact_outputs["runtimeLinked"] < artifact_outputs["total"] else None,
+                {"area": "artifacts", "severity": "high", "message": "Business output delivery gate is blocked by missing traceability, capability linkage or review."} if artifact_delivery_gate and not artifact_delivery_gate.get("ready") else None,
                 {"area": "work", "severity": "medium", "message": "Some work items are missing normalized orchestration contracts."} if counts["workItems"] and work_contracts["withContract"] < counts["workItems"] else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark tasks exist but lack enterprise task contracts."} if counts["benchmarkTasks"] and task_contracts_ready == 0 else None,
             ]
@@ -891,6 +897,8 @@ class AutomataAssistantTools:
                 "pendingApprovals": pending_approvals,
                 "artifacts": artifact_outputs.get("total", 0),
                 "reviewRequiredArtifacts": artifact_outputs.get("reviewRequired", 0),
+                "deliveryReadyArtifacts": artifact_outputs.get("deliveryReady", 0),
+                "deliveryBlockedArtifacts": artifact_outputs.get("deliveryBlocked", 0),
                 "replayContractReady": vertical_demos.get("replayContractReady", 0),
                 "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
                 "businessOutputContractReady": vertical_demos.get("businessOutputContractReady", 0),
@@ -936,6 +944,7 @@ class AutomataAssistantTools:
                 "surface": "Runtime Lab",
                 "status": _surface_status(
                     bool(runtime_session_gate.get("ready"))
+                    and bool((artifact_outputs.get("businessOutputDeliveryGate") or {}).get("ready", True))
                     and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
                     and not vertical_demos.get("replayContractBlocked", 0)
                 ),

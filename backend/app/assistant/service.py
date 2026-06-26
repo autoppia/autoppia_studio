@@ -1907,6 +1907,12 @@ class AutomataAssistantService:
                     f"{artifact_outputs.get('workLinked', 0)} work-linked, "
                     f"{artifact_outputs.get('reusableAsKnowledge', 0)}/{artifact_outputs.get('knowledgeReady', 0)} reusable as knowledge."
                 )
+                delivery_gate = artifact_outputs.get("businessOutputDeliveryGate") if isinstance(artifact_outputs.get("businessOutputDeliveryGate"), dict) else {}
+                if delivery_gate:
+                    runtime_text += (
+                        f" Business output delivery gate: {delivery_gate.get('state', 'unknown')}, "
+                        f"{delivery_gate.get('readyOutputs', 0)}/{delivery_gate.get('total', 0)} output(s) delivery-ready."
+                    )
                 if int(artifact_outputs.get("blockedForReuse") or 0):
                     runtime_text += f" Artifact reuse blocked: {artifact_outputs.get('blockedForReuse', 0)}."
         work_text = ""

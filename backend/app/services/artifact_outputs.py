@@ -26,6 +26,11 @@ ARTIFACT_HARDENING_ACTIONS = {
         "severity": "medium",
         "action": "Resolve review/runtime/type blockers before saving this artifact as reusable knowledge.",
     },
+    "delivery_review": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Resolve artifact review or approval before delivering the business output.",
+    },
 }
 
 
@@ -95,7 +100,8 @@ def artifact_approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
     approval_key = str(metadata.get("approvalKey") or "")
     approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
     boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
-    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
+    resolved = approval_state in {"approved", "rejected"}
+    requires_review = not resolved and bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
     return {
         "linked": bool(approval_id or approval_key or requires_review),
         "approvalId": approval_id,
@@ -146,6 +152,7 @@ def artifact_output_contract(
             "approvalState": approval_relation["state"],
             "requiresReview": approval_relation["requiresReview"],
             "approvalRelation": approval_relation,
+            "deliveryReady": bool(session_id) and bool(capability_refs.get("linked")) and not approval_relation["requiresReview"],
             "knowledgeReady": knowledge_ready,
             "reuseReadiness": {
                 "ready": reuse_ready,
@@ -171,6 +178,8 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
     knowledge_ready = 0
     reusable_as_knowledge = 0
     review_required = 0
+    delivery_ready = 0
+    delivery_blocked = 0
     output_kinds: list[str] = []
     approval_states: list[str] = []
     source_tools: list[str] = []
@@ -188,7 +197,11 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         work_item_id = str(metadata.get("workItemId") or doc.get("workItemId") or "").strip()
         source_tool = str(doc.get("sourceTool") or metadata.get("sourceTool") or "").strip()
         approval_state = _approval_state(doc, metadata)
-        requires_review = bool(metadata.get("requiresReview") or approval_state in {"pending", "required", "review"})
+        review_resolved = approval_state in {"approved", "rejected"}
+        requires_review = bool(
+            not review_resolved
+            and (metadata.get("requiresReview") or approval_state in {"pending", "required", "review"})
+        )
 
         output_kinds.append(artifact_type)
         approval_states.append(approval_state)
@@ -204,6 +217,11 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
             knowledge_ready += 1
         if requires_review:
             review_required += 1
+        artifact_delivery_ready = bool(session_id) and bool(skill_id or trajectory_id or tool_id or work_item_id) and not requires_review
+        if artifact_delivery_ready:
+            delivery_ready += 1
+        else:
+            delivery_blocked += 1
         if artifact_type in KNOWLEDGE_READY_TYPES and session_id and not requires_review:
             reusable_as_knowledge += 1
 
@@ -217,6 +235,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         if requires_review and approval_state not in {"approved", "rejected"}:
             gaps.append({"key": "artifact_review", "label": f"{title} is waiting for human review before use.", "target": "approvals"})
             gap_counts["artifact_review"] = gap_counts.get("artifact_review", 0) + 1
+            gap_counts["delivery_review"] = gap_counts.get("delivery_review", 0) + 1
         if artifact_type in KNOWLEDGE_READY_TYPES and not (session_id and not requires_review):
             gap_counts["knowledge_reuse"] = gap_counts.get("knowledge_reuse", 0) + 1
 
@@ -231,6 +250,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
                     "workLinked": bool(work_item_id),
                     "knowledgeReady": artifact_type in KNOWLEDGE_READY_TYPES,
                     "reusableAsKnowledge": artifact_type in KNOWLEDGE_READY_TYPES and bool(session_id) and not requires_review,
+                    "deliveryReady": artifact_delivery_ready,
                     "approvalState": approval_state,
                     "requiresReview": requires_review,
                     "source": {
@@ -256,6 +276,31 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         "reusableAsKnowledge": reusable_as_knowledge,
         "blockedForReuse": max(0, knowledge_ready - reusable_as_knowledge),
         "reviewRequired": review_required,
+        "deliveryReady": delivery_ready,
+        "deliveryBlocked": delivery_blocked,
+        "businessOutputDeliveryGate": {
+            "state": "ready" if total and delivery_blocked == 0 else ("no_artifacts" if not total else "blocked"),
+            "ready": bool(total) and delivery_blocked == 0,
+            "total": total,
+            "readyOutputs": delivery_ready,
+            "blockedOutputs": delivery_blocked,
+            "checks": {
+                "businessOutputsPresent": total > 0,
+                "runtimeLinked": total > 0 and runtime_linked == total,
+                "capabilityLinked": total > 0 and capability_linked == total,
+                "reviewsResolved": total > 0 and review_required == 0,
+            },
+            "blockers": [
+                blocker
+                for blocker, blocked in [
+                    ("businessOutputsPresent", total == 0),
+                    ("runtimeLinked", total > 0 and runtime_linked < total),
+                    ("capabilityLinked", total > 0 and capability_linked < total),
+                    ("reviewsResolved", total > 0 and review_required > 0),
+                ]
+                if blocked
+            ],
+        },
         "outputKinds": _count_by(output_kinds),
         "approvalStates": _count_by(approval_states),
         "sourceTools": _count_by(source_tools),

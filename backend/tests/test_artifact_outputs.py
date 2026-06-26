@@ -53,12 +53,32 @@ def test_artifact_output_contract_keeps_business_output_separate_from_trace():
     assert contract["workLinked"] is True
     assert contract["source"]["sourceTool"] == "smtp.draft_email"
     assert contract["governance"]["knowledgeReady"] is True
+    assert contract["governance"]["deliveryReady"] is False
     assert contract["governance"]["reuseReadiness"] == {"ready": False, "blockers": ["requires_review"]}
     assert contract["governance"]["approvalRelation"]["requiresReview"] is True
     assert contract["nextActions"] == [
         "Open the originating Runtime Lab session.",
         "Review linked capability evidence.",
     ]
+
+
+def test_artifact_delivery_gate_treats_approved_review_as_resolved():
+    summary = summarize_artifact_outputs(
+        [
+            {
+                "artifactId": "artifact-approved",
+                "title": "Approved draft",
+                "artifactType": "markdown",
+                "sessionId": "session-1",
+                "metadata": {"skillId": "skill-1", "requiresReview": True, "approvalState": "approved"},
+                "sourceTool": "smtp.draft_email",
+            }
+        ]
+    )
+
+    assert summary["reviewRequired"] == 0
+    assert summary["deliveryReady"] == 1
+    assert summary["businessOutputDeliveryGate"]["ready"] is True
 
 
 def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
@@ -92,6 +112,22 @@ def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
     assert summary["reusableAsKnowledge"] == 1
     assert summary["blockedForReuse"] == 1
     assert summary["reviewRequired"] == 1
+    assert summary["deliveryReady"] == 1
+    assert summary["deliveryBlocked"] == 2
+    assert summary["businessOutputDeliveryGate"] == {
+        "state": "blocked",
+        "ready": False,
+        "total": 3,
+        "readyOutputs": 1,
+        "blockedOutputs": 2,
+        "checks": {
+            "businessOutputsPresent": True,
+            "runtimeLinked": True,
+            "capabilityLinked": False,
+            "reviewsResolved": False,
+        },
+        "blockers": ["capabilityLinked", "reviewsResolved"],
+    }
     assert summary["hardeningPlaybook"] == [
         {
             "gap": "capability_link",
@@ -108,6 +144,13 @@ def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
             "action": "Complete human review before reusing or delivering this business output.",
         },
         {
+            "gap": "delivery_review",
+            "count": 1,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Resolve artifact review or approval before delivering the business output.",
+        },
+        {
             "gap": "knowledge_reuse",
             "count": 1,
             "area": "resources",
@@ -116,4 +159,6 @@ def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
         },
     ]
     assert summary["sample"][0]["reusableAsKnowledge"] is True
+    assert summary["sample"][0]["deliveryReady"] is True
     assert summary["sample"][1]["reusableAsKnowledge"] is False
+    assert summary["sample"][1]["deliveryReady"] is False

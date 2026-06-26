@@ -835,6 +835,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Business output delivery gate is blocked by missing traceability, capability linkage or review." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Insurance business output contract is blocked; draft artifact, approval boundary and replay assertion must be proven before delivery." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Work operations gate is not ready for unattended orchestration." for alert in snapshot["automataGuidance"]["riskAlerts"])
@@ -917,6 +918,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "pendingApprovals": 1,
         "artifacts": 1,
         "reviewRequiredArtifacts": 1,
+        "deliveryReadyArtifacts": 0,
+        "deliveryBlockedArtifacts": 1,
         "replayContractReady": 0,
         "replayContractBlocked": 1,
         "businessOutputContractReady": 0,
@@ -1411,6 +1414,11 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "reusableAsKnowledge": 1,
                         "reviewRequired": 1,
                         "blockedForReuse": 1,
+                        "businessOutputDeliveryGate": {
+                            "state": "blocked",
+                            "total": 3,
+                            "readyOutputs": 1,
+                        },
                     },
                 },
                 "workOrchestration": {
@@ -1529,6 +1537,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
     assert "Artifact traceability: 3 separated from trace, 2 capability-linked, 1 work-linked, 1/2 reusable as knowledge." in reply
+    assert "Business output delivery gate: blocked, 1/3 output(s) delivery-ready." in reply
     assert "Artifact reuse blocked: 1." in reply
     assert "Work attention items: 3." in reply
     assert "Work operations: 2 due trigger(s), 1 budget-exhausted item(s), 4 retry attempt(s)." in reply
