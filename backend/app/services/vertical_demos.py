@@ -320,6 +320,12 @@ def _runtime_replay_contract(
         "draftArtifactOutput": "Assert the replay produces draft_email as the business artifact.",
         "approvalBoundaryBeforeSend": "Assert the replay stops at a human approval boundary before final email send.",
     }
+    missing_evidence_labels = {
+        "agentRuntimeReplay": "passing AgentRuntime replay",
+        "approvedSkillAvailable": "approved reusable insurance skill",
+        "draftArtifactOutput": "draft_email artifact output",
+        "approvalBoundaryBeforeSend": "human approval boundary before final send",
+    }
     evidence_found = {
         "passingRuns": passing_runs if passing_runs else 0,
         "promotedSkillIds": promoted_skill_ids,
@@ -340,6 +346,7 @@ def _runtime_replay_contract(
             "human approval boundary before final send",
         ],
         "missing": missing,
+        "missingEvidence": [missing_evidence_labels[key] for key in missing],
         "hardeningPlaybook": [
             {"gap": key, "count": 1, "group": "runtime", "area": "runtime", "severity": "high", "action": actions[key]}
             for key in missing

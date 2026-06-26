@@ -90,6 +90,7 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
             "human approval boundary before final send",
         ],
         "missing": [],
+        "missingEvidence": [],
         "hardeningPlaybook": [],
     }
     assert [step["key"] for step in payload["insuranceFlowProofGate"]["steps"]] == [
@@ -218,6 +219,10 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["missing"] == [
         "agentRuntimeReplay",
         "approvedSkillAvailable",
+    ]
+    assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["missingEvidence"] == [
+        "passing AgentRuntime replay",
+        "approved reusable insurance skill",
     ]
     assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["evidenceFound"] == {
         "artifacts": ["draft_email"],
