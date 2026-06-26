@@ -115,7 +115,7 @@ def test_work_orchestration_coverage_tracks_enterprise_controls():
                 "reviewBlocked": True,
                 "orchestration": {
                     "schedule": {"dueAt": "2026-06-26T10:00:00+00:00"},
-                    "budget": {"exhausted": True},
+                    "budget": {"maxCreditsPerRun": 1, "exhausted": True},
                     "retry": {"runAttempts": 2},
                     "approval": {"required": True},
                     "sla": {"state": "blocked"},
@@ -130,6 +130,7 @@ def test_work_orchestration_coverage_tracks_enterprise_controls():
     assert coverage["withContract"] is True
     assert coverage["scheduled"] is True
     assert coverage["budgeted"] is True
+    assert coverage["perRunBudgeted"] is True
     assert coverage["budgetExhausted"] is True
     assert coverage["runAttempts"] == 2
     assert coverage["slaNeedsAttention"] is True

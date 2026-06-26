@@ -61,6 +61,11 @@ WORK_HARDENING_ACTIONS = {
         "severity": "high",
         "action": "Attach runtime budgets before dispatching operational work.",
     },
+    "missing_run_budget": {
+        "area": "budgets",
+        "severity": "high",
+        "action": "Set maxCreditsPerRun so unattended work has a per-run spend guardrail.",
+    },
     "missing_retry": {
         "area": "queues",
         "severity": "medium",
@@ -267,6 +272,9 @@ def build_work_orchestration_contract(
     if budget_exhausted:
         blockers.append("budget_exhausted")
         next_actions.append("Increase the work budget or reduce runtime scope before retrying.")
+    if trigger_type == "scheduled" and max_per_run <= 0:
+        blockers.append("missing_run_budget")
+        next_actions.append("Set maxCreditsPerRun before allowing scheduled work to run unattended.")
     if queue_state.upper() in {"FAILED", "ERROR", "BUDGET_EXHAUSTED"}:
         blockers.append("failed_state")
         next_actions.append("Review the latest run result and retry once the cause is fixed.")
@@ -386,6 +394,7 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
         "withContract": bool(orchestration),
         "scheduled": trigger_type == "scheduled" or bool(schedule),
         "budgeted": bool(budget) or _safe_float(work_item.get("maxBudgetCredits", work_item.get("maxCreditsPerRun"))) > 0,
+        "perRunBudgeted": _safe_float(budget.get("maxCreditsPerRun") or work_item.get("maxCreditsPerRun")) > 0,
         "budgetExhausted": bool(budget.get("exhausted")),
         "retryConfigured": bool(retry) or _safe_int(work_item.get("maxSteps")) > 0,
         "runAttempts": run_attempts,
@@ -452,6 +461,7 @@ def _work_operations_gate(summary: dict[str, Any], *, gap_counts: dict[str, int]
         "contractsNormalized": total > 0 and int(summary.get("withContract") or 0) == total,
         "triggersConfigured": total > 0 and int(summary.get("scheduled") or 0) > 0,
         "budgetsConfigured": total > 0 and int(summary.get("budgeted") or 0) == total,
+        "perRunBudgetsConfigured": total > 0 and int(summary.get("perRunBudgeted") or 0) == total,
         "budgetsAvailable": int(summary.get("budgetExhausted") or 0) == 0,
         "retriesConfigured": total > 0 and int(summary.get("retryConfigured") or 0) == total,
         "slaTracked": total > 0 and int(summary.get("slaTracked") or 0) == total,
@@ -510,6 +520,7 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         "withContract": sum(1 for item in contracts if item["withContract"]),
         "scheduled": sum(1 for item in contracts if item["scheduled"]),
         "budgeted": sum(1 for item in contracts if item["budgeted"]),
+        "perRunBudgeted": sum(1 for item in contracts if item["perRunBudgeted"]),
         "budgetExhausted": sum(1 for item in contracts if item["budgetExhausted"]),
         "retryConfigured": sum(1 for item in contracts if item["retryConfigured"]),
         "runAttempts": sum(item["runAttempts"] for item in contracts),
@@ -537,6 +548,8 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         operation_gap_counts["missing_trigger"] = total
     if total and summary["budgeted"] < total:
         operation_gap_counts["missing_budget"] = total - summary["budgeted"]
+    if total and summary["perRunBudgeted"] < total:
+        operation_gap_counts["missing_run_budget"] = total - summary["perRunBudgeted"]
     if summary["budgetExhausted"]:
         operation_gap_counts["budget_exhausted"] = summary["budgetExhausted"]
     if total and summary["retryConfigured"] < total:
