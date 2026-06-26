@@ -508,6 +508,37 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["factory"]["connectorMap"]["ingestionBlocked"] == 1
     assert snapshot["operatingState"]["factory"]["connectorMap"]["factoryPipelineGate"]["state"] == "blocked"
     assert snapshot["operatingState"]["factory"]["connectorMap"]["factoryPipelineGate"]["checks"]["entityMappingComplete"] is False
+    assert snapshot["operatingState"]["factory"]["factoryEvalGate"] == {
+        "state": "blocked",
+        "ready": False,
+        "factoryConnectors": 1,
+        "referencedConnectors": 0,
+        "coveredConnectors": 0,
+        "missingConnectorRefs": 1,
+        "ungatedConnectors": 1,
+        "checks": {
+            "connectorsPresent": True,
+            "connectorsReferencedByBenchmarks": False,
+            "connectorRegressionsPassing": False,
+        },
+        "blockers": ["connectorsReferencedByBenchmarks", "connectorRegressionsPassing"],
+        "hardeningPlaybook": [
+            {
+                "gap": "connector_benchmark_refs",
+                "count": 1,
+                "area": "evals",
+                "severity": "high",
+                "action": "Reference every factory connector from benchmark tasks or promoted skill regression suites.",
+            },
+            {
+                "gap": "connector_regression_gate",
+                "count": 1,
+                "area": "evals",
+                "severity": "high",
+                "action": "Run passing regressions for every connector-backed production capability.",
+            },
+        ],
+    }
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
     assert snapshot["operatingState"]["companySetup"]["integration"]["systems"] == 1
     assert snapshot["operatingState"]["companySetup"]["integration"]["domainAllowlist"] == ["claims.example.com"]
@@ -799,6 +830,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Business entities exist but are not all ready for runtime tool binding." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Factory connectors are not fully covered by benchmark regression gates." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
@@ -861,6 +893,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "sendTools": 1,
         "sendApprovalReady": False,
         "uncoveredSendTools": 1,
+        "evalCoveredConnectors": 0,
+        "evalReferencedConnectors": 0,
+        "evalUngatedConnectors": 1,
         "entities": 2,
         "benchmarkTasks": 1,
         "approvedTrajectories": 1,
@@ -1203,6 +1238,12 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "ingestionBlocked": 1,
                         "gaps": [{"key": "entity_mapping", "label": "ERP needs business entity mapping."}],
                     },
+                    "factoryEvalGate": {
+                        "state": "blocked",
+                        "factoryConnectors": 3,
+                        "coveredConnectors": 1,
+                        "missingConnectorRefs": 2,
+                    },
                 },
                 "capabilityMap": {
                     "taskContracts": {"ready": 2, "total": 5, "reproducibility": {"readyForReplay": 3, "total": 5}},
@@ -1436,6 +1477,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Tool production gate: needs_hardening, 3/5 tool(s) hardened." in reply
     assert "Tool production checks: typed ready, contracts need hardening, policy/entity coverage blocked." in reply
     assert "Capability factory gate: blocked." in reply
+    assert "Factory eval gate: blocked, 1/3 connector(s) regression-covered." in reply
+    assert "Missing benchmark connector refs: 2." in reply
     assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
     assert "First factory blocker: ERP needs business entity mapping." in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply

@@ -1533,6 +1533,14 @@ class AutomataAssistantService:
             factory_gate = connector_map.get("factoryPipelineGate") if isinstance(connector_map.get("factoryPipelineGate"), dict) else {}
             if factory_gate:
                 factory_text += f" Capability factory gate: {factory_gate.get('state', 'unknown')}."
+            factory_eval_gate = factory.get("factoryEvalGate") if isinstance(factory.get("factoryEvalGate"), dict) else {}
+            if factory_eval_gate:
+                factory_text += (
+                    f" Factory eval gate: {factory_eval_gate.get('state', 'unknown')}, "
+                    f"{factory_eval_gate.get('coveredConnectors', 0)}/{factory_eval_gate.get('factoryConnectors', 0)} connector(s) regression-covered."
+                )
+                if int(factory_eval_gate.get("missingConnectorRefs") or 0):
+                    factory_text += f" Missing benchmark connector refs: {factory_eval_gate.get('missingConnectorRefs', 0)}."
             blocked_count = int(connector_map.get("entityPending") or 0) + int(connector_map.get("toolSynthesisPending") or 0) + int(connector_map.get("ingestionBlocked") or 0)
             if blocked_count:
                 factory_text += (

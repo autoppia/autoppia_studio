@@ -199,6 +199,54 @@ def _studio_os_gate(surface_playbook: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _factory_eval_gate(connector_map: dict[str, Any], eval_coverage: dict[str, Any]) -> dict[str, Any]:
+    connector_coverage = eval_coverage.get("connectors") if isinstance(eval_coverage.get("connectors"), dict) else {}
+    factory_connectors = int(connector_map.get("total") or 0)
+    referenced_connectors = int(connector_coverage.get("total") or 0)
+    covered_connectors = int(connector_coverage.get("covered") or 0)
+    missing_connector_refs = max(0, factory_connectors - referenced_connectors)
+    ungated_connectors = max(0, factory_connectors - covered_connectors)
+    checks = {
+        "connectorsPresent": factory_connectors > 0,
+        "connectorsReferencedByBenchmarks": factory_connectors > 0 and missing_connector_refs == 0,
+        "connectorRegressionsPassing": factory_connectors > 0 and ungated_connectors == 0,
+    }
+    blockers = [key for key, ready in checks.items() if not ready]
+    hardening_playbook: list[dict[str, Any]] = []
+    if missing_connector_refs:
+        hardening_playbook.append(
+            {
+                "gap": "connector_benchmark_refs",
+                "count": missing_connector_refs,
+                "area": "evals",
+                "severity": "high",
+                "action": "Reference every factory connector from benchmark tasks or promoted skill regression suites.",
+            }
+        )
+    if ungated_connectors:
+        hardening_playbook.append(
+            {
+                "gap": "connector_regression_gate",
+                "count": ungated_connectors,
+                "area": "evals",
+                "severity": "high",
+                "action": "Run passing regressions for every connector-backed production capability.",
+            }
+        )
+    return {
+        "state": "ready" if not blockers else ("no_connectors" if not factory_connectors else "blocked"),
+        "ready": not blockers,
+        "factoryConnectors": factory_connectors,
+        "referencedConnectors": referenced_connectors,
+        "coveredConnectors": covered_connectors,
+        "missingConnectorRefs": missing_connector_refs,
+        "ungatedConnectors": ungated_connectors,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": hardening_playbook,
+    }
+
+
 def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
     domains: set[str] = set()
     for doc in docs:
@@ -430,6 +478,7 @@ class AutomataAssistantTools:
         )
         coverage_matrix = benchmark_portfolio.get("coverageMatrix") if isinstance(benchmark_portfolio.get("coverageMatrix"), dict) else {}
         eval_coverage = coverage_matrix.get("summary") if isinstance(coverage_matrix.get("summary"), dict) else {}
+        factory_eval_gate = _factory_eval_gate(connector_map, eval_coverage)
         eval_coverage_gap = _eval_coverage_gap(eval_coverage)
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
@@ -590,6 +639,23 @@ class AutomataAssistantTools:
                     ),
                 },
             )
+        if factory_eval_gate and not factory_eval_gate.get("ready"):
+            playbook = factory_eval_gate.get("hardeningPlaybook") if isinstance(factory_eval_gate.get("hardeningPlaybook"), list) else []
+            first_action = (
+                playbook[0].get("action")
+                if playbook and isinstance(playbook[0], dict) and playbook[0].get("action")
+                else "Cover factory connectors with benchmark regressions before production promotion."
+            )
+            recommended_actions.append(
+                {
+                    "area": "evals",
+                    "action": first_action,
+                    "reason": (
+                        f"{factory_eval_gate.get('missingConnectorRefs') or 0} connector(s) lack benchmark references; "
+                        f"{factory_eval_gate.get('ungatedConnectors') or 0} connector(s) lack passing regression coverage."
+                    ),
+                }
+            )
         if resource_map["total"] and not resource_map["ready"]:
             first_gap = resource_map["gaps"][0]["label"] if resource_map["gaps"] else "Knowledge resources are not ready for governed runtime grounding."
             recommended_actions.insert(0, {"area": "knowledge", "action": "Finish resource governance before relying on knowledge grounding in skills.", "reason": first_gap})
@@ -733,6 +799,7 @@ class AutomataAssistantTools:
                 {"area": "entities", "severity": "medium", "message": "Business entities exist but are not all ready for runtime tool binding."} if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"] else None,
                 {"area": "capabilities", "severity": "high", "message": "Capability Factory pipeline is not ready end-to-end."} if factory_pipeline_gate and not factory_pipeline_gate.get("ready") else None,
                 {"area": "approvals", "severity": "high", "message": "Connector send tools are not fully covered by human approval gates."} if send_approval_gate and send_approval_gate.get("required") and not send_approval_gate.get("ready") else None,
+                {"area": "evals", "severity": "high", "message": "Factory connectors are not fully covered by benchmark regression gates."} if factory_eval_gate and not factory_eval_gate.get("ready") else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
@@ -768,6 +835,7 @@ class AutomataAssistantTools:
         company_setup_hardening = _first_playbook_item(setup_gate.get("hardeningPlaybook"))
         capability_factory_hardening = _first_playbook_item(
             send_approval_gate.get("hardeningPlaybook"),
+            factory_eval_gate.get("hardeningPlaybook"),
             factory_pipeline_gate.get("hardeningPlaybook"),
             connector_map.get("toolHardeningPlaybook"),
             connector_map.get("ingestionPlaybook"),
@@ -803,6 +871,9 @@ class AutomataAssistantTools:
                 "sendTools": connector_map.get("sendToolCount", 0),
                 "sendApprovalReady": bool((connector_map.get("sendApprovalGate") or {}).get("ready", True)),
                 "uncoveredSendTools": len((connector_map.get("sendApprovalGate") or {}).get("uncoveredSendTools") or []),
+                "evalCoveredConnectors": factory_eval_gate.get("coveredConnectors", 0),
+                "evalReferencedConnectors": factory_eval_gate.get("referencedConnectors", 0),
+                "evalUngatedConnectors": factory_eval_gate.get("ungatedConnectors", 0),
                 "entities": counts["entities"],
                 "benchmarkTasks": counts["benchmarkTasks"],
                 "approvedTrajectories": (promotion_pipeline.get("trajectories") or {}).get("approved", 0),
@@ -852,6 +923,7 @@ class AutomataAssistantTools:
                 "surface": "Capability Factory",
                 "status": _surface_status(
                     bool(factory_pipeline_gate.get("ready"))
+                    and bool(factory_eval_gate.get("ready"))
                     and counts["benchmarkTasks"] > 0
                     and counts["skills"] > 0
                     and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)
@@ -915,6 +987,7 @@ class AutomataAssistantTools:
                 "connectors": counts["connectors"],
                 "connectedConnectors": connected_connectors,
                 "connectorMap": connector_map,
+                "factoryEvalGate": factory_eval_gate,
                 "resources": counts["knowledgeDocuments"],
                 "entities": counts["entities"],
                 "tools": counts["tools"],
