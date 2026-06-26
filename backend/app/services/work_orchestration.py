@@ -323,6 +323,8 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
         "browserPolicy": bool(browser) or bool(work_item.get("browserEnabled")),
         "browserAllowlist": bool(allowed_domains),
         "unattendedReady": bool(automation_gate.get("canRunUnattended")),
+        "automationBlockers": _list_values(automation_gate.get("blockers")),
+        "automationNextActions": _list_values(automation_gate.get("nextActions")),
         "sample": {
             "workItemId": str(work_item.get("workItemId") or ""),
             "title": str(work_item.get("title") or ""),
@@ -331,12 +333,21 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
             "approvalGate": approval_gate,
             "pendingApprovalIds": _list_values(approval.get("pendingApprovalIds"))[:5],
             "runAttempts": run_attempts,
+            "automationBlockers": _list_values(automation_gate.get("blockers"))[:5],
         },
     }
 
 
 def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, sample_limit: int = 8) -> dict[str, Any]:
     contracts = [work_orchestration_contract(item) for item in work_items]
+    blocker_counts: dict[str, int] = {}
+    next_actions: list[str] = []
+    for contract in contracts:
+        for blocker in contract["automationBlockers"]:
+            blocker_counts[blocker] = blocker_counts.get(blocker, 0) + 1
+        for action in contract["automationNextActions"]:
+            if action not in next_actions:
+                next_actions.append(action)
     return {
         "total": len(work_items),
         "withContract": sum(1 for item in contracts if item["withContract"]),
@@ -353,5 +364,8 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         "browserPolicies": sum(1 for item in contracts if item["browserPolicy"]),
         "browserAllowlists": sum(1 for item in contracts if item["browserAllowlist"]),
         "unattendedReady": sum(1 for item in contracts if item["unattendedReady"]),
+        "unattendedBlocked": sum(1 for item in contracts if item["automationBlockers"]),
+        "automationBlockers": [{"name": key, "count": blocker_counts[key]} for key in sorted(blocker_counts, key=lambda item: (-blocker_counts[item], item))],
+        "automationNextActions": next_actions[:8],
         "sample": [item["sample"] for item in contracts[:sample_limit]],
     }

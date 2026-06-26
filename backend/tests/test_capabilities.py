@@ -652,6 +652,8 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["work"]["orchestration"]["browserPolicies"] == 1
     assert graph["coverage"]["work"]["orchestration"]["browserAllowlists"] == 1
     assert graph["coverage"]["work"]["orchestration"]["unattendedReady"] == 0
+    assert graph["coverage"]["work"]["orchestration"]["unattendedBlocked"] == 1
+    assert graph["coverage"]["work"]["orchestration"]["automationBlockers"] == [{"name": "pending_approval", "count": 1}]
     assert graph["coverage"]["work"]["linkedToTasks"] is True
     assert graph["coverage"]["work"]["linkedToRuntime"] is True
     assert graph["coverage"]["work"]["linkedToCapabilities"] is True

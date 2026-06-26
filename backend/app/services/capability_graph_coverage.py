@@ -246,6 +246,7 @@ def work_orchestration_coverage(work_item: dict[str, Any]) -> dict[str, Any]:
         "browserPolicy": bool(browser_policy) or bool(work_item.get("browserEnabled")),
         "browserAllowlist": bool(allowed_domains),
         "unattendedReady": bool(automation_gate.get("canRunUnattended")),
+        "automationBlockers": _string_list(automation_gate.get("blockers")),
     }
 
 
@@ -304,6 +305,10 @@ def capability_graph_coverage(
     ]
     skill_release_statuses = [str(item.get("release", {}).get("promotionStatus") or "draft") for item in skill_packages]
     work_orchestration = [work_orchestration_coverage(item) for item in work_item_docs]
+    work_automation_blockers: dict[str, int] = {}
+    for item in work_orchestration:
+        for blocker in item["automationBlockers"]:
+            work_automation_blockers[blocker] = work_automation_blockers.get(blocker, 0) + 1
     recent_eval_runs = sorted(eval_run_docs, key=_eval_run_timestamp, reverse=True)
     recent_eval_failures = [run for run in recent_eval_runs if _eval_run_label(run) == "fail"]
     return {
@@ -418,6 +423,8 @@ def capability_graph_coverage(
                 "browserPolicies": sum(1 for item in work_orchestration if item["browserPolicy"]),
                 "browserAllowlists": sum(1 for item in work_orchestration if item["browserAllowlist"]),
                 "unattendedReady": sum(1 for item in work_orchestration if item["unattendedReady"]),
+                "unattendedBlocked": sum(1 for item in work_orchestration if item["automationBlockers"]),
+                "automationBlockers": [{"name": key, "count": work_automation_blockers[key]} for key in sorted(work_automation_blockers, key=lambda item: (-work_automation_blockers[item], item))],
             },
             "linkedToTasks": "scheduled_from_task" in edge_relations,
             "linkedToRuntime": "opened_session" in edge_relations,

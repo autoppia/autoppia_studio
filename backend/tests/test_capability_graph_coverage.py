@@ -84,7 +84,7 @@ def test_work_orchestration_coverage_tracks_enterprise_controls():
                     "sla": {"state": "blocked"},
                     "auditTrail": {"uniform": True},
                     "browserPolicy": {"allowedDomains": ["erp.example.com"]},
-                    "automationGate": {"canRunUnattended": False},
+                    "automationGate": {"canRunUnattended": False, "blockers": ["pending_approval"]},
                 },
             },
         }
@@ -99,6 +99,7 @@ def test_work_orchestration_coverage_tracks_enterprise_controls():
     assert coverage["approvalGate"] is True
     assert coverage["auditTrail"] is True
     assert coverage["browserAllowlist"] is True
+    assert coverage["automationBlockers"] == ["pending_approval"]
 
 
 def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state():

@@ -85,7 +85,11 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
                     "approval": {"pendingApprovalCount": 1, "pendingApprovalIds": ["approval-1"]},
                     "auditTrail": {"uniform": True, "eventCount": 3},
                     "browserPolicy": {"allowedDomains": ["erp.example.com"]},
-                    "automationGate": {"canRunUnattended": False},
+                    "automationGate": {
+                        "canRunUnattended": False,
+                        "blockers": ["pending_approval", "budget_exhausted"],
+                        "nextActions": ["Resolve pending approvals before allowing unattended execution."],
+                    },
                 }
             },
         }
@@ -101,3 +105,7 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
     assert summary["pendingApprovalRefs"] == 1
     assert summary["auditTrails"] == 1
     assert summary["browserAllowlists"] == 1
+    assert summary["unattendedBlocked"] == 1
+    assert summary["automationBlockers"] == [{"name": "budget_exhausted", "count": 1}, {"name": "pending_approval", "count": 1}]
+    assert summary["automationNextActions"] == ["Resolve pending approvals before allowing unattended execution."]
+    assert summary["sample"][0]["automationBlockers"] == ["pending_approval", "budget_exhausted"]
