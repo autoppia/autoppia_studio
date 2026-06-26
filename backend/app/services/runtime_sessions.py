@@ -570,6 +570,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
     artifact_outputs = 0
     replay_ready = 0
     total_credits = 0.0
+    total_duration_seconds = 0.0
     trace_count = 0
     timeline_steps = 0
     browser_steps = 0
@@ -603,6 +604,8 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         artifact_outputs += artifact_count
         credits = _safe_float(cost.get("creditsSpent") or session.get("creditsSpent"))
         total_credits += credits
+        duration_seconds = _safe_float(cost.get("durationSeconds") or session.get("durationSeconds"))
+        total_duration_seconds += duration_seconds
         traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else session.get("traceIds") if isinstance(session.get("traceIds"), list) else []
         trace_ids = _list_values(traces)
         trace_count += len(trace_ids)
@@ -630,6 +633,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
                     "pendingApprovals": approval_count,
                     "artifacts": artifact_count,
                     "creditsSpent": round(credits, 4),
+                    "durationSeconds": round(duration_seconds, 3),
                     "traceCount": len(trace_ids),
                     "timelineSteps": timeline_count,
                     "browserSteps": browser_count,
@@ -647,6 +651,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         "traceIds": trace_count,
         "replayReady": replay_ready,
         "creditsSpent": round(total_credits, 4),
+        "durationSeconds": round(total_duration_seconds, 3),
         "runtimeKinds": _sorted_counts(runtime_kinds),
         "timeline": {
             "steps": timeline_steps,

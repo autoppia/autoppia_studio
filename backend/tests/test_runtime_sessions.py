@@ -457,6 +457,7 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
         {
             "sessionId": "session-1",
             "runtimeKind": "api",
+            "runtimeMetrics": {"durationSeconds": 2.75},
             "runtimeLab": {
                 "skillMatch": {"matched": True, "skillId": "skill-1"},
                 "timeline": {"steps": 4, "browserSteps": 1, "toolSteps": 2, "skillSteps": 1, "failedSteps": 0, "pendingSteps": 0},
@@ -482,6 +483,7 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["artifactOutputs"] == 1
     assert summary["traceIds"] == 1
     assert summary["replayReady"] == 1
+    assert summary["durationSeconds"] == 2.75
     assert summary["runtimeKinds"] == [{"name": "api", "count": 1}]
     assert summary["timeline"] == {
         "steps": 4,
@@ -493,6 +495,7 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
         "replayReadySessions": 1,
     }
     assert summary["sample"][0]["runtimeType"] == "api_runtime"
+    assert summary["sample"][0]["durationSeconds"] == 2.75
     assert summary["sample"][0]["timelineSteps"] == 4
     assert summary["sample"][0]["toolSteps"] == 2
 

@@ -926,6 +926,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         },
                     },
                     "sessionContracts": {
+                        "creditsSpent": 2.5,
+                        "durationSeconds": 8.25,
                         "timeline": {"steps": 6, "toolSteps": 3, "skillSteps": 1, "replayReadySessions": 1},
                     },
                     "artifactOutputs": {"total": 3, "runtimeLinked": 2, "reviewRequired": 1, "blockedForReuse": 1},
@@ -979,6 +981,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Missing approval boundary: write." in reply
     assert "Browser domain governance: 1/2 observed domain(s) covered, 1 allowed." in reply
     assert "First uncovered browser domain: unknown.example.net." in reply
+    assert "Runtime cost: 2.5 credits, 8.25s duration." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
     assert "Artifact reuse blocked: 1." in reply

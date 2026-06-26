@@ -1547,6 +1547,11 @@ class AutomataAssistantService:
                 if uncovered_domains:
                     runtime_text += f" First uncovered browser domain: {uncovered_domains[0]}."
             session_contracts = runtime.get("sessionContracts") if isinstance(runtime.get("sessionContracts"), dict) else {}
+            if session_contracts:
+                runtime_text += (
+                    f" Runtime cost: {session_contracts.get('creditsSpent', 0)} credits, "
+                    f"{session_contracts.get('durationSeconds', 0)}s duration."
+                )
             timeline = session_contracts.get("timeline") if isinstance(session_contracts.get("timeline"), dict) else {}
             if timeline:
                 runtime_text += (
