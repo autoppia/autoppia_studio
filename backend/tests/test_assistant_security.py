@@ -266,6 +266,30 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
             }
         ]
     )
+    entity_docs = _Collection(
+        [
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "entityId": "ent-policy",
+                "name": "Poliza",
+                "sourceConnectorId": "conn-1",
+                "fields": [{"name": "id", "role": "identifier", "sourcePath": "$.id"}],
+                "relationships": [{"name": "cliente", "target": "Cliente", "via": "clienteId"}],
+                "metadata": {
+                    "aliases": ["Policy"],
+                    "schemaName": "PolicyRead",
+                    "permissions": {"readTools": ["erp.search_policies"], "scopes": ["policy:read"]},
+                },
+            },
+            {
+                "email": "owner@example.com",
+                "companyId": "company-1",
+                "entityId": "ent-claim",
+                "name": "Siniestro",
+            },
+        ]
+    )
     sessions = _Collection(
         [
             {
@@ -441,7 +465,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     monkeypatch.setattr(assistant_tools, "benchmarks_collection", benchmarks)
     monkeypatch.setattr(assistant_tools, "benchmark_tasks_collection", benchmark_tasks)
     monkeypatch.setattr(assistant_tools, "work_items_collection", work_items)
-    monkeypatch.setattr(assistant_tools, "entities_collection", empty)
+    monkeypatch.setattr(assistant_tools, "entities_collection", entity_docs)
     monkeypatch.setattr(assistant_tools, "sessions_collection", sessions)
     monkeypatch.setattr(assistant_tools, "artifacts_collection", artifacts)
     monkeypatch.setattr(assistant_tools, "eval_runs_collection", eval_runs)
@@ -470,6 +494,16 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["replayReadyRatio"] == 1.0
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["total"] == 2
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["ready"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["toolBindingReady"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["withRelationships"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["coverageScore"] == 0.5
+    assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["bindingBlockers"] == [
+        {"name": "identifier", "count": 1},
+        {"name": "read_access", "count": 1},
+        {"name": "relationships", "count": 1},
+    ]
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["manifestReady"] == 1
@@ -881,6 +915,13 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 },
                 "capabilityMap": {
                     "taskContracts": {"ready": 2, "total": 5, "reproducibility": {"readyForReplay": 3, "total": 5}},
+                    "entityMap": {
+                        "total": 4,
+                        "ready": 2,
+                        "toolBindingReady": 1,
+                        "withRelationships": 2,
+                        "bindingBlockers": [{"name": "read_access", "count": 2}],
+                    },
                     "skills": {
                         "hardened": 1,
                         "total": 4,
@@ -969,6 +1010,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First factory blocker: ERP needs business entity mapping." in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
     assert "Task replayability: 3/5 replay-ready." in reply
+    assert "Entity mapping: 2/4 ready, 1 runtime-bindable, 2 with relationships." in reply
+    assert "First entity blocker: read_access." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply

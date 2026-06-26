@@ -1439,6 +1439,7 @@ class AutomataAssistantService:
                 if first_gap:
                     factory_text += f" First factory blocker: {first_gap.get('label') or first_gap.get('key') or 'connector discovery'}."
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
+        entity_map = capability_map.get("entityMap") if isinstance(capability_map.get("entityMap"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
         benchmark_portfolio = capability_map.get("benchmarkPortfolio") if isinstance(capability_map.get("benchmarkPortfolio"), dict) else {}
@@ -1457,6 +1458,16 @@ class AutomataAssistantService:
                 coverage_text += (
                     f" Task replayability: {reproducibility.get('readyForReplay', 0)}/{reproducibility.get('total', task_contracts.get('total', 0))} replay-ready."
                 )
+            if entity_map:
+                coverage_text += (
+                    f" Entity mapping: {entity_map.get('ready', 0)}/{entity_map.get('total', 0)} ready, "
+                    f"{entity_map.get('toolBindingReady', 0)} runtime-bindable, "
+                    f"{entity_map.get('withRelationships', 0)} with relationships."
+                )
+                blockers = entity_map.get("bindingBlockers") if isinstance(entity_map.get("bindingBlockers"), list) else []
+                first_blocker = blockers[0] if blockers and isinstance(blockers[0], dict) else {}
+                if first_blocker:
+                    coverage_text += f" First entity blocker: {first_blocker.get('name') or 'mapping'}."
             packages = skills.get("packages") if isinstance(skills.get("packages"), dict) else {}
             if packages:
                 coverage_text += (
