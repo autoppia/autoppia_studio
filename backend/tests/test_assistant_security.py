@@ -2,6 +2,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.assistant import context as assistant_context
+from app.assistant import tools as assistant_tools_module
 from app.assistant.context import AssistantContext, build_assistant_context
 from app.assistant.service import ASSISTANT_FUNCTION_TOOLS, AutomataAssistantService
 from app.assistant.tools import AutomataAssistantTools
@@ -89,6 +90,21 @@ class _Collection:
         result = _DeleteResult()
         result.deleted_count = deleted_count
         return result
+
+
+def test_eval_coverage_gap_summarizes_uncovered_capabilities():
+    gap = assistant_tools_module._eval_coverage_gap(
+        {
+            "connectors": {"covered": 1, "total": 3},
+            "entities": {"covered": 0, "total": 1},
+            "skills": {"covered": 2, "total": 2},
+        }
+    )
+
+    assert gap == {
+        "missing": {"connectors": 2, "entities": 1},
+        "label": "2 connectors, 1 entity",
+    }
 
 
 class _ConversationCollection:
