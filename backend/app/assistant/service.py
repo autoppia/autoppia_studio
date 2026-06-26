@@ -1399,6 +1399,7 @@ class AutomataAssistantService:
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
+        benchmark_portfolio = capability_map.get("benchmarkPortfolio") if isinstance(capability_map.get("benchmarkPortfolio"), dict) else {}
         vertical_demos = capability_map.get("verticalDemos") if isinstance(capability_map.get("verticalDemos"), dict) else {}
         vertical_demo_gaps = capability_map.get("verticalDemoGaps") if isinstance(capability_map.get("verticalDemoGaps"), list) else []
         sla = work_orchestration.get("sla") if isinstance(work_orchestration.get("sla"), dict) else {}
@@ -1430,6 +1431,18 @@ class AutomataAssistantService:
                     f" Eval gates: {eval_gate.get('passing', 0)} passing, "
                     f"{eval_gate.get('blockedByRegression', 0)} blocked, {eval_gate.get('missing', 0)} missing regression."
                 )
+            if benchmark_portfolio:
+                promotion_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}
+                regression_gate = benchmark_portfolio.get("regressionGate") if isinstance(benchmark_portfolio.get("regressionGate"), dict) else {}
+                coverage_text += (
+                    f" Benchmark portfolio: {benchmark_portfolio.get('benchmarks', 0)} benchmark(s), "
+                    f"{benchmark_portfolio.get('tasks', 0)} task(s), promotion gate {promotion_gate.get('state', 'unknown')}."
+                )
+                if regression_gate:
+                    coverage_text += (
+                        f" Regression gate: {regression_gate.get('gatedCapabilities', 0)}/{regression_gate.get('totalCapabilities', 0)} "
+                        f"capabilities gated, state {regression_gate.get('state', 'unknown')}."
+                    )
             if vertical_demos:
                 coverage_text += (
                     f" Vertical demos: {vertical_demos.get('ready', 0)}/{vertical_demos.get('total', 0)} ready, "

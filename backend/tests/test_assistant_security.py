@@ -874,6 +874,12 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         },
                     },
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
+                    "benchmarkPortfolio": {
+                        "benchmarks": 2,
+                        "tasks": 7,
+                        "promotionGate": {"state": "blocked"},
+                        "regressionGate": {"state": "needs_regression", "gatedCapabilities": 3, "totalCapabilities": 5},
+                    },
                     "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1},
                     "verticalDemoGaps": [{"group": "factory", "label": "Capability factory"}],
                 },
@@ -907,6 +913,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
+    assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
+    assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
