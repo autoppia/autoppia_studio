@@ -115,6 +115,7 @@ def benchmark_coverage_summary(
     contracts = [_task_contract_for_coverage(task, benchmark) for task in tasks]
     completeness = [contract.get("completeness") or task_contract_completeness(contract) for contract in contracts]
     systems = _dedupe_strings([system for contract in contracts for system in (contract.get("allowedSystems") or [])])
+    expected_inputs = _dedupe_strings([input_name for contract in contracts for input_name in (contract.get("expectedInputs") or [])])
     task_artifacts = _dedupe_strings([artifact for contract in contracts for artifact in (contract.get("expectedArtifacts") or [])])
     skill_artifacts = _dedupe_strings([artifact for skill in skills for artifact in (skill.get("expectedArtifacts") or [])])
     risk_classes = _dedupe_strings([contract.get("riskClass") for contract in contracts])
@@ -142,6 +143,7 @@ def benchmark_coverage_summary(
             "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
         },
         "systems": systems,
+        "expectedInputs": expected_inputs,
         "expectedArtifacts": _dedupe_strings([*task_artifacts, *skill_artifacts]),
         "riskClasses": risk_classes,
         "connectorIds": connector_ids,

@@ -73,6 +73,14 @@ def build_task_contract(
         or _list_field(task.get("expectedArtifacts"))
         or ["trajectory_trace"]
     )
+    expected_inputs = (
+        _list_field(task.get("expectedInputs"))
+        or _list_field(metadata.get("expectedInputs"))
+        or _list_field(nested.get("expectedInputs"))
+        or _list_field(metadata.get("inputRequirements"))
+        or _list_field(nested.get("inputRequirements"))
+        or _list_field(task.get("inputRequirements"))
+    )
     initial_url = _clean_string(task.get("initialUrl") or task.get("startUrl") or metadata.get("startUrl") or metadata.get("iwaStartUrl") or nested.get("initialUrl") or website_url)
     fallback_state = metadata.get("startState") if isinstance(metadata.get("startState"), dict) else {}
     initial_state = (
@@ -100,6 +108,7 @@ def build_task_contract(
         "initialState": initial_state,
         "initialUrl": initial_url or _clean_string(initial_state.get("url") if isinstance(initial_state, dict) else ""),
         "allowedSystems": _dedupe(allowed),
+        "expectedInputs": _dedupe(expected_inputs),
         "expectedArtifacts": _dedupe(expected_artifacts),
         "successCriteria": success_criteria,
         "riskClass": _clean_string(task.get("riskClass") or metadata.get("riskClass") or nested.get("riskClass") or default_risk_class).lower(),
@@ -195,6 +204,7 @@ def task_metadata_with_contract(
         "businessIntent": contract["businessIntent"],
         "initialState": contract["initialState"],
         "allowedSystems": contract["allowedSystems"],
+        "expectedInputs": contract["expectedInputs"],
         "expectedArtifacts": contract["expectedArtifacts"],
         "riskClass": contract["riskClass"],
     }
