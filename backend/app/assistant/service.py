@@ -1696,8 +1696,17 @@ class AutomataAssistantService:
                     runtime_contract_missing = (
                         runtime_contract.get("missing") if isinstance(runtime_contract.get("missing"), list) else []
                     )
+                    runtime_contract_missing_evidence = (
+                        runtime_contract.get("missingEvidence")
+                        if isinstance(runtime_contract.get("missingEvidence"), list)
+                        else []
+                    )
                     if runtime_contract:
-                        missing_text = ", ".join(str(item) for item in runtime_contract_missing) or "none"
+                        missing_text = (
+                            ", ".join(str(item) for item in runtime_contract_missing_evidence)
+                            or ", ".join(str(item) for item in runtime_contract_missing)
+                            or "none"
+                        )
                         coverage_text += (
                             f" Runtime replay contract: {runtime_contract.get('state') or 'unknown'}, "
                             f"missing {missing_text}."

@@ -1250,6 +1250,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                                         "state": "needs_hardening",
                                         "ready": False,
                                         "missing": ["agentRuntimeReplay"],
+                                        "missingEvidence": ["passing AgentRuntime replay"],
                                         "evidenceFound": {
                                             "promotedSkillIds": ["skill-claims"],
                                             "artifacts": ["draft_email"],
@@ -1408,7 +1409,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Replay contracts: 1 ready, 1 blocked." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Insurance proof gate: needs_hardening, 7/9 proof step(s) ready." in reply
-    assert "Runtime replay contract: needs_hardening, missing agentRuntimeReplay." in reply
+    assert "Runtime replay contract: needs_hardening, missing passing AgentRuntime replay." in reply
     assert "Replay evidence: 0 passing run(s), 1 promoted skill(s), 1 artifact(s), 1 approval boundary marker(s)." in reply
     assert "First proof hardening: Replay the approved insurance skill in AgentRuntime before declaring the demo production-ready." in reply
     assert "First proof blocker: runtime_replay." in reply
