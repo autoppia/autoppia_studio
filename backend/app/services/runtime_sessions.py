@@ -6,6 +6,50 @@ from app.services.runtime_policy import approval_boundary_matrix
 from app.services.runtime_policy import ordered_policy_boundaries
 
 
+SESSION_HARDENING_ACTIONS = {
+    "session_contract": {
+        "area": "runtime",
+        "severity": "high",
+        "action": "Backfill the first-class session contract before using this Runtime Lab evidence for production decisions.",
+    },
+    "selected_skill": {
+        "area": "capabilities",
+        "severity": "medium",
+        "action": "Link the session to a matched skill or record why the agent operated without a reusable capability.",
+    },
+    "trace_ids": {
+        "area": "observability",
+        "severity": "high",
+        "action": "Attach trace identifiers so tool calls, approvals, artifacts and replay evidence remain auditable.",
+    },
+    "replay_ready": {
+        "area": "evals",
+        "severity": "medium",
+        "action": "Resolve pending steps or approvals and capture enough trace data for deterministic replay.",
+    },
+    "failed_steps": {
+        "area": "runtime",
+        "severity": "high",
+        "action": "Inspect failed Runtime Lab steps before promoting trajectories or skills.",
+    },
+    "pending_steps": {
+        "area": "runtime",
+        "severity": "medium",
+        "action": "Finish or cancel pending Runtime Lab steps before treating the session as evidence.",
+    },
+    "pending_approvals": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Resolve pending human approvals before delivering side effects or publishing the capability.",
+    },
+    "artifact_outputs": {
+        "area": "artifacts",
+        "severity": "medium",
+        "action": "Capture business artifacts separately from the trace when the session produces customer-facing output.",
+    },
+}
+
+
 def _list_values(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
@@ -25,6 +69,29 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
         key = str(value or "unknown").strip() or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _session_hardening_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = SESSION_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "runtime",
+                "severity": "medium",
+                "action": "Review Runtime Lab session evidence before production reuse.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def dedupe_trace_ids(values: list[Any]) -> list[str]:
@@ -580,6 +647,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
     pending_steps = 0
     runtime_kinds: list[str] = []
     samples: list[dict[str, Any]] = []
+    gap_counts: dict[str, int] = {}
     for session in sessions:
         contract = session.get("sessionContract") if isinstance(session.get("sessionContract"), dict) else {}
         runtime_lab = session.get("runtimeLab") if isinstance(session.get("runtimeLab"), dict) else {}
@@ -592,16 +660,24 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
         if contract:
             with_contract += 1
+        else:
+            gap_counts["session_contract"] = gap_counts.get("session_contract", 0) + 1
         runtime_type = session_runtime_kind(session)
         runtime_kind = runtime_kind_from_type(str(runtime.get("runtimeKind") or runtime_type)) or "unknown"
         runtime_kinds.append(runtime_kind)
         skill_id = str(skill.get("skillId") or session.get("matchedSkillId") or "").strip()
         if skill.get("matched") or skill_id:
             selected_skill += 1
+        else:
+            gap_counts["selected_skill"] = gap_counts.get("selected_skill", 0) + 1
         approval_count = int(approvals.get("pending") or session.get("pendingApprovalCount") or 0)
         pending_approvals += approval_count
+        if approval_count:
+            gap_counts["pending_approvals"] = gap_counts.get("pending_approvals", 0) + approval_count
         artifact_count = int(artifacts.get("count") or session.get("artifactCount") or 0)
         artifact_outputs += artifact_count
+        if not artifact_count:
+            gap_counts["artifact_outputs"] = gap_counts.get("artifact_outputs", 0) + 1
         credits = _safe_float(cost.get("creditsSpent") or session.get("creditsSpent"))
         total_credits += credits
         duration_seconds = _safe_float(cost.get("durationSeconds") or session.get("durationSeconds"))
@@ -609,6 +685,8 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else session.get("traceIds") if isinstance(session.get("traceIds"), list) else []
         trace_ids = _list_values(traces)
         trace_count += len(trace_ids)
+        if not trace_ids:
+            gap_counts["trace_ids"] = gap_counts.get("trace_ids", 0) + 1
         timeline_count = int(trace.get("timelineSteps") or lab_timeline.get("steps") or 0)
         browser_count = int(lab_timeline.get("browserSteps") or 0)
         tool_count = int(lab_timeline.get("toolSteps") or 0)
@@ -623,6 +701,12 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         pending_steps += pending_count
         if trace.get("replayReady"):
             replay_ready += 1
+        else:
+            gap_counts["replay_ready"] = gap_counts.get("replay_ready", 0) + 1
+        if failed_count:
+            gap_counts["failed_steps"] = gap_counts.get("failed_steps", 0) + failed_count
+        if pending_count:
+            gap_counts["pending_steps"] = gap_counts.get("pending_steps", 0) + pending_count
         if len(samples) < sample_limit:
             samples.append(
                 {
@@ -663,4 +747,5 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
             "replayReadySessions": replay_ready,
         },
         "sample": samples,
+        "hardeningPlaybook": _session_hardening_playbook(gap_counts),
     }

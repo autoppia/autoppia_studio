@@ -498,6 +498,85 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["sample"][0]["durationSeconds"] == 2.75
     assert summary["sample"][0]["timelineSteps"] == 4
     assert summary["sample"][0]["toolSteps"] == 2
+    assert summary["hardeningPlaybook"] == []
+
+
+def test_summarize_session_contracts_returns_runtime_lab_hardening_playbook():
+    summary = summarize_session_contracts(
+        [
+            {
+                "sessionId": "session-blocked",
+                "pendingApprovalCount": 2,
+                "runtimeLab": {"timeline": {"steps": 3, "failedSteps": 1, "pendingSteps": 2}},
+            }
+        ]
+    )
+
+    assert summary["withContract"] == 0
+    assert summary["selectedSkill"] == 0
+    assert summary["pendingApprovals"] == 2
+    assert summary["artifactOutputs"] == 0
+    assert summary["traceIds"] == 0
+    assert summary["timeline"]["failedSteps"] == 1
+    assert summary["timeline"]["pendingSteps"] == 2
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "pending_approvals",
+            "count": 2,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Resolve pending human approvals before delivering side effects or publishing the capability.",
+        },
+        {
+            "gap": "pending_steps",
+            "count": 2,
+            "area": "runtime",
+            "severity": "medium",
+            "action": "Finish or cancel pending Runtime Lab steps before treating the session as evidence.",
+        },
+        {
+            "gap": "artifact_outputs",
+            "count": 1,
+            "area": "artifacts",
+            "severity": "medium",
+            "action": "Capture business artifacts separately from the trace when the session produces customer-facing output.",
+        },
+        {
+            "gap": "failed_steps",
+            "count": 1,
+            "area": "runtime",
+            "severity": "high",
+            "action": "Inspect failed Runtime Lab steps before promoting trajectories or skills.",
+        },
+        {
+            "gap": "replay_ready",
+            "count": 1,
+            "area": "evals",
+            "severity": "medium",
+            "action": "Resolve pending steps or approvals and capture enough trace data for deterministic replay.",
+        },
+        {
+            "gap": "selected_skill",
+            "count": 1,
+            "area": "capabilities",
+            "severity": "medium",
+            "action": "Link the session to a matched skill or record why the agent operated without a reusable capability.",
+        },
+        {
+            "gap": "session_contract",
+            "count": 1,
+            "area": "runtime",
+            "severity": "high",
+            "action": "Backfill the first-class session contract before using this Runtime Lab evidence for production decisions.",
+        },
+        {
+            "gap": "trace_ids",
+            "count": 1,
+            "area": "observability",
+            "severity": "high",
+            "action": "Attach trace identifiers so tool calls, approvals, artifacts and replay evidence remain auditable.",
+        },
+    ]
 
 
 def test_runtime_type_helpers_keep_explicit_enterprise_runtime_names():

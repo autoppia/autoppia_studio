@@ -639,6 +639,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["skillId"] == "skill-1"
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["pendingApprovals"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["timelineSteps"] == 4
+    assert {
+        "gap": "pending_approvals",
+        "count": 1,
+        "area": "approvals",
+        "severity": "high",
+        "action": "Resolve pending human approvals before delivering side effects or publishing the capability.",
+    } in snapshot["operatingState"]["runtime"]["sessionContracts"]["hardeningPlaybook"]
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["total"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
