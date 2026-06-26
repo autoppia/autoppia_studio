@@ -718,6 +718,8 @@ class AutomataAssistantTools:
                 "skills": counts["skills"],
                 "proofReady": vertical_demos.get("proofReady", 0),
                 "proofBlocked": vertical_demos.get("proofBlocked", 0),
+                "replayContractReady": vertical_demos.get("replayContractReady", 0),
+                "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
             },
             "Runtime Lab": {
                 "sessions": counts["sessions"],

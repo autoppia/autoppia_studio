@@ -1671,6 +1671,10 @@ class AutomataAssistantService:
                     f"{vertical_demos.get('proofReady', 0)} proof-ready, "
                     f"{vertical_demos.get('proofBlocked', 0)} proof-blocked."
                 )
+                coverage_text += (
+                    f" Replay contracts: {vertical_demos.get('replayContractReady', 0)} ready, "
+                    f"{vertical_demos.get('replayContractBlocked', 0)} blocked."
+                )
                 if vertical_demo_gaps:
                     first_gap = vertical_demo_gaps[0] if isinstance(vertical_demo_gaps[0], dict) else {}
                     coverage_text += f" First demo blocker: {first_gap.get('label') or first_gap.get('group') or 'operational evidence'}."

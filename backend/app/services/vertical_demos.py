@@ -223,6 +223,21 @@ def _operational_group_ready(payload: dict[str, Any], key: str) -> bool:
     return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
 
 
+def _runtime_replay_contract_ready(payload: dict[str, Any]) -> bool:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    runtime_contract = (
+        proof_gate.get("runtimeReplayContract")
+        if isinstance(proof_gate.get("runtimeReplayContract"), dict)
+        else {}
+    )
+    return bool(runtime_contract.get("ready"))
+
+
+def _runtime_replay_contract_present(payload: dict[str, Any]) -> bool:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    return isinstance(proof_gate.get("runtimeReplayContract"), dict)
+
+
 def _vertical_smoke_gate(
     *,
     objective: str,
@@ -649,6 +664,8 @@ def summarize_vertical_demos(
         "integrationReady": sum(1 for demo in demos if _operational_group_ready(demo, "integration")),
         "factoryReady": sum(1 for demo in demos if _operational_group_ready(demo, "factory")),
         "runtimeReady": sum(1 for demo in demos if _operational_group_ready(demo, "runtime")),
+        "replayContractReady": sum(1 for demo in demos if _runtime_replay_contract_ready(demo)),
+        "replayContractBlocked": sum(1 for demo in demos if _runtime_replay_contract_present(demo) and not _runtime_replay_contract_ready(demo)),
         "hardeningPlaybook": _vertical_demo_playbook(demos),
         "smokeHardeningPlaybook": _vertical_smoke_playbook(demos),
         "demos": demos[:limit],

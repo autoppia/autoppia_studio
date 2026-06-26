@@ -606,6 +606,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["smokeBlocked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["proofReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["proofBlocked"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["replayContractReady"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["replayContractBlocked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["enterpriseReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["integrationReady"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["factoryReady"] == 0
@@ -838,6 +840,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "skills": 1,
         "proofReady": 0,
         "proofBlocked": 1,
+        "replayContractReady": 0,
+        "replayContractBlocked": 1,
     }
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")
@@ -1224,6 +1228,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "smokeReady": 1,
                         "proofReady": 1,
                         "proofBlocked": 1,
+                        "replayContractReady": 1,
+                        "replayContractBlocked": 1,
                         "demos": [
                             {
                                 "insuranceFlowProofGate": {
@@ -1342,6 +1348,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                                 "skills": 4,
                                 "proofReady": 1,
                                 "proofBlocked": 1,
+                                "replayContractReady": 1,
+                                "replayContractBlocked": 1,
                             },
                         }
                     ],
@@ -1384,6 +1392,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Promotion data hygiene: 1 legacy pending trajectory row(s) should move to benchmark tasks." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready, 1 proof-blocked." in reply
+    assert "Replay contracts: 1 ready, 1 blocked." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Insurance proof gate: needs_hardening, 7/9 proof step(s) ready." in reply
     assert "Runtime replay contract: needs_hardening, missing agentRuntimeReplay." in reply
