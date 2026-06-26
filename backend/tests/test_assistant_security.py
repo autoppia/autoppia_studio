@@ -458,6 +458,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["factory"]["connectorMap"]["entityPending"] == 1
     assert snapshot["operatingState"]["factory"]["connectorMap"]["ingestionBlocked"] == 1
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
+    assert snapshot["operatingState"]["companySetup"]["integration"]["systems"] == 1
+    assert snapshot["operatingState"]["companySetup"]["integration"]["domainAllowlist"] == ["claims.example.com"]
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["state"] == "partial"
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["ready"] is False
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["blockers"] == ["secrets", "resource_acl", "host_jwt"]
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["checks"]["human_approval"] is True
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["checks"]["audit_evidence"] is True
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1
@@ -570,9 +577,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
+    company_setup = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Company Setup")
+    assert company_setup["status"] == "needs_work"
     capability_factory = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Capability Factory")
     assert capability_factory["status"] == "needs_work"
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}

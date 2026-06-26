@@ -33,6 +33,7 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.artifact_outputs import summarize_artifact_outputs
+from app.services.company_integration_contract import build_company_integration_contract
 from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.promotion_pipeline import summarize_promotion_pipeline
@@ -140,6 +141,23 @@ def _company_allowed_origin_hosts(company: dict[str, Any]) -> list[str]:
     return sorted(hosts)
 
 
+def _count_values(values: list[Any], *, name_key: str = "name") -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "unknown").strip() or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return [{name_key: key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _skill_policy_counts(skills: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    policies: list[str] = []
+    for skill in skills:
+        package = skill.get("skillPackage") if isinstance(skill.get("skillPackage"), dict) else {}
+        package_policies = package.get("policies") if isinstance(package.get("policies"), dict) else {}
+        policies.append(str(package_policies.get("riskPolicy") or skill.get("riskPolicy") or skill.get("policyBoundary") or "unspecified"))
+    return _count_values(policies)
+
+
 def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]:
     publishable = 0
     blocked = 0
@@ -231,6 +249,7 @@ class AutomataAssistantTools:
         passing_runs = await self._count(eval_runs_collection, {**scoped, "label": "pass"})
         failing_runs = await self._count(eval_runs_collection, {**scoped, "label": "fail"})
         pending_approvals = await self._count(approvals_collection, {**scoped, "status": "pending"})
+        approved_approvals = await self._count(approvals_collection, {**scoped, "status": "approved"})
         scheduled_work = await self._count(work_items_collection, {**scoped, "triggerType": "scheduled"})
         running_work = await self._count(work_items_collection, {**scoped, "status": "RUNNING"})
         skill_docs = await _to_list(capabilities_collection.find({**scoped, "capabilityKind": "skill"}, {"_id": 0}).sort("createdAt", -1), 500)
@@ -278,11 +297,32 @@ class AutomataAssistantTools:
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
         resource_map = summarize_resource_governance(knowledge_docs)
+        connector_domain_hosts = _connector_domains(connector_docs)
+        company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
+        company_integration = build_company_integration_contract(
+            company=company_doc,
+            owner_email=self.context.email,
+            counts={
+                "connectors": counts["connectors"],
+                "credentials": counts["credentials"],
+                "pendingApprovals": pending_approvals,
+                "approvedApprovals": approved_approvals,
+                "sessions": counts["sessions"],
+                "artifacts": counts["artifacts"],
+                "evalRuns": len(eval_run_docs),
+            },
+            surface_counts=_count_values([str(doc.get("type") or doc.get("category") or "connector") for doc in connector_docs]),
+            connector_domains=connector_domain_hosts,
+            policy_counts=_skill_policy_counts(skill_docs),
+            acl_visibility_counts=(resource_map.get("acl") or {}).get("visibility") if isinstance(resource_map.get("acl"), dict) else [],
+            knowledge_doc_count=counts["knowledgeDocuments"],
+            docs_with_acl=int((resource_map.get("acl") or {}).get("withAcl") or 0) if isinstance(resource_map.get("acl"), dict) else 0,
+        )
+        setup_gate = company_integration.get("setupGate") if isinstance(company_integration.get("setupGate"), dict) else {}
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
-        company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
-        browser_allowed_domains = sorted({*_connector_domains(connector_docs), *_company_allowed_origin_hosts(company_doc)})
+        browser_allowed_domains = sorted({*connector_domain_hosts, *_company_allowed_origin_hosts(company_doc)})
         browser_allowlisted = bool(browser_allowed_domains)
         runtime_policy_map = summarize_runtime_policy_map(
             skills=skill_docs,
@@ -292,7 +332,7 @@ class AutomataAssistantTools:
             browser_allowed_domains=browser_allowed_domains,
             browser_observed_domains=observed_browser_domains(session_docs),
             pending_approvals=pending_approvals,
-            approved_approvals=await self._count(approvals_collection, {**scoped, "status": "approved"}),
+            approved_approvals=approved_approvals,
         )
         now_dt = datetime.now(timezone.utc)
         work_item_ids = {str(doc.get("workItemId") or "") for doc in work_docs if str(doc.get("workItemId") or "")}
@@ -346,6 +386,9 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "work", "action": "Run or reschedule due scheduled work items.", "reason": f"{scheduled_due} scheduled work item(s) are due."})
         if budget_exhausted:
             recommended_actions.insert(0, {"area": "work", "action": "Review exhausted work budgets before retrying jobs.", "reason": f"{budget_exhausted} work item(s) exhausted their budget."})
+        if setup_gate and not setup_gate.get("ready"):
+            first_action = (setup_gate.get("nextActions") or ["Complete Company Setup controls before widening runtime access."])[0]
+            recommended_actions.insert(0, {"area": "company_setup", "action": first_action, "reason": f"Company Setup gate is {setup_gate.get('state') or 'incomplete'}."})
         if counts["benchmarkTasks"] and task_contracts_ready == 0:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
         if connector_map["needsHardeningCount"]:
@@ -392,6 +435,7 @@ class AutomataAssistantTools:
             alert
             for alert in [
                 {"area": "approvals", "severity": "high", "message": f"{pending_approvals} pending approval(s) block write/send boundaries."} if pending_approvals else None,
+                {"area": "company_setup", "severity": "medium", "message": "Company Setup is missing enterprise controls for systems, credentials, domains, approvals, ACLs or audit evidence."} if setup_gate and not setup_gate.get("ready") else None,
                 {"area": "evals", "severity": "high", "message": f"{failing_runs} failing eval run(s) need trace review before skill promotion."} if failing_runs else None,
                 {"area": "work", "severity": "medium", "message": f"{scheduled_due} scheduled work item(s) are due."} if scheduled_due else None,
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
@@ -422,7 +466,7 @@ class AutomataAssistantTools:
             "surfacePlaybook": [
                 {
                     "surface": "Company Setup",
-                    "status": _surface_status(bool(company_id) and counts["connectors"] > 0),
+                    "status": _surface_status(bool(company_id) and bool(setup_gate.get("ready"))),
                     "nextAction": "Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.",
                 },
                 {
@@ -459,6 +503,10 @@ class AutomataAssistantTools:
                 "total": len(readiness_checks),
                 "checks": readiness_checks,
                 "gaps": [item for item in readiness_checks if not item["ready"]],
+            },
+            "companySetup": {
+                "integration": company_integration,
+                "setupGate": setup_gate,
             },
             "factory": {
                 "connectors": counts["connectors"],
