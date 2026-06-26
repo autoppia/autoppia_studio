@@ -42,6 +42,14 @@ def test_entity_mapping_contract_models_aliases_relationships_permissions_and_re
     assert contract["relationshipTargets"] == ["Cliente"]
     assert contract["permissions"]["readTools"] == ["erp.search_policies"]
     assert contract["permissions"]["writeTools"] == ["erp.update_policy"]
+    assert contract["toolBinding"] == {
+        "ready": True,
+        "readable": True,
+        "writable": True,
+        "writeGoverned": True,
+        "blockers": [],
+        "nextActions": [],
+    }
     assert contract["readiness"]["status"] == "ready"
     assert contract["readiness"]["identifierFields"] == ["id"]
     assert contract["readiness"]["hasRelationships"] is True
@@ -69,6 +77,18 @@ def test_entity_mapping_contract_surfaces_mapping_gaps():
 
     assert contract["readiness"]["status"] == "needs_mapping"
     assert contract["readiness"]["gaps"] == ["aliases", "fields", "permissions", "source connector"]
+    assert contract["toolBinding"] == {
+        "ready": False,
+        "readable": False,
+        "writable": False,
+        "writeGoverned": True,
+        "blockers": ["identifier", "read_access", "relationships"],
+        "nextActions": [
+            "Mark at least one identifier field.",
+            "Attach a read tool or read scope before binding this entity to runtime context.",
+            "Declare relationships to connected business objects for graph-level reuse.",
+        ],
+    }
     assert contract["readiness"]["hasIdentifier"] is False
     assert contract["mappingCoverage"]["score"] == 0.0
     assert contract["mappingCoverage"]["checks"]["fields"] is False

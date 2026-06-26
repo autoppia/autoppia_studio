@@ -97,6 +97,15 @@ def build_entity_mapping_contract(
         "relationships": bool(relationship_refs),
     }
     passed_checks = sum(1 for ready in coverage_checks.values() if ready)
+    tool_binding_blockers: list[str] = []
+    if not identifiers:
+        tool_binding_blockers.append("identifier")
+    if not read_tools and not scopes:
+        tool_binding_blockers.append("read_access")
+    if write_tools and not scopes:
+        tool_binding_blockers.append("write_scopes")
+    if not relationship_refs:
+        tool_binding_blockers.append("relationships")
     return {
         "businessObject": doc.get("name", ""),
         "aliases": aliases,
@@ -112,6 +121,23 @@ def build_entity_mapping_contract(
             "readTools": read_tools,
             "writeTools": write_tools,
             "scopes": scopes,
+        },
+        "toolBinding": {
+            "ready": bool(identifiers and (read_tools or scopes) and not (write_tools and not scopes)),
+            "readable": bool(read_tools or scopes),
+            "writable": bool(write_tools),
+            "writeGoverned": bool(not write_tools or scopes),
+            "blockers": tool_binding_blockers,
+            "nextActions": [
+                action
+                for action in [
+                    "Mark at least one identifier field." if "identifier" in tool_binding_blockers else "",
+                    "Attach a read tool or read scope before binding this entity to runtime context." if "read_access" in tool_binding_blockers else "",
+                    "Attach write scopes before exposing write tools for this entity." if "write_scopes" in tool_binding_blockers else "",
+                    "Declare relationships to connected business objects for graph-level reuse." if "relationships" in tool_binding_blockers else "",
+                ]
+                if action
+            ],
         },
         "readiness": {
             "status": "ready" if not readiness_gaps else "needs_mapping",
