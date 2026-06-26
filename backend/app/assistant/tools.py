@@ -445,6 +445,11 @@ class AutomataAssistantTools:
             if isinstance(first_proof_gate.get("runtimeReplayContract"), dict)
             else {}
         )
+        first_business_output_contract = (
+            first_proof_gate.get("businessOutputContract")
+            if isinstance(first_proof_gate.get("businessOutputContract"), dict)
+            else {}
+        )
         resource_map = summarize_resource_governance(knowledge_docs)
         connector_domain_hosts = _connector_domains(connector_docs)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
@@ -603,6 +608,34 @@ class AutomataAssistantTools:
                 "reason": f"Insurance replay contract is {first_replay_contract.get('state') or 'blocked'}; missing {replay_missing or 'runtime replay evidence'}.",
             }
             recommended_actions.insert(0, replay_contract_action)
+        if first_business_output_contract and not first_business_output_contract.get("ready"):
+            output_missing = ", ".join(
+                first_business_output_contract.get("missingEvidence")
+                or first_business_output_contract.get("missing")
+                or []
+            )
+            output_playbook = (
+                first_business_output_contract.get("hardeningPlaybook")
+                if isinstance(first_business_output_contract.get("hardeningPlaybook"), list)
+                else []
+            )
+            first_output_action = (
+                output_playbook[0].get("action")
+                if output_playbook and isinstance(output_playbook[0], dict) and output_playbook[0].get("action")
+                else "Complete the business output contract before treating the insurance flow as delivery-safe."
+            )
+            recommended_actions.insert(
+                0,
+                {
+                    "area": "artifacts",
+                    "action": first_output_action,
+                    "reason": (
+                        f"Insurance business output contract is "
+                        f"{first_business_output_contract.get('state') or 'blocked'}; "
+                        f"missing {output_missing or 'business output evidence'}."
+                    ),
+                },
+            )
         if vertical_demo_gaps:
             first_gap = vertical_demo_gaps[0]
             recommended_actions.insert(
@@ -690,6 +723,7 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
                 {"area": "vertical_demo", "severity": "high", "message": "The insurance flow is not proof-ready across email, ERP, documents, approvals, benchmark, trajectory, skill and replay."} if proof_blocked_demos else None,
                 {"area": "runtime", "severity": "high", "message": "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present."} if first_replay_contract and not first_replay_contract.get("ready") else None,
+                {"area": "artifacts", "severity": "high", "message": "Insurance business output contract is blocked; draft artifact, approval boundary and replay assertion must be proven before delivery."} if first_business_output_contract and not first_business_output_contract.get("ready") else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Runtime Lab sessions are not yet durable, replay-ready evidence."} if runtime_session_gate and not runtime_session_gate.get("ready") else None,
                 {
@@ -938,7 +972,7 @@ class AutomataAssistantTools:
                 },
                 "contracts": work_contracts,
             },
-            "recommendedNextActions": recommended_actions[:8],
+            "recommendedNextActions": recommended_actions[:10],
             "automataGuidance": automata_guidance,
         }
         return {"companies": companies, "activeCompanyId": company_id, "counts": counts, "operatingState": operating_state, "automataGuidance": automata_guidance}

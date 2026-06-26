@@ -799,6 +799,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Insurance business output contract is blocked; draft artifact, approval boundary and replay assertion must be proven before delivery." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Work operations gate is not ready for unattended orchestration." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
@@ -806,6 +807,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         action["area"] == "entities"
         and action["action"] == "Complete entity mapping for runtime binding before publishing connector tools."
         and action["reason"] == "1 entity blocked by identifier."
+        for action in snapshot["operatingState"]["recommendedNextActions"]
+    )
+    assert any(
+        action["area"] == "artifacts"
+        and action["action"] == "Record a passing replay that proves the draft artifact and approval boundary."
+        and action["reason"] == "Insurance business output contract is needs_hardening; missing passing replay asserting artifact and approval boundary."
         for action in snapshot["operatingState"]["recommendedNextActions"]
     )
     assert any(
