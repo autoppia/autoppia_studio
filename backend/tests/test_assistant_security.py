@@ -871,6 +871,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "entityPending": 1,
                         "typedToolReady": 2,
                         "toolSynthesisPending": 1,
+                        "hardenedToolCount": 3,
+                        "needsHardeningCount": 2,
+                        "toolHardeningGaps": [{"name": "risk_policy", "count": 2}],
                         "candidateTasksReady": 1,
                         "ingestionBlocked": 1,
                         "gaps": [{"key": "entity_mapping", "label": "ERP needs business entity mapping."}],
@@ -960,6 +963,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Company Setup gate: partial, 2 system(s), 1 secret(s), 2 allowed domain(s)." in reply
     assert "First setup blocker: resource_acl." in reply
     assert "Factory pipeline: 1/3 connector(s) entity-mapped, 2 with typed tools, 1 with candidate tasks." in reply
+    assert "Tool hardening: 3 hardened, 2 need policy/entity/risk hardening." in reply
+    assert "First tool hardening gap: risk_policy." in reply
     assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
     assert "First factory blocker: ERP needs business entity mapping." in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply

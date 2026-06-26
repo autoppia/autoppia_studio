@@ -1418,6 +1418,15 @@ class AutomataAssistantService:
                 f"{connector_map.get('typedToolReady', 0)} with typed tools, "
                 f"{connector_map.get('candidateTasksReady', 0)} with candidate tasks."
             )
+            if int(connector_map.get("hardenedToolCount") or 0) or int(connector_map.get("needsHardeningCount") or 0):
+                factory_text += (
+                    f" Tool hardening: {connector_map.get('hardenedToolCount', 0)} hardened, "
+                    f"{connector_map.get('needsHardeningCount', 0)} need policy/entity/risk hardening."
+                )
+                hardening_gaps = connector_map.get("toolHardeningGaps") if isinstance(connector_map.get("toolHardeningGaps"), list) else []
+                first_hardening_gap = hardening_gaps[0] if hardening_gaps and isinstance(hardening_gaps[0], dict) else {}
+                if first_hardening_gap:
+                    factory_text += f" First tool hardening gap: {first_hardening_gap.get('name') or 'runtime_policy'}."
             blocked_count = int(connector_map.get("entityPending") or 0) + int(connector_map.get("toolSynthesisPending") or 0) + int(connector_map.get("ingestionBlocked") or 0)
             if blocked_count:
                 factory_text += (
