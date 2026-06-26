@@ -58,6 +58,25 @@ def _eval_run_label(run: dict[str, Any]) -> str:
     return str(run.get("label") or "pending").strip().lower() or "pending"
 
 
+def _eval_run_timestamp(run: dict[str, Any]) -> str:
+    for key in ("completedAt", "updatedAt", "createdAt", "startedAt"):
+        value = str(run.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _eval_run_summary(run: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "runId": str(run.get("runId") or ""),
+        "evalId": str(run.get("evalId") or run.get("taskId") or ""),
+        "benchmarkId": str(run.get("benchmarkId") or ""),
+        "label": _eval_run_label(run),
+        "createdAt": str(run.get("createdAt") or ""),
+        "completedAt": str(run.get("completedAt") or ""),
+    }
+
+
 def _work_operational(doc: dict[str, Any]) -> dict[str, Any]:
     operational = doc.get("operational")
     return operational if isinstance(operational, dict) else {}
@@ -251,6 +270,8 @@ def capability_graph_coverage(
         for skill in skill_docs
     ]
     work_orchestration = [work_orchestration_coverage(item) for item in work_item_docs]
+    recent_eval_runs = sorted(eval_run_docs, key=_eval_run_timestamp, reverse=True)
+    recent_eval_failures = [run for run in recent_eval_runs if _eval_run_label(run) == "fail"]
     return {
         "entities": {"total": len(entity_docs), "linked": "input_entity" in edge_relations or "output_entity" in edge_relations},
         "resources": {
@@ -292,6 +313,8 @@ def capability_graph_coverage(
             "pass": sum(1 for run in eval_run_docs if _eval_run_label(run) == "pass"),
             "fail": sum(1 for run in eval_run_docs if _eval_run_label(run) == "fail"),
             "pending": sum(1 for run in eval_run_docs if _eval_run_label(run) == "pending"),
+            "recentRuns": [_eval_run_summary(run) for run in recent_eval_runs[:5]],
+            "recentFailures": [_eval_run_summary(run) for run in recent_eval_failures[:5]],
             "linkedToTasks": "evaluated_by_run" in edge_relations,
             "linkedToSkills": "gates_skill" in edge_relations,
             "linkedToRuntime": "replayed_session" in edge_relations,

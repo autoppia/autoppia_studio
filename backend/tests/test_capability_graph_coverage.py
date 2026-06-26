@@ -45,7 +45,10 @@ def test_skill_package_coverage_detects_publishable_skill_package():
             "version": 2,
         },
         trajectory_docs=[{"trajectoryId": "traj-1", "benchmarkId": "bench-1", "evalId": "task-1"}],
-        eval_run_docs=[{"evalId": "task-1", "benchmarkId": "bench-1", "label": "pass"}],
+        eval_run_docs=[
+            {"runId": "run-pass", "evalId": "task-1", "benchmarkId": "bench-1", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"},
+            {"runId": "run-fail", "evalId": "task-2", "benchmarkId": "bench-1", "label": "fail", "createdAt": "2026-06-26T10:00:00+00:00"},
+        ],
     )
 
     assert coverage["manifestReady"] is True
@@ -146,7 +149,10 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "version": 2,
             }
         ],
-        eval_run_docs=[{"evalId": "task-1", "benchmarkId": "bench-1", "label": "pass"}],
+        eval_run_docs=[
+            {"runId": "run-pass", "evalId": "task-1", "benchmarkId": "bench-1", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"},
+            {"runId": "run-fail", "evalId": "task-2", "benchmarkId": "bench-1", "label": "fail", "createdAt": "2026-06-26T10:00:00+00:00"},
+        ],
         session_docs=[
             {
                 "sessionId": "session-1",
@@ -185,6 +191,17 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["policies"]["sendProtected"] is True
     assert coverage["benchmarks"]["tasksWithContracts"] == 1
     assert coverage["skills"]["packages"]["publishable"] == 1
+    assert coverage["evals"]["recentRuns"][0]["runId"] == "run-fail"
+    assert coverage["evals"]["recentFailures"] == [
+        {
+            "runId": "run-fail",
+            "evalId": "task-2",
+            "benchmarkId": "bench-1",
+            "label": "fail",
+            "createdAt": "2026-06-26T10:00:00+00:00",
+            "completedAt": "",
+        }
+    ]
     assert coverage["runtime"]["sessionContracts"]["selectedSkill"] == 1
     assert coverage["work"]["scheduled"] == 1
     assert coverage["promotionPath"]["hasTrajectoryToSkill"] is True
