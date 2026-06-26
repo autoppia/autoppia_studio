@@ -154,6 +154,32 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         },
         "blockers": [{"name": "browser_domain_governance", "count": 1}],
     }
+    assert summary["runtimeTaxonomy"] == {
+        "defaultMode": "api_runtime",
+        "browserDefault": "exception",
+        "apiFirst": True,
+        "browserRequiresAllowlist": True,
+        "modes": [
+            {
+                "runtimeType": "api_runtime",
+                "role": "Structured API, connector, database, email and document operations.",
+                "capabilities": 1,
+                "observedSessions": 0,
+            },
+            {
+                "runtimeType": "browser_runtime",
+                "role": "Sandboxed UI automation for legacy portals or UI-only steps.",
+                "capabilities": 1,
+                "observedSessions": 1,
+            },
+            {
+                "runtimeType": "hybrid_runtime",
+                "role": "API-first execution with browser fallback for uncovered enterprise steps.",
+                "capabilities": 0,
+                "observedSessions": 0,
+            },
+        ],
+    }
     assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
 
 

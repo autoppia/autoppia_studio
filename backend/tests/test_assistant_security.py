@@ -753,7 +753,16 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["observedDomains"] == ["claims.example.com"]
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["coverageRatio"] == 1.0
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["hybridCapabilities"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["hybridSessions"] == 1
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
+    assert [mode["runtimeType"] for mode in snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeTaxonomy"]["modes"]] == [
+        "api_runtime",
+        "browser_runtime",
+        "hybrid_runtime",
+    ]
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeTaxonomy"]["apiFirst"] is True
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeTaxonomy"]["browserDefault"] == "exception"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClassGate"]["state"] == "ready"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClassGate"]["checks"] == {
         "declaredPolicies": True,

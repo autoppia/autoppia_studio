@@ -186,6 +186,10 @@ def summarize_runtime_policy_map(
     approval_hardening = _approval_hardening(missing_observed_approval)
     browser_policy_count = sum(1 for policy in all_policies if policy.get("browserRuntime"))
     api_policy_count = sum(1 for policy in all_policies if policy.get("runtimeClass") == "api")
+    hybrid_policy_count = sum(1 for policy in all_policies if policy.get("runtimeClass") == "hybrid")
+    observed_runtime_classes = [_runtime_class(kind) for kind in runtime_kinds]
+    api_session_count = sum(1 for kind in observed_runtime_classes if kind == "api")
+    hybrid_session_count = sum(1 for kind in observed_runtime_classes if kind == "hybrid")
     browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime", "browser", "hybrid"})
     allowed_domains = normalize_runtime_domains(browser_allowed_domains or [])
     observed_domains = normalize_runtime_domains(browser_observed_domains or [])
@@ -218,8 +222,37 @@ def summarize_runtime_policy_map(
             "declared": _sorted_counts([str(policy.get("runtimeClass") or "api") for policy in all_policies]),
             "observed": _sorted_counts(runtime_kinds),
             "apiCapabilities": api_policy_count,
+            "hybridCapabilities": hybrid_policy_count,
             "browserCapabilities": browser_policy_count,
+            "apiSessions": api_session_count,
+            "hybridSessions": hybrid_session_count,
             "browserSessions": browser_session_count,
+        },
+        "runtimeTaxonomy": {
+            "defaultMode": "api_runtime",
+            "browserDefault": "exception",
+            "apiFirst": True,
+            "browserRequiresAllowlist": bool(browser_policy_count or browser_session_count),
+            "modes": [
+                {
+                    "runtimeType": "api_runtime",
+                    "role": "Structured API, connector, database, email and document operations.",
+                    "capabilities": api_policy_count,
+                    "observedSessions": api_session_count,
+                },
+                {
+                    "runtimeType": "browser_runtime",
+                    "role": "Sandboxed UI automation for legacy portals or UI-only steps.",
+                    "capabilities": browser_policy_count,
+                    "observedSessions": sum(1 for kind in observed_runtime_classes if kind == "browser"),
+                },
+                {
+                    "runtimeType": "hybrid_runtime",
+                    "role": "API-first execution with browser fallback for uncovered enterprise steps.",
+                    "capabilities": hybrid_policy_count,
+                    "observedSessions": hybrid_session_count,
+                },
+            ],
         },
         "runtimeClassGate": _runtime_class_gate(
             policies=all_policies,
