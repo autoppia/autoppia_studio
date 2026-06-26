@@ -63,3 +63,11 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
     assert portfolio["promotionGate"]["blockers"] == ["incomplete_task_contracts", "no_ready_skills", "no_passing_regression", "failing_regressions"]
     assert portfolio["coverageMatrix"]["connectors"][0]["state"] == "failing"
     assert portfolio["coverageMatrix"]["skills"][0]["state"] == "failing"
+    assert portfolio["coverageMatrix"]["summary"]["connectors"] == {
+        "total": 1,
+        "covered": 0,
+        "coverageRatio": 0.0,
+        "states": [{"name": "failing", "count": 1}],
+    }
+    assert portfolio["coverageMatrix"]["summary"]["entities"]["states"] == [{"name": "failing", "count": 1}]
+    assert portfolio["coverageMatrix"]["summary"]["skills"]["states"] == [{"name": "failing", "count": 1}]

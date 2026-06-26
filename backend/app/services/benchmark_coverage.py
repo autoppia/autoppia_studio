@@ -337,8 +337,33 @@ def coverage_matrix(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
             clean_rows.append(clean)
         return sorted(clean_rows, key=lambda row: (-int(row.get("benchmarkCount") or 0), str(row.get("id") or "")))
 
+    def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:
+        states: dict[str, int] = {}
+        covered = 0
+        for row in rows:
+            state = str(row.get("state") or "unknown")
+            states[state] = states.get(state, 0) + 1
+            if row.get("covered"):
+                covered += 1
+        total = len(rows)
+        return {
+            "total": total,
+            "covered": covered,
+            "coverageRatio": round(covered / total, 3) if total else 0.0,
+            "states": [{"name": key, "count": states[key]} for key in sorted(states, key=lambda item: (-states[item], item))],
+        }
+
+    connector_rows = _sorted_rows(connectors)
+    entity_rows = _sorted_rows(entities)
+    skill_rows = _sorted_rows(skills)
+
     return {
-        "connectors": _sorted_rows(connectors),
-        "entities": _sorted_rows(entities),
-        "skills": _sorted_rows(skills),
+        "connectors": connector_rows,
+        "entities": entity_rows,
+        "skills": skill_rows,
+        "summary": {
+            "connectors": _summary(connector_rows),
+            "entities": _summary(entity_rows),
+            "skills": _summary(skill_rows),
+        },
     }
