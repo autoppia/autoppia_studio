@@ -1,4 +1,4 @@
-from app.services.benchmark_coverage import benchmark_coverage_summary, coverage_portfolio
+from app.services.benchmark_coverage import benchmark_coverage_summary, coverage_portfolio, regression_gate_from_matrix
 
 
 def test_benchmark_coverage_summary_builds_eval_gate_evidence():
@@ -87,3 +87,41 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
     }
     assert portfolio["coverageMatrix"]["summary"]["entities"]["states"] == [{"name": "failing", "count": 1}]
     assert portfolio["coverageMatrix"]["summary"]["skills"]["states"] == [{"name": "failing", "count": 1}]
+    assert portfolio["regressionGate"]["state"] == "failing"
+    assert portfolio["regressionGate"]["ready"] is False
+    assert portfolio["regressionGate"]["blockers"] == ["failing_regression", "skill_hardening"]
+    assert portfolio["regressionGate"]["failingRegression"] == [
+        {"kind": "connectors", "count": 1},
+        {"kind": "entities", "count": 1},
+        {"kind": "skills", "count": 1},
+    ]
+    assert portfolio["regressionGate"]["failingSamples"][0]["id"] == "email-1"
+    assert "Inspect failing regression traces and fix the underlying capability before publishing." in portfolio["regressionGate"]["nextActions"]
+
+
+def test_regression_gate_from_matrix_flags_missing_and_ready_capabilities():
+    missing_gate = regression_gate_from_matrix(
+        {
+            "connectors": [{"id": "erp-1", "state": "missing_regression", "benchmarkRefs": ["benchmark:0"], "regressions": {"total": 0}}],
+            "entities": [],
+            "skills": [{"id": "skill-1", "state": "published", "benchmarkRefs": ["benchmark:0"], "regressions": {"total": 1, "pass": 1}}],
+        }
+    )
+
+    assert missing_gate["state"] == "needs_regression"
+    assert missing_gate["coverageRatio"] == 0.5
+    assert missing_gate["missingRegression"] == [{"kind": "connectors", "count": 1}]
+    assert missing_gate["ungatedSamples"][0]["id"] == "erp-1"
+
+    ready_gate = regression_gate_from_matrix(
+        {
+            "connectors": [{"id": "erp-1", "state": "passing", "benchmarkRefs": ["benchmark:0"], "regressions": {"total": 1, "pass": 1}}],
+            "entities": [{"id": "Claim", "state": "passing", "benchmarkRefs": ["benchmark:0"], "regressions": {"total": 1, "pass": 1}}],
+            "skills": [{"id": "skill-1", "state": "published", "benchmarkRefs": ["benchmark:0"], "regressions": {"total": 1, "pass": 1}}],
+        }
+    )
+
+    assert ready_gate["state"] == "ready"
+    assert ready_gate["ready"] is True
+    assert ready_gate["coverageRatio"] == 1.0
+    assert ready_gate["blockers"] == []

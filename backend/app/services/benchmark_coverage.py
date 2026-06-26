@@ -287,8 +287,91 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
             run_fail=run_fail,
         ),
     }
-    portfolio["coverageMatrix"] = coverage_matrix(coverage_items)
+    matrix = coverage_matrix(coverage_items)
+    portfolio["coverageMatrix"] = matrix
+    portfolio["regressionGate"] = regression_gate_from_matrix(matrix)
     return portfolio
+
+
+def regression_gate_from_matrix(matrix: dict[str, Any]) -> dict[str, Any]:
+    rows_by_kind = {
+        "connectors": matrix.get("connectors") if isinstance(matrix.get("connectors"), list) else [],
+        "entities": matrix.get("entities") if isinstance(matrix.get("entities"), list) else [],
+        "skills": matrix.get("skills") if isinstance(matrix.get("skills"), list) else [],
+    }
+    missing: dict[str, int] = {}
+    failing: dict[str, int] = {}
+    needs_hardening: dict[str, int] = {}
+    ungated_samples: list[dict[str, Any]] = []
+    failing_samples: list[dict[str, Any]] = []
+    total = 0
+    gated = 0
+    for kind, rows in rows_by_kind.items():
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            total += 1
+            state = str(row.get("state") or "unknown")
+            if state in {"passing", "ready", "published"}:
+                gated += 1
+            if state == "missing_regression":
+                missing[kind] = missing.get(kind, 0) + 1
+                if len(ungated_samples) < 8:
+                    ungated_samples.append(_regression_gate_sample(row, kind=kind))
+            if state == "failing":
+                failing[kind] = failing.get(kind, 0) + 1
+                if len(failing_samples) < 8:
+                    failing_samples.append(_regression_gate_sample(row, kind=kind))
+            if state == "needs_hardening" or str(row.get("hardeningState") or "") == "needs_hardening":
+                needs_hardening[kind] = needs_hardening.get(kind, 0) + 1
+    blockers: list[str] = []
+    next_actions: list[str] = []
+    if sum(missing.values()):
+        blockers.append("missing_regression")
+        next_actions.append("Run benchmark regressions for uncovered connectors, entities and skills before promotion.")
+    if sum(failing.values()):
+        blockers.append("failing_regression")
+        next_actions.append("Inspect failing regression traces and fix the underlying capability before publishing.")
+    if sum(needs_hardening.values()):
+        blockers.append("skill_hardening")
+        next_actions.append("Harden skills before treating regression coverage as production-ready.")
+    if not total:
+        state = "empty"
+        next_actions.append("Create benchmarks that reference connectors, entities or skills before evaluating coverage.")
+    elif failing:
+        state = "failing"
+    elif missing or needs_hardening:
+        state = "needs_regression"
+    else:
+        state = "ready"
+    return {
+        "state": state,
+        "ready": state == "ready",
+        "totalCapabilities": total,
+        "gatedCapabilities": gated,
+        "coverageRatio": round(gated / total, 3) if total else 0.0,
+        "blockers": blockers,
+        "missingRegression": _counts_by_kind(missing),
+        "failingRegression": _counts_by_kind(failing),
+        "needsHardening": _counts_by_kind(needs_hardening),
+        "ungatedSamples": ungated_samples,
+        "failingSamples": failing_samples,
+        "nextActions": next_actions,
+    }
+
+
+def _counts_by_kind(counts: dict[str, int]) -> list[dict[str, Any]]:
+    return [{"kind": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _regression_gate_sample(row: dict[str, Any], *, kind: str) -> dict[str, Any]:
+    return {
+        "id": str(row.get("id") or ""),
+        "kind": kind,
+        "state": str(row.get("state") or ""),
+        "benchmarkRefs": _dedupe_strings(row.get("benchmarkRefs") if isinstance(row.get("benchmarkRefs"), list) else []),
+        "regressions": row.get("regressions") if isinstance(row.get("regressions"), dict) else {},
+    }
 
 
 def coverage_matrix(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
@@ -380,6 +463,8 @@ def coverage_matrix(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         clean_rows = []
         for row in rows.values():
             clean = dict(row)
+            if clean.get("baseState") == "needs_hardening":
+                clean["hardeningState"] = "needs_hardening"
             clean.pop("baseState", None)
             clean_rows.append(clean)
         return sorted(clean_rows, key=lambda row: (-int(row.get("benchmarkCount") or 0), str(row.get("id") or "")))
