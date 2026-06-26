@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.runtime_policy import approval_boundary_matrix
+from app.services.runtime_policy import ordered_policy_boundaries
+
 
 def _list_values(values: Any) -> list[str]:
     if not isinstance(values, list):
@@ -121,9 +124,12 @@ def build_runtime_policy_boundary(
         approval_boundaries.add(session_action_policy_boundary(pending_approval))
     for call in approved_calls:
         approval_boundaries.add(session_action_policy_boundary(str(call or "")))
+    required_for = ordered_policy_boundaries(list(approval_boundaries))
+    matrix = approval_boundary_matrix(required_for, observed_boundaries=[boundary for boundary, count in boundary_counts.items() if count > 0])
     return {
         "boundaries": boundary_counts,
-        "approvalRequiredFor": sorted(approval_boundaries, key=["read", "draft", "write", "send"].index),
+        "approvalRequiredFor": required_for,
+        "approvalPolicy": matrix,
         "pendingApprovalCount": pending_approval_count,
         "approvedApprovalCount": len(approved_calls),
         "artifactCount": artifact_count,
@@ -244,6 +250,7 @@ def build_runtime_evidence(
         "capabilityRefs": capability_refs,
         "approvalBoundary": {
             "approvalRequiredFor": policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else [],
+            "approvalPolicy": policy_boundary.get("approvalPolicy") if isinstance(policy_boundary.get("approvalPolicy"), dict) else {},
             "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
             "pendingConnectorApproval": str(summary.get("pendingConnectorApproval") or runtime_state.get("pendingConnectorApproval") or ""),
         },
@@ -321,6 +328,7 @@ def build_runtime_lab(
             "pending": pending_approval_count,
             "approvedConnectorCalls": len(approved_calls),
             "requiredFor": policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else [],
+            "approvalPolicy": policy_boundary.get("approvalPolicy") if isinstance(policy_boundary.get("approvalPolicy"), dict) else {},
             "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
         },
         "outputs": {
@@ -514,6 +522,13 @@ def build_session_contract(
             "pending": pending_approval_count,
             "approvedConnectorCalls": int(approvals.get("approvedConnectorCalls") or 0),
             "requiredFor": approvals.get("requiredFor") if isinstance(approvals.get("requiredFor"), list) else [],
+            "approvalPolicy": (
+                approvals.get("approvalPolicy")
+                if isinstance(approvals.get("approvalPolicy"), dict)
+                else runtime_policy.get("approvalPolicy")
+                if isinstance(runtime_policy.get("approvalPolicy"), dict)
+                else {}
+            ),
             "hasHumanBoundary": bool(approvals.get("hasHumanBoundary") or runtime_policy.get("hasHumanBoundary")),
         },
         "artifactState": {

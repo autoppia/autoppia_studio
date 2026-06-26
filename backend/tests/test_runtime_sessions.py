@@ -60,6 +60,17 @@ def test_build_runtime_policy_boundary_counts_side_effect_boundaries_and_approva
     assert boundary == {
         "boundaries": {"read": 1, "draft": 3, "write": 1, "send": 1},
         "approvalRequiredFor": ["write", "send"],
+        "approvalPolicy": {
+            "boundaries": [
+                {"boundary": "read", "requiresApproval": False, "observed": True},
+                {"boundary": "draft", "requiresApproval": False, "observed": True},
+                {"boundary": "write", "requiresApproval": True, "observed": True},
+                {"boundary": "send", "requiresApproval": True, "observed": True},
+            ],
+            "requiredFor": ["write", "send"],
+            "missingObservedApproval": [],
+            "hasHumanBoundary": True,
+        },
         "pendingApprovalCount": 1,
         "approvedApprovalCount": 1,
         "artifactCount": 2,
@@ -89,7 +100,21 @@ def test_build_runtime_evidence_summarizes_trace_capability_and_outputs():
                 {"action": "imap.search_emails", "status": "pending"},
                 {"action": "skill.use", "status": "failed"},
             ],
-            "runtimePolicyBoundary": {"approvalRequiredFor": ["send"], "hasHumanBoundary": True},
+            "runtimePolicyBoundary": {
+                "approvalRequiredFor": ["send"],
+                "approvalPolicy": {
+                    "boundaries": [
+                        {"boundary": "read", "requiresApproval": False, "observed": False},
+                        {"boundary": "draft", "requiresApproval": False, "observed": True},
+                        {"boundary": "write", "requiresApproval": False, "observed": False},
+                        {"boundary": "send", "requiresApproval": True, "observed": True},
+                    ],
+                    "requiredFor": ["send"],
+                    "missingObservedApproval": [],
+                    "hasHumanBoundary": True,
+                },
+                "hasHumanBoundary": True,
+            },
         },
         artifact_count=2,
         pending_approval_count=1,
@@ -122,6 +147,17 @@ def test_build_runtime_evidence_summarizes_trace_capability_and_outputs():
     }
     assert evidence["approvalBoundary"] == {
         "approvalRequiredFor": ["send"],
+        "approvalPolicy": {
+            "boundaries": [
+                {"boundary": "read", "requiresApproval": False, "observed": False},
+                {"boundary": "draft", "requiresApproval": False, "observed": True},
+                {"boundary": "write", "requiresApproval": False, "observed": False},
+                {"boundary": "send", "requiresApproval": True, "observed": True},
+            ],
+            "requiredFor": ["send"],
+            "missingObservedApproval": [],
+            "hasHumanBoundary": True,
+        },
         "hasHumanBoundary": True,
         "pendingConnectorApproval": "smtp.send_email:0:abc",
     }
@@ -150,7 +186,21 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
                 "durationSeconds": 3.0,
                 "lastStepSeconds": 0.75,
             },
-            "runtimePolicyBoundary": {"approvalRequiredFor": ["send"], "hasHumanBoundary": True},
+            "runtimePolicyBoundary": {
+                "approvalRequiredFor": ["send"],
+                "approvalPolicy": {
+                    "boundaries": [
+                        {"boundary": "read", "requiresApproval": False, "observed": False},
+                        {"boundary": "draft", "requiresApproval": False, "observed": False},
+                        {"boundary": "write", "requiresApproval": False, "observed": False},
+                        {"boundary": "send", "requiresApproval": True, "observed": True},
+                    ],
+                    "requiredFor": ["send"],
+                    "missingObservedApproval": [],
+                    "hasHumanBoundary": True,
+                },
+                "hasHumanBoundary": True,
+            },
             "runtimeEvidence": {
                 "trace": {
                     "traceIds": ["run-1", "trace-tool"],
@@ -189,6 +239,17 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
         "pending": 1,
         "approvedConnectorCalls": 1,
         "requiredFor": ["send"],
+        "approvalPolicy": {
+            "boundaries": [
+                {"boundary": "read", "requiresApproval": False, "observed": False},
+                {"boundary": "draft", "requiresApproval": False, "observed": False},
+                {"boundary": "write", "requiresApproval": False, "observed": False},
+                {"boundary": "send", "requiresApproval": True, "observed": True},
+            ],
+            "requiredFor": ["send"],
+            "missingObservedApproval": [],
+            "hasHumanBoundary": True,
+        },
         "hasHumanBoundary": True,
     }
     assert lab["outputs"] == {
@@ -317,7 +378,22 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
         "runtimePolicyBoundary": {"hasHumanBoundary": True},
         "runtimeLab": {
             "skillMatch": {"matched": True, "skillId": "skill-1", "skillName": "Draft claim reply"},
-            "approvals": {"approvedConnectorCalls": 1, "requiredFor": ["send"], "hasHumanBoundary": True},
+            "approvals": {
+                "approvedConnectorCalls": 1,
+                "requiredFor": ["send"],
+                "approvalPolicy": {
+                    "boundaries": [
+                        {"boundary": "read", "requiresApproval": False, "observed": False},
+                        {"boundary": "draft", "requiresApproval": False, "observed": False},
+                        {"boundary": "write", "requiresApproval": False, "observed": False},
+                        {"boundary": "send", "requiresApproval": True, "observed": True},
+                    ],
+                    "requiredFor": ["send"],
+                    "missingObservedApproval": [],
+                    "hasHumanBoundary": True,
+                },
+                "hasHumanBoundary": True,
+            },
             "outputs": {"hasBusinessOutput": True, "creditsSpent": 2.5},
         },
         "runtimeEvidence": {
@@ -347,6 +423,17 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
         "pending": 1,
         "approvedConnectorCalls": 1,
         "requiredFor": ["send"],
+        "approvalPolicy": {
+            "boundaries": [
+                {"boundary": "read", "requiresApproval": False, "observed": False},
+                {"boundary": "draft", "requiresApproval": False, "observed": False},
+                {"boundary": "write", "requiresApproval": False, "observed": False},
+                {"boundary": "send", "requiresApproval": True, "observed": True},
+            ],
+            "requiredFor": ["send"],
+            "missingObservedApproval": [],
+            "hasHumanBoundary": True,
+        },
         "hasHumanBoundary": True,
     }
     assert contract["artifactState"] == {"count": 2, "hasBusinessOutput": True}
