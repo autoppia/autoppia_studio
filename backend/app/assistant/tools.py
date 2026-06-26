@@ -366,6 +366,11 @@ class AutomataAssistantTools:
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         connector_map = summarize_connector_factory(connector_docs, sample_limit=5)
+        factory_pipeline_gate = (
+            connector_map.get("factoryPipelineGate")
+            if isinstance(connector_map.get("factoryPipelineGate"), dict)
+            else {}
+        )
         entity_map = summarize_entity_mapping(entity_docs, sample_limit=5)
         promotion_pipeline = summarize_promotion_pipeline(tasks=task_docs, trajectories=trajectory_docs, skills=skill_docs, sample_limit=5)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
@@ -559,6 +564,7 @@ class AutomataAssistantTools:
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "entities", "severity": "medium", "message": "Business entities exist but are not all ready for runtime tool binding."} if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"] else None,
+                {"area": "capabilities", "severity": "high", "message": "Capability Factory pipeline is not ready end-to-end."} if factory_pipeline_gate and not factory_pipeline_gate.get("ready") else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
@@ -600,9 +606,15 @@ class AutomataAssistantTools:
                 },
                 {
                     "surface": "Capability Factory",
-                    "status": _surface_status(counts["tools"] > 0 and counts["benchmarkTasks"] > 0 and counts["skills"] > 0 and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)),
+                    "status": _surface_status(
+                        bool(factory_pipeline_gate.get("ready"))
+                        and counts["benchmarkTasks"] > 0
+                        and counts["skills"] > 0
+                        and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)
+                    ),
                     "hardening": (
                         capability_factory_hardening := _first_playbook_item(
+                            factory_pipeline_gate.get("hardeningPlaybook"),
                             connector_map.get("toolHardeningPlaybook"),
                             connector_map.get("ingestionPlaybook"),
                             entity_map.get("hardeningPlaybook"),

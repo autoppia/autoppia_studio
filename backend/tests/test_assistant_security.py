@@ -497,6 +497,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["factory"]["connectedConnectors"] == 1
     assert snapshot["operatingState"]["factory"]["connectorMap"]["entityPending"] == 1
     assert snapshot["operatingState"]["factory"]["connectorMap"]["ingestionBlocked"] == 1
+    assert snapshot["operatingState"]["factory"]["connectorMap"]["factoryPipelineGate"]["state"] == "blocked"
+    assert snapshot["operatingState"]["factory"]["connectorMap"]["factoryPipelineGate"]["checks"]["entityMappingComplete"] is False
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
     assert snapshot["operatingState"]["companySetup"]["integration"]["systems"] == 1
     assert snapshot["operatingState"]["companySetup"]["integration"]["domainAllowlist"] == ["claims.example.com"]
@@ -741,6 +743,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
@@ -1049,6 +1052,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                             "hardenedTools": 3,
                             "needsHardening": 2,
                         },
+                        "factoryPipelineGate": {"state": "blocked", "ready": False},
                         "candidateTasksReady": 1,
                         "ingestionBlocked": 1,
                         "gaps": [{"key": "entity_mapping", "label": "ERP needs business entity mapping."}],
@@ -1156,6 +1160,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Tool hardening: 3 hardened, 2 need policy/entity/risk hardening." in reply
     assert "First tool hardening gap: risk_policy." in reply
     assert "Tool production gate: needs_hardening, 3/5 tool(s) hardened." in reply
+    assert "Capability factory gate: blocked." in reply
     assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
     assert "First factory blocker: ERP needs business entity mapping." in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply

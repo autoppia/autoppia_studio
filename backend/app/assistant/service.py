@@ -1433,6 +1433,9 @@ class AutomataAssistantService:
                     f" Tool production gate: {tool_gate.get('state', 'unknown')}, "
                     f"{tool_gate.get('hardenedTools', 0)}/{tool_gate.get('totalTools', 0)} tool(s) hardened."
                 )
+            factory_gate = connector_map.get("factoryPipelineGate") if isinstance(connector_map.get("factoryPipelineGate"), dict) else {}
+            if factory_gate:
+                factory_text += f" Capability factory gate: {factory_gate.get('state', 'unknown')}."
             blocked_count = int(connector_map.get("entityPending") or 0) + int(connector_map.get("toolSynthesisPending") or 0) + int(connector_map.get("ingestionBlocked") or 0)
             if blocked_count:
                 factory_text += (

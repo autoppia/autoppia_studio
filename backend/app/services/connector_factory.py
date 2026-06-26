@@ -5,10 +5,109 @@ from typing import Any
 from app.services.tool_synthesis import tool_hardening_playbook
 
 
+FACTORY_PIPELINE_ACTIONS = {
+    "connectors_present": {
+        "area": "connectors",
+        "severity": "high",
+        "action": "Attach at least one connector before running the Capability Factory pipeline.",
+    },
+    "ingestion_pipeline": {
+        "area": "ingestion",
+        "severity": "high",
+        "action": "Complete connector ingestion with docs/auth/surface evidence before synthesis.",
+    },
+    "entity_mapping": {
+        "area": "entities",
+        "severity": "high",
+        "action": "Map connector schemas or observations to business entities before tool binding.",
+    },
+    "typed_tools": {
+        "area": "tools",
+        "severity": "high",
+        "action": "Synthesize typed atomic tools with schemas, side effects, scopes and entity bindings.",
+    },
+    "candidate_tasks": {
+        "area": "evals",
+        "severity": "medium",
+        "action": "Generate candidate benchmark tasks from discovered connector capabilities.",
+    },
+    "tool_production": {
+        "area": "tools",
+        "severity": "high",
+        "action": "Harden synthesized tools before exposing them as production capabilities.",
+    },
+}
+
+
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item or "").strip()]
+
+
+def _factory_pipeline_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = FACTORY_PIPELINE_ACTIONS.get(
+            gap,
+            {
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Review the Capability Factory pipeline before production use.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
+
+
+def _factory_pipeline_gate(
+    *,
+    total: int,
+    ingestion_ready: int,
+    ingestion_blocked: int,
+    entity_mapped: int,
+    typed_tool_ready: int,
+    tool_synthesis_pending: int,
+    candidate_tasks_ready: int,
+    tool_gate_ready: bool,
+) -> dict[str, Any]:
+    gap_counts: dict[str, int] = {}
+    if total == 0:
+        gap_counts["connectors_present"] = 1
+    if total and (ingestion_ready < total or ingestion_blocked):
+        gap_counts["ingestion_pipeline"] = max(total - ingestion_ready, ingestion_blocked)
+    if total and entity_mapped < total:
+        gap_counts["entity_mapping"] = total - entity_mapped
+    if total and (typed_tool_ready < total or tool_synthesis_pending):
+        gap_counts["typed_tools"] = max(total - typed_tool_ready, tool_synthesis_pending)
+    if total and candidate_tasks_ready < total:
+        gap_counts["candidate_tasks"] = total - candidate_tasks_ready
+    if not tool_gate_ready:
+        gap_counts["tool_production"] = max(1, total)
+    checks = {
+        "connectorsPresent": total > 0,
+        "ingestionComplete": total > 0 and ingestion_ready == total and ingestion_blocked == 0,
+        "entityMappingComplete": total > 0 and entity_mapped == total,
+        "typedToolsReady": total > 0 and typed_tool_ready == total and tool_synthesis_pending == 0,
+        "candidateTasksSeeded": total > 0 and candidate_tasks_ready == total,
+        "toolProductionReady": tool_gate_ready,
+    }
+    blockers = [name for name, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not blockers else "blocked",
+        "ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": _factory_pipeline_playbook(gap_counts),
+    }
 
 
 def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limit: int = 8, gap_limit: int = 10) -> dict[str, Any]:
@@ -113,6 +212,16 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         **({"tool_synthesis_pending": tool_synthesis_pending} if tool_synthesis_pending else {}),
     }
     tool_gate_ready = bool(total_synthesized_tools) and not needs_hardening_count and not tool_synthesis_pending
+    factory_pipeline_gate = _factory_pipeline_gate(
+        total=len(connectors),
+        ingestion_ready=ingestion_ready,
+        ingestion_blocked=ingestion_blocked,
+        entity_mapped=entity_mapped,
+        typed_tool_ready=typed_tool_ready,
+        tool_synthesis_pending=tool_synthesis_pending,
+        candidate_tasks_ready=candidate_tasks_ready,
+        tool_gate_ready=tool_gate_ready,
+    )
     return {
         "total": len(connectors),
         "entityMapped": entity_mapped,
@@ -145,6 +254,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             ],
             "hardeningPlaybook": tool_hardening_playbook(tool_gate_blockers),
         },
+        "factoryPipelineGate": factory_pipeline_gate,
         "candidateTasksReady": candidate_tasks_ready,
         "ingestionReady": ingestion_ready,
         "ingestionBlocked": ingestion_blocked,

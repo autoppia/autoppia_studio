@@ -86,6 +86,54 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
         ],
         "hardeningPlaybook": summary["toolHardeningPlaybook"],
     }
+    assert summary["factoryPipelineGate"] == {
+        "state": "blocked",
+        "ready": False,
+        "checks": {
+            "connectorsPresent": True,
+            "ingestionComplete": False,
+            "entityMappingComplete": False,
+            "typedToolsReady": True,
+            "candidateTasksSeeded": False,
+            "toolProductionReady": False,
+        },
+        "blockers": [
+            "ingestionComplete",
+            "entityMappingComplete",
+            "candidateTasksSeeded",
+            "toolProductionReady",
+        ],
+        "hardeningPlaybook": [
+            {
+                "gap": "tool_production",
+                "count": 2,
+                "area": "tools",
+                "severity": "high",
+                "action": "Harden synthesized tools before exposing them as production capabilities.",
+            },
+            {
+                "gap": "candidate_tasks",
+                "count": 1,
+                "area": "evals",
+                "severity": "medium",
+                "action": "Generate candidate benchmark tasks from discovered connector capabilities.",
+            },
+            {
+                "gap": "entity_mapping",
+                "count": 1,
+                "area": "entities",
+                "severity": "high",
+                "action": "Map connector schemas or observations to business entities before tool binding.",
+            },
+            {
+                "gap": "ingestion_pipeline",
+                "count": 1,
+                "area": "ingestion",
+                "severity": "high",
+                "action": "Complete connector ingestion with docs/auth/surface evidence before synthesis.",
+            },
+        ],
+    }
     assert summary["ingestionPlaybook"] == [
         {
             "connectorId": "conn-2",
