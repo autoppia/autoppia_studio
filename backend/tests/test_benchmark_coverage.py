@@ -116,6 +116,13 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
         {"kind": "entities", "count": 1},
         {"kind": "skills", "count": 1},
     ]
+    assert portfolio["hardeningPlaybook"][0] == {
+        "gap": "failing_regression",
+        "count": 3,
+        "area": "evals",
+        "severity": "high",
+        "action": "Inspect failing regression traces before publishing or widening runtime access.",
+    }
     assert portfolio["regressionGate"]["failingSamples"][0]["id"] == "email-1"
     assert "Inspect failing regression traces and fix the underlying capability before publishing." in portfolio["regressionGate"]["nextActions"]
 

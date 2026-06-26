@@ -561,6 +561,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["regressionGate"]["nextActions"] == [
         "Create benchmarks that reference connectors, entities or skills before evaluating coverage."
     ]
+    assert {
+        "gap": "no_regression_runs",
+        "count": 1,
+        "area": "evals",
+        "severity": "high",
+        "action": "Run benchmark regressions and judge task trials before promotion.",
+    } in snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["hardeningPlaybook"]
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["enterpriseReady"] == 0

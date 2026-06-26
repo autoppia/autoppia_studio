@@ -6,6 +6,65 @@ from app.services.task_contracts import task_contract_from_record
 from app.services.task_contracts import task_contract_hardening
 
 
+BENCHMARK_PORTFOLIO_ACTIONS = {
+    "incomplete_task_contracts": {
+        "area": "tasks",
+        "severity": "high",
+        "action": "Complete task contracts with intent, initial state, allowed systems, expected artifacts, success criteria and risk.",
+    },
+    "no_tasks": {
+        "area": "tasks",
+        "severity": "high",
+        "action": "Add benchmark tasks before using the benchmark as a production gate.",
+    },
+    "no_skills": {
+        "area": "skills",
+        "severity": "high",
+        "action": "Harvest trajectories and promote at least one reusable skill for this benchmark portfolio.",
+    },
+    "no_ready_skills": {
+        "area": "skills",
+        "severity": "high",
+        "action": "Harden skills with activation, IO, policy, lineage and regression evidence before promotion.",
+    },
+    "no_regression_runs": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Run benchmark regressions and judge task trials before promotion.",
+    },
+    "no_passing_regression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Get at least one passing benchmark regression before promoting capabilities.",
+    },
+    "failing_regressions": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Inspect failing benchmark traces and fix the underlying capability before publishing.",
+    },
+    "missing_regression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Run benchmark regressions for uncovered connectors, entities and skills.",
+    },
+    "failing_regression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Inspect failing regression traces before publishing or widening runtime access.",
+    },
+    "skill_hardening": {
+        "area": "skills",
+        "severity": "high",
+        "action": "Harden skill packages before treating regression coverage as production-ready.",
+    },
+    "empty_regression_matrix": {
+        "area": "evals",
+        "severity": "medium",
+        "action": "Reference connectors, entities or skills from benchmarks before evaluating coverage.",
+    },
+}
+
+
 def _dedupe_strings(values: list[Any]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
@@ -45,6 +104,29 @@ def _task_contract_for_coverage(task: dict[str, Any], benchmark: dict[str, Any])
     contract = task_contract_from_record({**task, "initialUrl": task.get("initialUrl") or initial_url})
     contract["completeness"] = task_contract_completeness(contract)
     return contract
+
+
+def _benchmark_portfolio_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = BENCHMARK_PORTFOLIO_ACTIONS.get(
+            gap,
+            {
+                "area": "evals",
+                "severity": "medium",
+                "action": "Review benchmark portfolio gates before production promotion.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def promotion_gate(
@@ -272,6 +354,34 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     matrix = coverage_matrix(coverage_items)
     portfolio["coverageMatrix"] = matrix
     portfolio["regressionGate"] = regression_gate_from_matrix(matrix)
+    gap_counts: dict[str, int] = {}
+    for blocker in portfolio["promotionGate"].get("blockers") or []:
+        if blocker == "incomplete_task_contracts":
+            gap_counts[blocker] = max(0, task_total - task_complete)
+        elif blocker == "no_skills":
+            gap_counts[blocker] = max(1, len(coverage_items))
+        elif blocker == "no_ready_skills":
+            gap_counts[blocker] = max(0, len(skill_ids) - ready_skills)
+        elif blocker == "no_regression_runs":
+            gap_counts[blocker] = max(1, len(coverage_items))
+        elif blocker == "failing_regressions":
+            gap_counts[blocker] = max(1, run_fail)
+        else:
+            gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
+    regression_gate = portfolio["regressionGate"]
+    if regression_gate.get("state") == "empty":
+        gap_counts["empty_regression_matrix"] = max(1, len(coverage_items))
+    for blocker in regression_gate.get("blockers") or []:
+        if blocker == "missing_regression":
+            count = sum(int(item.get("count") or 0) for item in regression_gate.get("missingRegression") or [])
+        elif blocker == "failing_regression":
+            count = sum(int(item.get("count") or 0) for item in regression_gate.get("failingRegression") or [])
+        elif blocker == "skill_hardening":
+            count = sum(int(item.get("count") or 0) for item in regression_gate.get("needsHardening") or [])
+        else:
+            count = 1
+        gap_counts[blocker] = gap_counts.get(blocker, 0) + max(1, count)
+    portfolio["hardeningPlaybook"] = _benchmark_portfolio_playbook({key: count for key, count in gap_counts.items() if count})
     return portfolio
 
 
