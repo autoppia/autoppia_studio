@@ -1147,6 +1147,11 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                             "totalTools": 5,
                             "hardenedTools": 3,
                             "needsHardening": 2,
+                            "checks": {
+                                "typedTools": True,
+                                "hardenedContracts": False,
+                                "schemasPoliciesScopesEntities": False,
+                            },
                         },
                         "factoryPipelineGate": {"state": "blocked", "ready": False},
                         "candidateTasksReady": 1,
@@ -1337,6 +1342,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Tool hardening: 3 hardened, 2 need policy/entity/risk hardening." in reply
     assert "First tool hardening gap: risk_policy." in reply
     assert "Tool production gate: needs_hardening, 3/5 tool(s) hardened." in reply
+    assert "Tool production checks: typed ready, contracts need hardening, policy/entity coverage blocked." in reply
     assert "Capability factory gate: blocked." in reply
     assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
     assert "First factory blocker: ERP needs business entity mapping." in reply

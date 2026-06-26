@@ -1510,6 +1510,13 @@ class AutomataAssistantService:
                     f" Tool production gate: {tool_gate.get('state', 'unknown')}, "
                     f"{tool_gate.get('hardenedTools', 0)}/{tool_gate.get('totalTools', 0)} tool(s) hardened."
                 )
+                tool_checks = tool_gate.get("checks") if isinstance(tool_gate.get("checks"), dict) else {}
+                if tool_checks:
+                    factory_text += (
+                        f" Tool production checks: typed {'ready' if tool_checks.get('typedTools') else 'blocked'}, "
+                        f"contracts {'hardened' if tool_checks.get('hardenedContracts') else 'need hardening'}, "
+                        f"policy/entity coverage {'ready' if tool_checks.get('schemasPoliciesScopesEntities') else 'blocked'}."
+                    )
             factory_gate = connector_map.get("factoryPipelineGate") if isinstance(connector_map.get("factoryPipelineGate"), dict) else {}
             if factory_gate:
                 factory_text += f" Capability factory gate: {factory_gate.get('state', 'unknown')}."
