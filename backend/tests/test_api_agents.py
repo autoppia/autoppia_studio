@@ -456,6 +456,62 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["skillPackages"]["packages"][0]["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "ioContract"]
 
 
+def test_runtime_requirement_status_respects_explicit_runtime_classes_and_approval_boundaries():
+    agent_config = {
+        "runtimeCapabilities": {"browser": True, "apiCalls": True, "humanApprovalForWrites": True},
+        "runtimeSpec": {
+            "browserEnabled": True,
+            "runtimeClasses": ["api_runtime", "connector_runtime"],
+            "tools": {"browser": True, "connectors": True, "skills": False, "knowledge": False},
+            "approvalRequiredFor": [],
+        },
+    }
+
+    assert agent_runtime.runtime_requirement_status(agent_config, ["connector_runtime"]) == {
+        "required": ["connector_runtime"],
+        "available": True,
+        "unavailable": [],
+        "runtimeClasses": ["api_runtime", "connector_runtime"],
+    }
+    assert agent_runtime.runtime_requirement_status(agent_config, ["browser", "skill_runtime", "human_approval"]) == {
+        "required": ["browser", "skill_runtime", "human_approval"],
+        "available": False,
+        "unavailable": ["browser", "skill_runtime", "human_approval"],
+        "runtimeClasses": ["api_runtime", "connector_runtime"],
+    }
+
+
+@pytest.mark.asyncio
+async def test_runtime_contract_uses_runtime_spec_to_hide_disabled_control_plane_tools(monkeypatch):
+    class _ApiOnlyAgentsCollection(_FakeAgentsCollection):
+        async def find_one(self, query, projection=None):
+            doc = await super().find_one(query, projection)
+            if doc:
+                doc["runtimeCapabilities"] = {"browser": True, "apiCalls": True, "humanApprovalForWrites": True}
+                doc["runtimeSpec"] = {
+                    "browserEnabled": True,
+                    "runtimeClasses": ["api_runtime", "connector_runtime"],
+                    "tools": {"browser": True, "connectors": True, "skills": False, "knowledge": False},
+                    "approvalRequiredFor": [],
+                }
+            return doc
+
+    monkeypatch.setattr(agent_runtime, "agents_collection", _ApiOnlyAgentsCollection())
+    monkeypatch.setattr(agent_runtime, "capabilities_collection", _FakeCapabilitiesCollection())
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeToolsCollection())
+
+    contract = await agent_runtime.runtime_contract_payload(await agent_runtime.load_agent_config("agent-1"))
+
+    unavailable = {item["name"]: item for item in contract["unavailableToolCalls"]}
+    assert "browser.navigate" in unavailable
+    assert "api.human_approval" in unavailable
+    assert "skill.test_skill" in unavailable
+    assert "telegram.send_message" not in unavailable
+    assert contract["enterpriseRuntime"]["runtimeClasses"] == ["api_runtime", "connector_runtime"]
+    assert contract["enterpriseRuntime"]["approvals"]["requiredFor"] == []
+    assert contract["enterpriseRuntime"]["approvals"]["boundaryMatrix"]["missingObservedApproval"] == ["write"]
+
+
 @pytest.mark.asyncio
 async def test_skill_replay_executes_connector_tool_and_returns_result(monkeypatch):
     class _BopaCapabilitiesCollection:

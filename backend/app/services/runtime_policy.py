@@ -57,10 +57,11 @@ def approval_boundary_matrix(approval_required_for: list[Any], *, observed_bound
 
 def browser_enabled(agent_config: dict[str, Any]) -> bool:
     runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
+    runtime_classes = {str(item).strip().lower() for item in runtime_spec.get("runtimeClasses") or [] if str(item).strip()}
     if "browserEnabled" in runtime_spec:
-        return bool(runtime_spec.get("browserEnabled"))
+        return bool(runtime_spec.get("browserEnabled")) and (not runtime_classes or "browser_runtime" in runtime_classes)
     capabilities = agent_config.get("runtimeCapabilities") if isinstance(agent_config.get("runtimeCapabilities"), dict) else {}
-    return bool(capabilities.get("browser", True))
+    return bool(capabilities.get("browser", True)) and (not runtime_classes or "browser_runtime" in runtime_classes)
 
 
 def browser_runtime_policy(agent_config: dict[str, Any]) -> dict[str, Any]:
@@ -106,8 +107,9 @@ def enterprise_runtime_policy(
         "knowledge": bool(runtime_tools.get("knowledge", False)),
     }
     boundaries = ordered_policy_boundaries([str(item.get("policyBoundary") or "read") for item in callables])
-    approval_required_for = runtime_spec.get("approvalRequiredFor")
-    if not isinstance(approval_required_for, list) or not approval_required_for:
+    if "approvalRequiredFor" in runtime_spec and isinstance(runtime_spec.get("approvalRequiredFor"), list):
+        approval_required_for = runtime_spec.get("approvalRequiredFor") or []
+    else:
         approval_required_for = ["write", "send"] if capabilities.get("humanApprovalForWrites", True) else []
     approval_required_for = ordered_policy_boundaries(approval_required_for)
     approval_required_boundaries = ordered_policy_boundaries(

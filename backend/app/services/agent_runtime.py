@@ -25,6 +25,7 @@ from app.services.approvals import create_pending_approval, stable_approval_key
 from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
 from app.services.resource_governance import resource_payload
+from app.services.runtime_policy import ordered_policy_boundaries
 from app.services.runtime_policy import browser_enabled as _runtime_policy_browser_enabled
 from app.services.runtime_policy import browser_runtime_policy, enterprise_runtime_policy
 from app.services.skill_packages import summarize_skill_packages
@@ -387,11 +388,26 @@ def _runtime_feature_enabled(agent_config: dict[str, Any], feature: str) -> bool
     feature = feature.strip().lower()
     runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
     runtime_tools = runtime_spec.get("tools") if isinstance(runtime_spec.get("tools"), dict) else {}
+    runtime_classes = {str(item).strip().lower() for item in runtime_spec.get("runtimeClasses") or [] if str(item).strip()}
     capabilities = agent_config.get("runtimeCapabilities") if isinstance(agent_config.get("runtimeCapabilities"), dict) else {}
 
     if feature == "browser":
-        return _browser_enabled(agent_config)
+        return _browser_enabled(agent_config) and (not runtime_classes or "browser_runtime" in runtime_classes)
+    if feature in {"browser_runtime", "computer_use", "web_runtime", "display"}:
+        return _browser_enabled(agent_config) and (not runtime_classes or "browser_runtime" in runtime_classes)
+    if feature in {"connector_runtime", "connectors", "connector_tools", "tool_runtime"}:
+        return bool(runtime_tools.get("connectors", True)) and (not runtime_classes or "connector_runtime" in runtime_classes)
+    if feature in {"skill_runtime", "skills", "skill_tool", "trajectory_replay"}:
+        return bool(runtime_tools.get("skills", True)) and (not runtime_classes or "skill_runtime" in runtime_classes)
+    if feature in {"hybrid_runtime"}:
+        return (
+            _runtime_feature_enabled(agent_config, "browser_runtime")
+            and (_runtime_feature_enabled(agent_config, "connector_runtime") or _runtime_feature_enabled(agent_config, "skill_runtime"))
+            and (not runtime_classes or "hybrid_runtime" in runtime_classes)
+        )
     if feature in {"network", "http", "api", "api_calls", "api_credentials", "api_credentials_optional", "openapi_optional", "api_docs_or_openapi"}:
+        if runtime_classes and "api_runtime" not in runtime_classes:
+            return False
         if "network" in capabilities:
             return bool(capabilities.get("network"))
         if "apiCalls" in capabilities:
@@ -404,6 +420,8 @@ def _runtime_feature_enabled(agent_config: dict[str, Any], feature: str) -> bool
     if feature in {"python", "code"}:
         return bool(capabilities.get("python"))
     if feature in {"human_approval", "human_approval_for_writes"}:
+        if isinstance(runtime_spec.get("approvalRequiredFor"), list):
+            return bool(ordered_policy_boundaries(runtime_spec.get("approvalRequiredFor") or []))
         return bool(capabilities.get("humanApprovalForWrites", True))
     if feature.endswith("_credentials") or "credentials" in feature or feature.startswith("oauth:") or feature in {"bot_token", "smtp_credentials"}:
         return bool(runtime_tools.get("connectors", True))
@@ -413,10 +431,12 @@ def _runtime_feature_enabled(agent_config: dict[str, Any], feature: str) -> bool
 def runtime_requirement_status(agent_config: dict[str, Any], requirements: list[Any] | None) -> dict[str, Any]:
     required = [str(item).strip() for item in requirements or [] if str(item).strip()]
     unavailable = [item for item in required if not _runtime_feature_enabled(agent_config, item)]
+    runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
     return {
         "required": required,
         "available": not unavailable,
         "unavailable": unavailable,
+        "runtimeClasses": runtime_spec.get("runtimeClasses") if isinstance(runtime_spec.get("runtimeClasses"), list) else [],
     }
 
 
