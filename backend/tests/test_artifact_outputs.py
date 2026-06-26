@@ -1,6 +1,7 @@
 from app.services.artifact_outputs import artifact_approval_relation
 from app.services.artifact_outputs import artifact_capability_refs
 from app.services.artifact_outputs import artifact_output_contract
+from app.services.artifact_outputs import summarize_artifact_outputs
 
 
 def test_artifact_capability_refs_and_approval_relation_are_shared_contracts():
@@ -52,9 +53,44 @@ def test_artifact_output_contract_keeps_business_output_separate_from_trace():
     assert contract["workLinked"] is True
     assert contract["source"]["sourceTool"] == "smtp.draft_email"
     assert contract["governance"]["knowledgeReady"] is True
+    assert contract["governance"]["reuseReadiness"] == {"ready": False, "blockers": ["requires_review"]}
     assert contract["governance"]["approvalRelation"]["requiresReview"] is True
     assert contract["nextActions"] == [
         "Open the originating Runtime Lab session.",
         "Review linked capability evidence.",
-        "Save to Resources if this output should become reusable knowledge.",
     ]
+
+
+def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
+    summary = summarize_artifact_outputs(
+        [
+            {
+                "artifactId": "artifact-ready",
+                "title": "Ready summary",
+                "artifactType": "markdown",
+                "sessionId": "session-1",
+                "metadata": {"skillId": "skill-1"},
+                "sourceTool": "smtp.draft_email",
+            },
+            {
+                "artifactId": "artifact-review",
+                "title": "Pending draft",
+                "artifactType": "markdown",
+                "sessionId": "session-2",
+                "metadata": {"requiresReview": True, "approvalState": "pending"},
+            },
+            {
+                "artifactId": "artifact-binary",
+                "title": "Screenshot",
+                "artifactType": "png",
+                "sessionId": "session-3",
+            },
+        ]
+    )
+
+    assert summary["knowledgeReady"] == 2
+    assert summary["reusableAsKnowledge"] == 1
+    assert summary["blockedForReuse"] == 1
+    assert summary["reviewRequired"] == 1
+    assert summary["sample"][0]["reusableAsKnowledge"] is True
+    assert summary["sample"][1]["reusableAsKnowledge"] is False

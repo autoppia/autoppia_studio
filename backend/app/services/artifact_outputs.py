@@ -69,6 +69,17 @@ def artifact_output_contract(
 ) -> dict[str, Any]:
     session_id = str(doc.get("sessionId", ""))
     source_tool = str(doc.get("sourceTool", ""))
+    knowledge_ready = artifact_type in KNOWLEDGE_READY_TYPES
+    reuse_ready = knowledge_ready and not approval_relation["requiresReview"] and bool(session_id)
+    reuse_blockers = [
+        blocker
+        for blocker in [
+            "not_knowledge_ready" if not knowledge_ready else "",
+            "requires_review" if approval_relation["requiresReview"] else "",
+            "missing_runtime_session" if not session_id else "",
+        ]
+        if blocker
+    ]
     return {
         "artifactId": doc.get("artifactId", ""),
         "outputKind": artifact_type,
@@ -89,14 +100,18 @@ def artifact_output_contract(
             "approvalState": approval_relation["state"],
             "requiresReview": approval_relation["requiresReview"],
             "approvalRelation": approval_relation,
-            "knowledgeReady": artifact_type in KNOWLEDGE_READY_TYPES,
+            "knowledgeReady": knowledge_ready,
+            "reuseReadiness": {
+                "ready": reuse_ready,
+                "blockers": reuse_blockers,
+            },
         },
         "nextActions": [
             action
             for action in [
                 "Open the originating Runtime Lab session." if session_id else "",
                 "Review linked capability evidence." if capability_refs.get("linked") else "",
-                "Save to Resources if this output should become reusable knowledge." if artifact_type in KNOWLEDGE_READY_TYPES else "",
+                "Save to Resources if this output should become reusable knowledge." if reuse_ready else "",
             ]
             if action
         ],
@@ -108,6 +123,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
     capability_linked = 0
     work_linked = 0
     knowledge_ready = 0
+    reusable_as_knowledge = 0
     review_required = 0
     output_kinds: list[str] = []
     approval_states: list[str] = []
@@ -141,6 +157,8 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
             knowledge_ready += 1
         if requires_review:
             review_required += 1
+        if artifact_type in KNOWLEDGE_READY_TYPES and session_id and not requires_review:
+            reusable_as_knowledge += 1
 
         title = str(doc.get("title") or doc.get("name") or doc.get("artifactId") or "Artifact").strip()
         if not session_id:
@@ -160,6 +178,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
                     "capabilityLinked": bool(skill_id or trajectory_id or tool_id or work_item_id),
                     "workLinked": bool(work_item_id),
                     "knowledgeReady": artifact_type in KNOWLEDGE_READY_TYPES,
+                    "reusableAsKnowledge": artifact_type in KNOWLEDGE_READY_TYPES and bool(session_id) and not requires_review,
                     "approvalState": approval_state,
                     "requiresReview": requires_review,
                     "source": {
@@ -182,6 +201,8 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         "capabilityLinked": capability_linked,
         "workLinked": work_linked,
         "knowledgeReady": knowledge_ready,
+        "reusableAsKnowledge": reusable_as_knowledge,
+        "blockedForReuse": max(0, knowledge_ready - reusable_as_knowledge),
         "reviewRequired": review_required,
         "outputKinds": _count_by(output_kinds),
         "approvalStates": _count_by(approval_states),
