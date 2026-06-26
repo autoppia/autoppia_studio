@@ -4,6 +4,33 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+EXECUTION_STATE_KEYS = {
+    "actionHistory",
+    "actions",
+    "approvalRequests",
+    "artifacts",
+    "cost",
+    "currentSession",
+    "currentUrl",
+    "history",
+    "latency",
+    "messages",
+    "pendingApprovals",
+    "screenshots",
+    "session",
+    "sessionId",
+    "state",
+    "state_in",
+    "state_out",
+    "toolCalls",
+    "tool_calls",
+    "trace",
+    "traceId",
+    "traces",
+    "trajectory",
+}
+
+
 def dedupe_runtime_values(values: list[Any]) -> list[str]:
     result: list[str] = []
     seen: set[str] = set()
@@ -82,4 +109,83 @@ def build_runtime_spec(
         "runtimeClasses": runtime_classes(browser_enabled=browser_enabled, tools=tools),
         "maxCreditsPerRun": credits,
         "tools": tools,
+    }
+
+
+def _truthy_capability_inventory(
+    *,
+    runtime_spec: dict[str, Any],
+    tools: list[dict[str, Any]] | None,
+    skills: list[dict[str, Any]] | None,
+    resources: list[dict[str, Any]] | None,
+) -> bool:
+    runtime_tools = runtime_spec.get("tools") if isinstance(runtime_spec.get("tools"), dict) else {}
+    return bool(
+        any(bool(value) for value in runtime_tools.values())
+        or tools
+        or skills
+        or resources
+    )
+
+
+def control_plane_separation_gate(
+    agent_config: dict[str, Any],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    skills: list[dict[str, Any]] | None = None,
+    resources: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
+    capability_discovery = (
+        agent_config.get("capabilityDiscovery")
+        if isinstance(agent_config.get("capabilityDiscovery"), dict)
+        else {"mode": "task_scoped"}
+    )
+    leaked_execution_keys = sorted(key for key in EXECUTION_STATE_KEYS if key in agent_config)
+    checks = {
+        "agentConfigDeclared": bool(agent_config.get("agentId") or agent_config.get("agentConfigId")),
+        "runtimeSpecDeclared": bool(runtime_spec),
+        "capabilityDiscoveryDeclared": bool(capability_discovery.get("mode")),
+        "capabilityInventoryDeclared": _truthy_capability_inventory(
+            runtime_spec=runtime_spec,
+            tools=tools,
+            skills=skills,
+            resources=resources,
+        ),
+        "executionStateExternalized": not leaked_execution_keys,
+    }
+    blockers = [name for name, passed in checks.items() if not passed]
+    playbook: list[dict[str, Any]] = []
+    if not checks["runtimeSpecDeclared"]:
+        playbook.append(
+            {
+                "area": "agent_config",
+                "severity": "high",
+                "action": "Declare runtimeSpec before deployment so the external AgentRuntime receives an explicit execution contract.",
+            }
+        )
+    if not checks["capabilityInventoryDeclared"]:
+        playbook.append(
+            {
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Attach at least one governed tool, skill or resource before treating this AgentConfig as production-ready.",
+            }
+        )
+    if leaked_execution_keys:
+        playbook.append(
+            {
+                "area": "runtime_state",
+                "severity": "high",
+                "action": "Move session, trace, approval and artifact state out of AgentConfig and into runtime session records.",
+            }
+        )
+
+    return {
+        "state": "ready" if not blockers else "blocked",
+        "ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "leakedExecutionKeys": leaked_execution_keys,
+        "hardeningPlaybook": playbook,
     }

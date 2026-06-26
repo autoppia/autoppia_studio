@@ -431,6 +431,9 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["resourceGrounding"]["indexed"] == 1
     assert contract["resourceGrounding"]["citable"] == 1
     assert contract["resourceGrounding"]["readTools"] == ["knowledge.claims.search"]
+    assert contract["controlPlaneSeparationGate"]["state"] == "ready"
+    assert contract["controlPlaneSeparationGate"]["checks"]["executionStateExternalized"] is True
+    assert contract["controlPlaneSeparationGate"]["checks"]["capabilityInventoryDeclared"] is True
     assert contract["toolGovernance"]["total"] == 1
     assert contract["toolGovernance"]["governed"] == 1
     assert contract["toolGovernance"]["approvalRequiredTools"] == ["telegram.send_message"]

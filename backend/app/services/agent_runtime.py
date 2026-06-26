@@ -22,6 +22,7 @@ from app.database import (
 )
 from app.models.agent_config import AgentCallable, AgentConfig
 from app.services.approvals import create_pending_approval, stable_approval_key
+from app.services.agent_config_contract import control_plane_separation_gate
 from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
 from app.services.resource_governance import resource_payload
@@ -350,6 +351,12 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
     return {
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
+        "controlPlaneSeparationGate": control_plane_separation_gate(
+            agent_config,
+            tools=tool_callables,
+            skills=skill_callables,
+            resources=resources,
+        ),
         "browserPolicy": browser_runtime_policy(agent_config),
         "enterpriseRuntime": enterprise_runtime_policy(
             agent_config,
