@@ -461,6 +461,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["regressionSuites"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["publishable"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["versioned"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseStatus"] == [{"name": "draft", "count": 1}]
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["readyForPublish"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["draft"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["totalSkills"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["passing"] == 1
@@ -809,7 +812,13 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "skills": {
                         "hardened": 1,
                         "total": 4,
-                        "packages": {"publishable": 1, "total": 4, "ioContracts": 2, "regressionSuites": 1},
+                        "packages": {
+                            "publishable": 1,
+                            "total": 4,
+                            "ioContracts": 2,
+                            "regressionSuites": 1,
+                            "releaseReadiness": {"published": 1, "readyForPublish": 2, "draft": 1},
+                        },
                     },
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
                 },
@@ -837,6 +846,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
+    assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply

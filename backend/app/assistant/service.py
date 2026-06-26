@@ -1412,6 +1412,12 @@ class AutomataAssistantService:
                     f" Skill packages: {packages.get('publishable', 0)}/{packages.get('total', skills.get('total', 0))} publishable, "
                     f"{packages.get('ioContracts', 0)} with IO contracts, {packages.get('regressionSuites', 0)} with regressions."
                 )
+                release = packages.get("releaseReadiness") if isinstance(packages.get("releaseReadiness"), dict) else {}
+                if release:
+                    coverage_text += (
+                        f" Skill releases: {release.get('published', 0)} published, "
+                        f"{release.get('readyForPublish', 0)} ready for publish, {release.get('draft', 0)} draft."
+                    )
             if eval_gate:
                 coverage_text += (
                     f" Eval gates: {eval_gate.get('passing', 0)} passing, "

@@ -737,6 +737,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["capabilityMap"]["skills"]["packages"]["withIoContract"] == 1
     assert result["contract"]["capabilityMap"]["skills"]["packages"]["withRegressionSuite"] == 1
     assert result["contract"]["capabilityMap"]["skills"]["packages"]["versioned"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}, {"name": "ready", "count": 1}]
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["published"] == 1
+    assert result["contract"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["readyForPublish"] == 1
     assert result["contract"]["factory"]["publishableSkillPackages"] == 1
     assert "draft_email" in result["contract"]["capabilityMap"]["skills"]["expectedArtifacts"]
     assert result["contract"]["readiness"]["checks"]["systems"] is True

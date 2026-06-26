@@ -5,6 +5,7 @@ from app.services.manual_skill_assets import manual_skill_hardening
 from app.services.manual_skill_assets import manual_skill_lineage
 from app.services.manual_skill_assets import manual_skill_package
 from app.services.skill_packages import skill_package_readiness
+from app.services.skill_packages import summarize_skill_packages
 
 
 def _manual_skill_doc():
@@ -71,6 +72,7 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     lineage = manual_skill_lineage(doc)
     hardening = manual_skill_hardening(doc, lineage)
     package = manual_skill_package(doc, lineage, hardening)
+    readiness = skill_package_readiness({"skillPackage": package, **doc})
 
     assert package["format"] == "autoppia.agent_skill"
     assert package["metadata"]["promotionStatus"] == "ready"
@@ -84,7 +86,10 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
         "cases": [],
         "publishable": False,
     }
-    assert skill_package_readiness({"skillPackage": package, **doc})["checks"]["regressionSuite"] is True
+    assert readiness["checks"]["regressionSuite"] is True
+    assert readiness["release"]["promotionStatus"] == "ready"
+    assert readiness["release"]["version"] == 1
+    assert readiness["release"]["historyCount"] == 1
 
 
 def test_attach_manual_skill_assets_returns_skill_with_lineage_hardening_and_package():
@@ -93,3 +98,34 @@ def test_attach_manual_skill_assets_returns_skill_with_lineage_hardening_and_pac
     assert skill["lineage"]["trajectoryIds"] == ["traj-1"]
     assert skill["hardeningStatus"]["checks"]["artifacts"] is True
     assert skill["skillPackage"]["packageId"] == "skill-1"
+
+
+def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
+    ready = attach_manual_skill_assets(_manual_skill_doc())
+    published = {
+        **ready,
+        "capabilityId": "skill-2",
+        "name": "Published claim handler",
+        "promotionStatus": "published",
+        "latestRegression": {"label": "pass"},
+        "version": 2,
+        "versionHistory": [
+            {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
+            {"version": 2, "promotionStatus": "published", "reason": "promotion", "createdAt": "t-2"},
+        ],
+    }
+    published = attach_manual_skill_assets(published)
+
+    summary = summarize_skill_packages([ready, published], package_limit=2)
+
+    assert summary["releaseStatus"] == [{"name": "published", "count": 1}, {"name": "ready", "count": 1}]
+    assert summary["releaseReadiness"] == {
+        "readyForPublish": 1,
+        "published": 1,
+        "withVersionHistory": 1,
+        "draft": 0,
+        "ready": 1,
+        "archived": 0,
+    }
+    assert summary["sample"][1]["promotionStatus"] == "published"
+    assert summary["packages"][1]["release"]["latestEvent"]["reason"] == "promotion"

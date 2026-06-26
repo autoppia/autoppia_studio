@@ -2,11 +2,23 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.skill_lifecycle import skill_promotion_status
+from app.services.skill_lifecycle import skill_version
+from app.services.skill_lifecycle import skill_version_history
+
 
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [str(item).strip() for item in value if str(item or "").strip()]
+
+
+def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "unknown").strip() or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
 def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
@@ -42,15 +54,40 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         if manifest_ready and not publishable_regression:
             blockers.append("publishableRegression")
     metadata = package.get("metadata") if isinstance(package.get("metadata"), dict) else {}
+    lifecycle_doc = {
+        **doc,
+        "promotionStatus": doc.get("promotionStatus") or metadata.get("promotionStatus"),
+        "status": doc.get("status") or metadata.get("status"),
+        "version": doc.get("version") or metadata.get("version"),
+        "versionLabel": doc.get("versionLabel") or metadata.get("versionLabel"),
+        "versionHistory": doc.get("versionHistory") if isinstance(doc.get("versionHistory"), list) else evidence.get("versionHistory"),
+    }
+    promotion_status = skill_promotion_status(lifecycle_doc)
+    version = skill_version(lifecycle_doc)
+    version_history = skill_version_history(lifecycle_doc, version=version, promotion_status=promotion_status)
+    latest_version_event = version_history[-1] if version_history else {}
+    release = {
+        "promotionStatus": promotion_status,
+        "version": version,
+        "versionLabel": lifecycle_doc.get("versionLabel") or f"v{version}",
+        "published": promotion_status == "published",
+        "readyForPublish": publishable and promotion_status in {"ready", "published"},
+        "historyCount": len(version_history),
+        "latestEvent": latest_version_event,
+        "readyAt": doc.get("readyAt") or metadata.get("readyAt"),
+        "publishedAt": doc.get("publishedAt") or metadata.get("publishedAt"),
+        "archivedAt": doc.get("archivedAt") or metadata.get("archivedAt"),
+    }
     return {
         "skillId": str(doc.get("capabilityId") or doc.get("skillId") or ""),
         "name": str(doc.get("name") or ""),
-        "version": doc.get("version") or metadata.get("version"),
+        "version": release["version"],
         "manifestReady": manifest_ready,
         "publishable": publishable,
         "checks": checks,
         "blockers": blockers[:8],
         "versioned": bool(doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion") or metadata.get("version")),
+        "release": release,
         "progressiveDisclosure": package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {},
     }
 
@@ -60,14 +97,21 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
     with_io_contract = sum(1 for item in packages if item["checks"]["ioContract"])
     with_expected_artifacts = sum(1 for item in packages if item["checks"]["expectedArtifacts"])
     with_regression_suite = sum(1 for item in packages if item["checks"]["regressionSuite"])
+    release_statuses = [str(item["release"].get("promotionStatus") or "draft") for item in packages]
+    ready_for_publish = sum(1 for item in packages if item["release"].get("readyForPublish"))
+    published = sum(1 for item in packages if item["release"].get("published"))
+    with_version_history = sum(1 for item in packages if int(item["release"].get("historyCount") or 0) > 1)
     sample = [
         {
             "skillId": item["skillId"],
             "name": item["name"],
+            "version": item["version"],
+            "promotionStatus": item["release"]["promotionStatus"],
             "manifestReady": item["manifestReady"],
             "ioContract": item["checks"]["ioContract"],
             "regressionSuite": item["checks"]["regressionSuite"],
             "publishable": item["publishable"],
+            "readyForPublish": item["release"]["readyForPublish"],
         }
         for item in packages[:5]
     ]
@@ -80,6 +124,15 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
         "withRegressionSuite": with_regression_suite,
         "versioned": sum(1 for item in packages if item["versioned"]),
         "blocked": sum(1 for item in packages if item["blockers"]),
+        "releaseStatus": _sorted_counts(release_statuses),
+        "releaseReadiness": {
+            "readyForPublish": ready_for_publish,
+            "published": published,
+            "withVersionHistory": with_version_history,
+            "draft": release_statuses.count("draft"),
+            "ready": release_statuses.count("ready"),
+            "archived": release_statuses.count("archived"),
+        },
         "packages": packages[:package_limit],
         "ioContracts": with_io_contract,
         "expectedArtifacts": with_expected_artifacts,
