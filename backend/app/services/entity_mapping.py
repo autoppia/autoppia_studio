@@ -158,6 +158,80 @@ def build_entity_mapping_contract(
     }
 
 
+def _safe_float(value: Any) -> float:
+    try:
+        return float(value or 0.0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def summarize_entity_mapping(entities: list[dict[str, Any]], *, sample_limit: int = 5) -> dict[str, Any]:
+    ready = 0
+    with_aliases = 0
+    with_relationships = 0
+    with_permissions = 0
+    binding_ready = 0
+    coverage_total = 0.0
+    gap_counts: dict[str, int] = {}
+    blocker_counts: dict[str, int] = {}
+    samples: list[dict[str, Any]] = []
+    for entity in entities:
+        contract = build_entity_mapping_contract(entity)
+        readiness = contract.get("readiness") if isinstance(contract.get("readiness"), dict) else {}
+        coverage = contract.get("mappingCoverage") if isinstance(contract.get("mappingCoverage"), dict) else {}
+        permissions = contract.get("permissions") if isinstance(contract.get("permissions"), dict) else {}
+        tool_binding = contract.get("toolBinding") if isinstance(contract.get("toolBinding"), dict) else {}
+        if readiness.get("status") == "ready":
+            ready += 1
+        if contract.get("aliases"):
+            with_aliases += 1
+        if contract.get("relationships"):
+            with_relationships += 1
+        if permissions.get("readTools") or permissions.get("writeTools") or permissions.get("scopes"):
+            with_permissions += 1
+        if tool_binding.get("ready"):
+            binding_ready += 1
+        coverage_total += _safe_float(coverage.get("score"))
+        for gap in readiness.get("gaps") if isinstance(readiness.get("gaps"), list) else []:
+            key = str(gap or "").strip()
+            if key:
+                gap_counts[key] = gap_counts.get(key, 0) + 1
+        for blocker in tool_binding.get("blockers") if isinstance(tool_binding.get("blockers"), list) else []:
+            key = str(blocker or "").strip()
+            if key:
+                blocker_counts[key] = blocker_counts.get(key, 0) + 1
+        if len(samples) < sample_limit:
+            samples.append(
+                {
+                    "entityId": str(entity.get("entityId") or ""),
+                    "name": str(entity.get("name") or ""),
+                    "status": str(readiness.get("status") or "unknown"),
+                    "coverageScore": _safe_float(coverage.get("score")),
+                    "toolBindingReady": bool(tool_binding.get("ready")),
+                    "gaps": readiness.get("gaps") if isinstance(readiness.get("gaps"), list) else [],
+                    "blockers": tool_binding.get("blockers") if isinstance(tool_binding.get("blockers"), list) else [],
+                }
+            )
+    return {
+        "total": len(entities),
+        "ready": ready,
+        "withAliases": with_aliases,
+        "withRelationships": with_relationships,
+        "withPermissions": with_permissions,
+        "toolBindingReady": binding_ready,
+        "coverageScore": round(coverage_total / len(entities), 3) if entities else 0.0,
+        "gaps": [
+            {"name": key, "count": gap_counts[key]}
+            for key in sorted(gap_counts, key=lambda item: (-gap_counts[item], item))
+        ],
+        "bindingBlockers": [
+            {"name": key, "count": blocker_counts[key]}
+            for key in sorted(blocker_counts, key=lambda item: (-blocker_counts[item], item))
+        ],
+        "sample": samples,
+    }
+
+
 def relationship_edges(entity: dict[str, Any]) -> list[dict[str, Any]]:
     source = str(entity.get("name") or "")
     edges = []

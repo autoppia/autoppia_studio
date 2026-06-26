@@ -37,7 +37,7 @@ from app.services.benchmark_coverage import benchmark_coverage_summary
 from app.services.benchmark_coverage import coverage_portfolio
 from app.services.company_integration_contract import build_company_integration_contract
 from app.services.connector_factory import summarize_connector_factory
-from app.services.entity_mapping import build_entity_mapping_contract
+from app.services.entity_mapping import summarize_entity_mapping
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.resource_governance import summarize_resource_governance
@@ -97,67 +97,6 @@ def _safe_int(value: Any) -> int:
         return int(value or 0)
     except (TypeError, ValueError):
         return 0
-
-
-def _entity_mapping_summary(entities: list[dict[str, Any]], *, sample_limit: int = 5) -> dict[str, Any]:
-    ready = 0
-    with_aliases = 0
-    with_relationships = 0
-    with_permissions = 0
-    binding_ready = 0
-    coverage_total = 0.0
-    gap_counts: dict[str, int] = {}
-    blocker_counts: dict[str, int] = {}
-    samples: list[dict[str, Any]] = []
-    for entity in entities:
-        contract = build_entity_mapping_contract(entity)
-        readiness = contract.get("readiness") if isinstance(contract.get("readiness"), dict) else {}
-        coverage = contract.get("mappingCoverage") if isinstance(contract.get("mappingCoverage"), dict) else {}
-        permissions = contract.get("permissions") if isinstance(contract.get("permissions"), dict) else {}
-        tool_binding = contract.get("toolBinding") if isinstance(contract.get("toolBinding"), dict) else {}
-        if readiness.get("status") == "ready":
-            ready += 1
-        if contract.get("aliases"):
-            with_aliases += 1
-        if contract.get("relationships"):
-            with_relationships += 1
-        if permissions.get("readTools") or permissions.get("writeTools") or permissions.get("scopes"):
-            with_permissions += 1
-        if tool_binding.get("ready"):
-            binding_ready += 1
-        coverage_total += _safe_float(coverage.get("score"))
-        for gap in readiness.get("gaps") if isinstance(readiness.get("gaps"), list) else []:
-            key = str(gap or "").strip()
-            if key:
-                gap_counts[key] = gap_counts.get(key, 0) + 1
-        for blocker in tool_binding.get("blockers") if isinstance(tool_binding.get("blockers"), list) else []:
-            key = str(blocker or "").strip()
-            if key:
-                blocker_counts[key] = blocker_counts.get(key, 0) + 1
-        if len(samples) < sample_limit:
-            samples.append(
-                {
-                    "entityId": str(entity.get("entityId") or ""),
-                    "name": str(entity.get("name") or ""),
-                    "status": str(readiness.get("status") or "unknown"),
-                    "coverageScore": _safe_float(coverage.get("score")),
-                    "toolBindingReady": bool(tool_binding.get("ready")),
-                    "gaps": readiness.get("gaps") if isinstance(readiness.get("gaps"), list) else [],
-                    "blockers": tool_binding.get("blockers") if isinstance(tool_binding.get("blockers"), list) else [],
-                }
-            )
-    return {
-        "total": len(entities),
-        "ready": ready,
-        "withAliases": with_aliases,
-        "withRelationships": with_relationships,
-        "withPermissions": with_permissions,
-        "toolBindingReady": binding_ready,
-        "coverageScore": round(coverage_total / len(entities), 3) if entities else 0.0,
-        "gaps": [{"name": key, "count": gap_counts[key]} for key in sorted(gap_counts, key=lambda item: (-gap_counts[item], item))],
-        "bindingBlockers": [{"name": key, "count": blocker_counts[key]} for key in sorted(blocker_counts, key=lambda item: (-blocker_counts[item], item))],
-        "sample": samples,
-    }
 
 
 def _eval_coverage_gap(eval_coverage: dict[str, Any]) -> dict[str, Any]:
@@ -409,7 +348,7 @@ class AutomataAssistantTools:
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
         connector_map = summarize_connector_factory(connector_docs, sample_limit=5)
-        entity_map = _entity_mapping_summary(entity_docs, sample_limit=5)
+        entity_map = summarize_entity_mapping(entity_docs, sample_limit=5)
         promotion_pipeline = summarize_promotion_pipeline(tasks=task_docs, trajectories=trajectory_docs, skills=skill_docs, sample_limit=5)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)

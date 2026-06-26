@@ -1,5 +1,6 @@
 from app.services.entity_mapping import build_entity_mapping_contract
 from app.services.entity_mapping import relationship_edges
+from app.services.entity_mapping import summarize_entity_mapping
 
 
 def test_entity_mapping_contract_models_aliases_relationships_permissions_and_readiness():
@@ -113,5 +114,61 @@ def test_relationship_edges_remain_stable_for_graph_views():
             "kind": "belongsTo",
             "via": "clienteId",
             "description": "",
+        }
+    ]
+
+
+def test_summarize_entity_mapping_counts_readiness_and_binding_gaps():
+    summary = summarize_entity_mapping(
+        [
+            {
+                "entityId": "policy-1",
+                "name": "Poliza",
+                "sourceConnectorId": "erp-1",
+                "fields": [{"name": "id", "role": "identifier"}],
+                "relationships": [{"name": "cliente", "target": "Cliente", "via": "clienteId"}],
+                "metadata": {
+                    "aliases": ["Policy"],
+                    "permissions": {
+                        "readTools": ["erp.search_policies"],
+                        "scopes": ["policy:read"],
+                    },
+                },
+            },
+            {
+                "entityId": "claim-1",
+                "name": "Siniestro",
+                "fields": [{"name": "status"}],
+                "metadata": {"aliases": ["Claim"]},
+            },
+        ],
+        sample_limit=1,
+    )
+
+    assert summary["total"] == 2
+    assert summary["ready"] == 1
+    assert summary["withAliases"] == 2
+    assert summary["withRelationships"] == 1
+    assert summary["withPermissions"] == 1
+    assert summary["toolBindingReady"] == 1
+    assert summary["coverageScore"] == 0.572
+    assert summary["gaps"] == [
+        {"name": "permissions", "count": 1},
+        {"name": "source connector", "count": 1},
+    ]
+    assert summary["bindingBlockers"] == [
+        {"name": "identifier", "count": 1},
+        {"name": "read_access", "count": 1},
+        {"name": "relationships", "count": 1},
+    ]
+    assert summary["sample"] == [
+        {
+            "entityId": "policy-1",
+            "name": "Poliza",
+            "status": "ready",
+            "coverageScore": 0.857,
+            "toolBindingReady": True,
+            "gaps": [],
+            "blockers": [],
         }
     ]
