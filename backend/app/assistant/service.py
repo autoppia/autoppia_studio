@@ -1702,6 +1702,18 @@ class AutomataAssistantService:
                             f" Runtime replay contract: {runtime_contract.get('state') or 'unknown'}, "
                             f"missing {missing_text}."
                         )
+                        replay_evidence = (
+                            runtime_contract.get("evidenceFound")
+                            if isinstance(runtime_contract.get("evidenceFound"), dict)
+                            else {}
+                        )
+                        if replay_evidence:
+                            coverage_text += (
+                                f" Replay evidence: {int(replay_evidence.get('passingRuns') or 0)} passing run(s), "
+                                f"{len(replay_evidence.get('promotedSkillIds') or [])} promoted skill(s), "
+                                f"{len(replay_evidence.get('artifacts') or [])} artifact(s), "
+                                f"{len(replay_evidence.get('approvalBoundaries') or [])} approval boundary marker(s)."
+                            )
                     proof_playbook = proof_gate.get("hardeningPlaybook") if isinstance(proof_gate.get("hardeningPlaybook"), list) else []
                     first_proof_action = proof_playbook[0] if proof_playbook and isinstance(proof_playbook[0], dict) else {}
                     if first_proof_action.get("action"):
