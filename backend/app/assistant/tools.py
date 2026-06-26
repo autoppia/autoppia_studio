@@ -428,6 +428,18 @@ class AutomataAssistantTools:
         eval_coverage_gap = _eval_coverage_gap(eval_coverage)
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
+        proof_blocked_demos = [
+            demo
+            for demo in vertical_demos.get("demos", [])
+            if isinstance(demo, dict)
+            and isinstance(demo.get("insuranceFlowProofGate"), dict)
+            and not (demo.get("insuranceFlowProofGate") or {}).get("ready")
+        ]
+        first_proof_gate = (
+            proof_blocked_demos[0].get("insuranceFlowProofGate")
+            if proof_blocked_demos and isinstance(proof_blocked_demos[0].get("insuranceFlowProofGate"), dict)
+            else {}
+        )
         resource_map = summarize_resource_governance(knowledge_docs)
         connector_domain_hosts = _connector_domains(connector_docs)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
@@ -551,6 +563,22 @@ class AutomataAssistantTools:
         if vertical_demos["total"] and vertical_demos["ready"] < vertical_demos["total"]:
             missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
+        if proof_blocked_demos:
+            proof_missing = ", ".join(first_proof_gate.get("missing") or [])
+            proof_playbook = first_proof_gate.get("hardeningPlaybook") if isinstance(first_proof_gate.get("hardeningPlaybook"), list) else []
+            first_proof_action = (
+                proof_playbook[0].get("action")
+                if proof_playbook and isinstance(proof_playbook[0], dict) and proof_playbook[0].get("action")
+                else "Complete the insurance flow proof gate before treating the vertical demo as enterprise-ready."
+            )
+            recommended_actions.insert(
+                0,
+                {
+                    "area": "vertical_demo",
+                    "action": first_proof_action,
+                    "reason": f"Insurance flow proof gate is {first_proof_gate.get('state') or 'blocked'}; missing {proof_missing or 'proof evidence'}.",
+                },
+            )
         if vertical_demo_gaps:
             first_gap = vertical_demo_gaps[0]
             recommended_actions.insert(
@@ -633,6 +661,7 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
+                {"area": "vertical_demo", "severity": "high", "message": "The insurance flow is not proof-ready across email, ERP, documents, approvals, benchmark, trajectory, skill and replay."} if proof_blocked_demos else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Runtime Lab sessions are not yet durable, replay-ready evidence."} if runtime_session_gate and not runtime_session_gate.get("ready") else None,
                 {
@@ -660,6 +689,7 @@ class AutomataAssistantTools:
             skill_eval_gate.get("hardeningPlaybook"),
             benchmark_portfolio.get("hardeningPlaybook"),
             eval_center_gate.get("hardeningPlaybook"),
+            first_proof_gate.get("hardeningPlaybook"),
             vertical_demos.get("hardeningPlaybook"),
             promotion_pipeline.get("hardeningPlaybook"),
         )
@@ -826,7 +856,7 @@ class AutomataAssistantTools:
                 },
                 "contracts": work_contracts,
             },
-            "recommendedNextActions": recommended_actions[:6],
+            "recommendedNextActions": recommended_actions[:8],
             "automataGuidance": automata_guidance,
         }
         return {"companies": companies, "activeCompanyId": company_id, "counts": counts, "operatingState": operating_state, "automataGuidance": automata_guidance}

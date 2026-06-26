@@ -766,6 +766,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "The insurance flow is not proof-ready across email, ERP, documents, approvals, benchmark, trajectory, skill and replay." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Business entities exist but are not all ready for runtime tool binding." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
@@ -780,6 +781,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         action["area"] == "entities"
         and action["action"] == "Complete entity mapping for runtime binding before publishing connector tools."
         and action["reason"] == "1 entity blocked by identifier."
+        for action in snapshot["operatingState"]["recommendedNextActions"]
+    )
+    assert any(
+        action["area"] == "vertical_demo"
+        and action["action"] == "Attach governed knowledge resources or read tools for document grounding."
+        and action["reason"] == "Insurance flow proof gate is needs_hardening; missing document_grounding, approval_boundary, benchmark, trajectory, skill_promotion, runtime_replay, smoke_gate."
         for action in snapshot["operatingState"]["recommendedNextActions"]
     )
     company_setup = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Company Setup")
