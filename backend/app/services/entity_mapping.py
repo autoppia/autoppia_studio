@@ -3,6 +3,50 @@ from __future__ import annotations
 from typing import Any
 
 
+ENTITY_MAPPING_ACTIONS = {
+    "aliases": {
+        "area": "semantics",
+        "severity": "medium",
+        "action": "Add business aliases so tools and skills can match user language to this entity.",
+    },
+    "fields": {
+        "area": "schema",
+        "severity": "high",
+        "action": "Map source fields from API schemas, tables or documents for this business object.",
+    },
+    "permissions": {
+        "area": "permissions",
+        "severity": "high",
+        "action": "Attach read/write tools or scopes before exposing this entity to runtime capabilities.",
+    },
+    "source connector": {
+        "area": "connectors",
+        "severity": "high",
+        "action": "Link the entity to the connector or system that owns its source records.",
+    },
+    "identifier": {
+        "area": "schema",
+        "severity": "high",
+        "action": "Mark at least one identifier field before binding this entity to tool calls.",
+    },
+    "read_access": {
+        "area": "permissions",
+        "severity": "high",
+        "action": "Attach a read tool or read scope before grounding runtime context in this entity.",
+    },
+    "write_scopes": {
+        "area": "permissions",
+        "severity": "high",
+        "action": "Attach write scopes before exposing write tools for this entity.",
+    },
+    "relationships": {
+        "area": "graph",
+        "severity": "medium",
+        "action": "Declare relationships to connected business objects for graph-level reuse.",
+    },
+}
+
+
 def string_list(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value.strip()] if value.strip() else []
@@ -165,6 +209,39 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _entity_mapping_playbook(gap_counts: dict[str, int], blocker_counts: dict[str, int]) -> list[dict[str, Any]]:
+    merged: dict[str, int] = {}
+    for source in (gap_counts, blocker_counts):
+        for key, count in source.items():
+            merged[key] = merged.get(key, 0) + count
+    playbook: list[dict[str, Any]] = []
+    severity_rank = {"high": 0, "medium": 1, "low": 2}
+
+    def _sort_key(item: str) -> tuple[int, int, str]:
+        severity = ENTITY_MAPPING_ACTIONS.get(item, {}).get("severity", "medium")
+        return (severity_rank.get(str(severity), 1), -merged[item], item)
+
+    for gap in sorted(merged, key=_sort_key):
+        metadata = ENTITY_MAPPING_ACTIONS.get(
+            gap,
+            {
+                "area": "entities",
+                "severity": "medium",
+                "action": "Review entity mapping before using it in runtime tool binding.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": merged[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
+
+
 def summarize_entity_mapping(entities: list[dict[str, Any]], *, sample_limit: int = 5) -> dict[str, Any]:
     ready = 0
     with_aliases = 0
@@ -228,6 +305,7 @@ def summarize_entity_mapping(entities: list[dict[str, Any]], *, sample_limit: in
             {"name": key, "count": blocker_counts[key]}
             for key in sorted(blocker_counts, key=lambda item: (-blocker_counts[item], item))
         ],
+        "hardeningPlaybook": _entity_mapping_playbook(gap_counts, blocker_counts),
         "sample": samples,
     }
 

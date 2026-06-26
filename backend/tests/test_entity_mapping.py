@@ -161,6 +161,29 @@ def test_summarize_entity_mapping_counts_readiness_and_binding_gaps():
         {"name": "read_access", "count": 1},
         {"name": "relationships", "count": 1},
     ]
+    assert summary["hardeningPlaybook"][:3] == [
+        {
+            "gap": "identifier",
+            "count": 1,
+            "area": "schema",
+            "severity": "high",
+            "action": "Mark at least one identifier field before binding this entity to tool calls.",
+        },
+        {
+            "gap": "permissions",
+            "count": 1,
+            "area": "permissions",
+            "severity": "high",
+            "action": "Attach read/write tools or scopes before exposing this entity to runtime capabilities.",
+        },
+        {
+            "gap": "read_access",
+            "count": 1,
+            "area": "permissions",
+            "severity": "high",
+            "action": "Attach a read tool or read scope before grounding runtime context in this entity.",
+        },
+    ]
     assert summary["sample"] == [
         {
             "entityId": "policy-1",

@@ -599,6 +599,7 @@ class AutomataAssistantTools:
                         capability_factory_hardening := _first_playbook_item(
                             connector_map.get("toolHardeningPlaybook"),
                             connector_map.get("ingestionPlaybook"),
+                            entity_map.get("hardeningPlaybook"),
                             skill_package_summary.get("hardeningPlaybook"),
                             skill_eval_gate.get("hardeningPlaybook"),
                             benchmark_portfolio.get("hardeningPlaybook"),

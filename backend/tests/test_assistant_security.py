@@ -531,6 +531,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         {"name": "read_access", "count": 1},
         {"name": "relationships", "count": 1},
     ]
+    assert {
+        "gap": "identifier",
+        "count": 1,
+        "area": "schema",
+        "severity": "high",
+        "action": "Mark at least one identifier field before binding this entity to tool calls.",
+    } in snapshot["operatingState"]["capabilityMap"]["entityMap"]["hardeningPlaybook"]
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["manifestReady"] == 1
