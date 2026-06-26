@@ -1232,6 +1232,11 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                                     "readySteps": 7,
                                     "totalSteps": 9,
                                     "missing": ["runtime_replay", "smoke_gate"],
+                                    "runtimeReplayContract": {
+                                        "state": "needs_hardening",
+                                        "ready": False,
+                                        "missing": ["agentRuntimeReplay"],
+                                    },
                                     "hardeningPlaybook": [
                                         {
                                             "gap": "runtime_replay",
@@ -1381,6 +1386,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready, 1 proof-blocked." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Insurance proof gate: needs_hardening, 7/9 proof step(s) ready." in reply
+    assert "Runtime replay contract: needs_hardening, missing agentRuntimeReplay." in reply
     assert "First proof hardening: Replay the approved insurance skill in AgentRuntime before declaring the demo production-ready." in reply
     assert "First proof blocker: runtime_replay." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply

@@ -1684,6 +1684,20 @@ class AutomataAssistantService:
                             f" Insurance proof gate: {proof_gate.get('state') or 'blocked'}, "
                             f"{ready_steps}/{total_steps} proof step(s) ready."
                         )
+                    runtime_contract = (
+                        proof_gate.get("runtimeReplayContract")
+                        if isinstance(proof_gate.get("runtimeReplayContract"), dict)
+                        else {}
+                    )
+                    runtime_contract_missing = (
+                        runtime_contract.get("missing") if isinstance(runtime_contract.get("missing"), list) else []
+                    )
+                    if runtime_contract:
+                        missing_text = ", ".join(str(item) for item in runtime_contract_missing) or "none"
+                        coverage_text += (
+                            f" Runtime replay contract: {runtime_contract.get('state') or 'unknown'}, "
+                            f"missing {missing_text}."
+                        )
                     proof_playbook = proof_gate.get("hardeningPlaybook") if isinstance(proof_gate.get("hardeningPlaybook"), list) else []
                     first_proof_action = proof_playbook[0] if proof_playbook and isinstance(proof_playbook[0], dict) else {}
                     if first_proof_action.get("action"):

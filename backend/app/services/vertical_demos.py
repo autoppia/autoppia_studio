@@ -277,11 +277,59 @@ def _vertical_smoke_gate(
     }
 
 
+def _runtime_replay_contract(
+    *,
+    expected_artifacts: list[str],
+    approval_boundaries: list[str],
+    risk_classes: list[str],
+    promoted_skill_ids: list[str],
+    passing_runs: int,
+) -> dict[str, Any]:
+    boundary_text = " ".join([*approval_boundaries, *risk_classes]).lower()
+    checks = {
+        "agentRuntimeReplay": passing_runs > 0,
+        "approvedSkillAvailable": bool(promoted_skill_ids),
+        "draftArtifactOutput": "draft_email" in expected_artifacts,
+        "approvalBoundaryBeforeSend": (
+            "draft" in boundary_text
+            or "no_send" in boundary_text
+            or "without_send" in boundary_text
+            or "before_send" in boundary_text
+            or "approval" in boundary_text
+            or "send" in boundary_text
+        ),
+    }
+    actions = {
+        "agentRuntimeReplay": "Run the approved insurance skill through AgentRuntime and record a passing replay.",
+        "approvedSkillAvailable": "Promote the approved trajectory into a callable insurance skill before replay.",
+        "draftArtifactOutput": "Assert the replay produces draft_email as the business artifact.",
+        "approvalBoundaryBeforeSend": "Assert the replay stops at a human approval boundary before final email send.",
+    }
+    missing = [key for key, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not missing else "needs_hardening",
+        "ready": not missing,
+        "checks": checks,
+        "requiredEvidence": [
+            "passing AgentRuntime replay",
+            "approved reusable insurance skill",
+            "draft_email artifact output",
+            "human approval boundary before final send",
+        ],
+        "missing": missing,
+        "hardeningPlaybook": [
+            {"gap": key, "count": 1, "group": "runtime", "area": "runtime", "severity": "high", "action": actions[key]}
+            for key in missing
+        ],
+    }
+
+
 def _insurance_flow_proof_gate(
     *,
     objective: str,
     coverage: list[dict[str, Any]],
     smoke_gate: dict[str, Any],
+    runtime_replay_contract: dict[str, Any],
 ) -> dict[str, Any]:
     coverage_by_key = {str(item.get("key") or ""): item for item in coverage if isinstance(item, dict)}
     steps: list[dict[str, Any]] = []
@@ -328,6 +376,7 @@ def _insurance_flow_proof_gate(
         "ready": not missing,
         "objective": objective,
         "steps": steps,
+        "runtimeReplayContract": runtime_replay_contract,
         "readySteps": sum(1 for step in steps if step["ready"]),
         "totalSteps": len(steps),
         "missing": missing,
@@ -452,6 +501,7 @@ def vertical_demo_payload(
         for skill in skills
         if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in promoted_statuses or skill.get("skillPackage")
     ]
+    promoted_skill_ids = _dedupe([skill.get("capabilityId") or skill.get("skillId") for skill in promoted_skills])
 
     expected_tool_set = set(expected_tools)
     checks = {
@@ -508,10 +558,18 @@ def vertical_demo_payload(
         risk_classes=risk_classes,
         passing_runs=passing_runs,
     )
+    runtime_replay_contract = _runtime_replay_contract(
+        expected_artifacts=expected_artifacts,
+        approval_boundaries=approval_boundaries,
+        risk_classes=risk_classes,
+        promoted_skill_ids=promoted_skill_ids,
+        passing_runs=passing_runs,
+    )
     insurance_flow_proof_gate = _insurance_flow_proof_gate(
         objective=objective,
         coverage=coverage,
         smoke_gate=smoke_gate,
+        runtime_replay_contract=runtime_replay_contract,
     )
     return {
         "benchmarkId": str(benchmark.get("benchmarkId") or ""),

@@ -67,6 +67,24 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
     assert payload["insuranceFlowProofGate"]["readySteps"] == 9
     assert payload["insuranceFlowProofGate"]["totalSteps"] == 9
     assert payload["insuranceFlowProofGate"]["missing"] == []
+    assert payload["insuranceFlowProofGate"]["runtimeReplayContract"] == {
+        "state": "ready",
+        "ready": True,
+        "checks": {
+            "agentRuntimeReplay": True,
+            "approvedSkillAvailable": True,
+            "draftArtifactOutput": True,
+            "approvalBoundaryBeforeSend": True,
+        },
+        "requiredEvidence": [
+            "passing AgentRuntime replay",
+            "approved reusable insurance skill",
+            "draft_email artifact output",
+            "human approval boundary before final send",
+        ],
+        "missing": [],
+        "hardeningPlaybook": [],
+    }
     assert [step["key"] for step in payload["insuranceFlowProofGate"]["steps"]] == [
         "email_read",
         "erp_lookup",
@@ -187,6 +205,11 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert partial_demo["insuranceFlowProofGate"]["state"] == "needs_hardening"
     assert partial_demo["insuranceFlowProofGate"]["missing"] == ["trajectory", "skill_promotion", "runtime_replay", "smoke_gate"]
     assert partial_demo["insuranceFlowProofGate"]["readySteps"] == 6
+    assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["state"] == "needs_hardening"
+    assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["missing"] == [
+        "agentRuntimeReplay",
+        "approvedSkillAvailable",
+    ]
     assert partial_demo["smokeGate"]["state"] == "needs_hardening"
     assert partial_demo["smokeGate"]["missing"] == ["factoryReady", "runtimeReady", "passingReplay"]
     readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}
