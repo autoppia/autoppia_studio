@@ -1,4 +1,10 @@
-from app.services.runtime_sessions import build_runtime_metrics, build_runtime_timeline, build_session_contract, summarize_session_contracts
+from app.services.runtime_sessions import (
+    build_runtime_metrics,
+    build_runtime_policy_boundary,
+    build_runtime_timeline,
+    build_session_contract,
+    summarize_session_contracts,
+)
 
 
 def test_build_runtime_metrics_dedupes_trace_ids_and_sums_step_latency():
@@ -25,6 +31,33 @@ def test_build_runtime_metrics_dedupes_trace_ids_and_sums_step_latency():
         "connectorActionCount": 1,
         "stepLatencyCount": 2,
         "traceIds": ["trace-1", "run-1", "work-1", "trace-2"],
+    }
+
+
+def test_build_runtime_policy_boundary_counts_side_effect_boundaries_and_approvals():
+    boundary = build_runtime_policy_boundary(
+        action_history=[
+            {"action": "imap.search_emails"},
+            {"action": "smtp.draft_email"},
+            {"action": "crm.update_record", "approvalRequired": True},
+            {"action": "smtp.send_email", "approvalKey": "approval-send"},
+            "bad",
+        ],
+        runtime_state={
+            "pendingConnectorApproval": "smtp.send_email:0:abc",
+            "approvedConnectorToolCalls": ["crm.update_record:0:def"],
+        },
+        artifact_count=2,
+        pending_approval_count=1,
+    )
+
+    assert boundary == {
+        "boundaries": {"read": 1, "draft": 3, "write": 1, "send": 1},
+        "approvalRequiredFor": ["write", "send"],
+        "pendingApprovalCount": 1,
+        "approvedApprovalCount": 1,
+        "artifactCount": 2,
+        "hasHumanBoundary": True,
     }
 
 

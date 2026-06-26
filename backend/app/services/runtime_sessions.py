@@ -81,6 +81,56 @@ def build_runtime_metrics(
     }
 
 
+def session_action_policy_boundary(action: str) -> str:
+    normalized = str(action or "").strip().lower()
+    if not normalized:
+        return "read"
+    if any(token in normalized for token in ("send", "submit", "publish")):
+        return "send"
+    if any(token in normalized for token in ("update", "delete", "write", "post", "create", "save", "upload")):
+        return "write"
+    if any(token in normalized for token in ("draft", "artifact", "compose", "prepare")):
+        return "draft"
+    return "read"
+
+
+def build_runtime_policy_boundary(
+    *,
+    action_history: list[Any],
+    runtime_state: dict[str, Any],
+    artifact_count: int = 0,
+    pending_approval_count: int = 0,
+) -> dict[str, Any]:
+    boundary_counts = {"read": 0, "draft": 0, "write": 0, "send": 0}
+    approval_boundaries: set[str] = set()
+    approved_calls = runtime_state.get("approvedConnectorToolCalls") if isinstance(runtime_state.get("approvedConnectorToolCalls"), list) else []
+    pending_approval = str(runtime_state.get("pendingConnectorApproval") or "").strip()
+    for item in action_history:
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or item.get("name") or "").strip()
+        if not action:
+            continue
+        boundary = session_action_policy_boundary(action)
+        boundary_counts[boundary] += 1
+        if item.get("approvalKey") or item.get("approvalRequired"):
+            approval_boundaries.add(boundary)
+    if artifact_count:
+        boundary_counts["draft"] += artifact_count
+    if pending_approval:
+        approval_boundaries.add(session_action_policy_boundary(pending_approval))
+    for call in approved_calls:
+        approval_boundaries.add(session_action_policy_boundary(str(call or "")))
+    return {
+        "boundaries": boundary_counts,
+        "approvalRequiredFor": sorted(approval_boundaries, key=["read", "draft", "write", "send"].index),
+        "pendingApprovalCount": pending_approval_count,
+        "approvedApprovalCount": len(approved_calls),
+        "artifactCount": artifact_count,
+        "hasHumanBoundary": bool(pending_approval_count or pending_approval or approved_calls or approval_boundaries),
+    }
+
+
 def pretty_session_action(action: str) -> str:
     if not action:
         return "Waiting for task"
