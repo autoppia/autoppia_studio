@@ -13,6 +13,7 @@ from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
 from app.services.skill_manifests import skill_package_assets
 from app.services.skill_manifests import skill_io_contract
+from app.services.skill_manifests import skill_progressive_disclosure_ready
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_ready
 
@@ -211,7 +212,7 @@ def skill_package_coverage(
     activation = bool(str(skill.get("whenToUse") or package_activation.get("description") or "").strip())
     instructions = bool(str(skill.get("instructions") or "").strip())
     risk_policy = bool(str(skill.get("riskPolicy") or package_policies.get("riskPolicy") or "").strip() or package_policies.get("runtimePolicy") or skill.get("runtimePolicy"))
-    progressive = bool(_string_list(progressive_disclosure.get("summaryFields")) and _string_list(progressive_disclosure.get("fullFields")))
+    progressive = skill_progressive_disclosure_ready(progressive_disclosure)
     regression = bool(linked_runs or latest_regression or package_regression.get("cases"))
     publishable_regression = bool(
         any(_eval_run_label(run) == "pass" for run in linked_runs)

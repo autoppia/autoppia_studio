@@ -6,6 +6,7 @@ from app.services.skill_lifecycle import skill_promotion_status
 from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
 from app.services.skill_manifests import skill_package_assets
+from app.services.skill_manifests import skill_progressive_disclosure_ready
 
 
 SKILL_PACKAGE_HARDENING_ACTIONS = {
@@ -168,7 +169,7 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         "ioContract": bool(io_contract.get("declared") or _list_values(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip()),
         "expectedArtifacts": bool(_list_values(doc.get("expectedArtifacts")) or _list_values(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard")),
         "regressionSuite": bool(regression.get("cases") or _list_values(regression.get("benchmarkIds")) or _list_values(regression.get("evalIds")) or latest_regression),
-        "progressiveDisclosure": bool(summary_fields and full_fields),
+        "progressiveDisclosure": skill_progressive_disclosure_ready(progressive_disclosure),
     }
     manifest_ready = checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["sourceTrajectory"] and checks["ioContract"]
     publishable_regression = bool(
@@ -183,6 +184,8 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         blockers = [key for key, ready in checks.items() if not ready]
         if manifest_ready and not publishable_regression:
             blockers.append("publishableRegression")
+    else:
+        blockers.extend(key for key, ready in checks.items() if not ready and key not in blockers)
     metadata = package.get("metadata") if isinstance(package.get("metadata"), dict) else {}
     lifecycle_doc = {
         **doc,

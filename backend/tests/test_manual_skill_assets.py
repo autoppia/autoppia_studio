@@ -105,6 +105,22 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     assert readiness["hardening"]["blockers"] == ["publishableRegression"]
 
 
+def test_skill_package_readiness_rejects_incomplete_progressive_disclosure_contract():
+    doc = _manual_skill_doc()
+    lineage = manual_skill_lineage(doc)
+    hardening = manual_skill_hardening(doc, lineage)
+    package = manual_skill_package(doc, lineage, hardening)
+    package["progressiveDisclosure"] = {
+        "summaryFields": ["metadata", "activation", "ioContract"],
+        "fullFields": ["execution", "evidence"],
+    }
+
+    readiness = skill_package_readiness({"skillPackage": package, **doc})
+
+    assert readiness["checks"]["progressiveDisclosure"] is False
+    assert "progressiveDisclosure" in readiness["blockers"]
+
+
 def test_attach_manual_skill_assets_returns_skill_with_lineage_hardening_and_package():
     skill = attach_manual_skill_assets(_manual_skill_doc())
 

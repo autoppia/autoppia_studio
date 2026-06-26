@@ -1,4 +1,4 @@
-from app.services.skill_manifests import skill_io_contract, skill_package_assets, skill_package_manifest, skill_production_gate
+from app.services.skill_manifests import skill_io_contract, skill_package_assets, skill_package_manifest, skill_production_gate, skill_progressive_disclosure_ready
 
 
 def _skill():
@@ -89,6 +89,22 @@ def test_skill_package_manifest_exposes_publishable_agent_skill_contract():
     assert package["evidence"]["regressionSuite"]["publishable"] is True
     assert package["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "interface", "ioContract", "policies"]
     assert "assets" in package["progressiveDisclosure"]["fullFields"]
+    assert skill_progressive_disclosure_ready(package["progressiveDisclosure"]) is True
+
+
+def test_skill_progressive_disclosure_requires_runtime_safe_summary_and_full_fields():
+    assert skill_progressive_disclosure_ready(
+        {
+            "summaryFields": ["metadata", "activation", "ioContract"],
+            "fullFields": ["execution", "evidence"],
+        }
+    ) is False
+    assert skill_progressive_disclosure_ready(
+        {
+            "summaryFields": ["metadata", "activation", "ioContract", "policies"],
+            "fullFields": ["execution"],
+        }
+    ) is False
 
 
 def test_skill_production_gate_blocks_missing_io_and_regression():

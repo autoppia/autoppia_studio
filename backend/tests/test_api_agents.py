@@ -164,7 +164,7 @@ class _FakeCapabilitiesCollection:
                         "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
                     },
                     "progressiveDisclosure": {
-                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "summaryFields": ["metadata", "activation", "ioContract", "policies"],
                         "fullFields": ["execution", "evidence"],
                     },
                 },
@@ -468,7 +468,7 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["skillPackages"]["blocked"] == 0
     assert contract["skillPackages"]["packages"][0]["checks"]["expectedArtifacts"] is True
     assert contract["skillPackages"]["packages"][0]["assets"]["resourceIds"] == ["claims-handbook"]
-    assert contract["skillPackages"]["packages"][0]["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "ioContract"]
+    assert contract["skillPackages"]["packages"][0]["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "ioContract", "policies"]
 
 
 def test_runtime_requirement_status_respects_explicit_runtime_classes_and_approval_boundaries():

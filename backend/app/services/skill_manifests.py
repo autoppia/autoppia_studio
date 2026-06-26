@@ -3,8 +3,24 @@ from __future__ import annotations
 from typing import Any
 
 
+REQUIRED_PROGRESSIVE_SUMMARY_FIELDS = {"metadata", "activation", "ioContract", "policies"}
+REQUIRED_PROGRESSIVE_FULL_FIELDS = {"execution", "evidence"}
+
+
 def _list_values(value: Any) -> list[Any]:
     return value if isinstance(value, list) else []
+
+
+def _string_values(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [str(item).strip() for item in value if str(item or "").strip()]
+
+
+def skill_progressive_disclosure_ready(progressive_disclosure: dict[str, Any]) -> bool:
+    summary_fields = set(_string_values(progressive_disclosure.get("summaryFields")))
+    full_fields = set(_string_values(progressive_disclosure.get("fullFields")))
+    return REQUIRED_PROGRESSIVE_SUMMARY_FIELDS <= summary_fields and REQUIRED_PROGRESSIVE_FULL_FIELDS <= full_fields
 
 
 def skill_package_assets(skill: dict[str, Any]) -> dict[str, Any]:

@@ -257,7 +257,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                         "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
                     },
                     "progressiveDisclosure": {
-                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "summaryFields": ["metadata", "activation", "ioContract", "policies"],
                         "fullFields": ["execution", "assets", "evidence"],
                     },
                 },

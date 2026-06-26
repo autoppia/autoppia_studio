@@ -443,7 +443,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "scripts": [{"path": "scripts/claim_summary.py", "description": "Normalize claim status summaries"}],
                     "skillPackage": {
                         "progressiveDisclosure": {
-                            "summaryFields": ["metadata", "activation", "ioContract"],
+                            "summaryFields": ["metadata", "activation", "ioContract", "policies"],
                             "fullFields": ["execution", "assets", "evidence"],
                         }
                     },

@@ -48,7 +48,7 @@ def test_skill_package_coverage_detects_publishable_skill_package():
             "promotionStatus": "published",
             "skillPackage": {
                 "progressiveDisclosure": {
-                    "summaryFields": ["metadata", "activation", "ioContract"],
+                    "summaryFields": ["metadata", "activation", "ioContract", "policies"],
                     "fullFields": ["execution", "assets", "evidence"],
                 }
             },
@@ -77,6 +77,31 @@ def test_skill_package_coverage_detects_publishable_skill_package():
     assert coverage["release"]["readyForPublish"] is True
     assert coverage["release"]["historyCount"] == 2
     assert coverage["release"]["latestEvent"]["reason"] == "promoted"
+
+
+def test_skill_package_coverage_rejects_incomplete_progressive_disclosure_contract():
+    coverage = skill_package_coverage(
+        {
+            "capabilityId": "skill-1",
+            "whenToUse": "Use for claim replies.",
+            "instructions": "Read the claim and draft the response.",
+            "riskPolicy": "human_approval_for_writes",
+            "trajectoryIds": ["traj-1"],
+            "inputEntities": ["Claim"],
+            "outputEntity": "DraftEmail",
+            "skillPackage": {
+                "ioContract": {"declared": True},
+                "progressiveDisclosure": {
+                    "summaryFields": ["metadata", "activation", "ioContract"],
+                    "fullFields": ["execution", "evidence"],
+                },
+            },
+        },
+        trajectory_docs=[{"trajectoryId": "traj-1"}],
+        eval_run_docs=[],
+    )
+
+    assert coverage["progressiveDisclosure"] is False
 
 
 def test_work_orchestration_coverage_tracks_enterprise_controls():
@@ -174,7 +199,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "promotionStatus": "published",
                 "skillPackage": {
                     "progressiveDisclosure": {
-                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "summaryFields": ["metadata", "activation", "ioContract", "policies"],
                         "fullFields": ["execution", "assets", "evidence"],
                     }
                 },
