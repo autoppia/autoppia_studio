@@ -65,6 +65,21 @@ def test_company_integration_contract_models_setup_governance_and_compliance():
         "resourceAclComplete": True,
         "auditEvidence": {"sessions": 3, "artifacts": 4, "evalRuns": 5},
     }
+    assert integration["setupGate"] == {
+        "state": "ready",
+        "ready": True,
+        "checks": {
+            "systems": True,
+            "secrets": True,
+            "domain_allowlist": True,
+            "human_approval": True,
+            "resource_acl": True,
+            "host_jwt": True,
+            "audit_evidence": True,
+        },
+        "blockers": [],
+        "nextActions": [],
+    }
 
 
 def test_company_governance_exposes_resource_acl_and_domain_state():
@@ -90,3 +105,43 @@ def test_company_governance_exposes_resource_acl_and_domain_state():
         "restricted": 1,
         "visibility": [{"name": "restricted", "count": 1}],
     }
+    assert governance["setupGate"]["state"] == "partial"
+    assert governance["setupGate"]["checks"]["systems"] is True
+    assert governance["setupGate"]["checks"]["secrets"] is True
+    assert governance["setupGate"]["checks"]["resource_acl"] is True
+    assert governance["setupGate"]["blockers"] == ["human_approval", "host_jwt", "audit_evidence"]
+
+
+def test_company_integration_contract_flags_missing_enterprise_setup_controls():
+    integration = build_company_integration_contract(
+        company={"embedSettings": {}},
+        owner_email="owner@example.com",
+        counts={
+            "connectors": 0,
+            "credentials": 0,
+            "pendingApprovals": 0,
+            "approvedApprovals": 0,
+            "sessions": 0,
+            "artifacts": 0,
+            "evalRuns": 0,
+        },
+        surface_counts=[],
+        connector_domains=[],
+        policy_counts=[],
+        acl_visibility_counts=[],
+        knowledge_doc_count=1,
+        docs_with_acl=0,
+    )
+
+    assert integration["setupGate"]["state"] == "missing"
+    assert integration["setupGate"]["ready"] is False
+    assert integration["setupGate"]["blockers"] == [
+        "systems",
+        "secrets",
+        "domain_allowlist",
+        "human_approval",
+        "resource_acl",
+        "host_jwt",
+        "audit_evidence",
+    ]
+    assert integration["setupGate"]["nextActions"][0] == "Add the ERP, CRM, email, document and portal systems that define the operating surface."
