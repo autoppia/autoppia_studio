@@ -1389,6 +1389,7 @@ class AutomataAssistantService:
         operating_state = snapshot.get("operatingState") if isinstance(snapshot.get("operatingState"), dict) else {}
         readiness = operating_state.get("readiness") if isinstance(operating_state.get("readiness"), dict) else {}
         company_setup = operating_state.get("companySetup") if isinstance(operating_state.get("companySetup"), dict) else {}
+        factory = operating_state.get("factory") if isinstance(operating_state.get("factory"), dict) else {}
         capability_map = operating_state.get("capabilityMap") if isinstance(operating_state.get("capabilityMap"), dict) else {}
         resource_map = operating_state.get("resourceMap") if isinstance(operating_state.get("resourceMap"), dict) else {}
         runtime = operating_state.get("runtime") if isinstance(operating_state.get("runtime"), dict) else {}
@@ -1409,6 +1410,25 @@ class AutomataAssistantService:
             )
             if blockers:
                 company_setup_text += f" First setup blocker: {blockers[0]}."
+        factory_text = ""
+        connector_map = factory.get("connectorMap") if isinstance(factory.get("connectorMap"), dict) else {}
+        if connector_map:
+            factory_text = (
+                f" Factory pipeline: {connector_map.get('entityMapped', 0)}/{connector_map.get('total', 0)} connector(s) entity-mapped, "
+                f"{connector_map.get('typedToolReady', 0)} with typed tools, "
+                f"{connector_map.get('candidateTasksReady', 0)} with candidate tasks."
+            )
+            blocked_count = int(connector_map.get("entityPending") or 0) + int(connector_map.get("toolSynthesisPending") or 0) + int(connector_map.get("ingestionBlocked") or 0)
+            if blocked_count:
+                factory_text += (
+                    f" Factory blockers: {connector_map.get('entityPending', 0)} entity pending, "
+                    f"{connector_map.get('toolSynthesisPending', 0)} tool synthesis pending, "
+                    f"{connector_map.get('ingestionBlocked', 0)} ingestion blocked."
+                )
+                gaps = connector_map.get("gaps") if isinstance(connector_map.get("gaps"), list) else []
+                first_gap = gaps[0] if gaps and isinstance(gaps[0], dict) else {}
+                if first_gap:
+                    factory_text += f" First factory blocker: {first_gap.get('label') or first_gap.get('key') or 'connector discovery'}."
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
@@ -1535,7 +1555,7 @@ class AutomataAssistantService:
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{company_setup_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
+            f"{score_text}{company_setup_text}{factory_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:

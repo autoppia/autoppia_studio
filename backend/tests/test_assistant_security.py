@@ -864,6 +864,18 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "integration": {"systems": 2, "secrets": 1, "domainAllowlist": ["erp.example.com", "studio.example.com"]},
                     "setupGate": {"state": "partial", "blockers": ["resource_acl"]},
                 },
+                "factory": {
+                    "connectorMap": {
+                        "total": 3,
+                        "entityMapped": 1,
+                        "entityPending": 1,
+                        "typedToolReady": 2,
+                        "toolSynthesisPending": 1,
+                        "candidateTasksReady": 1,
+                        "ingestionBlocked": 1,
+                        "gaps": [{"key": "entity_mapping", "label": "ERP needs business entity mapping."}],
+                    },
+                },
                 "capabilityMap": {
                     "taskContracts": {"ready": 2, "total": 5, "reproducibility": {"readyForReplay": 3, "total": 5}},
                     "skills": {
@@ -928,6 +940,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Readiness is 60%" in reply
     assert "Company Setup gate: partial, 2 system(s), 1 secret(s), 2 allowed domain(s)." in reply
     assert "First setup blocker: resource_acl." in reply
+    assert "Factory pipeline: 1/3 connector(s) entity-mapped, 2 with typed tools, 1 with candidate tasks." in reply
+    assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
+    assert "First factory blocker: ERP needs business entity mapping." in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
     assert "Task replayability: 3/5 replay-ready." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
