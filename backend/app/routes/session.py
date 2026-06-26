@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.database import approvals_collection, artifacts_collection, session_documents_collection, sessions_collection
 from app.routes.knowledge import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, create_knowledge_document_record
+from app.services.runtime_sessions import build_runtime_audit_trail as _session_runtime_audit_trail
 from app.services.runtime_sessions import build_runtime_evidence as _session_runtime_evidence
 from app.services.runtime_sessions import build_runtime_lab as _session_runtime_lab
 from app.services.runtime_sessions import build_runtime_metrics as _session_runtime_metrics
@@ -18,7 +19,6 @@ from app.services.runtime_sessions import build_runtime_policy_boundary as _sess
 from app.services.runtime_sessions import build_session_contract
 from app.services.runtime_sessions import build_runtime_timeline as _session_runtime_timeline
 from app.services.runtime_sessions import pretty_session_action as _pretty_session_action
-from app.services.runtime_sessions import session_action_policy_boundary as _session_action_policy_boundary
 from app.services.runtime_sessions import session_action_timestamp as _session_action_timestamp
 
 router = APIRouter()
@@ -221,105 +221,6 @@ def _session_operational_fields(
             "replayReady": bool(trace.get("replayReady")),
         },
         "sessionContract": summary.get("sessionContract", {}),
-    }
-
-
-def _session_runtime_audit_trail(summary: dict[str, Any], *, action_history: list[Any], artifact_count: int, pending_approval_count: int) -> dict[str, Any]:
-    runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
-    policy_boundary = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
-    events: list[dict[str, Any]] = [
-        {
-            "event": "session.started",
-            "actor": "user",
-            "boundary": "read",
-            "at": summary.get("createdAt"),
-            "traceId": str(summary.get("sessionId") or ""),
-            "description": "Runtime session created.",
-        }
-    ]
-    for index, item in enumerate(action_history):
-        if not isinstance(item, dict):
-            continue
-        action = str(item.get("action") or item.get("name") or "").strip()
-        if not action:
-            continue
-        activity = "browser" if action.startswith("browser.") else "skill" if action == "skill.use" else "runtime" if action.startswith(("router.", "runtime.")) else "tool"
-        events.append(
-            {
-                "event": f"{activity}.action",
-                "actor": "agent_runtime",
-                "boundary": _session_action_policy_boundary(action),
-                "action": action,
-                "status": str(item.get("status") or "ok"),
-                "at": _session_action_timestamp(item),
-                "traceId": str(item.get("traceId") or item.get("toolCallId") or ""),
-                "description": _pretty_session_action(action),
-            }
-        )
-        if item.get("approvalKey") or item.get("approvalRequired"):
-            events.append(
-                {
-                    "event": "approval.boundary",
-                    "actor": "agent_runtime",
-                    "boundary": _session_action_policy_boundary(action),
-                    "action": action,
-                    "status": "pending",
-                    "at": _session_action_timestamp(item),
-                    "traceId": str(item.get("approvalKey") or ""),
-                    "description": "Human approval required before side effect execution.",
-                }
-            )
-        if index >= 24:
-            break
-    if runtime_state.get("matchedSkillId") or runtime_state.get("matchedSkillName"):
-        events.append(
-            {
-                "event": "skill.matched",
-                "actor": "agent_runtime",
-                "boundary": "read",
-                "skillId": str(runtime_state.get("matchedSkillId") or ""),
-                "status": "matched",
-                "at": str(summary.get("latestActivityAt") or ""),
-                "traceId": str(runtime_state.get("matchedTrajectoryId") or ""),
-                "description": str(runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or "Skill matched"),
-            }
-        )
-    pending_approval = str(summary.get("pendingConnectorApproval") or runtime_state.get("pendingConnectorApproval") or "")
-    if pending_approval or pending_approval_count:
-        events.append(
-            {
-                "event": "approval.pending",
-                "actor": "human",
-                "boundary": _session_action_policy_boundary(pending_approval),
-                "status": "pending",
-                "at": str(summary.get("latestActivityAt") or ""),
-                "traceId": pending_approval,
-                "description": "Runtime is waiting for human approval.",
-            }
-        )
-    if artifact_count:
-        events.append(
-            {
-                "event": "artifact.created",
-                "actor": "agent_runtime",
-                "boundary": "draft",
-                "status": "created",
-                "at": str(summary.get("latestActivityAt") or ""),
-                "traceId": str(summary.get("sessionId") or ""),
-                "description": f"{artifact_count} business artifact(s) created.",
-            }
-        )
-    approval_required_for = policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else []
-    return {
-        "sessionId": str(summary.get("sessionId") or ""),
-        "uniform": True,
-        "eventCount": len(events),
-        "events": events,
-        "boundaries": policy_boundary.get("boundaries") if isinstance(policy_boundary.get("boundaries"), dict) else {},
-        "approvalRequiredFor": approval_required_for,
-        "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
-        "artifactCount": artifact_count,
-        "pendingApprovalCount": pending_approval_count,
     }
 
 

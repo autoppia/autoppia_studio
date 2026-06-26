@@ -1,4 +1,5 @@
 from app.services.runtime_sessions import (
+    build_runtime_audit_trail,
     build_runtime_evidence,
     build_runtime_lab,
     build_runtime_metrics,
@@ -193,6 +194,52 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
         "durationSeconds": 3.0,
         "lastStepSeconds": 0.75,
     }
+
+
+def test_build_runtime_audit_trail_records_uniform_events_and_boundaries():
+    audit = build_runtime_audit_trail(
+        {
+            "sessionId": "session-1",
+            "createdAt": "t-0",
+            "latestActivityAt": "t-3",
+            "pendingConnectorApproval": "smtp.send_email:0:abc",
+            "runtimePolicyBoundary": {
+                "boundaries": {"read": 1, "draft": 1, "write": 0, "send": 1},
+                "approvalRequiredFor": ["send"],
+                "hasHumanBoundary": True,
+            },
+            "runtimeState": {
+                "matchedSkillId": "skill-1",
+                "matchedSkillName": "Draft claim reply",
+                "matchedTrajectoryId": "traj-1",
+            },
+        },
+        action_history=[
+            {"action": "browser.navigate", "emittedAt": "t-1", "traceId": "trace-browser"},
+            {"action": "smtp.send_email", "emittedAt": "t-2", "approvalKey": "approval-send", "traceId": "trace-send"},
+        ],
+        artifact_count=1,
+        pending_approval_count=1,
+    )
+
+    assert audit["sessionId"] == "session-1"
+    assert audit["uniform"] is True
+    assert audit["approvalRequiredFor"] == ["send"]
+    assert audit["hasHumanBoundary"] is True
+    assert audit["artifactCount"] == 1
+    assert audit["pendingApprovalCount"] == 1
+    assert [event["event"] for event in audit["events"]] == [
+        "session.started",
+        "browser.action",
+        "tool.action",
+        "approval.boundary",
+        "skill.matched",
+        "approval.pending",
+        "artifact.created",
+    ]
+    assert audit["events"][2]["boundary"] == "send"
+    assert audit["events"][3]["traceId"] == "approval-send"
+    assert audit["events"][4]["skillId"] == "skill-1"
 
 
 def test_build_runtime_timeline_normalizes_actions_status_and_trace_fields():
