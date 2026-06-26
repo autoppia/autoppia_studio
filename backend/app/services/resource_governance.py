@@ -4,6 +4,45 @@ import re
 from typing import Any
 
 
+RESOURCE_HARDENING_ACTIONS = {
+    "resource_contracts": {
+        "area": "resources",
+        "severity": "high",
+        "action": "Expose each knowledge document as a governed resource contract before runtime use.",
+    },
+    "resource_acl": {
+        "area": "security",
+        "severity": "high",
+        "action": "Declare ACL visibility, allowed roles or users before enabling AgentRuntime grounding.",
+    },
+    "resource_indexing": {
+        "area": "retrieval",
+        "severity": "high",
+        "action": "Complete indexing or rerun the indexing job for resources that are not retrievable.",
+    },
+    "resource_citations": {
+        "area": "grounding",
+        "severity": "medium",
+        "action": "Add citation labels and source metadata so grounded answers can cite evidence.",
+    },
+    "resource_read_tools": {
+        "area": "tools",
+        "severity": "high",
+        "action": "Expose read-only knowledge tools before allowing runtimes to consult the resource.",
+    },
+    "vector_store": {
+        "area": "retrieval",
+        "severity": "high",
+        "action": "Attach resources to vector stores and collections used by runtime retrieval.",
+    },
+    "resource_freshness": {
+        "area": "governance",
+        "severity": "medium",
+        "action": "Refresh stale or indexing resources before relying on them for business decisions.",
+    },
+}
+
+
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -28,6 +67,29 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
         key = str(value or "unspecified").strip() or "unspecified"
         counts[key] = counts.get(key, 0) + 1
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _resource_hardening_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = RESOURCE_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "resources",
+                "severity": "medium",
+                "action": "Review resource governance before enabling production runtime grounding.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def resource_tool_segment(value: str) -> str:
@@ -347,6 +409,19 @@ def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_lim
         ]
         if gap
     ]
+    gap_counts = {
+        key: count
+        for key, count in {
+            "resource_contracts": max(0, total - with_contract),
+            "resource_acl": max(0, total - with_acl),
+            "resource_indexing": max(0, total - indexed),
+            "resource_citations": max(0, total - citable),
+            "resource_read_tools": sum(1 for resource in resources if not resource_read_tools(resource)),
+            "vector_store": max(0, total - with_vector_store),
+            "resource_freshness": max(0, total - current_resources),
+        }.items()
+        if count
+    }
     return {
         "total": total,
         "indexed": indexed,
@@ -382,4 +457,5 @@ def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_lim
         "sample": sample,
         "ready": bool(total and runtime_ready == total),
         "gaps": gaps,
+        "hardeningPlaybook": _resource_hardening_playbook(gap_counts),
     }

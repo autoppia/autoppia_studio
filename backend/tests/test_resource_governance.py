@@ -111,6 +111,7 @@ def test_summarize_resource_governance_counts_runtime_ready_resources():
         "sourceUrls": ["https://docs.example.com/claims"],
     }
     assert summary["runtimeGate"]["ready"] == 1
+    assert summary["hardeningPlaybook"] == []
     assert summary["grounding"] == {
         "ready": 1,
         "blocked": 0,
@@ -157,3 +158,26 @@ def test_summarize_resource_governance_separates_indexed_from_grounding_ready():
         "current": 0,
         "citable": 0,
     }
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "resource_acl",
+            "count": 1,
+            "area": "security",
+            "severity": "high",
+            "action": "Declare ACL visibility, allowed roles or users before enabling AgentRuntime grounding.",
+        },
+        {
+            "gap": "resource_citations",
+            "count": 1,
+            "area": "grounding",
+            "severity": "medium",
+            "action": "Add citation labels and source metadata so grounded answers can cite evidence.",
+        },
+        {
+            "gap": "resource_freshness",
+            "count": 1,
+            "area": "governance",
+            "severity": "medium",
+            "action": "Refresh stale or indexing resources before relying on them for business decisions.",
+        },
+    ]

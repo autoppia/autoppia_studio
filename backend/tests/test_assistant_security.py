@@ -595,6 +595,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     ]
     assert snapshot["operatingState"]["resourceMap"]["sample"][0]["runtimeGate"]["state"] == "blocked"
     assert snapshot["operatingState"]["resourceMap"]["gaps"][0]["key"] == "resource_acl"
+    assert snapshot["operatingState"]["resourceMap"]["hardeningPlaybook"][0] == {
+        "gap": "resource_acl",
+        "count": 1,
+        "area": "security",
+        "severity": "high",
+        "action": "Declare ACL visibility, allowed roles or users before enabling AgentRuntime grounding.",
+    }
     assert snapshot["operatingState"]["workOrchestration"]["triggers"]["due"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["budgets"]["exhaustedItems"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["retries"]["totalRetryCount"] == 1
