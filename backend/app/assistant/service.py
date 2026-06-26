@@ -1614,8 +1614,13 @@ class AutomataAssistantService:
                     coverage_text += (
                         f" Judge strategy gate: {judge_gate.get('state', 'unknown')}, "
                         f"{judge_gate.get('deterministic', 0)}/{judge_gate.get('total', 0)} deterministic, "
-                        f"{judge_gate.get('stateful', 0)} stateful."
+                        f"{judge_gate.get('stateful', 0)} stateful, "
+                        f"{judge_gate.get('llmOnly', 0)} LLM-only."
                     )
+                    judge_playbook = judge_gate.get("hardeningPlaybook") if isinstance(judge_gate.get("hardeningPlaybook"), list) else []
+                    first_judge_action = judge_playbook[0] if judge_playbook and isinstance(judge_playbook[0], dict) else {}
+                    if first_judge_action:
+                        coverage_text += f" First judge hardening: {first_judge_action.get('action') or first_judge_action.get('gap') or 'judge strategy'}."
             if promotion_pipeline:
                 pipeline_tasks = promotion_pipeline.get("tasks") if isinstance(promotion_pipeline.get("tasks"), dict) else {}
                 pipeline_trajectories = promotion_pipeline.get("trajectories") if isinstance(promotion_pipeline.get("trajectories"), dict) else {}

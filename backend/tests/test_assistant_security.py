@@ -1190,7 +1190,19 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "promotionGate": {"state": "blocked"},
                         "evalCenterGate": {"state": "blocked", "taskCoverage": {"replayReady": 3, "total": 7}},
                         "regressionGate": {"state": "needs_regression", "gatedCapabilities": 3, "totalCapabilities": 5},
-                        "judgeStrategyGate": {"state": "needs_hardening", "total": 7, "deterministic": 4, "stateful": 6},
+                        "judgeStrategyGate": {
+                            "state": "needs_hardening",
+                            "total": 7,
+                            "deterministic": 4,
+                            "stateful": 6,
+                            "llmOnly": 2,
+                            "hardeningPlaybook": [
+                                {
+                                    "gap": "llm_only_judge",
+                                    "action": "Add deterministic checks or stateful replay so LLM judges remain complementary.",
+                                }
+                            ],
+                        },
                     },
                     "promotionPipeline": {
                         "ready": False,
@@ -1325,7 +1337,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
     assert "Eval center gate: blocked, 3/7 replay-ready task(s)." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
-    assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful." in reply
+    assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful, 2 LLM-only." in reply
+    assert "First judge hardening: Add deterministic checks or stateful replay so LLM judges remain complementary." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
     assert "Promotion data hygiene: 1 legacy pending trajectory row(s) should move to benchmark tasks." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
