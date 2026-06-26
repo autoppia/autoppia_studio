@@ -1566,6 +1566,15 @@ class AutomataAssistantService:
         work_text = ""
         if sla:
             work_text = f" Work attention items: {sla.get('needsAttention', 0)}."
+            triggers = work_orchestration.get("triggers") if isinstance(work_orchestration.get("triggers"), dict) else {}
+            budgets = work_orchestration.get("budgets") if isinstance(work_orchestration.get("budgets"), dict) else {}
+            retries = work_orchestration.get("retries") if isinstance(work_orchestration.get("retries"), dict) else {}
+            if triggers or budgets or retries:
+                work_text += (
+                    f" Work operations: {triggers.get('due', 0)} due trigger(s), "
+                    f"{budgets.get('exhaustedItems', 0)} budget-exhausted item(s), "
+                    f"{retries.get('totalRetryCount', 0)} retry attempt(s)."
+                )
             contracts = work_orchestration.get("contracts") if isinstance(work_orchestration.get("contracts"), dict) else {}
             if contracts:
                 work_text += (

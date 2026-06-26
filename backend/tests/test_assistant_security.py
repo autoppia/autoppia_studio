@@ -932,6 +932,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
+                    "triggers": {"due": 2},
+                    "budgets": {"exhaustedItems": 1},
+                    "retries": {"totalRetryCount": 4},
                     "contracts": {
                         "withContract": 2,
                         "total": 4,
@@ -980,6 +983,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
     assert "Artifact reuse blocked: 1." in reply
     assert "Work attention items: 3." in reply
+    assert "Work operations: 2 due trigger(s), 1 budget-exhausted item(s), 4 retry attempt(s)." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automation gate: 1 unattended-ready, 2 blocked." in reply
     assert "First automation blocker: pending_approval." in reply
