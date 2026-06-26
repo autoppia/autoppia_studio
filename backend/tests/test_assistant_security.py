@@ -626,11 +626,18 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Business entities exist but are not all ready for runtime tool binding." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
+    assert any(
+        action["area"] == "entities"
+        and action["action"] == "Complete entity mapping for runtime binding before publishing connector tools."
+        and action["reason"] == "1 entity blocked by identifier."
+        for action in snapshot["operatingState"]["recommendedNextActions"]
+    )
     company_setup = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Company Setup")
     assert company_setup["status"] == "needs_work"
     capability_factory = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Capability Factory")

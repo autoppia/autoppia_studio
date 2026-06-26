@@ -500,6 +500,16 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "company_setup", "action": first_action, "reason": f"Company Setup gate is {setup_gate.get('state') or 'incomplete'}."})
         if counts["benchmarkTasks"] and task_contracts_ready == 0:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
+        if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"]:
+            first_blocker = entity_map["bindingBlockers"][0]["name"] if entity_map["bindingBlockers"] else "entity mapping"
+            recommended_actions.insert(
+                0,
+                {
+                    "area": "entities",
+                    "action": "Complete entity mapping for runtime binding before publishing connector tools.",
+                    "reason": f"{entity_map['total'] - entity_map['toolBindingReady']} entit{'y' if entity_map['total'] - entity_map['toolBindingReady'] == 1 else 'ies'} blocked by {first_blocker}.",
+                },
+            )
         if connector_map["needsHardeningCount"]:
             recommended_actions.insert(0, {"area": "connectors", "action": "Harden synthesized connector tools with policy, entity bindings, approval boundaries and regression evidence.", "reason": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) are not production-ready."})
         if resource_map["total"] and not resource_map["ready"]:
@@ -558,6 +568,7 @@ class AutomataAssistantTools:
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
+                {"area": "entities", "severity": "medium", "message": "Business entities exist but are not all ready for runtime tool binding."} if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"] else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
