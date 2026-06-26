@@ -1,4 +1,31 @@
-from app.services.runtime_sessions import build_runtime_timeline, build_session_contract, summarize_session_contracts
+from app.services.runtime_sessions import build_runtime_metrics, build_runtime_timeline, build_session_contract, summarize_session_contracts
+
+
+def test_build_runtime_metrics_dedupes_trace_ids_and_sums_step_latency():
+    metrics = build_runtime_metrics(
+        action_history=[
+            {"action": "browser.navigate", "elapsedSeconds": "1.25", "traceId": "trace-1"},
+            {"action": "imap.search_emails", "durationSeconds": 0.75, "trace_id": "trace-2"},
+            {"action": "runtime.noop", "latencySeconds": 0, "runId": "trace-1"},
+            "bad",
+        ],
+        runtime_state={"runId": "run-1", "workItemId": "work-1", "traceId": "trace-1"},
+        credits_spent=2.5,
+        browser_action_count=1,
+        connector_action_count=1,
+        runtime_kind="hybrid",
+    )
+
+    assert metrics == {
+        "runtimeKind": "hybrid",
+        "creditsSpent": 2.5,
+        "durationSeconds": 2.0,
+        "lastStepSeconds": 0.75,
+        "browserActionCount": 1,
+        "connectorActionCount": 1,
+        "stepLatencyCount": 2,
+        "traceIds": ["trace-1", "run-1", "work-1", "trace-2"],
+    }
 
 
 def test_build_runtime_timeline_normalizes_actions_status_and_trace_fields():

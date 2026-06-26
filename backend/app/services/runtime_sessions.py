@@ -24,6 +24,63 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
+def dedupe_trace_ids(values: list[Any]) -> list[str]:
+    trace_ids: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        trace_ids.append(clean)
+    return trace_ids
+
+
+def build_runtime_metrics(
+    *,
+    action_history: list[Any],
+    runtime_state: dict[str, Any],
+    credits_spent: float,
+    browser_action_count: int,
+    connector_action_count: int,
+    runtime_kind: str,
+) -> dict[str, Any]:
+    step_latencies = [
+        _safe_float(item.get("elapsedSeconds") or item.get("durationSeconds") or item.get("latencySeconds"))
+        for item in action_history
+        if isinstance(item, dict)
+    ]
+    step_latencies = [value for value in step_latencies if value > 0]
+    runtime_duration = _safe_float(
+        runtime_state.get("durationSeconds")
+        or runtime_state.get("elapsedSeconds")
+        or runtime_state.get("latencySeconds")
+    )
+    duration_seconds = runtime_duration if runtime_duration > 0 else round(sum(step_latencies), 3)
+    last_step_seconds = step_latencies[-1] if step_latencies else 0.0
+    trace_ids = dedupe_trace_ids([
+        runtime_state.get("traceId"),
+        runtime_state.get("trace_id"),
+        runtime_state.get("runId"),
+        runtime_state.get("workItemId"),
+        *[
+            item.get("traceId") or item.get("trace_id") or item.get("runId")
+            for item in action_history
+            if isinstance(item, dict)
+        ],
+    ])
+    return {
+        "runtimeKind": runtime_kind,
+        "creditsSpent": credits_spent,
+        "durationSeconds": round(duration_seconds, 3),
+        "lastStepSeconds": round(last_step_seconds, 3),
+        "browserActionCount": browser_action_count,
+        "connectorActionCount": connector_action_count,
+        "stepLatencyCount": len(step_latencies),
+        "traceIds": trace_ids,
+    }
+
+
 def pretty_session_action(action: str) -> str:
     if not action:
         return "Waiting for task"

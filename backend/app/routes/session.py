@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from app.database import approvals_collection, artifacts_collection, session_documents_collection, sessions_collection
 from app.routes.knowledge import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, create_knowledge_document_record
+from app.services.runtime_sessions import build_runtime_metrics as _session_runtime_metrics
 from app.services.runtime_sessions import build_session_contract
 from app.services.runtime_sessions import build_runtime_timeline as _session_runtime_timeline
 from app.services.runtime_sessions import pretty_session_action as _pretty_session_action
@@ -137,63 +138,6 @@ def _safe_float(value: Any) -> float:
         return float(value or 0.0)
     except (TypeError, ValueError):
         return 0.0
-
-
-def _dedupe_trace_ids(values: list[Any]) -> list[str]:
-    trace_ids: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        clean = str(value or "").strip()
-        if not clean or clean in seen:
-            continue
-        seen.add(clean)
-        trace_ids.append(clean)
-    return trace_ids
-
-
-def _session_runtime_metrics(
-    *,
-    action_history: list[Any],
-    runtime_state: dict[str, Any],
-    credits_spent: float,
-    browser_action_count: int,
-    connector_action_count: int,
-    runtime_kind: str,
-) -> dict[str, Any]:
-    step_latencies = [
-        _safe_float(item.get("elapsedSeconds") or item.get("durationSeconds") or item.get("latencySeconds"))
-        for item in action_history
-        if isinstance(item, dict)
-    ]
-    step_latencies = [value for value in step_latencies if value > 0]
-    runtime_duration = _safe_float(
-        runtime_state.get("durationSeconds")
-        or runtime_state.get("elapsedSeconds")
-        or runtime_state.get("latencySeconds")
-    )
-    duration_seconds = runtime_duration if runtime_duration > 0 else round(sum(step_latencies), 3)
-    last_step_seconds = step_latencies[-1] if step_latencies else 0.0
-    trace_ids = _dedupe_trace_ids([
-        runtime_state.get("traceId"),
-        runtime_state.get("trace_id"),
-        runtime_state.get("runId"),
-        runtime_state.get("workItemId"),
-        *[
-            item.get("traceId") or item.get("trace_id") or item.get("runId")
-            for item in action_history
-            if isinstance(item, dict)
-        ],
-    ])
-    return {
-        "runtimeKind": runtime_kind,
-        "creditsSpent": credits_spent,
-        "durationSeconds": round(duration_seconds, 3),
-        "lastStepSeconds": round(last_step_seconds, 3),
-        "browserActionCount": browser_action_count,
-        "connectorActionCount": connector_action_count,
-        "stepLatencyCount": len(step_latencies),
-        "traceIds": trace_ids,
-    }
 
 
 def _session_action_policy_boundary(action: str) -> str:
