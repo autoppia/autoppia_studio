@@ -267,6 +267,9 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             send_approval_blocker_count,
         )
     send_approval_ready = send_tool_count == 0 or send_approval_blocker_count == 0
+    send_approval_playbook = tool_hardening_playbook(
+        {"approval_policy": send_approval_blocker_count} if send_approval_blocker_count else {}
+    )
     tool_gate_ready = bool(total_synthesized_tools) and not needs_hardening_count and not tool_synthesis_pending and send_approval_ready
     factory_pipeline_gate = _factory_pipeline_gate(
         total=len(connectors),
@@ -300,6 +303,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                 "sendToolsNamed": unknown_send_tool_count == 0,
                 "sendToolsRequireApproval": not uncovered_send_tools and unknown_send_tool_count == 0,
             },
+            "hardeningPlaybook": send_approval_playbook,
         },
         "toolHardeningGaps": [
             {"name": key, "count": hardening_gap_counts[key]}

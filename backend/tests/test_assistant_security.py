@@ -276,7 +276,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                         "businessObjects": [],
                         "readyForToolBinding": False,
                     },
-                    "toolSynthesis": {"typedToolCount": 0},
+                    "toolSynthesis": {
+                        "typedToolCount": 0,
+                        "sendToolCount": 1,
+                        "sendTools": ["smtp.send_email"],
+                    },
                     "ingestionPipeline": {"state": "blocked"},
                 },
             }
@@ -789,6 +793,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
+    assert any(alert["message"] == "Connector send tools are not fully covered by human approval gates." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "The insurance flow is not proof-ready across email, ERP, documents, approvals, benchmark, trajectory, skill and replay." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Business entities exist but are not all ready for runtime tool binding." for alert in snapshot["automataGuidance"]["riskAlerts"])
@@ -803,6 +808,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Work operations gate is not ready for unattended orchestration." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
+    assert any(
+        action["area"] == "approvals"
+        and action["action"] == "Require human approval for write/send boundaries."
+        and "send tool(s)" in action["reason"]
+        for action in snapshot["operatingState"]["recommendedNextActions"]
+    )
     assert any(
         action["area"] == "entities"
         and action["action"] == "Complete entity mapping for runtime binding before publishing connector tools."
@@ -847,6 +858,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert capability_factory["evidence"] == {
         "connectors": 1,
         "typedTools": 0,
+        "sendTools": 1,
+        "sendApprovalReady": False,
+        "uncoveredSendTools": 1,
         "entities": 2,
         "benchmarkTasks": 1,
         "approvedTrajectories": 1,
@@ -1165,6 +1179,14 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "hardenedToolCount": 3,
                         "needsHardeningCount": 2,
                         "toolHardeningGaps": [{"name": "risk_policy", "count": 2}],
+                        "sendToolCount": 2,
+                        "sendApprovalGate": {
+                            "required": True,
+                            "ready": False,
+                            "approvalRequiredTools": ["smtp.send_email"],
+                            "uncoveredSendTools": ["gmail.send_email"],
+                            "unknownSendToolCount": 0,
+                        },
                         "toolProductionGate": {
                             "state": "needs_hardening",
                             "totalTools": 5,
@@ -1409,6 +1431,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Factory pipeline: 1/3 connector(s) entity-mapped, 2 with typed tools, 1 with candidate tasks." in reply
     assert "Tool hardening: 3 hardened, 2 need policy/entity/risk hardening." in reply
     assert "First tool hardening gap: risk_policy." in reply
+    assert "Send approval gate: blocked, 1/2 send tool(s) approval-covered." in reply
+    assert "First uncovered send tool: gmail.send_email." in reply
     assert "Tool production gate: needs_hardening, 3/5 tool(s) hardened." in reply
     assert "Tool production checks: typed ready, contracts need hardening, policy/entity coverage blocked." in reply
     assert "Capability factory gate: blocked." in reply

@@ -1504,6 +1504,19 @@ class AutomataAssistantService:
                 first_hardening_gap = hardening_gaps[0] if hardening_gaps and isinstance(hardening_gaps[0], dict) else {}
                 if first_hardening_gap:
                     factory_text += f" First tool hardening gap: {first_hardening_gap.get('name') or 'runtime_policy'}."
+            send_approval_gate = (
+                connector_map.get("sendApprovalGate")
+                if isinstance(connector_map.get("sendApprovalGate"), dict)
+                else {}
+            )
+            if send_approval_gate and send_approval_gate.get("required"):
+                factory_text += (
+                    f" Send approval gate: {'ready' if send_approval_gate.get('ready') else 'blocked'}, "
+                    f"{len(send_approval_gate.get('approvalRequiredTools') or [])}/{connector_map.get('sendToolCount', 0)} send tool(s) approval-covered."
+                )
+                uncovered_send_tools = send_approval_gate.get("uncoveredSendTools") if isinstance(send_approval_gate.get("uncoveredSendTools"), list) else []
+                if uncovered_send_tools:
+                    factory_text += f" First uncovered send tool: {uncovered_send_tools[0]}."
             tool_gate = connector_map.get("toolProductionGate") if isinstance(connector_map.get("toolProductionGate"), dict) else {}
             if tool_gate:
                 factory_text += (

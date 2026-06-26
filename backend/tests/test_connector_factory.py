@@ -73,6 +73,7 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
             "sendToolsNamed": True,
             "sendToolsRequireApproval": True,
         },
+        "hardeningPlaybook": [],
     }
     assert summary["toolHardeningGaps"] == [
         {"name": "entity_bindings", "count": 2},
@@ -209,6 +210,15 @@ def test_connector_factory_flags_send_tools_without_approval_coverage():
             "sendToolsNamed": True,
             "sendToolsRequireApproval": False,
         },
+        "hardeningPlaybook": [
+            {
+                "gap": "approval_policy",
+                "count": 1,
+                "area": "approvals",
+                "severity": "high",
+                "action": "Require human approval for write/send boundaries.",
+            }
+        ],
     }
     assert summary["sample"][0]["sendApprovalGate"] == {
         "ready": False,

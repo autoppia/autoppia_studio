@@ -412,6 +412,11 @@ class AutomataAssistantTools:
             if isinstance(connector_map.get("factoryPipelineGate"), dict)
             else {}
         )
+        send_approval_gate = (
+            connector_map.get("sendApprovalGate")
+            if isinstance(connector_map.get("sendApprovalGate"), dict)
+            else {}
+        )
         entity_map = summarize_entity_mapping(entity_docs, sample_limit=5)
         promotion_pipeline = summarize_promotion_pipeline(tasks=task_docs, trajectories=trajectory_docs, skills=skill_docs, sample_limit=5)
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
@@ -567,6 +572,24 @@ class AutomataAssistantTools:
             )
         if connector_map["needsHardeningCount"]:
             recommended_actions.insert(0, {"area": "connectors", "action": "Harden synthesized connector tools with policy, entity bindings, approval boundaries and regression evidence.", "reason": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) are not production-ready."})
+        if send_approval_gate and send_approval_gate.get("required") and not send_approval_gate.get("ready"):
+            playbook = send_approval_gate.get("hardeningPlaybook") if isinstance(send_approval_gate.get("hardeningPlaybook"), list) else []
+            first_action = (
+                playbook[0].get("action")
+                if playbook and isinstance(playbook[0], dict) and playbook[0].get("action")
+                else "Require human approval for connector send tools before production use."
+            )
+            recommended_actions.insert(
+                0,
+                {
+                    "area": "approvals",
+                    "action": first_action,
+                    "reason": (
+                        f"{len(send_approval_gate.get('uncoveredSendTools') or [])} named send tool(s) "
+                        f"and {send_approval_gate.get('unknownSendToolCount') or 0} unnamed send tool(s) lack approval coverage."
+                    ),
+                },
+            )
         if resource_map["total"] and not resource_map["ready"]:
             first_gap = resource_map["gaps"][0]["label"] if resource_map["gaps"] else "Knowledge resources are not ready for governed runtime grounding."
             recommended_actions.insert(0, {"area": "knowledge", "action": "Finish resource governance before relying on knowledge grounding in skills.", "reason": first_gap})
@@ -709,6 +732,7 @@ class AutomataAssistantTools:
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "entities", "severity": "medium", "message": "Business entities exist but are not all ready for runtime tool binding."} if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"] else None,
                 {"area": "capabilities", "severity": "high", "message": "Capability Factory pipeline is not ready end-to-end."} if factory_pipeline_gate and not factory_pipeline_gate.get("ready") else None,
+                {"area": "approvals", "severity": "high", "message": "Connector send tools are not fully covered by human approval gates."} if send_approval_gate and send_approval_gate.get("required") and not send_approval_gate.get("ready") else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
@@ -743,6 +767,7 @@ class AutomataAssistantTools:
         ]
         company_setup_hardening = _first_playbook_item(setup_gate.get("hardeningPlaybook"))
         capability_factory_hardening = _first_playbook_item(
+            send_approval_gate.get("hardeningPlaybook"),
             factory_pipeline_gate.get("hardeningPlaybook"),
             connector_map.get("toolHardeningPlaybook"),
             connector_map.get("ingestionPlaybook"),
@@ -775,6 +800,9 @@ class AutomataAssistantTools:
             "Capability Factory": {
                 "connectors": counts["connectors"],
                 "typedTools": connector_map.get("typedToolReady", 0),
+                "sendTools": connector_map.get("sendToolCount", 0),
+                "sendApprovalReady": bool((connector_map.get("sendApprovalGate") or {}).get("ready", True)),
+                "uncoveredSendTools": len((connector_map.get("sendApprovalGate") or {}).get("uncoveredSendTools") or []),
                 "entities": counts["entities"],
                 "benchmarkTasks": counts["benchmarkTasks"],
                 "approvedTrajectories": (promotion_pipeline.get("trajectories") or {}).get("approved", 0),
