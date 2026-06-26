@@ -24,6 +24,75 @@ def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
+def pretty_session_action(action: str) -> str:
+    if not action:
+        return "Waiting for task"
+    if action == "skill.use":
+        return "Using skill"
+    if action.startswith("browser.") or action.startswith("user."):
+        normalized = action.replace("browser.", "").replace("user.", "")
+        return " ".join(word[:1].upper() + word[1:] for word in normalized.split("_") if word)
+    return action
+
+
+def session_action_timestamp(entry: dict[str, Any]) -> str:
+    for key in ("emittedAt", "createdAt", "timestamp", "at"):
+        value = entry.get(key)
+        if isinstance(value, str) and value:
+            return value
+    return ""
+
+
+def session_action_activity(action: str) -> str:
+    normalized = str(action or "").lower()
+    if normalized.startswith("browser."):
+        return "browser"
+    if normalized.startswith("skill.") or "skill" in normalized:
+        return "skill"
+    if normalized in {"browser.done", "done", "runtime.done"} or normalized.endswith(".done"):
+        return "done"
+    return "tool"
+
+
+def session_action_status(entry: dict[str, Any]) -> str:
+    raw = str(entry.get("status") or entry.get("state") or "").strip().lower()
+    if raw in {"failed", "fail", "error"}:
+        return "failed"
+    if raw in {"pending", "running", "waiting"}:
+        return "pending"
+    result = entry.get("success")
+    if result is False:
+        return "failed"
+    return "ok"
+
+
+def build_runtime_timeline(action_history: list[Any]) -> list[dict[str, Any]]:
+    timeline: list[dict[str, Any]] = []
+    for index, item in enumerate(action_history):
+        if not isinstance(item, dict):
+            continue
+        action = str(item.get("action") or item.get("name") or "").strip()
+        if not action:
+            continue
+        timeline.append(
+            {
+                "index": index,
+                "action": action,
+                "label": pretty_session_action(action),
+                "activity": session_action_activity(action),
+                "status": session_action_status(item),
+                "emittedAt": session_action_timestamp(item),
+                "elapsedSeconds": _safe_float(item.get("elapsedSeconds") or item.get("durationSeconds") or item.get("latencySeconds")),
+                "traceId": str(item.get("traceId") or item.get("trace_id") or item.get("runId") or ""),
+                "toolCallId": str(item.get("toolCallId") or item.get("callId") or ""),
+                "approvalKey": str(item.get("approvalKey") or ""),
+                "artifactId": str(item.get("artifactId") or ""),
+                "skillId": str(item.get("skillId") or item.get("matchedSkillId") or ""),
+            }
+        )
+    return timeline
+
+
 def session_runtime_kind(session: dict[str, Any]) -> str:
     contract = session.get("sessionContract") if isinstance(session.get("sessionContract"), dict) else {}
     runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}

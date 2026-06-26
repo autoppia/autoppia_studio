@@ -1,4 +1,61 @@
-from app.services.runtime_sessions import build_session_contract, summarize_session_contracts
+from app.services.runtime_sessions import build_runtime_timeline, build_session_contract, summarize_session_contracts
+
+
+def test_build_runtime_timeline_normalizes_actions_status_and_trace_fields():
+    timeline = build_runtime_timeline(
+        [
+            {"action": "browser.navigate", "emittedAt": "t-1", "elapsedSeconds": "1.25", "traceId": "trace-browser"},
+            {"name": "imap.search_emails", "state": "running", "durationSeconds": 0.5, "trace_id": "trace-mail", "toolCallId": "call-1"},
+            {"action": "skill.use", "success": False, "latencySeconds": 0.2, "matchedSkillId": "skill-1"},
+            "bad",
+            {"action": ""},
+        ]
+    )
+
+    assert timeline == [
+        {
+            "index": 0,
+            "action": "browser.navigate",
+            "label": "Navigate",
+            "activity": "browser",
+            "status": "ok",
+            "emittedAt": "t-1",
+            "elapsedSeconds": 1.25,
+            "traceId": "trace-browser",
+            "toolCallId": "",
+            "approvalKey": "",
+            "artifactId": "",
+            "skillId": "",
+        },
+        {
+            "index": 1,
+            "action": "imap.search_emails",
+            "label": "imap.search_emails",
+            "activity": "tool",
+            "status": "pending",
+            "emittedAt": "",
+            "elapsedSeconds": 0.5,
+            "traceId": "trace-mail",
+            "toolCallId": "call-1",
+            "approvalKey": "",
+            "artifactId": "",
+            "skillId": "",
+        },
+        {
+            "index": 2,
+            "action": "skill.use",
+            "label": "Using skill",
+            "activity": "skill",
+            "status": "failed",
+            "emittedAt": "",
+            "elapsedSeconds": 0.2,
+            "traceId": "",
+            "toolCallId": "",
+            "approvalKey": "",
+            "artifactId": "",
+            "skillId": "skill-1",
+        },
+    ]
 
 
 def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
