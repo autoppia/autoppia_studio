@@ -74,6 +74,20 @@ def eval_run_label(run: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _eval_run_timestamp(run: dict[str, Any]) -> str:
+    for key in ("completedAt", "updatedAt", "createdAt", "startedAt"):
+        value = str(run.get(key) or "").strip()
+        if value:
+            return value
+    return ""
+
+
+def _latest_eval_run(runs: list[dict[str, Any]]) -> dict[str, Any]:
+    if not runs:
+        return {}
+    return sorted(runs, key=_eval_run_timestamp, reverse=True)[0]
+
+
 def _index_eval_runs(eval_runs: list[dict[str, Any]]) -> tuple[dict[str, list[dict[str, Any]]], dict[str, list[dict[str, Any]]]]:
     runs_by_eval_id: dict[str, list[dict[str, Any]]] = {}
     runs_by_benchmark_id: dict[str, list[dict[str, Any]]] = {}
@@ -138,19 +152,19 @@ def build_skill_eval_gate(
         for benchmark_id in benchmark_ids
         for run in runs_by_benchmark_id.get(benchmark_id, [])
     ]
-    labels = [eval_run_label(run) for run in linked_runs]
+    latest_run = _latest_eval_run(linked_runs)
+    latest_run_label = eval_run_label(latest_run) if latest_run else ""
     latest_label = str(latest_regression.get("label") or "").lower()
-    if latest_label:
-        labels.append(eval_run_label({"label": latest_label}))
-    if regression.get("publishable"):
-        labels.append("pass")
     has_regression = bool(regression.get("cases") or benchmark_ids or eval_ids or latest_regression or linked_runs)
-    if "fail" in labels:
+    authoritative_label = latest_run_label or (eval_run_label({"label": latest_label}) if latest_label else "")
+    if authoritative_label == "fail":
         state = "failing"
-    elif "pass" in labels:
+    elif authoritative_label == "pass":
         state = "passing"
-    elif any(label in {"pending", "running"} for label in labels):
+    elif authoritative_label in {"pending", "running"}:
         state = "pending"
+    elif regression.get("publishable"):
+        state = "passing"
     else:
         state = "missing"
     blockers = _list_values(production_gate.get("blockers"))
@@ -172,6 +186,16 @@ def build_skill_eval_gate(
         "benchmarkIds": benchmark_ids[:5],
         "evalIds": eval_ids[:5],
         "linkedRunIds": _dedupe([run.get("runId") for run in linked_runs])[:5],
+        "latestRun": {
+            "runId": str(latest_run.get("runId") or ""),
+            "evalId": str(latest_run.get("evalId") or ""),
+            "benchmarkId": str(latest_run.get("benchmarkId") or ""),
+            "label": latest_run_label,
+            "createdAt": latest_run.get("createdAt"),
+            "completedAt": latest_run.get("completedAt"),
+        }
+        if latest_run
+        else {},
         "latestLabel": latest_label,
         "hasRegression": has_regression,
         "publishable": state == "passing",

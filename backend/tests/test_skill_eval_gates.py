@@ -39,6 +39,47 @@ def test_build_skill_eval_gate_tracks_pending_failing_and_passing_runs():
     assert passing["blockers"] == []
 
 
+def test_build_skill_eval_gate_uses_latest_linked_run_as_authoritative_evidence():
+    skill = {
+        "capabilityId": "skill-1",
+        "lineage": {"evalIds": ["task-1"]},
+        "skillPackage": {
+            "evidence": {
+                "regressionSuite": {"evalIds": ["task-1"], "publishable": True},
+                "latestRegression": {"label": "pass"},
+            }
+        },
+    }
+
+    failing_latest = build_skill_eval_gate(
+        skill,
+        runs_by_eval_id={
+            "task-1": [
+                {"runId": "run-old-pass", "evalId": "task-1", "label": "pass", "createdAt": "2026-06-25T10:00:00+00:00"},
+                {"runId": "run-new-fail", "evalId": "task-1", "label": "fail", "createdAt": "2026-06-26T10:00:00+00:00"},
+            ]
+        },
+    )
+    passing_latest = build_skill_eval_gate(
+        skill,
+        runs_by_eval_id={
+            "task-1": [
+                {"runId": "run-old-fail", "evalId": "task-1", "label": "fail", "createdAt": "2026-06-25T10:00:00+00:00"},
+                {"runId": "run-new-pass", "evalId": "task-1", "label": "pass", "createdAt": "2026-06-26T10:00:00+00:00"},
+            ]
+        },
+    )
+
+    assert failing_latest["state"] == "failing"
+    assert failing_latest["publishable"] is False
+    assert failing_latest["blockers"] == ["failingRegression"]
+    assert failing_latest["latestRun"]["runId"] == "run-new-fail"
+    assert passing_latest["state"] == "passing"
+    assert passing_latest["publishable"] is True
+    assert passing_latest["blockers"] == []
+    assert passing_latest["latestRun"]["runId"] == "run-new-pass"
+
+
 def test_summarize_skill_eval_gates_uses_per_skill_gate_contract_samples():
     summary = summarize_skill_eval_gates(
         [
