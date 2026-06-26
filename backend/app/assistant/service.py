@@ -1433,6 +1433,7 @@ class AutomataAssistantService:
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
         benchmark_portfolio = capability_map.get("benchmarkPortfolio") if isinstance(capability_map.get("benchmarkPortfolio"), dict) else {}
+        promotion_pipeline = capability_map.get("promotionPipeline") if isinstance(capability_map.get("promotionPipeline"), dict) else {}
         vertical_demos = capability_map.get("verticalDemos") if isinstance(capability_map.get("verticalDemos"), dict) else {}
         vertical_demo_gaps = capability_map.get("verticalDemoGaps") if isinstance(capability_map.get("verticalDemoGaps"), list) else []
         sla = work_orchestration.get("sla") if isinstance(work_orchestration.get("sla"), dict) else {}
@@ -1476,6 +1477,20 @@ class AutomataAssistantService:
                         f" Regression gate: {regression_gate.get('gatedCapabilities', 0)}/{regression_gate.get('totalCapabilities', 0)} "
                         f"capabilities gated, state {regression_gate.get('state', 'unknown')}."
                     )
+            if promotion_pipeline:
+                pipeline_tasks = promotion_pipeline.get("tasks") if isinstance(promotion_pipeline.get("tasks"), dict) else {}
+                pipeline_trajectories = promotion_pipeline.get("trajectories") if isinstance(promotion_pipeline.get("trajectories"), dict) else {}
+                pipeline_skills = promotion_pipeline.get("skills") if isinstance(promotion_pipeline.get("skills"), dict) else {}
+                coverage_text += (
+                    f" Promotion pipeline: {pipeline_tasks.get('withTrajectory', 0)}/{pipeline_tasks.get('total', 0)} tasks with trajectories, "
+                    f"{pipeline_trajectories.get('approved', 0)}/{pipeline_trajectories.get('total', 0)} trajectories approved, "
+                    f"{pipeline_skills.get('withApprovedTrajectory', 0)}/{pipeline_skills.get('total', 0)} skills trajectory-linked."
+                )
+                if not promotion_pipeline.get("ready"):
+                    gaps = promotion_pipeline.get("gaps") if isinstance(promotion_pipeline.get("gaps"), list) else []
+                    first_gap = gaps[0] if gaps and isinstance(gaps[0], dict) else {}
+                    if first_gap:
+                        coverage_text += f" First promotion blocker: {first_gap.get('label') or first_gap.get('key') or 'promotion evidence'}."
             if vertical_demos:
                 coverage_text += (
                     f" Vertical demos: {vertical_demos.get('ready', 0)}/{vertical_demos.get('total', 0)} ready, "

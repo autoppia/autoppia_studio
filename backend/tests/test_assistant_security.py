@@ -896,6 +896,13 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "promotionGate": {"state": "blocked"},
                         "regressionGate": {"state": "needs_regression", "gatedCapabilities": 3, "totalCapabilities": 5},
                     },
+                    "promotionPipeline": {
+                        "ready": False,
+                        "tasks": {"total": 7, "withTrajectory": 4},
+                        "trajectories": {"total": 5, "approved": 3},
+                        "skills": {"total": 4, "withApprovedTrajectory": 2},
+                        "gaps": [{"key": "skill_hardening", "label": "Some promoted skills are missing reusable package hardening."}],
+                    },
                     "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1},
                     "verticalDemoGaps": [{"group": "factory", "label": "Capability factory"}],
                 },
@@ -950,6 +957,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
+    assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
+    assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
