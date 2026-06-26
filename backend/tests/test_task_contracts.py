@@ -1,4 +1,4 @@
-from app.services.task_contracts import build_task_contract, task_contract_from_record, task_contract_ready
+from app.services.task_contracts import build_task_contract, task_contract_from_record, task_contract_ready, task_evaluation_harness
 
 
 def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
@@ -42,3 +42,30 @@ def test_build_task_contract_adds_runtime_context_defaults():
     assert contract["allowedSystems"] == ["email", "knowledge", "https://portal.example.com/start", "portal.example.com"]
     assert contract["expectedArtifacts"] == ["trajectory_trace"]
     assert contract["riskClass"] == "low"
+
+
+def test_task_evaluation_harness_layers_deterministic_stateful_llm_and_manual_review():
+    harness = task_evaluation_harness(
+        {
+            "successCriteria": "Draft exists and is not sent.",
+            "initialUrl": "https://portal.example.com/start",
+        },
+        "llm",
+    )
+
+    assert harness["strategy"] == "layered"
+    assert harness["preferredOrder"] == ["deterministic", "stateful", "llm", "manual"]
+    assert harness["deterministicFirst"] is True
+    assert harness["statefulReplay"] is True
+    assert harness["llmAsComplement"] is True
+    assert harness["humanOverride"] is True
+
+
+def test_task_evaluation_harness_keeps_manual_override_when_contract_is_incomplete():
+    harness = task_evaluation_harness({}, "manual")
+
+    assert harness["preferredOrder"] == ["manual"]
+    assert harness["deterministicFirst"] is False
+    assert harness["statefulReplay"] is False
+    assert harness["llmAsComplement"] is False
+    assert harness["layers"][-1]["key"] == "manual"

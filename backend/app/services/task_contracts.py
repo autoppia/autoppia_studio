@@ -126,6 +126,51 @@ def task_contract_ready(task: dict[str, Any]) -> bool:
     )
 
 
+def task_evaluation_harness(contract: dict[str, Any], judge_type: str = "manual") -> dict[str, Any]:
+    deterministic_ready = bool(str(contract.get("successCriteria") or "").strip())
+    stateful_ready = bool(contract.get("initialUrl") or contract.get("initialState"))
+    llm_enabled = str(judge_type or "").strip().lower() == "llm"
+    layers = [
+        {
+            "key": "deterministic",
+            "label": "Deterministic checks",
+            "enabled": deterministic_ready,
+            "role": "first_pass",
+            "summary": "Success criteria can be checked before model judging." if deterministic_ready else "Add success criteria for deterministic checks.",
+        },
+        {
+            "key": "stateful",
+            "label": "Stateful evaluator",
+            "enabled": stateful_ready,
+            "role": "environment_replay",
+            "summary": "Initial URL/state can drive replay or stateful evaluation." if stateful_ready else "Add initial URL or state for replay.",
+        },
+        {
+            "key": "llm",
+            "label": "LLM judge",
+            "enabled": llm_enabled,
+            "role": "semantic_review",
+            "summary": "LLMJudge is enabled as semantic review." if llm_enabled else "LLMJudge is disabled unless this task needs semantic review.",
+        },
+        {
+            "key": "manual",
+            "label": "Human review",
+            "enabled": True,
+            "role": "override",
+            "summary": "Manual review remains available for overrides and unresolved cases.",
+        },
+    ]
+    return {
+        "strategy": "layered",
+        "preferredOrder": [layer["key"] for layer in layers if layer["enabled"]],
+        "deterministicFirst": deterministic_ready,
+        "statefulReplay": stateful_ready,
+        "llmAsComplement": llm_enabled,
+        "humanOverride": True,
+        "layers": layers,
+    }
+
+
 def task_metadata_with_contract(
     task: dict[str, Any],
     *,

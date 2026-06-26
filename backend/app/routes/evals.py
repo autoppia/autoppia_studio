@@ -17,7 +17,7 @@ from app.database import (
 from app.services.benchmark_coverage import benchmark_coverage_summary, coverage_portfolio, task_contract_completeness
 from app.services.eval_judge import judge_eval_run
 from app.services.connector_benchmarks import audit_connector_benchmark_matrix, connector_benchmark_catalog, harvest_and_smoke_connector_benchmark, run_connector_runtime_smoke, seed_connector_benchmark
-from app.services.task_contracts import task_contract_from_record
+from app.services.task_contracts import task_contract_from_record, task_evaluation_harness
 from app.services.vertical_demos import vertical_demo_payload
 
 logger = logging.getLogger(__name__)
@@ -143,7 +143,7 @@ def _task_to_eval(task: dict[str, Any], benchmark: dict[str, Any] | None = None)
         "successCriteria": task.get("successCriteria", ""),
         "taskContract": task_contract,
         "judgeType": judge_type,
-        "evaluationHarness": _evaluation_harness(task_contract, judge_type),
+        "evaluationHarness": task_evaluation_harness(task_contract, judge_type),
         "status": task.get("status", ""),
         "source": task.get("source", "benchmark_task"),
         "createdAt": task.get("createdAt"),
@@ -164,51 +164,6 @@ def _dedupe_strings(values: list[Any]) -> list[str]:
         seen.add(clean)
         result.append(clean)
     return result
-
-
-def _evaluation_harness(contract: dict[str, Any], judge_type: str) -> dict[str, Any]:
-    deterministic_ready = bool(str(contract.get("successCriteria") or "").strip())
-    stateful_ready = bool(contract.get("initialUrl") or contract.get("initialState"))
-    llm_enabled = judge_type == "llm"
-    layers = [
-        {
-            "key": "deterministic",
-            "label": "Deterministic checks",
-            "enabled": deterministic_ready,
-            "role": "first_pass",
-            "summary": "Success criteria can be checked before model judging." if deterministic_ready else "Add success criteria for deterministic checks.",
-        },
-        {
-            "key": "stateful",
-            "label": "Stateful evaluator",
-            "enabled": stateful_ready,
-            "role": "environment_replay",
-            "summary": "Initial URL/state can drive replay or stateful evaluation." if stateful_ready else "Add initial URL or state for replay.",
-        },
-        {
-            "key": "llm",
-            "label": "LLM judge",
-            "enabled": llm_enabled,
-            "role": "semantic_review",
-            "summary": "LLMJudge is enabled as semantic review." if llm_enabled else "LLMJudge is disabled unless this task needs semantic review.",
-        },
-        {
-            "key": "manual",
-            "label": "Human review",
-            "enabled": True,
-            "role": "override",
-            "summary": "Manual review remains available for overrides and unresolved cases.",
-        },
-    ]
-    return {
-        "strategy": "layered",
-        "preferredOrder": [layer["key"] for layer in layers if layer["enabled"]],
-        "deterministicFirst": deterministic_ready,
-        "statefulReplay": stateful_ready,
-        "llmAsComplement": llm_enabled,
-        "humanOverride": True,
-        "layers": layers,
-    }
 
 
 async def _benchmark_task_eval(eval_id: str) -> dict[str, Any] | None:
