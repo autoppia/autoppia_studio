@@ -3,6 +3,25 @@ from __future__ import annotations
 from typing import Any
 
 
+SKILL_EVAL_GATE_ACTIONS = {
+    "failingRegression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Inspect failing regression traces and fix the skill before publishing.",
+    },
+    "publishableRegression": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Run linked benchmark regressions for skills missing publishable evidence.",
+    },
+    "pendingRegression": {
+        "area": "evals",
+        "severity": "medium",
+        "action": "Wait for pending regression runs or rerun them before production promotion.",
+    },
+}
+
+
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -19,6 +38,29 @@ def _dedupe(values: list[Any]) -> list[str]:
         seen.add(clean)
         result.append(clean)
     return result
+
+
+def _eval_gate_hardening_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = SKILL_EVAL_GATE_ACTIONS.get(
+            gap,
+            {
+                "area": "evals",
+                "severity": "medium",
+                "action": "Review skill regression evidence before promotion.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def eval_run_label(run: dict[str, Any]) -> str:
@@ -149,6 +191,7 @@ def summarize_skill_eval_gates(skills: list[dict[str, Any]], eval_runs: list[dic
     missing = 0
     blocked = 0
     samples: list[dict[str, Any]] = []
+    gap_counts: dict[str, int] = {}
     for skill in skills:
         gate = build_skill_eval_gate(skill, runs_by_eval_id=runs_by_eval_id, runs_by_benchmark_id=runs_by_benchmark_id)
         benchmark_ids = gate["benchmarkIds"]
@@ -161,12 +204,15 @@ def summarize_skill_eval_gates(skills: list[dict[str, Any]], eval_runs: list[dic
         state = gate["state"]
         if state == "failing":
             failing += 1
+            gap_counts["failingRegression"] = gap_counts.get("failingRegression", 0) + 1
         elif state == "passing":
             passing += 1
         elif state == "pending":
             pending += 1
+            gap_counts["pendingRegression"] = gap_counts.get("pendingRegression", 0) + 1
         else:
             missing += 1
+            gap_counts["publishableRegression"] = gap_counts.get("publishableRegression", 0) + 1
         blockers = gate["blockers"]
         if "failingRegression" in blockers or state == "failing" or (
             "publishableRegression" in blockers and state != "missing"
@@ -194,5 +240,6 @@ def summarize_skill_eval_gates(skills: list[dict[str, Any]], eval_runs: list[dic
         "pending": pending,
         "missing": missing,
         "blockedByRegression": blocked,
+        "hardeningPlaybook": _eval_gate_hardening_playbook(gap_counts),
         "sample": samples,
     }

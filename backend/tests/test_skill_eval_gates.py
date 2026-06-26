@@ -59,4 +59,20 @@ def test_summarize_skill_eval_gates_uses_per_skill_gate_contract_samples():
     assert summary["failing"] == 1
     assert summary["missing"] == 1
     assert summary["blockedByRegression"] == 1
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "failingRegression",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Inspect failing regression traces and fix the skill before publishing.",
+        },
+        {
+            "gap": "publishableRegression",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Run linked benchmark regressions for skills missing publishable evidence.",
+        },
+    ]
     assert summary["sample"][1]["nextActions"] == ["Inspect failing regression traces and fix the skill before publishing."]
