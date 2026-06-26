@@ -1470,6 +1470,19 @@ class AutomataAssistantService:
                 f" Resource grounding: {resource_map.get('indexed', 0)}/{resource_map.get('total', 0)} indexed, "
                 f"{resource_map.get('citable', 0)}/{resource_map.get('total', 0)} citable."
             )
+            runtime_gate = resource_map.get("runtimeGate") if isinstance(resource_map.get("runtimeGate"), dict) else {}
+            if runtime_gate:
+                ready_resources = int(runtime_gate.get("ready") or 0)
+                blocked_resources = int(runtime_gate.get("blocked") or 0)
+                gated_resources = ready_resources + blocked_resources
+                resource_text += (
+                    f" Resource runtime gate: {ready_resources}/{gated_resources} ready, "
+                    f"{blocked_resources} blocked."
+                )
+                blockers = runtime_gate.get("blockers") if isinstance(runtime_gate.get("blockers"), list) else []
+                first_blocker = blockers[0] if blockers and isinstance(blockers[0], dict) else {}
+                if first_blocker:
+                    resource_text += f" First resource blocker: {first_blocker.get('name', 'resource governance')}."
         runtime_text = ""
         runtime_policy = runtime.get("runtimePolicyMap") if isinstance(runtime.get("runtimePolicyMap"), dict) else {}
         if runtime_policy:

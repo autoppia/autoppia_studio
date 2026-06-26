@@ -887,7 +887,12 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1},
                     "verticalDemoGaps": [{"group": "factory", "label": "Capability factory"}],
                 },
-                "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
+                "resourceMap": {
+                    "total": 3,
+                    "indexed": 2,
+                    "citable": 1,
+                    "runtimeGate": {"ready": 1, "blocked": 2, "blockers": [{"name": "acl", "count": 2}]},
+                },
                 "runtime": {
                     "runtimePolicyMap": {
                         "defaultBrowserUse": "exception",
@@ -933,6 +938,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
+    assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
+    assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
