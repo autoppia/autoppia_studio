@@ -1,7 +1,13 @@
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import urlparse
+
+from app.services.agent_config_contract import dedupe_runtime_values
+from app.services.agent_config_contract import runtime_allowed_domains
+from app.services.agent_config_contract import runtime_classes
+
+
+POLICY_BOUNDARY_ORDER = ("read", "draft", "write", "send")
 
 
 def _string_list(value: Any) -> list[str]:
@@ -20,13 +26,33 @@ def _string_list(value: Any) -> list[str]:
     return values
 
 
-def _host_from_url(value: str) -> str:
-    if not value:
-        return ""
-    try:
-        return (urlparse(value).hostname or "").lower()
-    except Exception:
-        return ""
+def ordered_policy_boundaries(values: list[Any]) -> list[str]:
+    boundaries = dedupe_runtime_values(values)
+    ranked = {boundary: index for index, boundary in enumerate(POLICY_BOUNDARY_ORDER)}
+    return sorted(boundaries, key=lambda item: (ranked.get(item, len(ranked)), item))
+
+
+def approval_boundary_matrix(approval_required_for: list[Any], *, observed_boundaries: list[Any] | None = None) -> dict[str, Any]:
+    required = set(ordered_policy_boundaries(approval_required_for))
+    observed = set(ordered_policy_boundaries(observed_boundaries or []))
+    boundaries = [
+        {
+            "boundary": boundary,
+            "requiresApproval": boundary in required,
+            "observed": boundary in observed,
+        }
+        for boundary in POLICY_BOUNDARY_ORDER
+    ]
+    return {
+        "boundaries": boundaries,
+        "requiredFor": [item["boundary"] for item in boundaries if item["requiresApproval"]],
+        "missingObservedApproval": [
+            item["boundary"]
+            for item in boundaries
+            if item["observed"] and item["boundary"] in {"write", "send"} and not item["requiresApproval"]
+        ],
+        "hasHumanBoundary": bool(required.intersection({"write", "send"})),
+    }
 
 
 def browser_enabled(agent_config: dict[str, Any]) -> bool:
@@ -39,16 +65,7 @@ def browser_enabled(agent_config: dict[str, Any]) -> bool:
 
 def browser_runtime_policy(agent_config: dict[str, Any]) -> dict[str, Any]:
     runtime_spec = agent_config.get("runtimeSpec") if isinstance(agent_config.get("runtimeSpec"), dict) else {}
-    raw_domains = (
-        runtime_spec.get("allowedDomains")
-        or runtime_spec.get("browserAllowedDomains")
-        or runtime_spec.get("allowedOrigins")
-        or []
-    )
-    domains = [str(item).strip().lower() for item in raw_domains if str(item).strip()] if isinstance(raw_domains, list) else []
-    website_host = _host_from_url(str(agent_config.get("websiteUrl") or ""))
-    if website_host and website_host not in domains:
-        domains.append(website_host)
+    domains = runtime_allowed_domains(str(agent_config.get("websiteUrl") or ""), runtime_spec)
     restricted = bool(domains)
     return {
         "enabled": browser_enabled(agent_config),
@@ -82,12 +99,18 @@ def enterprise_runtime_policy(
         runtime_class = "api"
 
     callables = [*tools, *skills]
-    boundaries = sorted({str(item.get("policyBoundary") or "read") for item in callables})
+    tools_enabled = {
+        "browser": runtime_browser_enabled,
+        "connectors": bool(runtime_tools.get("connectors", True)),
+        "skills": bool(runtime_tools.get("skills", True)),
+        "knowledge": bool(runtime_tools.get("knowledge", False)),
+    }
+    boundaries = ordered_policy_boundaries([str(item.get("policyBoundary") or "read") for item in callables])
     approval_required_for = runtime_spec.get("approvalRequiredFor")
     if not isinstance(approval_required_for, list) or not approval_required_for:
         approval_required_for = ["write", "send"] if capabilities.get("humanApprovalForWrites", True) else []
-    approval_required_for = [str(item).strip() for item in approval_required_for if str(item).strip()]
-    approval_required_boundaries = sorted(
+    approval_required_for = ordered_policy_boundaries(approval_required_for)
+    approval_required_boundaries = ordered_policy_boundaries(
         {
             str(item.get("policyBoundary") or "read")
             for item in callables
@@ -104,6 +127,7 @@ def enterprise_runtime_policy(
         "runtimeClass": runtime_class,
         "runtimeType": f"{runtime_class}_runtime",
         "runtimeTypes": [f"{runtime_class}_runtime"] if runtime_class != "hybrid" else ["api_runtime", "browser_runtime", "hybrid_runtime"],
+        "runtimeClasses": runtime_classes(browser_enabled=runtime_browser_enabled, tools=tools_enabled),
         "browser": {
             **browser_policy,
             "requiresSandbox": runtime_browser_enabled,
@@ -119,6 +143,7 @@ def enterprise_runtime_policy(
             "requiredFor": approval_required_for,
             "requiredBoundaries": approval_required_boundaries,
             "requiredTools": approval_required_tools,
+            "boundaryMatrix": approval_boundary_matrix(approval_required_for, observed_boundaries=boundaries),
         },
         "budgets": {
             "maxCreditsPerRun": runtime_spec.get("maxCreditsPerRun", 5.0),
@@ -169,6 +194,7 @@ def serialize_runtime_policy(doc: dict[str, Any]) -> dict[str, Any]:
         approval_required_for = ["write", "send"]
     else:
         approval_required_for = []
+    approval_required_for = ordered_policy_boundaries(approval_required_for)
     allowed_domains = _string_list(
         runtime_spec.get("allowedDomains")
         or permissions.get("allowedDomains")
@@ -187,6 +213,7 @@ def serialize_runtime_policy(doc: dict[str, Any]) -> dict[str, Any]:
         "policy": risk_policy or "human_approval_for_writes",
         "approvalMode": approval_mode,
         "approvalRequiredFor": approval_required_for,
+        "approvalPolicy": approval_boundary_matrix(approval_required_for, observed_boundaries=[doc.get("policyBoundary") or "read"]),
         "writesRequireApproval": approval_mode in {"always", "auto"},
         "sendsRequireApproval": approval_mode in {"always", "auto"},
         "browserRuntime": browser_runtime,

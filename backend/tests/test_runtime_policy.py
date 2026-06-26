@@ -1,4 +1,11 @@
-from app.services.runtime_policy import browser_enabled, browser_runtime_policy, enterprise_runtime_policy
+from app.services.runtime_policy import (
+    approval_boundary_matrix,
+    browser_enabled,
+    browser_runtime_policy,
+    enterprise_runtime_policy,
+    ordered_policy_boundaries,
+    serialize_runtime_policy,
+)
 
 
 def test_browser_runtime_policy_adds_website_host_to_allowlist_and_sandbox_signal():
@@ -38,12 +45,66 @@ def test_enterprise_runtime_policy_models_hybrid_runtime_approvals_budgets_and_r
     assert policy["runtimeClass"] == "hybrid"
     assert policy["runtimeType"] == "hybrid_runtime"
     assert policy["runtimeTypes"] == ["api_runtime", "browser_runtime", "hybrid_runtime"]
+    assert policy["runtimeClasses"] == ["api_runtime", "connector_runtime", "skill_runtime", "browser_runtime", "hybrid_runtime"]
     assert policy["browser"]["requiresSandbox"] is True
     assert policy["browser"]["allowedDomains"] == ["portal.example.com"]
     assert policy["api"]["toolCount"] == 1
     assert policy["approvals"]["requiredFor"] == ["write", "send"]
     assert policy["approvals"]["requiredBoundaries"] == ["send"]
     assert policy["approvals"]["requiredTools"] == ["smtp.send_email"]
+    assert policy["approvals"]["boundaryMatrix"] == {
+        "boundaries": [
+            {"boundary": "read", "requiresApproval": False, "observed": False},
+            {"boundary": "draft", "requiresApproval": False, "observed": True},
+            {"boundary": "write", "requiresApproval": True, "observed": False},
+            {"boundary": "send", "requiresApproval": True, "observed": True},
+        ],
+        "requiredFor": ["write", "send"],
+        "missingObservedApproval": [],
+        "hasHumanBoundary": True,
+    }
     assert policy["budgets"]["maxCreditsPerRun"] == 7.5
     assert policy["policyBoundaries"] == ["draft", "send"]
     assert policy["resources"] == {"total": 2, "indexed": 2, "citable": 1}
+
+
+def test_policy_boundaries_are_ordered_by_enterprise_side_effect_severity():
+    assert ordered_policy_boundaries(["send", "Read", "write", "draft", "send"]) == ["read", "draft", "write", "send"]
+    assert approval_boundary_matrix(["send"], observed_boundaries=["write", "send"]) == {
+        "boundaries": [
+            {"boundary": "read", "requiresApproval": False, "observed": False},
+            {"boundary": "draft", "requiresApproval": False, "observed": False},
+            {"boundary": "write", "requiresApproval": False, "observed": True},
+            {"boundary": "send", "requiresApproval": True, "observed": True},
+        ],
+        "requiredFor": ["send"],
+        "missingObservedApproval": ["write"],
+        "hasHumanBoundary": True,
+    }
+
+
+def test_serialize_runtime_policy_exposes_approval_matrix_for_callable_capabilities():
+    policy = serialize_runtime_policy(
+        {
+            "riskPolicy": "human_approval_for_writes",
+            "policyBoundary": "write",
+            "runtimeRequirements": ["api", "browser"],
+            "runtimeSpec": {"allowedDomains": ["ERP.example.com"]},
+        }
+    )
+
+    assert policy["runtimeClass"] == "hybrid"
+    assert policy["runtimeTypes"] == ["api_runtime", "browser_runtime", "hybrid_runtime"]
+    assert policy["approvalRequiredFor"] == ["write", "send"]
+    assert policy["approvalPolicy"] == {
+        "boundaries": [
+            {"boundary": "read", "requiresApproval": False, "observed": False},
+            {"boundary": "draft", "requiresApproval": False, "observed": False},
+            {"boundary": "write", "requiresApproval": True, "observed": True},
+            {"boundary": "send", "requiresApproval": True, "observed": False},
+        ],
+        "requiredFor": ["write", "send"],
+        "missingObservedApproval": [],
+        "hasHumanBoundary": True,
+    }
+    assert policy["browserPolicy"]["allowedDomains"] == ["ERP.example.com"]
