@@ -158,6 +158,47 @@ def _surface_next_action(default: str, hardening: dict[str, Any]) -> str:
     return str(hardening.get("action") or default)
 
 
+def _studio_os_gate(surface_playbook: list[dict[str, Any]]) -> dict[str, Any]:
+    required = ["Company Setup", "Capability Factory", "Runtime Lab", "Work Orchestration", "Automata"]
+    by_surface = {
+        str(item.get("surface") or ""): item
+        for item in surface_playbook
+        if isinstance(item, dict) and str(item.get("surface") or "")
+    }
+    missing = [surface for surface in required if surface not in by_surface]
+    needs_work = [
+        surface
+        for surface in required
+        if surface in by_surface and str(by_surface[surface].get("status") or "") != "ready"
+    ]
+    playbook: list[dict[str, Any]] = []
+    for surface in [*missing, *needs_work]:
+        item = by_surface.get(surface) or {}
+        hardening = item.get("hardening") if isinstance(item.get("hardening"), dict) else {}
+        playbook.append(
+            {
+                "surface": surface,
+                "gap": hardening.get("gap") or ("missing_surface" if surface in missing else "surface_needs_work"),
+                "area": hardening.get("area") or surface.lower().replace(" ", "_"),
+                "severity": hardening.get("severity") or "high",
+                "action": hardening.get("action") or str(item.get("nextAction") or f"Complete {surface} before treating Studio as enterprise-ready."),
+            }
+        )
+    return {
+        "state": "ready" if not missing and not needs_work else "blocked",
+        "ready": not missing and not needs_work,
+        "surfaces": {
+            "total": len(required),
+            "ready": sum(1 for surface in required if surface in by_surface and str(by_surface[surface].get("status") or "") == "ready"),
+            "needsWork": len(needs_work),
+            "missing": len(missing),
+        },
+        "checks": {surface: surface in by_surface and str(by_surface[surface].get("status") or "") == "ready" for surface in required},
+        "blockers": needs_work + missing,
+        "hardeningPlaybook": playbook,
+    }
+
+
 def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
     domains: set[str] = set()
     for doc in docs:
@@ -609,74 +650,75 @@ class AutomataAssistantTools:
             ]
             if alert
         ]
+        company_setup_hardening = _first_playbook_item(setup_gate.get("hardeningPlaybook"))
+        capability_factory_hardening = _first_playbook_item(
+            factory_pipeline_gate.get("hardeningPlaybook"),
+            connector_map.get("toolHardeningPlaybook"),
+            connector_map.get("ingestionPlaybook"),
+            entity_map.get("hardeningPlaybook"),
+            skill_package_summary.get("hardeningPlaybook"),
+            skill_eval_gate.get("hardeningPlaybook"),
+            benchmark_portfolio.get("hardeningPlaybook"),
+            eval_center_gate.get("hardeningPlaybook"),
+            vertical_demos.get("hardeningPlaybook"),
+            promotion_pipeline.get("hardeningPlaybook"),
+        )
+        runtime_lab_hardening = _first_playbook_item(
+            session_contracts.get("hardeningPlaybook"),
+            artifact_outputs.get("hardeningPlaybook"),
+            (runtime_policy_map.get("approvalBoundaries") or {}).get("hardening", {}).get("playbook"),
+        )
+        work_orchestration_hardening = _first_playbook_item(
+            work_operations_gate.get("hardeningPlaybook"),
+            work_contracts.get("hardeningPlaybook"),
+        )
+        surface_playbook = [
+            {
+                "surface": "Company Setup",
+                "status": _surface_status(bool(company_id) and bool(setup_gate.get("ready"))),
+                "hardening": company_setup_hardening,
+                "nextAction": _surface_next_action("Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.", company_setup_hardening),
+            },
+            {
+                "surface": "Capability Factory",
+                "status": _surface_status(
+                    bool(factory_pipeline_gate.get("ready"))
+                    and counts["benchmarkTasks"] > 0
+                    and counts["skills"] > 0
+                    and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)
+                ),
+                "hardening": capability_factory_hardening,
+                "nextAction": _surface_next_action("Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.", capability_factory_hardening),
+            },
+            {
+                "surface": "Runtime Lab",
+                "status": _surface_status(
+                    bool(runtime_session_gate.get("ready"))
+                    and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
+                ),
+                "hardening": runtime_lab_hardening,
+                "nextAction": _surface_next_action("Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.", runtime_lab_hardening),
+            },
+            {
+                "surface": "Work Orchestration",
+                "status": _surface_status(bool(work_operations_gate.get("ready"))),
+                "hardening": work_orchestration_hardening,
+                "nextAction": _surface_next_action("Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.", work_orchestration_hardening),
+            },
+            {
+                "surface": "Automata",
+                "status": "ready",
+                "hardening": {},
+                "nextAction": "Ask Automata to explain failing tasks, suggest missing benchmarks, or draft the next capability-hardening step.",
+            },
+        ]
+        studio_os_gate = _studio_os_gate(surface_playbook)
         automata_guidance = {
             "role": "studio_copilot",
             "primaryNextAction": recommended_actions[0] if recommended_actions else {"area": "runtime", "action": "Run a representative AgentRuntime session and inspect approvals, artifacts, trace and skill usage.", "reason": "Core Studio surfaces are configured."},
             "riskAlerts": risk_alerts,
-            "surfacePlaybook": [
-                {
-                    "surface": "Company Setup",
-                    "status": _surface_status(bool(company_id) and bool(setup_gate.get("ready"))),
-                    "hardening": (company_setup_hardening := _first_playbook_item(setup_gate.get("hardeningPlaybook"))),
-                    "nextAction": _surface_next_action("Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.", company_setup_hardening),
-                },
-                {
-                    "surface": "Capability Factory",
-                    "status": _surface_status(
-                        bool(factory_pipeline_gate.get("ready"))
-                        and counts["benchmarkTasks"] > 0
-                        and counts["skills"] > 0
-                        and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)
-                    ),
-                    "hardening": (
-                        capability_factory_hardening := _first_playbook_item(
-                            factory_pipeline_gate.get("hardeningPlaybook"),
-                            connector_map.get("toolHardeningPlaybook"),
-                            connector_map.get("ingestionPlaybook"),
-                            entity_map.get("hardeningPlaybook"),
-                            skill_package_summary.get("hardeningPlaybook"),
-                            skill_eval_gate.get("hardeningPlaybook"),
-                            benchmark_portfolio.get("hardeningPlaybook"),
-                            eval_center_gate.get("hardeningPlaybook"),
-                            vertical_demos.get("hardeningPlaybook"),
-                            promotion_pipeline.get("hardeningPlaybook"),
-                        )
-                    ),
-                    "nextAction": _surface_next_action("Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.", capability_factory_hardening),
-                },
-                {
-                    "surface": "Runtime Lab",
-                    "status": _surface_status(
-                        bool(runtime_session_gate.get("ready"))
-                        and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
-                    ),
-                    "hardening": (
-                        runtime_lab_hardening := _first_playbook_item(
-                            session_contracts.get("hardeningPlaybook"),
-                            artifact_outputs.get("hardeningPlaybook"),
-                            (runtime_policy_map.get("approvalBoundaries") or {}).get("hardening", {}).get("playbook"),
-                        )
-                    ),
-                    "nextAction": _surface_next_action("Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.", runtime_lab_hardening),
-                },
-                {
-                    "surface": "Work Orchestration",
-                    "status": _surface_status(bool(work_operations_gate.get("ready"))),
-                    "hardening": (
-                        work_orchestration_hardening := _first_playbook_item(
-                            work_operations_gate.get("hardeningPlaybook"),
-                            work_contracts.get("hardeningPlaybook"),
-                        )
-                    ),
-                    "nextAction": _surface_next_action("Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.", work_orchestration_hardening),
-                },
-                {
-                    "surface": "Automata",
-                    "status": "ready",
-                    "hardening": {},
-                    "nextAction": "Ask Automata to explain failing tasks, suggest missing benchmarks, or draft the next capability-hardening step.",
-                },
-            ],
+            "studioOsGate": studio_os_gate,
+            "surfacePlaybook": surface_playbook,
             "explainFailurePrompts": [
                 "Why did the latest eval fail and which trace/tool call should I inspect?",
                 "Which skills are blocked from publishing and what hardening evidence is missing?",
@@ -739,6 +781,7 @@ class AutomataAssistantTools:
                 "promotionPipeline": promotion_pipeline,
             },
             "resourceMap": resource_map,
+            "studioOsGate": studio_os_gate,
             "runtime": {
                 "agents": counts["agents"],
                 "sessions": counts["sessions"],

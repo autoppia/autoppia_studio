@@ -1394,10 +1394,21 @@ class AutomataAssistantService:
         resource_map = operating_state.get("resourceMap") if isinstance(operating_state.get("resourceMap"), dict) else {}
         runtime = operating_state.get("runtime") if isinstance(operating_state.get("runtime"), dict) else {}
         work_orchestration = operating_state.get("workOrchestration") if isinstance(operating_state.get("workOrchestration"), dict) else {}
+        studio_os_gate = operating_state.get("studioOsGate") if isinstance(operating_state.get("studioOsGate"), dict) else {}
         next_actions = operating_state.get("recommendedNextActions") if isinstance(operating_state.get("recommendedNextActions"), list) else []
         guidance = operating_state.get("automataGuidance") if isinstance(operating_state.get("automataGuidance"), dict) else {}
         score = readiness.get("score")
         score_text = f" Readiness is {int(float(score) * 100)}%." if isinstance(score, (int, float)) else ""
+        studio_os_text = ""
+        if studio_os_gate:
+            surfaces = studio_os_gate.get("surfaces") if isinstance(studio_os_gate.get("surfaces"), dict) else {}
+            studio_os_text = (
+                f" Studio OS gate: {studio_os_gate.get('state', 'unknown')}, "
+                f"{surfaces.get('ready', 0)}/{surfaces.get('total', 0)} surface(s) ready."
+            )
+            blockers = studio_os_gate.get("blockers") if isinstance(studio_os_gate.get("blockers"), list) else []
+            if blockers:
+                studio_os_text += f" First surface blocker: {blockers[0]}."
         company_setup_text = ""
         setup_gate = company_setup.get("setupGate") if isinstance(company_setup.get("setupGate"), dict) else {}
         integration = company_setup.get("integration") if isinstance(company_setup.get("integration"), dict) else {}
@@ -1665,7 +1676,7 @@ class AutomataAssistantService:
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{company_setup_text}{factory_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
+            f"{score_text}{studio_os_text}{company_setup_text}{factory_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:

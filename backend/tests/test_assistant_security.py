@@ -739,6 +739,15 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["approvalBoundaries"]["hardening"]["ready"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["sendsProtected"] is True
+    assert snapshot["operatingState"]["studioOsGate"]["state"] == "blocked"
+    assert snapshot["operatingState"]["studioOsGate"]["surfaces"] == {"total": 5, "ready": 1, "needsWork": 4, "missing": 0}
+    assert snapshot["operatingState"]["studioOsGate"]["blockers"] == [
+        "Company Setup",
+        "Capability Factory",
+        "Runtime Lab",
+        "Work Orchestration",
+    ]
+    assert snapshot["automataGuidance"]["studioOsGate"] == snapshot["operatingState"]["studioOsGate"]
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
     assert snapshot["automataGuidance"]["role"] == "studio_copilot"
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
@@ -1039,6 +1048,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
             "counts": {"companies": 1, "agents": 1, "connectors": 2, "tools": 3, "skills": 4},
             "operatingState": {
                 "readiness": {"score": 0.6},
+                "studioOsGate": {"state": "blocked", "surfaces": {"ready": 2, "total": 5}, "blockers": ["Capability Factory"]},
                 "companySetup": {
                     "integration": {"systems": 2, "secrets": 1, "domainAllowlist": ["erp.example.com", "studio.example.com"]},
                     "setupGate": {"state": "partial", "blockers": ["resource_acl"]},
@@ -1163,6 +1173,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     )
 
     assert "Readiness is 60%" in reply
+    assert "Studio OS gate: blocked, 2/5 surface(s) ready." in reply
+    assert "First surface blocker: Capability Factory." in reply
     assert "Company Setup gate: partial, 2 system(s), 1 secret(s), 2 allowed domain(s)." in reply
     assert "First setup blocker: resource_acl." in reply
     assert "Factory pipeline: 1/3 connector(s) entity-mapped, 2 with typed tools, 1 with candidate tasks." in reply
