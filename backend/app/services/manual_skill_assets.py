@@ -17,11 +17,21 @@ def dedupe_manual_skill_values(values: list[Any]) -> list[str]:
     return result
 
 
+def flatten_manual_skill_values(*values: Any) -> list[str]:
+    flattened: list[Any] = []
+    for value in values:
+        if isinstance(value, list):
+            flattened.extend(value)
+        else:
+            flattened.append(value)
+    return dedupe_manual_skill_values(flattened)
+
+
 def manual_skill_lineage(doc: dict[str, Any]) -> dict[str, Any]:
     return {
         "trajectoryIds": dedupe_manual_skill_values(doc.get("trajectoryIds") or []),
-        "benchmarkIds": [],
-        "evalIds": [],
+        "benchmarkIds": flatten_manual_skill_values(doc.get("benchmarkId"), doc.get("benchmarkIds")),
+        "evalIds": flatten_manual_skill_values(doc.get("evalId"), doc.get("taskId"), doc.get("evalIds")),
         "connectorIds": dedupe_manual_skill_values(doc.get("connectorIds") or []),
         "toolIds": dedupe_manual_skill_values(doc.get("toolIds") or []),
         "sources": dedupe_manual_skill_values([doc.get("source")]),
@@ -34,8 +44,11 @@ def manual_skill_hardening(doc: dict[str, Any], lineage: dict[str, Any]) -> dict
         "instructions": bool(str(doc.get("instructions") or "").strip()),
         "riskPolicy": bool(str(doc.get("riskPolicy") or "").strip()),
         "lineage": bool(lineage.get("trajectoryIds")),
-        "regression": False,
-        "publishableRegression": False,
+        "regression": bool(lineage.get("benchmarkIds") or lineage.get("evalIds") or doc.get("latestRegression")),
+        "publishableRegression": bool(
+            isinstance(doc.get("latestRegression"), dict)
+            and str(doc["latestRegression"].get("label") or "").lower() == "pass"
+        ),
         "entities": bool(doc.get("inputEntities") or str(doc.get("outputEntity") or "").strip()),
         "artifacts": bool(doc.get("expectedArtifacts") or doc.get("outputCard")),
     }
@@ -107,9 +120,10 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
             "hardeningStatus": hardening,
             "versionHistory": doc.get("versionHistory", []),
             "regressionSuite": {
-                "benchmarkIds": [],
-                "evalIds": [],
-                "publishable": False,
+                "benchmarkIds": lineage.get("benchmarkIds", []),
+                "evalIds": lineage.get("evalIds", []),
+                "cases": doc.get("regressionCases", []) if isinstance(doc.get("regressionCases"), list) else [],
+                "publishable": bool(hardening.get("checks", {}).get("publishableRegression")),
             },
         },
         "progressiveDisclosure": {
