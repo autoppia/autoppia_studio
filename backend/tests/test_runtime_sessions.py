@@ -6,6 +6,9 @@ from app.services.runtime_sessions import (
     build_runtime_policy_boundary,
     build_runtime_timeline,
     build_session_contract,
+    runtime_kind_from_type,
+    runtime_type_from_kind,
+    session_runtime_kind,
     summarize_session_contracts,
 )
 
@@ -170,6 +173,7 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
     )
 
     assert lab["controlPlane"]["runtimeKind"] == "hybrid"
+    assert lab["controlPlane"]["runtimeType"] == "hybrid_runtime"
     assert lab["controlPlane"]["workItemId"] == "work-1"
     assert lab["timeline"]["steps"] == 3
     assert lab["timeline"]["browserSteps"] == 1
@@ -331,6 +335,7 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
     assert contract["contractVersion"] == "2026-06-25"
     assert contract["agentRuntime"] == {
         "runtimeKind": "hybrid",
+        "runtimeType": "hybrid_runtime",
         "sourceKind": "work",
         "agentId": "agent-1",
         "agentName": "Claims Agent",
@@ -371,3 +376,12 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["traceIds"] == 1
     assert summary["replayReady"] == 1
     assert summary["runtimeKinds"] == [{"name": "api", "count": 1}]
+    assert summary["sample"][0]["runtimeType"] == "api_runtime"
+
+
+def test_runtime_type_helpers_keep_explicit_enterprise_runtime_names():
+    assert runtime_type_from_kind("api") == "api_runtime"
+    assert runtime_type_from_kind("browser_runtime") == "browser_runtime"
+    assert runtime_kind_from_type("hybrid_runtime") == "hybrid"
+    assert session_runtime_kind({"sessionContract": {"agentRuntime": {"runtimeType": "hybrid_runtime"}}}) == "hybrid_runtime"
+    assert session_runtime_kind({"runtimeKind": "browser"}) == "browser_runtime"

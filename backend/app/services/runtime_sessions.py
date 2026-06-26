@@ -266,6 +266,8 @@ def build_runtime_lab(
     evidence = summary.get("runtimeEvidence") if isinstance(summary.get("runtimeEvidence"), dict) else {}
     trace = evidence.get("trace") if isinstance(evidence.get("trace"), dict) else {}
     timeline = summary.get("runtimeTimeline") if isinstance(summary.get("runtimeTimeline"), list) else []
+    runtime_kind = str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api")
+    runtime_type = runtime_type_from_kind(runtime_kind)
     tool_steps = [
         {
             "index": item.get("index"),
@@ -284,7 +286,8 @@ def build_runtime_lab(
     return {
         "controlPlane": {
             "sessionId": str(summary.get("sessionId") or ""),
-            "runtimeKind": str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api"),
+            "runtimeKind": runtime_kind,
+            "runtimeType": runtime_type,
             "sourceKind": str(summary.get("sourceKind") or runtime_state.get("sourceKind") or ""),
             "agentId": str(summary.get("agentId") or ""),
             "agentName": str(summary.get("agentName") or ""),
@@ -438,9 +441,9 @@ def build_runtime_audit_trail(
 def session_runtime_kind(session: dict[str, Any]) -> str:
     contract = session.get("sessionContract") if isinstance(session.get("sessionContract"), dict) else {}
     runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
-    runtime_kind = str(runtime.get("runtimeKind") or session.get("runtimeKind") or "").strip()
+    runtime_kind = str(runtime.get("runtimeType") or runtime.get("runtimeKind") or session.get("runtimeType") or session.get("runtimeKind") or "").strip()
     if runtime_kind:
-        return f"{runtime_kind}_runtime" if runtime_kind in {"api", "browser", "hybrid"} else runtime_kind
+        return runtime_type_from_kind(runtime_kind)
     action_history = session.get("actionHistory") if isinstance(session.get("actionHistory"), list) else []
     actions = [str(item.get("action") or "") for item in action_history if isinstance(item, dict)]
     has_browser = any(action.startswith("browser.") for action in actions)
@@ -454,6 +457,24 @@ def session_runtime_kind(session: dict[str, Any]) -> str:
     if has_browser:
         return "browser_runtime"
     return "api_runtime"
+
+
+def runtime_type_from_kind(value: str) -> str:
+    clean = str(value or "").strip().lower()
+    if clean in {"api", "browser", "hybrid"}:
+        return f"{clean}_runtime"
+    if clean in {"api_runtime", "browser_runtime", "hybrid_runtime"}:
+        return clean
+    if clean:
+        return clean
+    return "api_runtime"
+
+
+def runtime_kind_from_type(value: str) -> str:
+    clean = runtime_type_from_kind(value)
+    if clean in {"api_runtime", "browser_runtime", "hybrid_runtime"}:
+        return clean.replace("_runtime", "")
+    return clean
 
 
 def build_session_contract(
@@ -470,11 +491,14 @@ def build_session_contract(
     outputs = runtime_lab.get("outputs") if isinstance(runtime_lab.get("outputs"), dict) else {}
     approvals = runtime_lab.get("approvals") if isinstance(runtime_lab.get("approvals"), dict) else {}
     trace = runtime_evidence.get("trace") if isinstance(runtime_evidence.get("trace"), dict) else {}
+    runtime_kind = runtime_kind_from_type(str(summary.get("runtimeType") or summary.get("runtimeKind") or runtime_metrics.get("runtimeType") or runtime_metrics.get("runtimeKind") or "api"))
+    runtime_type = runtime_type_from_kind(str(summary.get("runtimeType") or runtime_metrics.get("runtimeType") or runtime_kind))
     return {
         "contractVersion": "2026-06-25",
         "sessionId": str(summary.get("sessionId") or ""),
         "agentRuntime": {
-            "runtimeKind": str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api"),
+            "runtimeKind": runtime_kind,
+            "runtimeType": runtime_type,
             "sourceKind": str(summary.get("sourceKind") or ""),
             "agentId": str(summary.get("agentId") or ""),
             "agentName": str(summary.get("agentName") or ""),
@@ -530,7 +554,8 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
         if contract:
             with_contract += 1
-        runtime_kind = str(runtime.get("runtimeKind") or session_runtime_kind(session)).replace("_runtime", "") or "unknown"
+        runtime_type = session_runtime_kind(session)
+        runtime_kind = runtime_kind_from_type(str(runtime.get("runtimeKind") or runtime_type)) or "unknown"
         runtime_kinds.append(runtime_kind)
         skill_id = str(skill.get("skillId") or session.get("matchedSkillId") or "").strip()
         if skill.get("matched") or skill_id:
@@ -551,6 +576,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
                 {
                     "sessionId": str(session.get("sessionId") or contract.get("sessionId") or ""),
                     "runtimeKind": runtime_kind,
+                    "runtimeType": runtime_type,
                     "skillId": skill_id,
                     "pendingApprovals": approval_count,
                     "artifacts": artifact_count,
