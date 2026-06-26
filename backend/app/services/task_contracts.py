@@ -166,12 +166,7 @@ def task_contract_from_record(task: dict[str, Any], *, default_risk_class: str =
 
 def task_contract_ready(task: dict[str, Any]) -> bool:
     contract = task_contract_from_record(task)
-    return bool(
-        contract["businessIntent"]
-        and contract["allowedSystems"]
-        and contract["expectedArtifacts"]
-        and contract["riskClass"]
-    )
+    return task_contract_hardening(contract)["state"] == "complete"
 
 
 def task_contract_hardening(contract: dict[str, Any]) -> dict[str, Any]:

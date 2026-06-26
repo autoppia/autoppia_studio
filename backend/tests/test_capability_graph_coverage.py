@@ -172,8 +172,10 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "metadata": {
                     "taskContract": {
                         "businessIntent": "Reply to claim",
+                        "initialState": {"url": "https://claims.example.com/cases"},
                         "allowedSystems": ["imap", "erp"],
                         "expectedArtifacts": ["draft_email"],
+                        "successCriteria": "Draft exists and is not sent.",
                         "riskClass": "draft",
                     }
                 },

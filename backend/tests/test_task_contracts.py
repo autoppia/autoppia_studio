@@ -18,6 +18,7 @@ def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
         "expectedArtifacts": ["claim_summary"],
         "riskClass": "medium",
         "successCriteria": "Claim status is summarized.",
+        "initialState": {"url": "https://claims.example.com/cases/123"},
         "evaluatorConfig": {"evaluator": "rules", "assertions": ["draft_exists"]},
         "fixtures": ["claim-123", "claim-123"],
         "seed": "seed-1",

@@ -7,6 +7,7 @@ def test_promotion_pipeline_exposes_hardening_playbook_for_incomplete_flow():
             {
                 "taskId": "task-1",
                 "businessIntent": "Reply to claim status",
+                "initialState": {"url": "https://claims.example.com/cases"},
                 "allowedSystems": ["email", "erp"],
                 "expectedArtifacts": ["draft_email"],
                 "successCriteria": "Draft exists.",
