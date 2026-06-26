@@ -181,6 +181,31 @@ def _skill_production_gate_summary(docs: list[dict[str, Any]]) -> dict[str, Any]
     }
 
 
+def _vertical_demo_operational_gaps(vertical_demos: dict[str, Any]) -> list[dict[str, Any]]:
+    gaps: list[dict[str, Any]] = []
+    demos = vertical_demos.get("demos") if isinstance(vertical_demos.get("demos"), list) else []
+    for demo in demos:
+        if not isinstance(demo, dict):
+            continue
+        readiness = demo.get("operationalReadiness") if isinstance(demo.get("operationalReadiness"), dict) else {}
+        groups = readiness.get("groups") if isinstance(readiness.get("groups"), list) else []
+        objective = str(demo.get("objective") or demo.get("benchmarkId") or "vertical demo").strip()
+        for group in groups:
+            if not isinstance(group, dict) or group.get("state") == "ready":
+                continue
+            gaps.append(
+                {
+                    "benchmarkId": str(demo.get("benchmarkId") or ""),
+                    "objective": objective,
+                    "group": str(group.get("key") or ""),
+                    "label": str(group.get("label") or group.get("key") or "Operational readiness"),
+                    "state": str(group.get("state") or "missing"),
+                    "missing": _list_values(group.get("missing")),
+                }
+            )
+    return gaps
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -251,6 +276,7 @@ class AutomataAssistantTools:
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
+        vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
         resource_map = summarize_resource_governance(knowledge_docs)
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
@@ -330,6 +356,16 @@ class AutomataAssistantTools:
         if vertical_demos["total"] and vertical_demos["ready"] < vertical_demos["total"]:
             missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
+        if vertical_demo_gaps:
+            first_gap = vertical_demo_gaps[0]
+            recommended_actions.insert(
+                0,
+                {
+                    "area": first_gap["group"] or "capabilities",
+                    "action": f"Complete {first_gap['label']} evidence for the vertical demo.",
+                    "reason": f"{first_gap['objective']} is {first_gap['state']}; missing {', '.join(first_gap['missing']) or 'operational evidence'}.",
+                },
+            )
         if counts["skills"] and hardened_skills == 0:
             recommended_actions.insert(0, {"area": "capabilities", "action": "Harden skills with activation guidance, instructions, expected artifacts, and policy.", "reason": "Skills exist but are not packaged as reusable enterprise capabilities."})
         if counts["skills"] and skill_package_summary["publishable"] == 0:
@@ -369,6 +405,7 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
+                {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts require human review before reuse or delivery."} if artifact_outputs["reviewRequired"] else None,
@@ -390,12 +427,12 @@ class AutomataAssistantTools:
                 },
                 {
                     "surface": "Capability Factory",
-                    "status": _surface_status(counts["tools"] > 0 and counts["benchmarkTasks"] > 0 and counts["skills"] > 0),
+                    "status": _surface_status(counts["tools"] > 0 and counts["benchmarkTasks"] > 0 and counts["skills"] > 0 and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)),
                     "nextAction": "Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.",
                 },
                 {
                     "surface": "Runtime Lab",
-                    "status": _surface_status(counts["sessions"] > 0),
+                    "status": _surface_status(counts["sessions"] > 0 and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)),
                     "nextAction": "Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.",
                 },
                 {
@@ -459,6 +496,7 @@ class AutomataAssistantTools:
                 },
                 "evalGate": skill_eval_gate,
                 "verticalDemos": vertical_demos,
+                "verticalDemoGaps": vertical_demo_gaps,
                 "promotionPipeline": promotion_pipeline,
             },
             "resourceMap": resource_map,

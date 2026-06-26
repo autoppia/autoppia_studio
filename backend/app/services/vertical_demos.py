@@ -143,6 +143,16 @@ def _operational_readiness(coverage: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def _operational_group_ready(payload: dict[str, Any], key: str) -> bool:
+    readiness = payload.get("operationalReadiness")
+    if not isinstance(readiness, dict):
+        return False
+    groups = readiness.get("groups")
+    if not isinstance(groups, list):
+        return False
+    return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
+
+
 def vertical_demo_payload(
     *,
     benchmark: dict[str, Any],
@@ -302,5 +312,9 @@ def summarize_vertical_demos(
         "ready": sum(1 for demo in demos if demo.get("state") == "ready"),
         "partial": sum(1 for demo in demos if demo.get("state") == "partial"),
         "missing": sum(1 for demo in demos if demo.get("state") == "missing"),
+        "enterpriseReady": sum(1 for demo in demos if bool((demo.get("operationalReadiness") or {}).get("enterpriseReady"))),
+        "integrationReady": sum(1 for demo in demos if _operational_group_ready(demo, "integration")),
+        "factoryReady": sum(1 for demo in demos if _operational_group_ready(demo, "factory")),
+        "runtimeReady": sum(1 for demo in demos if _operational_group_ready(demo, "runtime")),
         "demos": demos[:limit],
     }

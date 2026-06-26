@@ -1399,6 +1399,8 @@ class AutomataAssistantService:
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
+        vertical_demos = capability_map.get("verticalDemos") if isinstance(capability_map.get("verticalDemos"), dict) else {}
+        vertical_demo_gaps = capability_map.get("verticalDemoGaps") if isinstance(capability_map.get("verticalDemoGaps"), list) else []
         sla = work_orchestration.get("sla") if isinstance(work_orchestration.get("sla"), dict) else {}
         coverage_text = ""
         if task_contracts or skills:
@@ -1428,6 +1430,14 @@ class AutomataAssistantService:
                     f" Eval gates: {eval_gate.get('passing', 0)} passing, "
                     f"{eval_gate.get('blockedByRegression', 0)} blocked, {eval_gate.get('missing', 0)} missing regression."
                 )
+            if vertical_demos:
+                coverage_text += (
+                    f" Vertical demos: {vertical_demos.get('ready', 0)}/{vertical_demos.get('total', 0)} ready, "
+                    f"{vertical_demos.get('enterpriseReady', 0)} enterprise-ready."
+                )
+                if vertical_demo_gaps:
+                    first_gap = vertical_demo_gaps[0] if isinstance(vertical_demo_gaps[0], dict) else {}
+                    coverage_text += f" First demo blocker: {first_gap.get('label') or first_gap.get('group') or 'operational evidence'}."
         resource_text = ""
         if resource_map:
             resource_text = (

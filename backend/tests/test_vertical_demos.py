@@ -93,6 +93,10 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["ready"] == 0
     assert summary["partial"] == 1
     assert summary["missing"] == 1
+    assert summary["enterpriseReady"] == 0
+    assert summary["integrationReady"] == 1
+    assert summary["factoryReady"] == 0
+    assert summary["runtimeReady"] == 0
     partial_demo = summary["demos"][0]
     assert partial_demo["operationalReadiness"]["enterpriseReady"] is False
     readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}

@@ -479,7 +479,21 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["missing"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["enterpriseReady"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["integrationReady"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["factoryReady"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["runtimeReady"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
+    assert snapshot["operatingState"]["capabilityMap"]["verticalDemoGaps"] == [
+        {
+            "benchmarkId": "bench-insurance",
+            "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+            "group": "factory",
+            "label": "Capability factory",
+            "state": "missing",
+            "missing": ["trajectory", "skill_promotion"],
+        }
+    ]
     assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["tasks"]["withTrajectory"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["trajectories"]["approved"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["promotionPipeline"]["skills"]["withApprovedTrajectory"] == 1
@@ -556,8 +570,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["primaryNextAction"]["area"] == "evals"
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
+    capability_factory = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Capability Factory")
+    assert capability_factory["status"] == "needs_work"
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert len(capabilities_payload["skills"]) == 1
     listed_skill = capabilities_payload["skills"][0]
@@ -834,6 +851,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         },
                     },
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
+                    "verticalDemos": {"ready": 1, "total": 2, "enterpriseReady": 1},
+                    "verticalDemoGaps": [{"group": "factory", "label": "Capability factory"}],
                 },
                 "resourceMap": {"total": 3, "indexed": 2, "citable": 1},
                 "runtime": {
@@ -865,6 +884,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
+    assert "Vertical demos: 1/2 ready, 1 enterprise-ready." in reply
+    assert "First demo blocker: Capability factory." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
