@@ -1493,7 +1493,10 @@ class AutomataAssistantService:
             if packages:
                 coverage_text += (
                     f" Skill packages: {packages.get('publishable', 0)}/{packages.get('total', skills.get('total', 0))} publishable, "
-                    f"{packages.get('ioContracts', 0)} with IO contracts, {packages.get('regressionSuites', 0)} with regressions."
+                    f"{packages.get('ioContracts', 0)} with IO contracts, {packages.get('regressionSuites', 0)} with regressions, "
+                    f"{packages.get('assets', packages.get('withAssets', 0))} with assets "
+                    f"({packages.get('resources', packages.get('withResources', 0))} resources, "
+                    f"{packages.get('scripts', packages.get('withScripts', 0))} scripts)."
                 )
                 release = packages.get("releaseReadiness") if isinstance(packages.get("releaseReadiness"), dict) else {}
                 if release:
