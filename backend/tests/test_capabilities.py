@@ -663,6 +663,21 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["work"]["linkedToCapabilities"] is True
     assert graph["coverage"]["promotionPath"]["hasTaskToTrajectory"] is True
     assert graph["coverage"]["promotionPath"]["hasTrajectoryToSkill"] is True
+    assert graph["coverage"]["operationalGraphGate"] == {
+        "state": "ready",
+        "ready": True,
+        "readyCount": 5,
+        "total": 5,
+        "coverageRatio": 1.0,
+        "checks": {
+            "factoryAssetsLinked": True,
+            "promotionPathLinked": True,
+            "evalsLinked": True,
+            "runtimeEvidenceLinked": True,
+            "workLinked": True,
+        },
+        "blockers": [],
+    }
 
 
 @pytest.mark.asyncio

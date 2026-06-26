@@ -194,6 +194,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
             {"relation": "used_by_skill"},
             {"relation": "requires_approval"},
             {"relation": "produced_artifact"},
+            {"relation": "exercised_skill"},
             {"relation": "opened_session"},
             {"relation": "orchestrates_skill"},
             {"relation": "validates_vertical_demo"},
@@ -229,6 +230,21 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["runtime"]["sessionContracts"]["selectedSkill"] == 1
     assert coverage["work"]["scheduled"] == 1
     assert coverage["promotionPath"]["hasTrajectoryToSkill"] is True
+    assert coverage["operationalGraphGate"] == {
+        "state": "ready",
+        "ready": True,
+        "readyCount": 5,
+        "total": 5,
+        "coverageRatio": 1.0,
+        "checks": {
+            "factoryAssetsLinked": True,
+            "promotionPathLinked": True,
+            "evalsLinked": True,
+            "runtimeEvidenceLinked": True,
+            "workLinked": True,
+        },
+        "blockers": [],
+    }
     assert coverage["coveragePlaybook"] == [
         {
             "gap": "failing_regressions",

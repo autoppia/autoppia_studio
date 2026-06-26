@@ -336,6 +336,43 @@ def _coverage_playbook(
     return gaps
 
 
+def _operational_graph_gate(edge_relations: set[Any]) -> dict[str, Any]:
+    checks = {
+        "factoryAssetsLinked": bool({"maps_entity", "input_entity", "output_entity"} & edge_relations)
+        and bool({"exposes_tool", "read_by_tool", "used_by_skill"} & edge_relations)
+        and bool({"contains_task", "produced_trajectory"} & edge_relations),
+        "promotionPathLinked": {"produced_trajectory", "promoted_to"}.issubset(edge_relations),
+        "evalsLinked": {"evaluated_by_run", "gates_skill"}.issubset(edge_relations),
+        "runtimeEvidenceLinked": bool({"exercised_skill", "exercised_trajectory", "exercised_tool"} & edge_relations)
+        and bool({"requires_approval", "produced_artifact"} & edge_relations),
+        "workLinked": bool({"scheduled_from_task", "opened_session"} & edge_relations)
+        and bool({"orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} & edge_relations),
+    }
+    actions = {
+        "factoryAssetsLinked": "Link connectors, entities, tools and benchmark tasks inside the capability graph.",
+        "promotionPathLinked": "Connect benchmark tasks to generated trajectories and promoted skills.",
+        "evalsLinked": "Attach eval runs to benchmark tasks and use passing runs as skill gates.",
+        "runtimeEvidenceLinked": "Link Runtime Lab sessions to exercised capabilities, approvals and artifacts.",
+        "workLinked": "Connect Work Orchestration items to source tasks, sessions and capabilities.",
+    }
+    blockers = [
+        {"name": key, "action": actions[key]}
+        for key, ready in checks.items()
+        if not ready
+    ]
+    ready_count = sum(1 for ready in checks.values() if ready)
+    ready = ready_count == len(checks)
+    return {
+        "state": "ready" if ready else "needs_hardening",
+        "ready": ready,
+        "readyCount": ready_count,
+        "total": len(checks),
+        "coverageRatio": round(ready_count / len(checks), 3) if checks else 1.0,
+        "checks": checks,
+        "blockers": blockers,
+    }
+
+
 def capability_graph_coverage(
     *,
     entity_docs: list[dict[str, Any]],
@@ -355,6 +392,7 @@ def capability_graph_coverage(
     edges: list[dict[str, Any]],
 ) -> dict[str, Any]:
     edge_relations = {edge.get("relation") for edge in edges}
+    operational_graph_gate = _operational_graph_gate(edge_relations)
     ready_tools = sum(1 for tool in tool_docs if str(tool.get("status") or "").lower() == "ready")
     ready_skills = sum(1 for skill in skill_docs if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in {"ready", "published", "approved"})
     reusable_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
@@ -528,6 +566,7 @@ def capability_graph_coverage(
             "hasTrajectoryToSkill": "promoted_to" in edge_relations,
             "hasToolToSkill": "used_by_skill" in edge_relations,
         },
+        "operationalGraphGate": operational_graph_gate,
         "coveragePlaybook": _coverage_playbook(
             task_total=len(task_docs),
             task_complete=complete_tasks,
