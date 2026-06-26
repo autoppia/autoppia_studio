@@ -135,6 +135,8 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
     }
     assert summary["governedToolCount"] == 3
     assert summary["writeTools"] == ["api.call", "smtp.send_email"]
+    assert summary["sendToolCount"] == 1
+    assert summary["sendTools"] == ["smtp.send_email"]
     assert summary["approvalRequiredTools"] == ["smtp.send_email"]
     assert summary["riskCounts"] == {"medium": 1, "low": 1, "high": 1}
     assert summary["policyBoundaryCounts"] == {"write": 1, "read": 1, "send": 1}

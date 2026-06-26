@@ -323,6 +323,11 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
         if tool["sideEffects"] in {"write", "writes", "send", "mutate", "mutates"}
         or tool["policyBoundary"] in {"write", "send"}
     ]
+    send_tools = [
+        tool["toolName"]
+        for tool in tools
+        if tool["sideEffects"] in {"send", "sends"} or tool["policyBoundary"] == "send"
+    ]
     approval_tools = [tool["toolName"] for tool in tools if tool["approval"]["required"]]
     risk_counts: dict[str, int] = {}
     boundary_counts: dict[str, int] = {}
@@ -394,6 +399,8 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
         },
         "writeToolCount": len(write_tools),
         "writeTools": write_tools,
+        "sendToolCount": len(send_tools),
+        "sendTools": send_tools,
         "approvalRequiredTools": approval_tools,
         "riskCounts": risk_counts,
         "policyBoundaryCounts": boundary_counts,
