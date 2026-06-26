@@ -9,6 +9,8 @@ def _skill():
         "versionLabel": "v2",
         "whenToUse": "Use for customer claim status emails.",
         "instructions": "Look up the claim, draft the reply and stop before sending.",
+        "parameters": [{"name": "claim_id", "description": "Claim identifier"}],
+        "actions": [{"action": "erp.claims.get", "args": {"claimId": "{{claim_id}}"}}],
         "preconditions": ["Customer identity verified"],
         "expectedArtifacts": ["draft_email"],
         "inputEntities": ["Claim"],
@@ -58,6 +60,8 @@ def test_skill_package_manifest_exposes_publishable_agent_skill_contract():
     assert package["format"] == "autoppia.agent_skill"
     assert package["metadata"]["promotionStatus"] == "published"
     assert package["ioContract"]["declared"] is True
+    assert package["ioContract"]["inputs"]["parameters"][0]["name"] == "claim_id"
+    assert package["execution"]["actions"][0]["action"] == "erp.claims.get"
     assert package["productionGate"]["state"] == "publishable"
     assert package["productionGate"]["canPublish"] is True
     assert package["evidence"]["regressionSuite"]["publishable"] is True

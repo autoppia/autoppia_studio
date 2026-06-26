@@ -5,6 +5,7 @@ from typing import Any
 
 def skill_io_contract(skill: dict[str, Any]) -> dict[str, Any]:
     input_entities = skill.get("inputEntities", [])
+    parameters = skill.get("parameters", [])
     preconditions = skill.get("preconditions", [])
     output_entity = skill.get("outputEntity", "")
     expected_artifacts = skill.get("expectedArtifacts", [])
@@ -12,6 +13,7 @@ def skill_io_contract(skill: dict[str, Any]) -> dict[str, Any]:
     return {
         "inputs": {
             "entities": input_entities,
+            "parameters": parameters,
             "preconditions": preconditions,
         },
         "outputs": {
@@ -89,11 +91,13 @@ def skill_package_manifest(
     version_history: list[dict[str, Any]],
 ) -> dict[str, Any]:
     package_id = str(skill.get("capabilityId") or skill.get("skillId") or "")
+    parameters = skill.get("parameters", [])
     input_entities = skill.get("inputEntities", [])
     preconditions = skill.get("preconditions", [])
     output_entity = skill.get("outputEntity", "")
     expected_artifacts = skill.get("expectedArtifacts", [])
     output_card = skill.get("outputCard", {})
+    actions = skill.get("actions") if isinstance(skill.get("actions"), list) else []
     io_contract = skill_io_contract(skill)
     production_gate = skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
     return {
@@ -115,6 +119,7 @@ def skill_package_manifest(
             "preconditions": preconditions,
         },
         "interface": {
+            "parameters": parameters,
             "inputEntities": input_entities,
             "outputEntity": output_entity,
             "expectedArtifacts": expected_artifacts,
@@ -124,6 +129,7 @@ def skill_package_manifest(
         "ioContract": io_contract,
         "execution": {
             "instructions": skill.get("instructions", ""),
+            "actions": actions,
             "connectorIds": lineage.get("connectorIds", []),
             "toolIds": lineage.get("toolIds", []),
             "trajectoryIds": lineage.get("trajectoryIds", []),

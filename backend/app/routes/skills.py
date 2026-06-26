@@ -10,6 +10,12 @@ from pydantic import BaseModel, Field
 
 from app.database import skills_collection
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_evidence import skill_hardening_status
+from app.services.skill_lifecycle import append_skill_version_event
+from app.services.skill_lifecycle import skill_promotion_status
+from app.services.skill_lifecycle import skill_version
+from app.services.skill_lifecycle import skill_version_history
+from app.services.skill_manifests import skill_package_manifest
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -48,106 +54,28 @@ def _legacy_skill_lineage(doc: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _legacy_skill_hardening(doc: dict[str, Any], lineage: dict[str, Any]) -> dict[str, Any]:
-    checks = {
-        "activation": bool(str(doc.get("goal") or doc.get("whenToUse") or "").strip()),
-        "instructions": bool(str(doc.get("instructions") or "").strip()),
-        "riskPolicy": bool(str(doc.get("riskPolicy") or "").strip()),
-        "lineage": bool(lineage.get("trajectoryIds") or lineage.get("recordedActions")),
-        "regression": False,
-        "publishableRegression": False,
-        "entities": bool(doc.get("inputEntities") or str(doc.get("outputEntity") or "").strip()),
-        "artifacts": bool(doc.get("expectedArtifacts") or doc.get("outputCard")),
-    }
-    passed = sum(1 for ready in checks.values() if ready)
+def _legacy_hardening_doc(doc: dict[str, Any], lineage: dict[str, Any]) -> dict[str, Any]:
     return {
-        "checks": checks,
-        "passedChecks": passed,
-        "totalChecks": len(checks),
-        "score": round(passed / len(checks), 3),
-        "state": "drafting",
+        **doc,
+        "whenToUse": doc.get("whenToUse") or doc.get("goal") or "",
+        "trajectoryIds": doc.get("trajectoryIds") or (["legacy_action_recording"] if lineage.get("recordedActions") else []),
     }
 
 
-def _legacy_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening: dict[str, Any]) -> dict[str, Any]:
-    parameters = doc.get("parameters") if isinstance(doc.get("parameters"), list) else []
-    input_entities = doc.get("inputEntities") if isinstance(doc.get("inputEntities"), list) else []
-    expected_artifacts = doc.get("expectedArtifacts") if isinstance(doc.get("expectedArtifacts"), list) else []
-    output_card = doc.get("outputCard") if isinstance(doc.get("outputCard"), dict) else {}
-    io_contract = {
-        "inputs": {
-            "entities": input_entities,
-            "parameters": parameters,
-        },
-        "outputs": {
-            "entity": str(doc.get("outputEntity") or ""),
-            "artifacts": expected_artifacts,
-            "outputCard": output_card,
-        },
-        "declared": bool(input_entities or parameters or doc.get("outputEntity") or expected_artifacts or output_card),
-    }
+def _legacy_manifest_doc(doc: dict[str, Any]) -> dict[str, Any]:
     return {
-        "format": "autoppia.agent_skill",
-        "manifestVersion": 1,
-        "packageId": doc.get("skillId", ""),
-        "metadata": {
-            "name": doc.get("name", ""),
-            "description": doc.get("goal", ""),
-            "version": doc.get("version", 1),
-            "versionLabel": doc.get("versionLabel", "v1"),
-            "promotionStatus": doc.get("promotionStatus", "draft"),
-            "source": doc.get("source", "legacy_skills_api"),
-            "createdAt": doc.get("createdAt"),
-            "updatedAt": doc.get("updatedAt"),
-        },
-        "activation": {
-            "description": doc.get("goal", ""),
-            "preconditions": doc.get("preconditions", []),
-        },
-        "interface": {
-            "parameters": parameters,
-            "inputEntities": input_entities,
-            "outputEntity": doc.get("outputEntity", ""),
-            "expectedArtifacts": expected_artifacts,
-            "outputCard": output_card,
-            "ioContract": io_contract,
-        },
-        "ioContract": io_contract,
-        "execution": {
-            "instructions": doc.get("instructions", ""),
-            "actions": doc.get("actions", []),
-            "trajectoryIds": lineage.get("trajectoryIds", []),
-            "connectorIds": lineage.get("connectorIds", []),
-            "toolIds": lineage.get("toolIds", []),
-        },
-        "policies": {
-            "riskPolicy": doc.get("riskPolicy", ""),
-            "permissions": doc.get("permissions", {}),
-            "runtimePolicy": serialize_runtime_policy(doc),
-        },
-        "evidence": {
-            "lineage": lineage,
-            "latestRegression": None,
-            "hardeningStatus": hardening,
-            "versionHistory": doc.get("versionHistory", []),
-            "regressionSuite": {
-                "benchmarkIds": lineage.get("benchmarkIds", []),
-                "evalIds": lineage.get("evalIds", []),
-                "publishable": False,
-            },
-        },
-        "progressiveDisclosure": {
-            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
-            "fullFields": ["execution", "evidence"],
-        },
+        **doc,
+        "capabilityId": doc.get("capabilityId") or doc.get("skillId") or "",
+        "description": doc.get("description") or doc.get("goal") or "",
+        "whenToUse": doc.get("whenToUse") or doc.get("goal") or "",
     }
 
 
 def _packaged_skill_doc(base: dict[str, Any], *, previous: dict[str, Any] | None = None, reason: str = "legacy_skill_saved") -> dict[str, Any]:
     now = _now()
     doc = {**(previous or {}), **base}
-    version = int((previous or {}).get("version") or doc.get("version") or 1)
-    promotion_status = str(doc.get("promotionStatus") or doc.get("status") or "draft")
+    version = skill_version({**(previous or {}), **doc})
+    promotion_status = skill_promotion_status(doc)
     doc.update(
         {
             "capabilityKind": "skill",
@@ -162,23 +90,26 @@ def _packaged_skill_doc(base: dict[str, Any], *, previous: dict[str, Any] | None
         }
     )
     doc.setdefault("createdAt", now)
-    history = doc.get("versionHistory") if isinstance(doc.get("versionHistory"), list) else []
-    if reason:
-        event = {
-            "version": version,
-            "versionLabel": doc["versionLabel"],
-            "promotionStatus": promotion_status,
-            "reason": reason,
-            "createdAt": now,
-        }
-        if not history or any(event.get(key) != history[-1].get(key) for key in ("version", "promotionStatus", "reason")):
-            history = [*history, event][-25:]
-    doc["versionHistory"] = history
     lineage = _legacy_skill_lineage(doc)
-    hardening = _legacy_skill_hardening(doc, lineage)
+    hardening = skill_hardening_status(_legacy_hardening_doc(doc, lineage), trajectory_docs=[], latest_regression=None)
+    if reason:
+        doc["versionHistory"] = append_skill_version_event(previous or {}, doc, now=now, reason=reason)
+    else:
+        doc["versionHistory"] = skill_version_history(doc, version=version, promotion_status=promotion_status)
     doc["lineage"] = lineage
     doc["hardeningStatus"] = hardening
-    doc["skillPackage"] = _legacy_skill_package(doc, lineage, hardening)
+    doc["skillPackage"] = skill_package_manifest(
+        _legacy_manifest_doc(doc),
+        version=version,
+        promotion_status=promotion_status,
+        runtime_policy=serialize_runtime_policy(doc),
+        lineage=lineage,
+        hardening=hardening,
+        latest_regression=None,
+        source_trajectories=[],
+        regression_cases=[],
+        version_history=doc["versionHistory"],
+    )
     return doc
 
 
