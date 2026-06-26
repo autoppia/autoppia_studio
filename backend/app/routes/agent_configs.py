@@ -2,7 +2,6 @@ import uuid
 import os
 from datetime import datetime, timezone
 from typing import Any, List
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -20,6 +19,11 @@ from app.routes.agent_creation import ensure_agent_creation_job
 from app.repositories import AgentConfigRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.agent_runtime import agent_step_result, runtime_contract_payload
+from app.services.agent_config_contract import build_runtime_spec
+from app.services.agent_config_contract import dedupe_runtime_values
+from app.services.agent_config_contract import runtime_allowed_domains
+from app.services.agent_config_contract import runtime_classes
+from app.services.agent_config_contract import runtime_host
 from app.services.task_contracts import task_metadata_with_contract
 
 router = APIRouter()
@@ -104,76 +108,30 @@ def _runtime_spec(
     website_url: str = "",
     existing_spec: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    mode = browser_mode if browser_mode in {"visible", "headless"} else "visible"
-    credits = max(0.0, float(max_credits_per_run or 0.0))
-    existing_spec = existing_spec if isinstance(existing_spec, dict) else {}
-    tools = {
-        "browser": browser_enabled,
-        "connectors": True,
-        "skills": True,
-        "knowledge": False,
-        **(existing_tools or {}),
-    }
-    tools["browser"] = browser_enabled
-    allowed_domains = _runtime_allowed_domains(website_url, existing_spec)
-    approval_required_for = _dedupe_runtime_values(existing_spec.get("approvalRequiredFor") or ["write", "send"])
-    return {
-        "browserEnabled": browser_enabled,
-        "browserMode": mode,
-        "browserDefaultUse": "exception",
-        "browserRestrictedByDomain": bool(allowed_domains),
-        "allowedDomains": allowed_domains,
-        "approvalRequiredFor": approval_required_for,
-        "runtimeClasses": _runtime_classes(browser_enabled=browser_enabled, tools=tools),
-        "maxCreditsPerRun": credits,
-        "tools": tools,
-    }
+    return build_runtime_spec(
+        browser_enabled=browser_enabled,
+        browser_mode=browser_mode,
+        max_credits_per_run=max_credits_per_run,
+        existing_tools=existing_tools,
+        website_url=website_url,
+        existing_spec=existing_spec,
+    )
 
 
 def _dedupe_runtime_values(values: list[Any]) -> list[str]:
-    result: list[str] = []
-    seen: set[str] = set()
-    for value in values:
-        clean = str(value or "").strip().lower()
-        if not clean or clean in seen:
-            continue
-        seen.add(clean)
-        result.append(clean)
-    return result
+    return dedupe_runtime_values(values)
 
 
 def _runtime_host(value: str) -> str:
-    try:
-        return (urlparse(str(value or "")).hostname or "").lower()
-    except Exception:
-        return ""
+    return runtime_host(value)
 
 
 def _runtime_allowed_domains(website_url: str, existing_spec: dict[str, Any]) -> list[str]:
-    raw_domains = (
-        existing_spec.get("allowedDomains")
-        or existing_spec.get("browserAllowedDomains")
-        or existing_spec.get("allowedOrigins")
-        or []
-    )
-    domains = _dedupe_runtime_values(raw_domains if isinstance(raw_domains, list) else [])
-    website_host = _runtime_host(website_url)
-    if website_host and website_host not in domains:
-        domains.append(website_host)
-    return domains
+    return runtime_allowed_domains(website_url, existing_spec)
 
 
 def _runtime_classes(*, browser_enabled: bool, tools: dict[str, Any]) -> list[str]:
-    classes = ["api_runtime"]
-    if tools.get("connectors"):
-        classes.append("connector_runtime")
-    if tools.get("skills"):
-        classes.append("skill_runtime")
-    if browser_enabled:
-        classes.append("browser_runtime")
-        if tools.get("connectors") or tools.get("skills"):
-            classes.append("hybrid_runtime")
-    return classes
+    return runtime_classes(browser_enabled=browser_enabled, tools=tools)
 
 
 def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
