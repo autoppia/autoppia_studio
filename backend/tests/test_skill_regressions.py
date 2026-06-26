@@ -79,6 +79,7 @@ async def test_skill_regression_cases_collects_task_and_legacy_eval_contracts(mo
                         "businessIntent": "Answer claim status",
                         "successCriteria": "Draft created",
                         "riskClass": "draft",
+                        "expectedInputs": ["claim_id", "customer_email"],
                         "expectedArtifacts": ["draft_email"],
                         "allowedSystems": ["imap", "insurance_erp"],
                     },
@@ -110,6 +111,7 @@ async def test_skill_regression_cases_collects_task_and_legacy_eval_contracts(mo
 
     assert [case["source"] for case in cases] == ["benchmark_task", "legacy_eval"]
     assert cases[0]["businessIntent"] == "Answer claim status"
+    assert cases[0]["expectedInputs"] == ["claim_id", "customer_email"]
     assert cases[0]["expectedArtifacts"] == ["draft_email"]
     assert cases[1]["evalId"] == "eval-1"
     assert all(query["companyId"] == "co-1" and query["email"] == "owner@example.com" for query in benchmark_tasks.queries + legacy_evals.queries)

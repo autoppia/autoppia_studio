@@ -32,6 +32,7 @@ def serialize_regression_case(doc: dict[str, Any], *, source: str) -> dict[str, 
         "businessIntent": task_contract.get("businessIntent") or "",
         "successCriteria": task_contract.get("successCriteria") or "",
         "riskClass": task_contract.get("riskClass") or "",
+        "expectedInputs": task_contract.get("expectedInputs") or [],
         "expectedArtifacts": task_contract.get("expectedArtifacts") or [],
         "allowedSystems": task_contract.get("allowedSystems") or [],
     }

@@ -675,6 +675,7 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
                     "riskClass": "medium",
                     "metadata": {
                         "taskContract": {
+                            "expectedInputs": ["policy_id"],
                             "expectedArtifacts": ["draft_email"],
                             "allowedSystems": ["crm", "erp"],
                         }
@@ -690,6 +691,7 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
                     "metadata": {
                         "taskContract": {
                             "businessIntent": "Prepare customer-facing renewal response",
+                            "expectedInputs": ["customer_email", "policy_id"],
                             "expectedArtifacts": ["draft_email", "renewal_summary"],
                             "allowedSystems": ["email", "erp"],
                             "riskClass": "high",
@@ -838,6 +840,8 @@ async def test_update_company_skill_hardening_recomputes_lineage(monkeypatch):
     assert skill["skillPackage"]["evidence"]["sourceTrajectories"][1]["toolIds"] == ["erp.update"]
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is True
     assert [case["taskId"] for case in skill["skillPackage"]["evidence"]["regressionSuite"]["cases"]] == ["task-1", "task-2"]
+    assert skill["skillPackage"]["evidence"]["regressionSuite"]["cases"][0]["expectedInputs"] == ["policy_id"]
+    assert skill["skillPackage"]["evidence"]["regressionSuite"]["cases"][1]["expectedInputs"] == ["customer_email", "policy_id"]
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["cases"][1]["expectedArtifacts"] == ["draft_email", "renewal_summary"]
     assert skill["skillPackage"]["evidence"]["versionHistory"][-1]["versionLabel"] == "v2"
 
