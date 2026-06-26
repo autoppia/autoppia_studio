@@ -141,6 +141,7 @@ def build_work_orchestration_contract(
     doc: dict[str, Any],
     *,
     pending_approval_count: int,
+    approval_refs: list[dict[str, Any]] | None = None,
     latest_credits_spent: float,
     review_blocked: bool,
     now: datetime | None = None,
@@ -174,6 +175,16 @@ def build_work_orchestration_contract(
         deadline_state = "upcoming"
     run_attempts = len(doc.get("runHistory") if isinstance(doc.get("runHistory"), list) else [])
     max_steps = int(doc.get("maxSteps", 8) or 8)
+    pending_approval_refs = [
+        {
+            "approvalId": str(ref.get("approvalId") or ""),
+            "title": str(ref.get("title") or ""),
+            "actionUrl": str(ref.get("actionUrl") or ref.get("action_url") or ""),
+            "sourceKind": str(ref.get("sourceKind") or ""),
+        }
+        for ref in approval_refs or []
+        if str(ref.get("approvalId") or "").strip()
+    ][:8]
     blockers: list[str] = []
     next_actions: list[str] = []
     if review_blocked:
@@ -237,6 +248,8 @@ def build_work_orchestration_contract(
         },
         "approval": {
             "pendingApprovalCount": pending_approval_count,
+            "pendingApprovalIds": [ref["approvalId"] for ref in pending_approval_refs],
+            "pendingApprovals": pending_approval_refs,
             "reviewBlocked": review_blocked,
         },
         "browserPolicy": {
@@ -305,6 +318,7 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
         "slaTracked": bool(sla) or bool(schedule.get("dueAt") or work_item.get("nextRunAt")),
         "slaNeedsAttention": bool(sla.get("needsAttention") or str(sla.get("state") or "").lower() in {"blocked", "overdue"}),
         "approvalGate": approval_gate,
+        "pendingApprovalIds": _list_values(approval.get("pendingApprovalIds")),
         "auditTrail": bool(audit.get("uniform") or audit.get("eventCount") or audit.get("events")),
         "browserPolicy": bool(browser) or bool(work_item.get("browserEnabled")),
         "browserAllowlist": bool(allowed_domains),
@@ -315,6 +329,7 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
             "contract": bool(orchestration),
             "slaState": str(sla.get("state") or ""),
             "approvalGate": approval_gate,
+            "pendingApprovalIds": _list_values(approval.get("pendingApprovalIds"))[:5],
             "runAttempts": run_attempts,
         },
     }
@@ -333,6 +348,7 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         "slaTracked": sum(1 for item in contracts if item["slaTracked"]),
         "slaNeedsAttention": sum(1 for item in contracts if item["slaNeedsAttention"]),
         "approvalGates": sum(1 for item in contracts if item["approvalGate"]),
+        "pendingApprovalRefs": sum(len(item["pendingApprovalIds"]) for item in contracts),
         "auditTrails": sum(1 for item in contracts if item["auditTrail"]),
         "browserPolicies": sum(1 for item in contracts if item["browserPolicy"]),
         "browserAllowlists": sum(1 for item in contracts if item["browserAllowlist"]),

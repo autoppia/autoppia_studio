@@ -18,6 +18,7 @@ def test_build_work_orchestration_contract_blocks_review_and_budget_with_audit_t
             "updatedAt": "t-1",
         },
         pending_approval_count=1,
+        approval_refs=[{"approvalId": "approval-1", "title": "Approve send", "actionUrl": "/approvals?workItemId=work-1", "sourceKind": "work"}],
         latest_credits_spent=1.25,
         review_blocked=True,
         now=datetime(2026, 1, 1, tzinfo=timezone.utc),
@@ -27,7 +28,12 @@ def test_build_work_orchestration_contract_blocks_review_and_budget_with_audit_t
     assert contract["budget"]["exhausted"] is True
     assert contract["budget"]["remainingCredits"] == 0.0
     assert contract["retry"] == {"runAttempts": 2, "retryCount": 1, "maxSteps": 4}
-    assert contract["approval"] == {"pendingApprovalCount": 1, "reviewBlocked": True}
+    assert contract["approval"] == {
+        "pendingApprovalCount": 1,
+        "pendingApprovalIds": ["approval-1"],
+        "pendingApprovals": [{"approvalId": "approval-1", "title": "Approve send", "actionUrl": "/approvals?workItemId=work-1", "sourceKind": "work"}],
+        "reviewBlocked": True,
+    }
     assert contract["sla"]["state"] == "blocked"
     assert contract["automationGate"]["state"] == "blocked"
     assert contract["automationGate"]["blockers"] == ["pending_approval", "budget_exhausted"]
@@ -54,6 +60,7 @@ def test_build_work_orchestration_contract_blocks_unrestricted_scheduled_browser
             "maxSteps": 8,
         },
         pending_approval_count=0,
+        approval_refs=[],
         latest_credits_spent=0,
         review_blocked=False,
         now=datetime(2026, 1, 1, 9, 0, tzinfo=timezone.utc),
@@ -75,7 +82,7 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
                     "budget": {"exhausted": True},
                     "retry": {"runAttempts": 2},
                     "sla": {"state": "blocked", "needsAttention": True},
-                    "approval": {"pendingApprovalCount": 1},
+                    "approval": {"pendingApprovalCount": 1, "pendingApprovalIds": ["approval-1"]},
                     "auditTrail": {"uniform": True, "eventCount": 3},
                     "browserPolicy": {"allowedDomains": ["erp.example.com"]},
                     "automationGate": {"canRunUnattended": False},
@@ -91,5 +98,6 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
     assert summary["runAttempts"] == 2
     assert summary["slaNeedsAttention"] == 1
     assert summary["approvalGates"] == 1
+    assert summary["pendingApprovalRefs"] == 1
     assert summary["auditTrails"] == 1
     assert summary["browserAllowlists"] == 1

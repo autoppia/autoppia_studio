@@ -264,6 +264,28 @@ def _safe_float(value: Any) -> float:
         return 0.0
 
 
+def _work_approval_refs(approval_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    refs: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for approval in approval_docs:
+        if str(approval.get("status") or "") != "pending":
+            continue
+        approval_id = str(approval.get("approvalId") or "")
+        if not approval_id or approval_id in seen:
+            continue
+        seen.add(approval_id)
+        metadata = approval.get("metadata") if isinstance(approval.get("metadata"), dict) else {}
+        refs.append(
+            {
+                "approvalId": approval_id,
+                "title": str(approval.get("title") or ""),
+                "actionUrl": str(approval.get("action_url") or approval.get("actionUrl") or ""),
+                "sourceKind": str(metadata.get("sourceKind") or "work"),
+            }
+        )
+    return refs
+
+
 def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str, Any]]) -> dict[str, Any]:
     results = _report_results(doc)
     approval_count = len(approval_docs)
@@ -346,6 +368,7 @@ def _work_operational_summary(doc: dict[str, Any], approval_docs: list[dict[str,
         "orchestration": build_work_orchestration_contract(
             doc,
             pending_approval_count=pending_approval_count,
+            approval_refs=_work_approval_refs(approval_docs),
             latest_credits_spent=latest_credits_spent,
             review_blocked=review_blocked,
         ),
@@ -360,7 +383,7 @@ async def _serialized_work_items_with_operational_data(docs: list[dict[str, Any]
     if work_item_ids:
         approval_docs = await approvals_collection.find(
             {"metadata.workItemId": {"$in": work_item_ids}},
-            {"_id": 0, "metadata.workItemId": 1, "status": 1},
+            {"_id": 0, "approvalId": 1, "title": 1, "action_url": 1, "actionUrl": 1, "metadata": 1, "status": 1},
         ).to_list(length=2000)
     artifact_docs: list[dict[str, Any]] = []
     if work_item_ids:

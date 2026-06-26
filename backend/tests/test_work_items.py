@@ -260,6 +260,20 @@ async def test_create_and_list_work_items(monkeypatch):
     assert listed["workItems"][0]["browserRestrictedByDomain"] is True
     assert listed["workItems"][0]["browserDefaultUse"] == "exception"
 
+    approvals.docs.append(
+        {
+            "approvalId": "approval-1",
+            "title": "Approve work send",
+            "status": "pending",
+            "action_url": "/approvals?workItemId=work-1",
+            "metadata": {"workItemId": created["workItem"]["workItemId"], "sourceKind": "work"},
+        }
+    )
+    listed_with_approval = await work_items.list_work_items("user@example.com", "company-1", created["workItem"]["boardId"])
+    approval_contract = listed_with_approval["workItems"][0]["operational"]["orchestration"]["approval"]
+    assert approval_contract["pendingApprovalIds"] == ["approval-1"]
+    assert approval_contract["pendingApprovals"][0]["actionUrl"] == "/approvals?workItemId=work-1"
+
 
 @pytest.mark.asyncio
 async def test_run_work_item_records_report_and_judge(monkeypatch):
