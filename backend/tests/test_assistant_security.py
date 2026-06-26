@@ -852,13 +852,15 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")
     assert runtime_lab["status"] == "needs_work"
-    assert runtime_lab["hardening"]["gap"] == "pending_approvals"
+    assert runtime_lab["hardening"]["gap"] == "agentRuntimeReplay"
     assert runtime_lab["evidence"] == {
         "sessions": 1,
         "replayReadySessions": 0,
         "pendingApprovals": 1,
         "artifacts": 1,
         "reviewRequiredArtifacts": 1,
+        "replayContractReady": 0,
+        "replayContractBlocked": 1,
     }
     assert runtime_lab["nextAction"] == runtime_lab["hardening"]["action"]
     work_orchestration = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Work Orchestration")

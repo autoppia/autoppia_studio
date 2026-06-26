@@ -722,6 +722,7 @@ class AutomataAssistantTools:
             promotion_pipeline.get("hardeningPlaybook"),
         )
         runtime_lab_hardening = _first_playbook_item(
+            first_replay_contract.get("hardeningPlaybook"),
             session_contracts.get("hardeningPlaybook"),
             artifact_outputs.get("hardeningPlaybook"),
             (runtime_policy_map.get("approvalBoundaries") or {}).get("hardening", {}).get("playbook"),
@@ -755,6 +756,8 @@ class AutomataAssistantTools:
                 "pendingApprovals": pending_approvals,
                 "artifacts": artifact_outputs.get("total", 0),
                 "reviewRequiredArtifacts": artifact_outputs.get("reviewRequired", 0),
+                "replayContractReady": vertical_demos.get("replayContractReady", 0),
+                "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
             },
             "Work Orchestration": {
                 "workItems": counts["workItems"],
@@ -796,6 +799,7 @@ class AutomataAssistantTools:
                 "status": _surface_status(
                     bool(runtime_session_gate.get("ready"))
                     and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
+                    and not vertical_demos.get("replayContractBlocked", 0)
                 ),
                 "hardening": runtime_lab_hardening,
                 "evidence": surface_evidence["Runtime Lab"],
