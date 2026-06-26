@@ -4,6 +4,45 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+SETUP_GATE_ACTIONS = {
+    "systems": {
+        "area": "systems",
+        "severity": "high",
+        "action": "Add the ERP, CRM, email, document and portal systems that define the operating surface.",
+    },
+    "secrets": {
+        "area": "credentials",
+        "severity": "high",
+        "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
+    },
+    "domain_allowlist": {
+        "area": "security",
+        "severity": "high",
+        "action": "Declare allowed Studio/embed/browser domains before enabling browser or embedded runtime surfaces.",
+    },
+    "human_approval": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Configure human approval policies for write and send boundaries.",
+    },
+    "resource_acl": {
+        "area": "resources",
+        "severity": "high",
+        "action": "Declare resource ACL visibility, roles or users for all knowledge resources.",
+    },
+    "host_jwt": {
+        "area": "embed",
+        "severity": "high",
+        "action": "Configure host JWT settings for authenticated embedded Studio access.",
+    },
+    "audit_evidence": {
+        "area": "observability",
+        "severity": "medium",
+        "action": "Run a session, eval or artifact-producing workflow to create audit evidence.",
+    },
+}
+
+
 def connector_domains(connector: dict[str, Any]) -> list[str]:
     config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
     domains: set[str] = set()
@@ -62,22 +101,23 @@ def _setup_gate(
         "host_jwt": host_jwt_ready,
         "audit_evidence": any(int(value or 0) > 0 for value in audit_evidence.values()),
     }
-    next_action_by_blocker = {
-        "systems": "Add the ERP, CRM, email, document and portal systems that define the operating surface.",
-        "secrets": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
-        "domain_allowlist": "Declare allowed Studio/embed/browser domains before enabling browser or embedded runtime surfaces.",
-        "human_approval": "Configure human approval policies for write and send boundaries.",
-        "resource_acl": "Declare resource ACL visibility, roles or users for all knowledge resources.",
-        "host_jwt": "Configure host JWT settings for authenticated embedded Studio access.",
-        "audit_evidence": "Run a session, eval or artifact-producing workflow to create audit evidence.",
-    }
     blockers = [key for key, ready in checks.items() if not ready]
+    playbook = [
+        {
+            "gap": blocker,
+            "area": SETUP_GATE_ACTIONS[blocker]["area"],
+            "severity": SETUP_GATE_ACTIONS[blocker]["severity"],
+            "action": SETUP_GATE_ACTIONS[blocker]["action"],
+        }
+        for blocker in blockers
+    ]
     return {
         "state": "ready" if not blockers else "partial" if any(checks.values()) else "missing",
         "ready": not blockers,
         "checks": checks,
         "blockers": blockers,
-        "nextActions": [next_action_by_blocker[key] for key in blockers],
+        "nextActions": [item["action"] for item in playbook],
+        "hardeningPlaybook": playbook,
     }
 
 

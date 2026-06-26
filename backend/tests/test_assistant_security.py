@@ -505,6 +505,12 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["companySetup"]["setupGate"]["blockers"] == ["secrets", "resource_acl", "host_jwt"]
     assert snapshot["operatingState"]["companySetup"]["setupGate"]["checks"]["human_approval"] is True
     assert snapshot["operatingState"]["companySetup"]["setupGate"]["checks"]["audit_evidence"] is True
+    assert snapshot["operatingState"]["companySetup"]["setupGate"]["hardeningPlaybook"][0] == {
+        "gap": "secrets",
+        "area": "credentials",
+        "severity": "high",
+        "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
+    }
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1

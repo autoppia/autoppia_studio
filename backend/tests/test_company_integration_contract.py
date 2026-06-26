@@ -79,6 +79,7 @@ def test_company_integration_contract_models_setup_governance_and_compliance():
         },
         "blockers": [],
         "nextActions": [],
+        "hardeningPlaybook": [],
     }
 
 
@@ -145,3 +146,17 @@ def test_company_integration_contract_flags_missing_enterprise_setup_controls():
         "audit_evidence",
     ]
     assert integration["setupGate"]["nextActions"][0] == "Add the ERP, CRM, email, document and portal systems that define the operating surface."
+    assert integration["setupGate"]["hardeningPlaybook"][:2] == [
+        {
+            "gap": "systems",
+            "area": "systems",
+            "severity": "high",
+            "action": "Add the ERP, CRM, email, document and portal systems that define the operating surface.",
+        },
+        {
+            "gap": "secrets",
+            "area": "credentials",
+            "severity": "high",
+            "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
+        },
+    ]
