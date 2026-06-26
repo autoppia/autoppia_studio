@@ -104,6 +104,18 @@ def _vertical_demo_group_ready(payload: dict[str, Any], key: str) -> bool:
     return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
 
 
+def _vertical_demo_runtime_replay_ready(payload: dict[str, Any]) -> bool:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    runtime_contract = (
+        proof_gate.get("runtimeReplayContract")
+        if isinstance(proof_gate.get("runtimeReplayContract"), dict)
+        else {}
+    )
+    if runtime_contract:
+        return bool(runtime_contract.get("ready"))
+    return int((payload.get("evidence") or {}).get("passingRuns") or 0) > 0
+
+
 def _capability_boundary(doc: dict[str, Any]) -> str:
     explicit = str(doc.get("policyBoundary") or (doc.get("toolContract") if isinstance(doc.get("toolContract"), dict) else {}).get("policyBoundary") or "").strip().lower()
     if explicit in {"read", "draft", "write", "send"}:
@@ -516,7 +528,7 @@ def capability_graph_coverage(
             "runtimeReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_group_ready(item, "runtime")),
             "linkedToBenchmarks": "validates_vertical_demo" in edge_relations,
             "linkedToProofGate": "gated_by_proof" in edge_relations,
-            "runtimeReplayReady": sum(1 for item in vertical_demo_payloads if int((item.get("evidence") or {}).get("passingRuns") or 0) > 0),
+            "runtimeReplayReady": sum(1 for item in vertical_demo_payloads if _vertical_demo_runtime_replay_ready(item)),
         },
         "evals": {
             "runs": len(eval_run_docs),

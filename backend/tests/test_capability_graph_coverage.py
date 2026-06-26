@@ -189,7 +189,18 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
         approval_docs=[{"approvalId": "approval-1", "status": "pending"}],
         artifact_docs=[{"artifactId": "artifact-1"}],
         work_item_docs=[{"workItemId": "work-1", "triggerType": "scheduled", "browserEnabled": True}],
-        vertical_demo_payloads=[{"state": "partial", "evidence": {"passingRuns": 1}}],
+        vertical_demo_payloads=[
+            {
+                "state": "partial",
+                "evidence": {"passingRuns": 1},
+                "insuranceFlowProofGate": {
+                    "runtimeReplayContract": {
+                        "ready": False,
+                        "missing": ["approvedSkillAvailable"],
+                    }
+                },
+            }
+        ],
         edges=[
             {"relation": "input_entity"},
             {"relation": "read_by_tool"},
@@ -238,6 +249,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
         }
     ]
     assert coverage["runtime"]["sessionContracts"]["selectedSkill"] == 1
+    assert coverage["verticalDemos"]["runtimeReplayReady"] == 0
     assert coverage["work"]["scheduled"] == 1
     assert coverage["promotionPath"]["hasTrajectoryToSkill"] is True
     assert coverage["operationalGraphGate"] == {
