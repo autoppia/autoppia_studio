@@ -1271,7 +1271,17 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "durationSeconds": 8.25,
                         "timeline": {"steps": 6, "toolSteps": 3, "skillSteps": 1, "replayReadySessions": 1},
                     },
-                    "artifactOutputs": {"total": 3, "runtimeLinked": 2, "reviewRequired": 1, "blockedForReuse": 1},
+                    "artifactOutputs": {
+                        "total": 3,
+                        "separatedFromTrace": 3,
+                        "runtimeLinked": 2,
+                        "capabilityLinked": 2,
+                        "workLinked": 1,
+                        "knowledgeReady": 2,
+                        "reusableAsKnowledge": 1,
+                        "reviewRequired": 1,
+                        "blockedForReuse": 1,
+                    },
                 },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
@@ -1365,6 +1375,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Runtime cost: 2.5 credits, 8.25s duration." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
+    assert "Artifact traceability: 3 separated from trace, 2 capability-linked, 1 work-linked, 1/2 reusable as knowledge." in reply
     assert "Artifact reuse blocked: 1." in reply
     assert "Work attention items: 3." in reply
     assert "Work operations: 2 due trigger(s), 1 budget-exhausted item(s), 4 retry attempt(s)." in reply

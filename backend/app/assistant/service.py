@@ -1771,6 +1771,12 @@ class AutomataAssistantService:
                     f"{artifact_outputs.get('runtimeLinked', 0)} runtime-linked, "
                     f"{artifact_outputs.get('reviewRequired', 0)} pending review."
                 )
+                runtime_text += (
+                    f" Artifact traceability: {artifact_outputs.get('separatedFromTrace', 0)} separated from trace, "
+                    f"{artifact_outputs.get('capabilityLinked', 0)} capability-linked, "
+                    f"{artifact_outputs.get('workLinked', 0)} work-linked, "
+                    f"{artifact_outputs.get('reusableAsKnowledge', 0)}/{artifact_outputs.get('knowledgeReady', 0)} reusable as knowledge."
+                )
                 if int(artifact_outputs.get("blockedForReuse") or 0):
                     runtime_text += f" Artifact reuse blocked: {artifact_outputs.get('blockedForReuse', 0)}."
         work_text = ""
