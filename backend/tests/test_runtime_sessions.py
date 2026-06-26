@@ -1,5 +1,6 @@
 from app.services.runtime_sessions import (
     build_runtime_evidence,
+    build_runtime_lab,
     build_runtime_metrics,
     build_runtime_policy_boundary,
     build_runtime_timeline,
@@ -121,6 +122,77 @@ def test_build_runtime_evidence_summarizes_trace_capability_and_outputs():
         "pendingConnectorApproval": "smtp.send_email:0:abc",
     }
     assert evidence["outputs"] == {"artifactCount": 2, "hasBusinessOutput": True}
+
+
+def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
+    lab = build_runtime_lab(
+        {
+            "sessionId": "session-1",
+            "runtimeKind": "hybrid",
+            "sourceKind": "work",
+            "agentId": "agent-1",
+            "agentName": "Claims Agent",
+            "workItemId": "work-1",
+            "runId": "run-1",
+            "connectorActionCount": 1,
+            "matchedSkillId": "skill-1",
+            "matchedSkillName": "Draft claim reply",
+            "pendingConnectorApproval": "smtp.send_email:0:abc",
+            "creditsSpent": 2.5,
+            "runtimeMetrics": {
+                "runtimeKind": "hybrid",
+                "connectorActionCount": 1,
+                "traceIds": ["run-1", "trace-tool"],
+                "durationSeconds": 3.0,
+                "lastStepSeconds": 0.75,
+            },
+            "runtimePolicyBoundary": {"approvalRequiredFor": ["send"], "hasHumanBoundary": True},
+            "runtimeEvidence": {
+                "trace": {
+                    "traceIds": ["run-1", "trace-tool"],
+                    "failedSteps": 0,
+                    "pendingSteps": 1,
+                    "replayReady": False,
+                }
+            },
+            "runtimeTimeline": [
+                {"index": 0, "activity": "browser", "action": "browser.navigate", "label": "Navigate", "status": "ok", "traceId": "trace-browser", "elapsedSeconds": 1.0},
+                {"index": 1, "activity": "tool", "action": "imap.search_emails", "label": "imap.search_emails", "status": "ok", "traceId": "trace-tool", "elapsedSeconds": 0.75},
+                {"index": 2, "activity": "skill", "action": "skill.use", "label": "Using skill", "status": "pending", "traceId": "trace-skill", "elapsedSeconds": 0.25},
+            ],
+            "runtimeState": {"approvedConnectorToolCalls": ["smtp.send_email:0:abc"]},
+            "latestAction": "skill.use",
+            "latestActivityAt": "t-3",
+        },
+        artifact_count=2,
+        pending_approval_count=1,
+    )
+
+    assert lab["controlPlane"]["runtimeKind"] == "hybrid"
+    assert lab["controlPlane"]["workItemId"] == "work-1"
+    assert lab["timeline"]["steps"] == 3
+    assert lab["timeline"]["browserSteps"] == 1
+    assert lab["timeline"]["toolSteps"] == 1
+    assert lab["timeline"]["skillSteps"] == 1
+    assert lab["timeline"]["pendingSteps"] == 1
+    assert lab["timeline"]["traceIds"] == ["run-1", "trace-tool"]
+    assert lab["toolCalls"]["total"] == 1
+    assert lab["toolCalls"]["approved"] == 1
+    assert lab["toolCalls"]["sample"][0]["action"] == "imap.search_emails"
+    assert lab["skillMatch"] == {"matched": True, "skillId": "skill-1", "skillName": "Draft claim reply"}
+    assert lab["approvals"] == {
+        "pending": 1,
+        "approvedConnectorCalls": 1,
+        "requiredFor": ["send"],
+        "hasHumanBoundary": True,
+    }
+    assert lab["outputs"] == {
+        "artifacts": 2,
+        "hasBusinessOutput": True,
+        "creditsSpent": 2.5,
+        "durationSeconds": 3.0,
+        "lastStepSeconds": 0.75,
+    }
 
 
 def test_build_runtime_timeline_normalizes_actions_status_and_trace_fields():

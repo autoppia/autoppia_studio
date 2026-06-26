@@ -254,6 +254,82 @@ def build_runtime_evidence(
     }
 
 
+def build_runtime_lab(
+    summary: dict[str, Any],
+    *,
+    artifact_count: int,
+    pending_approval_count: int,
+) -> dict[str, Any]:
+    runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
+    runtime_metrics = summary.get("runtimeMetrics") if isinstance(summary.get("runtimeMetrics"), dict) else {}
+    policy_boundary = summary.get("runtimePolicyBoundary") if isinstance(summary.get("runtimePolicyBoundary"), dict) else {}
+    evidence = summary.get("runtimeEvidence") if isinstance(summary.get("runtimeEvidence"), dict) else {}
+    trace = evidence.get("trace") if isinstance(evidence.get("trace"), dict) else {}
+    timeline = summary.get("runtimeTimeline") if isinstance(summary.get("runtimeTimeline"), list) else []
+    tool_steps = [
+        {
+            "index": item.get("index"),
+            "action": str(item.get("action") or ""),
+            "label": str(item.get("label") or item.get("action") or ""),
+            "status": str(item.get("status") or "ok"),
+            "traceId": str(item.get("traceId") or ""),
+            "elapsedSeconds": _safe_float(item.get("elapsedSeconds")),
+        }
+        for item in timeline
+        if isinstance(item, dict) and item.get("activity") == "tool"
+    ]
+    skill_steps = [item for item in timeline if isinstance(item, dict) and item.get("activity") == "skill"]
+    browser_steps = [item for item in timeline if isinstance(item, dict) and item.get("activity") == "browser"]
+    approved_calls = runtime_state.get("approvedConnectorToolCalls") if isinstance(runtime_state.get("approvedConnectorToolCalls"), list) else []
+    return {
+        "controlPlane": {
+            "sessionId": str(summary.get("sessionId") or ""),
+            "runtimeKind": str(summary.get("runtimeKind") or runtime_metrics.get("runtimeKind") or "api"),
+            "sourceKind": str(summary.get("sourceKind") or runtime_state.get("sourceKind") or ""),
+            "agentId": str(summary.get("agentId") or ""),
+            "agentName": str(summary.get("agentName") or ""),
+            "workItemId": str(summary.get("workItemId") or runtime_state.get("workItemId") or ""),
+            "runId": str(summary.get("runId") or runtime_state.get("runId") or ""),
+        },
+        "timeline": {
+            "steps": len(timeline),
+            "browserSteps": len(browser_steps),
+            "toolSteps": len(tool_steps),
+            "skillSteps": len(skill_steps),
+            "failedSteps": int(trace.get("failedSteps") or 0),
+            "pendingSteps": int(trace.get("pendingSteps") or 0),
+            "lastAction": str(summary.get("latestAction") or ""),
+            "lastActivityAt": str(summary.get("latestActivityAt") or ""),
+            "traceIds": trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else runtime_metrics.get("traceIds", []),
+            "replayReady": bool(trace.get("replayReady")),
+        },
+        "toolCalls": {
+            "total": int(summary.get("connectorActionCount") or runtime_metrics.get("connectorActionCount") or 0),
+            "approved": len(approved_calls),
+            "pendingApproval": str(summary.get("pendingConnectorApproval") or runtime_state.get("pendingConnectorApproval") or ""),
+            "sample": tool_steps[:8],
+        },
+        "skillMatch": {
+            "matched": bool(summary.get("matchedSkillId") or summary.get("matchedSkillName") or skill_steps),
+            "skillId": str(summary.get("matchedSkillId") or runtime_state.get("matchedSkillId") or ""),
+            "skillName": str(summary.get("matchedSkillName") or runtime_state.get("matchedSkillName") or runtime_state.get("matchedSkill") or ""),
+        },
+        "approvals": {
+            "pending": pending_approval_count,
+            "approvedConnectorCalls": len(approved_calls),
+            "requiredFor": policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else [],
+            "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
+        },
+        "outputs": {
+            "artifacts": artifact_count,
+            "hasBusinessOutput": artifact_count > 0,
+            "creditsSpent": _safe_float(summary.get("creditsSpent") or runtime_metrics.get("creditsSpent")),
+            "durationSeconds": _safe_float(runtime_metrics.get("durationSeconds")),
+            "lastStepSeconds": _safe_float(runtime_metrics.get("lastStepSeconds")),
+        },
+    }
+
+
 def session_runtime_kind(session: dict[str, Any]) -> str:
     contract = session.get("sessionContract") if isinstance(session.get("sessionContract"), dict) else {}
     runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
