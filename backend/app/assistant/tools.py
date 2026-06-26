@@ -238,6 +238,7 @@ class AutomataAssistantTools:
         task_contracts = [task_contract_from_record(task) for task in task_docs]
         task_contracts_ready = sum(1 for task in task_docs if task_contract_ready(task))
         task_expected_artifacts = sorted({artifact for contract in task_contracts for artifact in _list_values(contract.get("expectedArtifacts"))})
+        task_expected_inputs = sorted({input_name for contract in task_contracts for input_name in _list_values(contract.get("expectedInputs"))})
         task_allowed_systems = sorted({system for contract in task_contracts for system in _list_values(contract.get("allowedSystems"))})
         hardened_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
@@ -431,6 +432,7 @@ class AutomataAssistantTools:
                 "taskContracts": {
                     "total": counts["benchmarkTasks"],
                     "ready": task_contracts_ready,
+                    "expectedInputs": task_expected_inputs,
                     "expectedArtifacts": task_expected_artifacts,
                     "allowedSystems": task_allowed_systems,
                 },

@@ -331,6 +331,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         task_contracts = [task_contract_from_record(task) for task in benchmark_tasks]
         promotion_pipeline = summarize_promotion_pipeline(tasks=benchmark_tasks, trajectories=trajectories, skills=skills)
         task_artifacts = sorted({artifact for contract in task_contracts for artifact in _normalized_list(contract.get("expectedArtifacts"))})
+        task_inputs = sorted({input_name for contract in task_contracts for input_name in _normalized_list(contract.get("expectedInputs"))})
         task_allowed_systems = sorted({system for contract in task_contracts for system in _normalized_list(contract.get("allowedSystems"))})
         task_business_intents = [
             str(contract.get("businessIntent") or task.get("name") or task.get("agentTaskName") or "").strip()
@@ -673,6 +674,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "coverageRatio": round(task_contracts_ready / counts["benchmarkTasks"], 3) if counts["benchmarkTasks"] else 0.0,
                     "businessIntents": _top_named_items(_sorted_counts([intent for intent in task_business_intents if intent]), name_key="name"),
                     "allowedSystems": task_allowed_systems,
+                    "expectedInputs": task_inputs,
                     "expectedArtifacts": task_artifacts,
                     "riskClasses": _sorted_counts(task_risks),
                 },

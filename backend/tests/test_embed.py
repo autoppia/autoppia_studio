@@ -449,6 +449,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "email": "owner@example.com",
                     "businessIntent": "Respond to a customer about claim status",
                     "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                    "expectedInputs": ["claim_id", "customer_email"],
                     "expectedArtifacts": ["draft_email", "claim_summary"],
                     "riskClass": "draft",
                     "successCriteria": "Draft response cites claim status and is not sent",
@@ -456,6 +457,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                         "taskContract": {
                             "businessIntent": "Respond to a customer about claim status",
                             "allowedSystems": ["email", "insurance_erp", "knowledge"],
+                            "expectedInputs": ["claim_id"],
                             "expectedArtifacts": ["draft_email", "claim_summary"],
                             "riskClass": "draft",
                             "successCriteria": "Draft response cites claim status and is not sent",
@@ -700,6 +702,8 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert result["contract"]["capabilityMap"]["taskContracts"]["coverageRatio"] == 1
     assert "insurance_erp" in result["contract"]["capabilityMap"]["taskContracts"]["allowedSystems"]
+    assert "claim_id" in result["contract"]["capabilityMap"]["taskContracts"]["expectedInputs"]
+    assert "customer_email" in result["contract"]["capabilityMap"]["taskContracts"]["expectedInputs"]
     assert "claim_summary" in result["contract"]["capabilityMap"]["taskContracts"]["expectedArtifacts"]
     assert result["contract"]["capabilityMap"]["benchmarks"]["verticals"] == [{"name": "insurance", "count": 1}]
     assert result["contract"]["capabilityMap"]["evalGate"]["totalSkills"] == 2

@@ -311,6 +311,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "metadata": {
                     "businessIntent": "Respond to claim status",
                     "allowedSystems": ["email", "insurance_erp"],
+                    "expectedInputs": ["claim_id"],
                     "expectedArtifacts": ["draft_email"],
                     "riskClass": "draft",
                 },
@@ -449,6 +450,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["factory"]["connectorMap"]["ingestionBlocked"] == 1
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
