@@ -175,6 +175,7 @@ def skill_package_coverage(
     package_io = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
     package_outputs = package_io.get("outputs") if isinstance(package_io.get("outputs"), dict) else {}
     package_assets = package.get("assets") if isinstance(package.get("assets"), dict) else {}
+    progressive_disclosure = package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {}
     assets = skill_package_assets({**skill, **package_assets})
     trajectory_ids = _dedupe_strings([str(value or "") for value in skill.get("trajectoryIds") or []])
     linked_trajectories = [
@@ -210,6 +211,7 @@ def skill_package_coverage(
     activation = bool(str(skill.get("whenToUse") or package_activation.get("description") or "").strip())
     instructions = bool(str(skill.get("instructions") or "").strip())
     risk_policy = bool(str(skill.get("riskPolicy") or package_policies.get("riskPolicy") or "").strip() or package_policies.get("runtimePolicy") or skill.get("runtimePolicy"))
+    progressive = bool(_string_list(progressive_disclosure.get("summaryFields")) and _string_list(progressive_disclosure.get("fullFields")))
     regression = bool(linked_runs or latest_regression or package_regression.get("cases"))
     publishable_regression = bool(
         any(_eval_run_label(run) == "pass" for run in linked_runs)
@@ -242,6 +244,7 @@ def skill_package_coverage(
         "assets": bool(assets.get("declared")),
         "resources": bool(assets.get("resources") or assets.get("resourceIds")),
         "scripts": bool(assets.get("scripts") or assets.get("scriptIds")),
+        "progressiveDisclosure": progressive,
         "publishable": publishable,
         "versioned": bool(skill.get("version") or skill.get("versionHistory") or package.get("manifestVersion")),
         "release": {
@@ -294,6 +297,7 @@ def _coverage_playbook(
     task_complete: int,
     skill_total: int,
     publishable_skills: int,
+    progressive_skills: int,
     recent_failures: int,
     session_total: int,
     replay_ready_sessions: int,
@@ -319,6 +323,16 @@ def _coverage_playbook(
                 "area": "capabilities",
                 "severity": "high",
                 "action": "Harden skill packages with IO, policy, source trajectories and passing regression evidence.",
+            }
+        )
+    if skill_total > progressive_skills:
+        gaps.append(
+            {
+                "gap": "skill_progressive_disclosure",
+                "count": skill_total - progressive_skills,
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Declare summary and full-load fields so AgentRuntime can load skills on demand.",
             }
         )
     if recent_failures:
@@ -493,6 +507,7 @@ def capability_graph_coverage(
     recent_eval_runs = sorted(eval_run_docs, key=_eval_run_timestamp, reverse=True)
     recent_eval_failures = [run for run in recent_eval_runs if _eval_run_label(run) == "fail"]
     publishable_skills = sum(1 for item in skill_packages if item["publishable"])
+    progressive_skills = sum(1 for item in skill_packages if item["progressiveDisclosure"])
     replay_ready_sessions = sum(1 for item in session_contracts if item["replayReady"])
     pending_approvals = sum(1 for item in approval_docs if str(item.get("status") or "").lower() == "pending")
     return {
@@ -578,6 +593,7 @@ def capability_graph_coverage(
                 "assets": sum(1 for item in skill_packages if item["assets"]),
                 "resources": sum(1 for item in skill_packages if item["resources"]),
                 "scripts": sum(1 for item in skill_packages if item["scripts"]),
+                "progressiveDisclosure": sum(1 for item in skill_packages if item["progressiveDisclosure"]),
                 "publishable": publishable_skills,
                 "versioned": sum(1 for item in skill_packages if item["versioned"]),
                 "releaseStatus": _sorted_counts(skill_release_statuses),
@@ -647,6 +663,7 @@ def capability_graph_coverage(
             task_complete=complete_tasks,
             skill_total=len(skill_docs),
             publishable_skills=publishable_skills,
+            progressive_skills=progressive_skills,
             recent_failures=len(recent_eval_failures),
             session_total=len(session_docs),
             replay_ready_sessions=replay_ready_sessions,

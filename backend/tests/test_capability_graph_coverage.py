@@ -46,6 +46,12 @@ def test_skill_package_coverage_detects_publishable_skill_package():
             "scripts": [{"path": "scripts/normalize_claim_status.py"}],
             "version": 2,
             "promotionStatus": "published",
+            "skillPackage": {
+                "progressiveDisclosure": {
+                    "summaryFields": ["metadata", "activation", "ioContract"],
+                    "fullFields": ["execution", "assets", "evidence"],
+                }
+            },
             "versionHistory": [
                 {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
                 {"version": 2, "promotionStatus": "published", "reason": "promoted", "createdAt": "t-2"},
@@ -64,6 +70,7 @@ def test_skill_package_coverage_detects_publishable_skill_package():
     assert coverage["assets"] is True
     assert coverage["resources"] is True
     assert coverage["scripts"] is True
+    assert coverage["progressiveDisclosure"] is True
     assert coverage["publishable"] is True
     assert coverage["versioned"] is True
     assert coverage["release"]["promotionStatus"] == "published"
@@ -165,6 +172,12 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "scripts": [{"path": "scripts/normalize_claim_status.py"}],
                 "version": 2,
                 "promotionStatus": "published",
+                "skillPackage": {
+                    "progressiveDisclosure": {
+                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "fullFields": ["execution", "assets", "evidence"],
+                    }
+                },
                 "versionHistory": [
                     {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
                     {"version": 2, "promotionStatus": "published", "reason": "promoted", "createdAt": "t-2"},
@@ -233,6 +246,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["skills"]["packages"]["assets"] == 1
     assert coverage["skills"]["packages"]["resources"] == 1
     assert coverage["skills"]["packages"]["scripts"] == 1
+    assert coverage["skills"]["packages"]["progressiveDisclosure"] == 1
     assert coverage["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]
     assert coverage["skills"]["packages"]["releaseReadiness"] == {
         "readyForPublish": 1,
@@ -338,3 +352,31 @@ def test_capability_graph_coverage_operational_gate_exposes_hardening_playbook()
             "action": "Attach eval runs to benchmark tasks and use passing runs as skill gates.",
         },
     ]
+
+
+def test_capability_graph_coverage_flags_missing_skill_progressive_disclosure():
+    coverage = capability_graph_coverage(
+        entity_docs=[],
+        resource_docs=[],
+        vector_store_docs=[],
+        tool_docs=[],
+        benchmark_docs=[],
+        task_docs=[],
+        trajectory_docs=[],
+        skill_docs=[{"capabilityId": "skill-1", "whenToUse": "Use it.", "instructions": "Do it."}],
+        eval_run_docs=[],
+        session_docs=[],
+        approval_docs=[],
+        artifact_docs=[],
+        work_item_docs=[],
+        vertical_demo_payloads=[],
+        edges=[],
+    )
+
+    assert {
+        "gap": "skill_progressive_disclosure",
+        "count": 1,
+        "area": "capabilities",
+        "severity": "medium",
+        "action": "Declare summary and full-load fields so AgentRuntime can load skills on demand.",
+    } in coverage["coveragePlaybook"]

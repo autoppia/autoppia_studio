@@ -441,6 +441,12 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "preconditions": ["Customer identity verified"],
                     "resourceIds": ["resource-claims"],
                     "scripts": [{"path": "scripts/claim_summary.py", "description": "Normalize claim status summaries"}],
+                    "skillPackage": {
+                        "progressiveDisclosure": {
+                            "summaryFields": ["metadata", "activation", "ioContract"],
+                            "fullFields": ["execution", "assets", "evidence"],
+                        }
+                    },
                     "version": 2,
                     "versionHistory": [
                         {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
@@ -632,6 +638,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["skills"]["packages"]["assets"] == 1
     assert graph["coverage"]["skills"]["packages"]["resources"] == 1
     assert graph["coverage"]["skills"]["packages"]["scripts"] == 1
+    assert graph["coverage"]["skills"]["packages"]["progressiveDisclosure"] == 1
     assert graph["coverage"]["skills"]["packages"]["publishable"] == 1
     assert graph["coverage"]["skills"]["packages"]["versioned"] == 1
     assert graph["coverage"]["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]
