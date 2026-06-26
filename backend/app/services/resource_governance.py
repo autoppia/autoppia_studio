@@ -316,6 +316,16 @@ def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_lim
     citable = sum(1 for resource in resources if resource_citable(resource))
     with_contract = sum(1 for resource in resources if resource_contract(resource))
     with_vector_store = sum(1 for resource in resources if resource_vector_id(resource))
+    current_resources = 0
+    grounding_ready = 0
+    for resource in resources:
+        governance = resource_governance(resource)
+        freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
+        freshness_current = str(freshness.get("status") or ("current" if resource_indexed(resource) else "indexing")).lower() == "current"
+        if freshness_current:
+            current_resources += 1
+        if resource_indexed(resource) and resource_citable(resource) and resource_vector_id(resource) and resource_read_tools(resource) and resource_acl(resource).get("explicit") and freshness_current:
+            grounding_ready += 1
     visibility_counts = _sorted_counts([str(acl.get("visibility") or "unspecified") for acl in resource_acls])
     acl = {
         "withAcl": with_acl,
@@ -350,6 +360,19 @@ def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_lim
             "sourceUrls": _dedupe(source_urls)[:20],
         },
         "readTools": read_tools[:20],
+        "grounding": {
+            "ready": grounding_ready,
+            "blocked": max(0, total - grounding_ready),
+            "coverageRatio": round(grounding_ready / total, 3) if total else 0.0,
+            "requirements": {
+                "indexed": indexed,
+                "vectorStore": with_vector_store,
+                "readTools": sum(1 for resource in resources if resource_read_tools(resource)),
+                "acl": with_acl,
+                "current": current_resources,
+                "citable": citable,
+            },
+        },
         "runtimeGate": {
             "ready": runtime_ready,
             "blocked": max(0, total - runtime_ready),

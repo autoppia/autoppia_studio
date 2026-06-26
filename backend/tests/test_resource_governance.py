@@ -111,4 +111,49 @@ def test_summarize_resource_governance_counts_runtime_ready_resources():
         "sourceUrls": ["https://docs.example.com/claims"],
     }
     assert summary["runtimeGate"]["ready"] == 1
+    assert summary["grounding"] == {
+        "ready": 1,
+        "blocked": 0,
+        "coverageRatio": 1.0,
+        "requirements": {
+            "indexed": 1,
+            "vectorStore": 1,
+            "readTools": 1,
+            "acl": 1,
+            "current": 1,
+            "citable": 1,
+        },
+    }
     assert summary["ready"] is True
+
+
+def test_summarize_resource_governance_separates_indexed_from_grounding_ready():
+    blocked = {
+        "documentId": "doc-blocked",
+        "filename": "draft.md",
+        "status": "indexed",
+        "vectorDatabaseId": "vector-1",
+        "resourceContract": {
+            "resourceKind": "document",
+            "indexing": {"indexed": True, "vectorDatabaseId": "vector-1"},
+            "governance": {
+                "freshness": {"status": "stale"},
+                "citability": {"citable": False, "citationLabel": ""},
+            },
+            "readTools": ["knowledge.draft.search"],
+        },
+    }
+
+    summary = summarize_resource_governance([blocked])
+
+    assert summary["indexed"] == 1
+    assert summary["grounding"]["ready"] == 0
+    assert summary["grounding"]["blocked"] == 1
+    assert summary["grounding"]["requirements"] == {
+        "indexed": 1,
+        "vectorStore": 1,
+        "readTools": 1,
+        "acl": 0,
+        "current": 0,
+        "citable": 0,
+    }
