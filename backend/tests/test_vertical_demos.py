@@ -67,6 +67,7 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
     assert payload["insuranceFlowProofGate"]["readySteps"] == 9
     assert payload["insuranceFlowProofGate"]["totalSteps"] == 9
     assert payload["insuranceFlowProofGate"]["missing"] == []
+    assert payload["insuranceFlowProofGate"]["missingEvidence"] == []
     assert payload["insuranceFlowProofGate"]["runtimeReplayContract"] == {
         "state": "ready",
         "ready": True,
@@ -214,6 +215,12 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert partial_demo["operationalReadiness"]["enterpriseReady"] is False
     assert partial_demo["insuranceFlowProofGate"]["state"] == "needs_hardening"
     assert partial_demo["insuranceFlowProofGate"]["missing"] == ["trajectory", "skill_promotion", "runtime_replay", "smoke_gate"]
+    assert partial_demo["insuranceFlowProofGate"]["missingEvidence"] == [
+        "approved/source trajectory",
+        "promoted skill package",
+        "passing replay/eval run",
+        "draft-only approval-safe smoke gate",
+    ]
     assert partial_demo["insuranceFlowProofGate"]["readySteps"] == 6
     assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["state"] == "needs_hardening"
     assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["missing"] == [

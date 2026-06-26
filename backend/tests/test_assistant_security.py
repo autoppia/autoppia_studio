@@ -811,7 +811,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(
         action["area"] == "vertical_demo"
         and action["action"] == "Attach governed knowledge resources or read tools for document grounding."
-        and action["reason"] == "Insurance flow proof gate is needs_hardening; missing document_grounding, approval_boundary, benchmark, trajectory, skill_promotion, runtime_replay, smoke_gate."
+        and action["reason"] == "Insurance flow proof gate is needs_hardening; missing knowledge system or document search tool, human approval or send boundary, benchmark task, approved/source trajectory, promoted skill package, passing replay/eval run, draft-only approval-safe smoke gate."
         for action in snapshot["operatingState"]["recommendedNextActions"]
     )
     assert any(

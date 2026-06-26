@@ -62,6 +62,18 @@ VERTICAL_DEMO_ACTIONS = {
     },
 }
 
+INSURANCE_FLOW_MISSING_EVIDENCE = {
+    "email_read": "email system or read tool",
+    "erp_lookup": "insurance ERP system or ERP lookup tool",
+    "document_grounding": "knowledge system or document search tool",
+    "draft_artifact": "draft_email artifact",
+    "approval_boundary": "human approval or send boundary",
+    "benchmark": "benchmark task",
+    "trajectory": "approved/source trajectory",
+    "skill_promotion": "promoted skill package",
+    "runtime_replay": "passing replay/eval run",
+}
+
 
 def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
     metadata = doc.get("metadata")
@@ -377,6 +389,17 @@ def _insurance_flow_proof_gate(
     missing_steps = [step["key"] for step in steps if not step["ready"]]
     smoke_ready = bool(smoke_gate.get("ready"))
     missing = [*missing_steps, *(["smoke_gate"] if not smoke_ready else [])]
+    missing_evidence = [
+        evidence
+        for step in steps
+        if not step["ready"]
+        for evidence in (
+            step.get("missingEvidence")
+            or [INSURANCE_FLOW_MISSING_EVIDENCE.get(str(step["key"]), step.get("label") or step["key"])]
+        )
+    ]
+    if not smoke_ready:
+        missing_evidence.append("draft-only approval-safe smoke gate")
     playbook: list[dict[str, Any]] = []
     for key in missing_steps:
         metadata = VERTICAL_DEMO_ACTIONS.get(key, {})
@@ -410,6 +433,7 @@ def _insurance_flow_proof_gate(
         "readySteps": sum(1 for step in steps if step["ready"]),
         "totalSteps": len(steps),
         "missing": missing,
+        "missingEvidence": missing_evidence,
         "hardeningPlaybook": playbook,
     }
 

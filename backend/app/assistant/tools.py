@@ -570,7 +570,7 @@ class AutomataAssistantTools:
             missing = ", ".join(vertical_demos["demos"][0].get("missing") or [])
             recommended_actions.insert(0, {"area": "evals", "action": "Complete vertical demo evidence for the insurance flow.", "reason": f"Vertical demo is not ready yet: {missing or 'missing evidence'}."})
         if proof_blocked_demos:
-            proof_missing = ", ".join(first_proof_gate.get("missing") or [])
+            proof_missing = ", ".join(first_proof_gate.get("missingEvidence") or first_proof_gate.get("missing") or [])
             proof_playbook = first_proof_gate.get("hardeningPlaybook") if isinstance(first_proof_gate.get("hardeningPlaybook"), list) else []
             first_proof_action = (
                 proof_playbook[0].get("action")
