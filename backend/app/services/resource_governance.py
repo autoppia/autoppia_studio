@@ -269,6 +269,13 @@ def derived_resource_gate(resource: dict[str, Any]) -> dict[str, Any]:
 
 def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_limit: int = 8) -> dict[str, Any]:
     read_tools = _dedupe([tool for resource in resources for tool in resource_read_tools(resource)])
+    citation_labels: list[str] = []
+    source_urls: list[str] = []
+    for resource in resources:
+        governance = resource_governance(resource)
+        citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+        citation_labels.append(str(citability.get("citationLabel") or resource.get("filename") or ""))
+        source_urls.append(str(citability.get("sourceUrl") or resource.get("sourceUrl") or ""))
     gates = [derived_resource_gate(resource) for resource in resources]
     runtime_ready = sum(1 for gate in gates if bool(gate.get("readyForRuntime")))
     gate_states = _sorted_counts([str(gate.get("state") or "unknown").lower() for gate in gates])
@@ -338,6 +345,10 @@ def summarize_resource_governance(resources: list[dict[str, Any]], *, sample_lim
         "withVectorStore": with_vector_store,
         "acl": acl,
         "status": _sorted_counts([resource_status(resource) for resource in resources]),
+        "citations": {
+            "labels": _dedupe(citation_labels)[:20],
+            "sourceUrls": _dedupe(source_urls)[:20],
+        },
         "readTools": read_tools[:20],
         "runtimeGate": {
             "ready": runtime_ready,

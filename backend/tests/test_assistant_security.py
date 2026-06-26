@@ -478,6 +478,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["resourceMap"]["acl"]["withAcl"] == 0
     assert snapshot["operatingState"]["resourceMap"]["acl"]["visibility"] == [{"name": "unspecified", "count": 1}]
     assert snapshot["operatingState"]["resourceMap"]["sample"][0]["aclVisibility"] == "unspecified"
+    assert snapshot["operatingState"]["resourceMap"]["citations"]["labels"] == ["claims-policy.md"]
     assert snapshot["operatingState"]["resourceMap"]["readTools"] == ["knowledge.claims.search", "knowledge.claims.read_document"]
     assert snapshot["operatingState"]["resourceMap"]["runtimeGate"]["ready"] == 0
     assert snapshot["operatingState"]["resourceMap"]["runtimeGate"]["blocked"] == 1

@@ -19,7 +19,7 @@ def _resource():
             },
             "governance": {
                 "connectorId": "knowledge-1",
-                "citability": {"citable": True, "citationLabel": "Claims handbook"},
+                "citability": {"citable": True, "citationLabel": "Claims handbook", "sourceUrl": "https://docs.example.com/claims"},
                 "acl": {"visibility": "company", "allowedRoles": ["claims_ops"]},
             },
             "readTools": ["knowledge.claims.search"],
@@ -39,7 +39,7 @@ def test_resource_payload_exposes_governed_runtime_resource_contract():
     assert payload["indexed"] is True
     assert payload["citable"] is True
     assert payload["citationLabel"] == "Claims handbook"
-    assert payload["sourceUrl"] == ""
+    assert payload["sourceUrl"] == "https://docs.example.com/claims"
     assert payload["freshnessStatus"] == "current"
     assert payload["readTools"] == ["knowledge.claims.search"]
 
@@ -106,5 +106,9 @@ def test_summarize_resource_governance_counts_runtime_ready_resources():
     assert summary["withResourceContract"] == 1
     assert summary["withVectorStore"] == 1
     assert summary["acl"]["withAcl"] == 1
+    assert summary["citations"] == {
+        "labels": ["Claims handbook"],
+        "sourceUrls": ["https://docs.example.com/claims"],
+    }
     assert summary["runtimeGate"]["ready"] == 1
     assert summary["ready"] is True

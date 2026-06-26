@@ -566,6 +566,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                         "users": resource_summary["acl"]["users"],
                     },
                     "status": resource_summary["status"],
+                    "citations": resource_summary.get("citations", {"labels": [], "sourceUrls": []}),
                     "readTools": resource_summary["readTools"],
                     "sample": resource_summary["sample"],
                     "runtimeGate": resource_summary["runtimeGate"],

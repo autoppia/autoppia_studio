@@ -678,6 +678,7 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["resourceMap"]["documents"]["acl"]["companyVisible"] == 1
     assert result["contract"]["resourceMap"]["documents"]["acl"]["visibility"] == [{"name": "company", "count": 1}]
     assert result["contract"]["resourceMap"]["documents"]["sample"][0]["aclVisibility"] == "company"
+    assert result["contract"]["resourceMap"]["documents"]["citations"]["labels"] == ["Claims Policy"]
     assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["ready"] == 1
     assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["blocked"] == 0
     assert result["contract"]["resourceMap"]["documents"]["runtimeGate"]["states"] == [{"name": "ready", "count": 1}]
