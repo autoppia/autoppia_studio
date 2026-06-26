@@ -66,6 +66,9 @@ class BenchmarkTaskCreateRequest(BaseModel):
     expectedArtifacts: list[str] = Field(default_factory=list)
     riskClass: str = ""
     initialState: dict[str, Any] = Field(default_factory=dict)
+    evaluatorConfig: dict[str, Any] = Field(default_factory=dict)
+    fixtures: list[str] = Field(default_factory=list)
+    seed: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -447,6 +450,12 @@ async def create_benchmark_task(benchmark_id: str, body: BenchmarkTaskCreateRequ
         metadata["riskClass"] = body.riskClass.strip()
     if body.initialState:
         metadata["initialState"] = body.initialState
+    if body.evaluatorConfig:
+        metadata["evaluatorConfig"] = body.evaluatorConfig
+    if body.fixtures:
+        metadata["fixtures"] = [str(item).strip() for item in body.fixtures if str(item).strip()]
+    if body.seed.strip():
+        metadata["seed"] = body.seed.strip()
     task = {
         "taskId": str(uuid4()),
         "email": body.email or benchmark.get("email", ""),

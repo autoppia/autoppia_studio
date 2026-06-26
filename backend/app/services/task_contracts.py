@@ -97,6 +97,32 @@ def build_task_contract(
         if initial_url or fallback_state
         else {}
     )
+    evaluator_config = (
+        task.get("evaluatorConfig")
+        if isinstance(task.get("evaluatorConfig"), dict)
+        else metadata.get("evaluatorConfig")
+        if isinstance(metadata.get("evaluatorConfig"), dict)
+        else nested.get("evaluatorConfig")
+        if isinstance(nested.get("evaluatorConfig"), dict)
+        else {}
+    )
+    fixtures = (
+        _list_field(task.get("fixtures"))
+        or _list_field(metadata.get("fixtures"))
+        or _list_field(nested.get("fixtures"))
+        or _list_field(task.get("fixtureIds"))
+        or _list_field(metadata.get("fixtureIds"))
+        or _list_field(nested.get("fixtureIds"))
+    )
+    seed = (
+        task.get("seed")
+        if task.get("seed") not in (None, "")
+        else metadata.get("seed")
+        if metadata.get("seed") not in (None, "")
+        else nested.get("seed")
+        if nested.get("seed") not in (None, "")
+        else ""
+    )
     return {
         "businessIntent": _clean_string(
             task.get("businessIntent")
@@ -113,6 +139,9 @@ def build_task_contract(
         "successCriteria": success_criteria,
         "riskClass": _clean_string(task.get("riskClass") or metadata.get("riskClass") or nested.get("riskClass") or default_risk_class).lower(),
         "constraints": _list_field(nested.get("constraints")) + _list_field(metadata.get("constraints")) + _list_field(task.get("constraints")),
+        "evaluatorConfig": evaluator_config,
+        "fixtures": _dedupe(fixtures),
+        "seed": seed,
     }
 
 
@@ -207,4 +236,7 @@ def task_metadata_with_contract(
         "expectedInputs": contract["expectedInputs"],
         "expectedArtifacts": contract["expectedArtifacts"],
         "riskClass": contract["riskClass"],
+        "evaluatorConfig": contract["evaluatorConfig"],
+        "fixtures": contract["fixtures"],
+        "seed": contract["seed"],
     }

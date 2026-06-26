@@ -16,6 +16,10 @@ def test_benchmark_coverage_summary_builds_eval_gate_evidence():
                     "expectedArtifacts": ["draft_email"],
                     "riskClass": "draft",
                     "businessIntent": "Respond to claim status request",
+                    "initialState": {"mailbox": "claims"},
+                    "evaluatorConfig": {"evaluator": "rules"},
+                    "fixtures": ["claim-123"],
+                    "seed": "seed-claim",
                 },
             }
         ],
@@ -34,9 +38,17 @@ def test_benchmark_coverage_summary_builds_eval_gate_evidence():
 
     assert coverage["taskCount"] == 1
     assert coverage["taskContractCoverage"]["complete"] == 1
+    assert coverage["taskContractCoverage"]["reproducibility"] == {
+        "withInitialState": 1,
+        "withEvaluatorConfig": 1,
+        "withFixtures": 1,
+        "withSeed": 1,
+        "readyForReplay": 1,
+    }
     assert coverage["systems"] == ["email", "erp"]
     assert coverage["expectedInputs"] == ["claim_id", "customer_email"]
     assert coverage["expectedArtifacts"] == ["draft_email", "claim_summary"]
+    assert coverage["fixtures"] == ["claim-123"]
     assert coverage["skillCoverage"]["published"] == 1
     assert coverage["runCoverage"]["pass"] == 1
     assert coverage["promotionGate"]["state"] == "published"

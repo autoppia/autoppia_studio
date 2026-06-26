@@ -191,6 +191,9 @@ async def test_create_benchmark_and_task(monkeypatch):
             expectedArtifacts=["answer_summary"],
             riskClass="read",
             initialState={"documentSet": "travel-policy"},
+            evaluatorConfig={"evaluator": "rules", "assertions": ["citation_present"]},
+            fixtures=["travel-policy-v1"],
+            seed="policy-seed",
         ),
     )
 
@@ -204,6 +207,9 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert tasks.docs[0]["metadata"]["expectedArtifacts"] == ["answer_summary"]
     assert tasks.docs[0]["metadata"]["riskClass"] == "read"
     assert tasks.docs[0]["metadata"]["initialState"] == {"documentSet": "travel-policy"}
+    assert tasks.docs[0]["metadata"]["evaluatorConfig"] == {"evaluator": "rules", "assertions": ["citation_present"]}
+    assert tasks.docs[0]["metadata"]["fixtures"] == ["travel-policy-v1"]
+    assert tasks.docs[0]["metadata"]["seed"] == "policy-seed"
     assert tasks.docs[0]["judgeType"] == "manual"
     assert task["task"]["agentTaskName"] == "Answer policy question"
     assert task["task"]["initialUrl"] == "https://example.com/start"
@@ -211,8 +217,12 @@ async def test_create_benchmark_and_task(monkeypatch):
     assert task["task"]["taskContract"]["allowedSystems"] == ["knowledge", "email"]
     assert task["task"]["taskContract"]["expectedArtifacts"] == ["answer_summary"]
     assert task["task"]["taskContract"]["riskClass"] == "read"
+    assert task["task"]["taskContract"]["evaluatorConfig"] == {"evaluator": "rules", "assertions": ["citation_present"]}
+    assert task["task"]["taskContract"]["fixtures"] == ["travel-policy-v1"]
+    assert task["task"]["taskContract"]["seed"] == "policy-seed"
     assert task["task"]["taskContract"]["completeness"]["state"] == "complete"
     assert task["task"]["taskContract"]["completeness"]["passedChecks"] == 6
+    assert task["task"]["taskContract"]["completeness"]["reproducibility"]["readyForReplay"] is True
     assert task["task"]["evaluationHarness"]["strategy"] == "layered"
     assert task["task"]["evaluationHarness"]["deterministicFirst"] is True
     assert task["task"]["evaluationHarness"]["statefulReplay"] is True

@@ -34,6 +34,13 @@ def task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
         "totalChecks": total,
         "score": round(passed / total, 3) if total else 0.0,
         "state": "complete" if passed == total else "incomplete",
+        "reproducibility": {
+            "initialState": checks["initialState"],
+            "evaluatorConfig": bool(contract.get("evaluatorConfig")),
+            "fixtures": bool(contract.get("fixtures")),
+            "seed": bool(str(contract.get("seed") or "").strip()),
+            "readyForReplay": bool(checks["initialState"] and (contract.get("evaluatorConfig") or contract.get("fixtures") or str(contract.get("seed") or "").strip())),
+        },
     }
 
 
@@ -117,6 +124,7 @@ def benchmark_coverage_summary(
     systems = _dedupe_strings([system for contract in contracts for system in (contract.get("allowedSystems") or [])])
     expected_inputs = _dedupe_strings([input_name for contract in contracts for input_name in (contract.get("expectedInputs") or [])])
     task_artifacts = _dedupe_strings([artifact for contract in contracts for artifact in (contract.get("expectedArtifacts") or [])])
+    task_fixtures = _dedupe_strings([fixture for contract in contracts for fixture in (contract.get("fixtures") or [])])
     skill_artifacts = _dedupe_strings([artifact for skill in skills for artifact in (skill.get("expectedArtifacts") or [])])
     risk_classes = _dedupe_strings([contract.get("riskClass") for contract in contracts])
     connector_ids = _dedupe_strings([connector_id for skill in skills for connector_id in (skill.get("connectorIds") or [])])
@@ -141,10 +149,18 @@ def benchmark_coverage_summary(
             "complete": task_complete,
             "total": len(completeness),
             "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
+            "reproducibility": {
+                "withInitialState": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("initialState")),
+                "withEvaluatorConfig": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("evaluatorConfig")),
+                "withFixtures": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("fixtures")),
+                "withSeed": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("seed")),
+                "readyForReplay": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("readyForReplay")),
+            },
         },
         "systems": systems,
         "expectedInputs": expected_inputs,
         "expectedArtifacts": _dedupe_strings([*task_artifacts, *skill_artifacts]),
+        "fixtures": task_fixtures,
         "riskClasses": risk_classes,
         "connectorIds": connector_ids,
         "entityNames": entity_names,

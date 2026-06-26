@@ -10,6 +10,9 @@ def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
         "expectedArtifacts": ["claim_summary"],
         "riskClass": "medium",
         "successCriteria": "Claim status is summarized.",
+        "evaluatorConfig": {"evaluator": "rules", "assertions": ["draft_exists"]},
+        "fixtures": ["claim-123", "claim-123"],
+        "seed": "seed-1",
         "metadata": {
             "taskContract": {
                 "businessIntent": "Nested intent",
@@ -29,6 +32,9 @@ def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
     assert contract["expectedArtifacts"] == ["claim_summary"]
     assert contract["riskClass"] == "medium"
     assert contract["successCriteria"] == "Claim status is summarized."
+    assert contract["evaluatorConfig"] == {"evaluator": "rules", "assertions": ["draft_exists"]}
+    assert contract["fixtures"] == ["claim-123"]
+    assert contract["seed"] == "seed-1"
     assert task_contract_ready(task) is True
 
 
