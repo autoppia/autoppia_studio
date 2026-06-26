@@ -1246,6 +1246,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                                     "readySteps": 7,
                                     "totalSteps": 9,
                                     "missing": ["runtime_replay", "smoke_gate"],
+                                    "steps": [{"key": "runtime_replay", "label": "Runtime replay"}],
                                     "runtimeReplayContract": {
                                         "state": "needs_hardening",
                                         "ready": False,
@@ -1412,7 +1413,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Runtime replay contract: needs_hardening, missing passing AgentRuntime replay." in reply
     assert "Replay evidence: 0 passing run(s), 1 promoted skill(s), 1 artifact(s), 1 approval boundary marker(s)." in reply
     assert "First proof hardening: Replay the approved insurance skill in AgentRuntime before declaring the demo production-ready." in reply
-    assert "First proof blocker: runtime_replay." in reply
+    assert "First proof blocker: Runtime replay." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Resource governance: 1/3 ACL-scoped, 2 read-tool-ready, 2 current." in reply
     assert "First resource read tool: knowledge.claims.search." in reply

@@ -1681,6 +1681,12 @@ class AutomataAssistantService:
                 if first_proof_blocked:
                     proof_gate = first_proof_blocked.get("insuranceFlowProofGate") or {}
                     missing = proof_gate.get("missing") if isinstance(proof_gate.get("missing"), list) else []
+                    proof_steps = proof_gate.get("steps") if isinstance(proof_gate.get("steps"), list) else []
+                    step_labels = {
+                        str(step.get("key") or ""): str(step.get("label") or step.get("key") or "")
+                        for step in proof_steps
+                        if isinstance(step, dict)
+                    }
                     ready_steps = int(proof_gate.get("readySteps") or 0)
                     total_steps = int(proof_gate.get("totalSteps") or 0)
                     if total_steps:
@@ -1727,7 +1733,9 @@ class AutomataAssistantService:
                     first_proof_action = proof_playbook[0] if proof_playbook and isinstance(proof_playbook[0], dict) else {}
                     if first_proof_action.get("action"):
                         coverage_text += f" First proof hardening: {first_proof_action['action']}"
-                    coverage_text += f" First proof blocker: {missing[0] if missing else proof_gate.get('state') or 'proof evidence'}."
+                    first_missing = str(missing[0]) if missing else ""
+                    first_missing_label = step_labels.get(first_missing) or first_missing or proof_gate.get("state") or "proof evidence"
+                    coverage_text += f" First proof blocker: {first_missing_label}."
         resource_text = ""
         if resource_map:
             resource_text = (
