@@ -670,6 +670,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["approvalGates"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["auditTrails"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["browserAllowlists"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["workOperationsGate"]["state"] == "blocked"
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["workOperationsGate"]["checks"]["budgetsAvailable"] is False
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["workOperationsGate"]["checks"]["automationUnblocked"] is False
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["hardeningPlaybook"][0] == {
         "gap": "budget_exhausted",
         "count": 1,
@@ -748,6 +751,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Work operations gate is not ready for unattended orchestration." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert any(
@@ -1145,6 +1149,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "auditTrails": 2,
                         "unattendedReady": 1,
                         "unattendedBlocked": 2,
+                        "workOperationsGate": {"state": "blocked"},
                         "automationBlockers": [{"name": "pending_approval", "count": 2}],
                     },
                 },
@@ -1201,6 +1206,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Work operations: 2 due trigger(s), 1 budget-exhausted item(s), 4 retry attempt(s)." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automation gate: 1 unattended-ready, 2 blocked." in reply
+    assert "Work operations gate: blocked." in reply
     assert "First automation blocker: pending_approval." in reply
     assert "Automata sees 1 risk alert(s)." in reply
     assert "Next: Inspect failed traces before publishing." in reply

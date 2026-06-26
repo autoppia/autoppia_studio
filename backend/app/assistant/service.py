@@ -1650,6 +1650,9 @@ class AutomataAssistantService:
                     f" Automation gate: {contracts.get('unattendedReady', 0)} unattended-ready, "
                     f"{contracts.get('unattendedBlocked', 0)} blocked."
                 )
+                work_gate = contracts.get("workOperationsGate") if isinstance(contracts.get("workOperationsGate"), dict) else {}
+                if work_gate:
+                    work_text += f" Work operations gate: {work_gate.get('state', 'unknown')}."
                 blockers = contracts.get("automationBlockers") if isinstance(contracts.get("automationBlockers"), list) else []
                 if blockers:
                     first_blocker = blockers[0] if isinstance(blockers[0], dict) else {}

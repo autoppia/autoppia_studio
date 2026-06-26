@@ -108,6 +108,65 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
     assert summary["unattendedBlocked"] == 1
     assert summary["automationBlockers"] == [{"name": "budget_exhausted", "count": 1}, {"name": "pending_approval", "count": 1}]
     assert summary["automationNextActions"] == ["Resolve pending approvals before allowing unattended execution."]
+    assert summary["workOperationsGate"]["state"] == "blocked"
+    assert summary["workOperationsGate"]["checks"] == {
+        "workItemsPresent": True,
+        "contractsNormalized": True,
+        "triggersConfigured": False,
+        "budgetsConfigured": True,
+        "budgetsAvailable": False,
+        "retriesConfigured": True,
+        "slaTracked": True,
+        "slaHealthy": False,
+        "approvalsClear": False,
+        "auditTrailsUniform": True,
+        "browserAllowlistsReady": True,
+        "automationUnblocked": False,
+    }
+    assert summary["workOperationsGate"]["blockers"] == [
+        "triggersConfigured",
+        "budgetsAvailable",
+        "slaHealthy",
+        "approvalsClear",
+        "automationUnblocked",
+    ]
+    assert summary["workOperationsGate"]["hardeningPlaybook"] == [
+        {
+            "gap": "automation_blocked",
+            "count": 1,
+            "area": "work",
+            "severity": "high",
+            "action": "Clear automation blockers before dispatching work from queues.",
+        },
+        {
+            "gap": "budget_exhausted",
+            "count": 1,
+            "area": "budgets",
+            "severity": "high",
+            "action": "Increase budget or reduce runtime scope before retrying this work item.",
+        },
+        {
+            "gap": "missing_trigger",
+            "count": 1,
+            "area": "triggers",
+            "severity": "medium",
+            "action": "Configure at least one scheduled or recurring trigger for unattended operational work.",
+        },
+        {
+            "gap": "pending_approval",
+            "count": 1,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Resolve pending approvals before allowing unattended execution.",
+        },
+        {
+            "gap": "sla_attention",
+            "count": 1,
+            "area": "sla",
+            "severity": "medium",
+            "action": "Review overdue or blocked SLA state before dispatching more work.",
+        },
+    ]
     assert summary["hardeningPlaybook"] == [
         {
             "gap": "budget_exhausted",

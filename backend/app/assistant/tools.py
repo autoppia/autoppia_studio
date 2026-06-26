@@ -418,6 +418,11 @@ class AutomataAssistantTools:
         )
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
+        work_operations_gate = (
+            work_contracts.get("workOperationsGate")
+            if isinstance(work_contracts.get("workOperationsGate"), dict)
+            else {}
+        )
         browser_allowed_domains = sorted({*connector_domain_hosts, *_company_allowed_origin_hosts(company_doc)})
         browser_allowlisted = bool(browser_allowed_domains)
         runtime_policy_map = summarize_runtime_policy_map(
@@ -556,6 +561,10 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "approvals", "action": "Review pending business artifacts before reuse or delivery.", "reason": f"{artifact_outputs['reviewRequired']} artifact output(s) require human review."})
         if counts["workItems"] and work_contracts["withContract"] < counts["workItems"]:
             recommended_actions.append({"area": "work", "action": "Normalize work orchestration contracts for jobs without SLA, budget, retry, approval and audit evidence.", "reason": "Some work items are missing enterprise orchestration metadata."})
+        if work_operations_gate and not work_operations_gate.get("ready"):
+            playbook = work_operations_gate.get("hardeningPlaybook") if isinstance(work_operations_gate.get("hardeningPlaybook"), list) else []
+            first_action = playbook[0].get("action") if playbook and isinstance(playbook[0], dict) else "Clear Work Orchestration blockers before dispatching operational work."
+            recommended_actions.append({"area": "work", "action": first_action, "reason": f"Work operations gate is {work_operations_gate.get('state') or 'blocked'}."})
         if failing_runs:
             recommended_actions.insert(0, {"area": "evals", "action": "Inspect failed benchmark runs and compare traces before promoting more skills.", "reason": f"{failing_runs} failing eval run(s) detected."})
         risk_alerts = [
@@ -566,6 +575,7 @@ class AutomataAssistantTools:
                 {"area": "evals", "severity": "high", "message": f"{failing_runs} failing eval run(s) need trace review before skill promotion."} if failing_runs else None,
                 {"area": "work", "severity": "medium", "message": f"{scheduled_due} scheduled work item(s) are due."} if scheduled_due else None,
                 {"area": "work", "severity": "medium", "message": f"{budget_exhausted} work item(s) exhausted budget."} if budget_exhausted else None,
+                {"area": "work", "severity": "medium", "message": "Work operations gate is not ready for unattended orchestration."} if work_operations_gate and not work_operations_gate.get("ready") else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "entities", "severity": "medium", "message": "Business entities exist but are not all ready for runtime tool binding."} if entity_map["total"] and entity_map["toolBindingReady"] < entity_map["total"] else None,
@@ -651,8 +661,13 @@ class AutomataAssistantTools:
                 },
                 {
                     "surface": "Work Orchestration",
-                    "status": _surface_status(counts["workItems"] > 0 and review_blocked == 0 and budget_exhausted == 0),
-                    "hardening": (work_orchestration_hardening := _first_playbook_item(work_contracts.get("hardeningPlaybook"))),
+                    "status": _surface_status(bool(work_operations_gate.get("ready"))),
+                    "hardening": (
+                        work_orchestration_hardening := _first_playbook_item(
+                            work_operations_gate.get("hardeningPlaybook"),
+                            work_contracts.get("hardeningPlaybook"),
+                        )
+                    ),
                     "nextAction": _surface_next_action("Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.", work_orchestration_hardening),
                 },
                 {

@@ -46,6 +46,36 @@ WORK_HARDENING_ACTIONS = {
         "severity": "medium",
         "action": "Attach a uniform audit trail with queue, budget, retry, approval and browser policy checkpoints.",
     },
+    "no_work_items": {
+        "area": "work",
+        "severity": "medium",
+        "action": "Create operational work items before treating Work Orchestration as configured.",
+    },
+    "missing_trigger": {
+        "area": "triggers",
+        "severity": "medium",
+        "action": "Configure at least one scheduled or recurring trigger for unattended operational work.",
+    },
+    "missing_budget": {
+        "area": "budgets",
+        "severity": "high",
+        "action": "Attach runtime budgets before dispatching operational work.",
+    },
+    "missing_retry": {
+        "area": "queues",
+        "severity": "medium",
+        "action": "Configure retry limits and max steps before unattended execution.",
+    },
+    "missing_sla": {
+        "area": "sla",
+        "severity": "medium",
+        "action": "Track SLA or due-state metadata for operational work.",
+    },
+    "automation_blocked": {
+        "area": "work",
+        "severity": "high",
+        "action": "Clear automation blockers before dispatching work from queues.",
+    },
 }
 
 
@@ -415,6 +445,56 @@ def _work_hardening_playbook(contracts: list[dict[str, Any]]) -> list[dict[str, 
     return playbook
 
 
+def _work_operations_gate(summary: dict[str, Any], *, gap_counts: dict[str, int]) -> dict[str, Any]:
+    total = int(summary.get("total") or 0)
+    checks = {
+        "workItemsPresent": total > 0,
+        "contractsNormalized": total > 0 and int(summary.get("withContract") or 0) == total,
+        "triggersConfigured": total > 0 and int(summary.get("scheduled") or 0) > 0,
+        "budgetsConfigured": total > 0 and int(summary.get("budgeted") or 0) == total,
+        "budgetsAvailable": int(summary.get("budgetExhausted") or 0) == 0,
+        "retriesConfigured": total > 0 and int(summary.get("retryConfigured") or 0) == total,
+        "slaTracked": total > 0 and int(summary.get("slaTracked") or 0) == total,
+        "slaHealthy": int(summary.get("slaNeedsAttention") or 0) == 0,
+        "approvalsClear": int(summary.get("pendingApprovalRefs") or 0) == 0,
+        "auditTrailsUniform": total > 0 and int(summary.get("auditTrails") or 0) == total,
+        "browserAllowlistsReady": int(summary.get("browserPolicies") or 0) == 0
+        or int(summary.get("browserAllowlists") or 0) == int(summary.get("browserPolicies") or 0),
+        "automationUnblocked": int(summary.get("unattendedBlocked") or 0) == 0,
+    }
+    blockers = [name for name, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not blockers else ("empty" if total == 0 else "blocked"),
+        "ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": _work_operations_playbook(gap_counts),
+    }
+
+
+def _work_operations_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = WORK_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "work",
+                "severity": "medium",
+                "action": "Review Work Orchestration readiness before dispatching operational work.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
+
+
 def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, sample_limit: int = 8) -> dict[str, Any]:
     contracts = [work_orchestration_contract(item) for item in work_items]
     blocker_counts: dict[str, int] = {}
@@ -425,7 +505,7 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         for action in contract["automationNextActions"]:
             if action not in next_actions:
                 next_actions.append(action)
-    return {
+    summary = {
         "total": len(work_items),
         "withContract": sum(1 for item in contracts if item["withContract"]),
         "scheduled": sum(1 for item in contracts if item["scheduled"]),
@@ -447,3 +527,31 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         "hardeningPlaybook": _work_hardening_playbook(contracts),
         "sample": [item["sample"] for item in contracts[:sample_limit]],
     }
+    operation_gap_counts: dict[str, int] = {}
+    total = len(work_items)
+    if total == 0:
+        operation_gap_counts["no_work_items"] = 1
+    if total and summary["withContract"] < total:
+        operation_gap_counts["missing_contract"] = total - summary["withContract"]
+    if total and summary["scheduled"] == 0:
+        operation_gap_counts["missing_trigger"] = total
+    if total and summary["budgeted"] < total:
+        operation_gap_counts["missing_budget"] = total - summary["budgeted"]
+    if summary["budgetExhausted"]:
+        operation_gap_counts["budget_exhausted"] = summary["budgetExhausted"]
+    if total and summary["retryConfigured"] < total:
+        operation_gap_counts["missing_retry"] = total - summary["retryConfigured"]
+    if total and summary["slaTracked"] < total:
+        operation_gap_counts["missing_sla"] = total - summary["slaTracked"]
+    if summary["slaNeedsAttention"]:
+        operation_gap_counts["sla_attention"] = summary["slaNeedsAttention"]
+    if summary["pendingApprovalRefs"]:
+        operation_gap_counts["pending_approval"] = summary["pendingApprovalRefs"]
+    if summary["auditTrails"] < total:
+        operation_gap_counts["missing_audit_trail"] = total - summary["auditTrails"]
+    if summary["browserPolicies"] and summary["browserAllowlists"] < summary["browserPolicies"]:
+        operation_gap_counts["missing_browser_allowlist"] = summary["browserPolicies"] - summary["browserAllowlists"]
+    if summary["unattendedBlocked"]:
+        operation_gap_counts["automation_blocked"] = summary["unattendedBlocked"]
+    summary["workOperationsGate"] = _work_operations_gate(summary, gap_counts=operation_gap_counts)
+    return summary
