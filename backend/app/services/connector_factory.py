@@ -26,6 +26,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
     ready_stage_count = 0
     total_stage_count = 0
     gaps: list[dict[str, str]] = []
+    ingestion_playbook: list[dict[str, Any]] = []
     samples: list[dict[str, Any]] = []
     for doc in connectors:
         discovery = doc.get("capabilityDiscovery") if isinstance(doc.get("capabilityDiscovery"), dict) else {}
@@ -76,6 +77,16 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             next_stage = ingestion.get("nextStage") if isinstance(ingestion.get("nextStage"), dict) else {}
             label = str(next_stage.get("summary") or next_stage.get("label") or "ingestion pipeline is blocked")
             gaps.append({"key": "ingestion", "label": f"{doc.get('name') or 'Connector'}: {label}.", "target": "connectors"})
+        for item in ingestion.get("playbook") if isinstance(ingestion.get("playbook"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            ingestion_playbook.append(
+                {
+                    "connectorId": str(doc.get("connectorId") or ""),
+                    "connectorName": str(doc.get("name") or ""),
+                    **item,
+                }
+            )
         if len(samples) < sample_limit:
             samples.append(
                 {
@@ -112,6 +123,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         "candidateTasksReady": candidate_tasks_ready,
         "ingestionReady": ingestion_ready,
         "ingestionBlocked": ingestion_blocked,
+        "ingestionPlaybook": ingestion_playbook[:gap_limit],
         "readyStages": ready_stage_count,
         "totalStages": total_stage_count,
         "sample": samples,

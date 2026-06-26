@@ -35,7 +35,29 @@ def test_connector_capability_discovery_blocks_custom_api_until_docs_and_auth():
     assert discovery["toolSynthesis"]["tools"][0]["governed"] is True
     assert discovery["toolSynthesis"]["tools"][0]["policyBoundary"] == "write"
     assert discovery["ingestionPipeline"]["state"] == "blocked"
+    assert discovery["ingestionPipeline"]["blockedStages"] == [
+        "connector_docs",
+        "auth_state",
+        "entity_mapping",
+        "tool_synthesis",
+    ]
     assert discovery["ingestionPipeline"]["nextStage"]["key"] == "connector_docs"
+    assert discovery["ingestionPipeline"]["playbook"][:2] == [
+        {
+            "stage": "connector_docs",
+            "status": "pending",
+            "target": "config.openApiUrl",
+            "severity": "high",
+            "action": "Attach OpenAPI/docs for API connectors or a start URL for web connectors.",
+        },
+        {
+            "stage": "auth_state",
+            "status": "pending",
+            "target": "credentials",
+            "severity": "high",
+            "action": "Configure required credentials or OAuth fields before runtime discovery.",
+        },
+    ]
     assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
 
 
@@ -82,3 +104,13 @@ def test_connector_capability_discovery_maps_entities_from_tool_contracts():
     assert discovery["toolSynthesis"]["tools"][0]["entities"] == {"input": ["Policy"], "output": "Claim", "linked": True}
     assert discovery["toolSynthesis"]["tools"][1]["approval"]["required"] is True
     assert discovery["ingestionPipeline"]["state"] == "needs_benchmark"
+    assert discovery["ingestionPipeline"]["blockedStages"] == []
+    assert discovery["ingestionPipeline"]["playbook"] == [
+        {
+            "stage": "candidate_tasks",
+            "status": "recommended",
+            "target": "evals",
+            "severity": "medium",
+            "action": "Seed benchmark tasks so harvested trajectories can be judged and promoted.",
+        }
+    ]

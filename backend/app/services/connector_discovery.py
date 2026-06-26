@@ -6,6 +6,37 @@ from app.services.tool_synthesis import GENERIC_DISCOVERY_TOOLS
 from app.services.tool_synthesis import summarize_tool_synthesis
 
 
+INGESTION_STAGE_ACTIONS = {
+    "connector_docs": "Attach OpenAPI/docs for API connectors or a start URL for web connectors.",
+    "auth_state": "Configure required credentials or OAuth fields before runtime discovery.",
+    "entity_mapping": "Generate and persist business entities from docs, schemas or runtime observations.",
+    "tool_synthesis": "Generate typed tools with schemas, side effects, scopes and entity bindings.",
+    "candidate_tasks": "Seed benchmark tasks so harvested trajectories can be judged and promoted.",
+}
+
+
+def _ingestion_playbook(stages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for stage in stages:
+        status = str(stage.get("status") or "").strip()
+        if status == "ready":
+            continue
+        key = str(stage.get("key") or "").strip()
+        playbook.append(
+            {
+                "stage": key,
+                "status": status or "pending",
+                "target": str(stage.get("target") or ""),
+                "severity": "high" if status == "pending" else "medium",
+                "action": INGESTION_STAGE_ACTIONS.get(
+                    key,
+                    str(stage.get("summary") or "Complete this ingestion stage."),
+                ),
+            }
+        )
+    return playbook
+
+
 def connector_capability_discovery(
     connector: dict[str, Any],
     toolkit: dict[str, Any],
@@ -134,6 +165,7 @@ def connector_capability_discovery(
         },
     ]
     blocking_stages = [stage for stage in pipeline_stages if stage["status"] == "pending"]
+    playbook = _ingestion_playbook(pipeline_stages)
     pipeline_state = "blocked" if blocking_stages else "needs_benchmark" if provider == "custom" else "ready"
     return {
         "mode": connector.get("discoveryMode") or ("task_scoped" if provider == "custom" else "official_toolkit"),
@@ -178,8 +210,14 @@ def connector_capability_discovery(
             "state": pipeline_state,
             "readyStages": sum(1 for stage in pipeline_stages if stage["status"] == "ready"),
             "totalStages": len(pipeline_stages),
-            "nextStage": blocking_stages[0] if blocking_stages else next((stage for stage in pipeline_stages if stage["status"] == "recommended"), None),
+            "blockedStages": [stage["key"] for stage in blocking_stages],
+            "nextStage": (
+                blocking_stages[0]
+                if blocking_stages
+                else next((stage for stage in pipeline_stages if stage["status"] == "recommended"), None)
+            ),
             "stages": pipeline_stages,
+            "playbook": playbook,
         },
         "gaps": discovery_gaps,
     }

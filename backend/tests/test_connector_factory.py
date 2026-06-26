@@ -17,7 +17,7 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
                         "hardeningGaps": {"approval_policy": 1, "entity_bindings": 1},
                     },
                     "candidateTasks": {"recommended": True},
-                    "ingestionPipeline": {"state": "ready", "readyStages": 5, "totalStages": 5},
+                    "ingestionPipeline": {"state": "ready", "readyStages": 5, "totalStages": 5, "playbook": []},
                 },
             },
             {
@@ -32,7 +32,21 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
                         "needsHardeningCount": 1,
                         "hardeningGaps": {"entity_bindings": 1},
                     },
-                    "ingestionPipeline": {"state": "blocked", "readyStages": 3, "totalStages": 5, "nextStage": {"label": "Generate typed tools"}},
+                    "ingestionPipeline": {
+                        "state": "blocked",
+                        "readyStages": 3,
+                        "totalStages": 5,
+                        "nextStage": {"label": "Generate typed tools"},
+                        "playbook": [
+                            {
+                                "stage": "tool_synthesis",
+                                "status": "pending",
+                                "target": "capabilities",
+                                "severity": "high",
+                                "action": "Generate typed tools with schemas, side effects, scopes and entity bindings.",
+                            }
+                        ],
+                    },
                 },
             },
         ]
@@ -54,5 +68,16 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
         "severity": "medium",
         "action": "Bind input and output business entities before promoting reusable skills.",
     }
+    assert summary["ingestionPlaybook"] == [
+        {
+            "connectorId": "conn-2",
+            "connectorName": "Mail",
+            "stage": "tool_synthesis",
+            "status": "pending",
+            "target": "capabilities",
+            "severity": "high",
+            "action": "Generate typed tools with schemas, side effects, scopes and entity bindings.",
+        }
+    ]
     assert summary["sample"][0]["hardeningGaps"] == {"approval_policy": 1, "entity_bindings": 1}
     assert any(gap["key"] == "tool_hardening" for gap in summary["gaps"])
