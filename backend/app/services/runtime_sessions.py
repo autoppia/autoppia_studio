@@ -571,6 +571,19 @@ def build_session_contract(
     trace = runtime_evidence.get("trace") if isinstance(runtime_evidence.get("trace"), dict) else {}
     runtime_kind = runtime_kind_from_type(str(summary.get("runtimeType") or summary.get("runtimeKind") or runtime_metrics.get("runtimeType") or runtime_metrics.get("runtimeKind") or "api"))
     runtime_type = runtime_type_from_kind(str(summary.get("runtimeType") or runtime_metrics.get("runtimeType") or runtime_kind))
+    trace_ids = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else summary.get("traceIds", [])
+    timeline_steps = int(trace.get("timelineSteps") or 0)
+    failed_steps = int(trace.get("failedSteps") or 0)
+    pending_steps = int(trace.get("pendingSteps") or 0)
+    replay_checks = {
+        "traceIds": bool(trace_ids),
+        "timelineCaptured": timeline_steps > 0,
+        "failedStepsClear": failed_steps == 0,
+        "pendingStepsClear": pending_steps == 0,
+        "approvalsResolved": pending_approval_count == 0,
+        "businessOutputsCaptured": artifact_count > 0,
+    }
+    replay_blockers = [key for key, ready in replay_checks.items() if not ready]
     return {
         "contractVersion": "2026-06-25",
         "sessionId": str(summary.get("sessionId") or ""),
@@ -622,10 +635,24 @@ def build_session_contract(
             "lastStepSeconds": _safe_float(outputs.get("lastStepSeconds") or runtime_metrics.get("lastStepSeconds")),
         },
         "traceState": {
-            "traceIds": trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else summary.get("traceIds", []),
+            "traceIds": trace_ids,
             "traceCount": int(trace.get("traceCount") or 0),
-            "timelineSteps": int(trace.get("timelineSteps") or 0),
+            "timelineSteps": timeline_steps,
             "replayReady": bool(trace.get("replayReady")),
+        },
+        "replayContract": {
+            "state": "ready" if not replay_blockers else "blocked",
+            "ready": not replay_blockers,
+            "checks": replay_checks,
+            "blockers": replay_blockers,
+            "evidence": {
+                "traceIds": trace_ids,
+                "timelineSteps": timeline_steps,
+                "failedSteps": failed_steps,
+                "pendingSteps": pending_steps,
+                "pendingApprovals": pending_approval_count,
+                "artifactCount": artifact_count,
+            },
         },
     }
 
@@ -675,6 +702,8 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
     skill_steps = 0
     failed_steps = 0
     pending_steps = 0
+    replay_contract_ready = 0
+    replay_contract_blocked = 0
     runtime_kinds: list[str] = []
     samples: list[dict[str, Any]] = []
     gap_counts: dict[str, int] = {}
@@ -688,6 +717,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         artifacts = contract.get("artifactState") if isinstance(contract.get("artifactState"), dict) else {}
         cost = contract.get("costState") if isinstance(contract.get("costState"), dict) else {}
         trace = contract.get("traceState") if isinstance(contract.get("traceState"), dict) else {}
+        replay_contract = contract.get("replayContract") if isinstance(contract.get("replayContract"), dict) else {}
         if contract:
             with_contract += 1
         else:
@@ -729,7 +759,17 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         skill_steps += skill_count
         failed_steps += failed_count
         pending_steps += pending_count
-        if trace.get("replayReady"):
+        session_replay_ready = bool(
+            replay_contract.get("ready")
+            if replay_contract
+            else trace.get("replayReady")
+        )
+        if replay_contract:
+            if session_replay_ready:
+                replay_contract_ready += 1
+            else:
+                replay_contract_blocked += 1
+        if session_replay_ready:
             replay_ready += 1
         else:
             gap_counts["replay_ready"] = gap_counts.get("replay_ready", 0) + 1
@@ -753,7 +793,8 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
                     "browserSteps": browser_count,
                     "toolSteps": tool_count,
                     "skillSteps": skill_count,
-                    "replayReady": bool(trace.get("replayReady")),
+                    "replayReady": session_replay_ready,
+                    "replayContractState": str(replay_contract.get("state") or ""),
                 }
             )
     hardening_playbook = _session_hardening_playbook(gap_counts)
@@ -765,6 +806,11 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         "artifactOutputs": artifact_outputs,
         "traceIds": trace_count,
         "replayReady": replay_ready,
+        "replayContracts": {
+            "ready": replay_contract_ready,
+            "blocked": replay_contract_blocked,
+            "total": replay_contract_ready + replay_contract_blocked,
+        },
         "creditsSpent": round(total_credits, 4),
         "durationSeconds": round(total_duration_seconds, 3),
         "runtimeKinds": _sorted_counts(runtime_kinds),

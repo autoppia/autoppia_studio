@@ -894,6 +894,8 @@ class AutomataAssistantTools:
             "Runtime Lab": {
                 "sessions": counts["sessions"],
                 "replayReadySessions": session_contracts.get("replayReady", 0),
+                "replayContractsReady": (session_contracts.get("replayContracts") or {}).get("ready", 0),
+                "replayContractsBlocked": (session_contracts.get("replayContracts") or {}).get("blocked", 0),
                 "pendingApprovals": pending_approvals,
                 "artifacts": artifact_outputs.get("total", 0),
                 "reviewRequiredArtifacts": artifact_outputs.get("reviewRequired", 0),

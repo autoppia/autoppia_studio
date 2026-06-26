@@ -1894,6 +1894,12 @@ class AutomataAssistantService:
                     f"{timeline.get('toolSteps', 0)} tool, {timeline.get('skillSteps', 0)} skill, "
                     f"{timeline.get('replayReadySessions', 0)} replay-ready sessions."
                 )
+            replay_contracts = session_contracts.get("replayContracts") if isinstance(session_contracts.get("replayContracts"), dict) else {}
+            if replay_contracts:
+                runtime_text += (
+                    f" Replay contracts: {replay_contracts.get('ready', 0)} ready, "
+                    f"{replay_contracts.get('blocked', 0)} blocked."
+                )
             artifact_outputs = runtime.get("artifactOutputs") if isinstance(runtime.get("artifactOutputs"), dict) else {}
             if artifact_outputs:
                 runtime_text += (

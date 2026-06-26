@@ -329,6 +329,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                     "artifactState": {"count": 1, "hasBusinessOutput": True},
                     "costState": {"creditsSpent": 1.25, "durationSeconds": 3.0},
                     "traceState": {"traceIds": ["run-1", "trace-1"], "traceCount": 2, "timelineSteps": 4, "replayReady": False},
+                    "replayContract": {"state": "blocked", "ready": False},
                 },
             }
         ]
@@ -753,6 +754,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["replayContracts"] == {"ready": 0, "blocked": 1, "total": 1}
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["steps"] == 4
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["toolSteps"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["skillSteps"] == 1
@@ -915,6 +917,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert runtime_lab["evidence"] == {
         "sessions": 1,
         "replayReadySessions": 0,
+        "replayContractsReady": 0,
+        "replayContractsBlocked": 1,
         "pendingApprovals": 1,
         "artifacts": 1,
         "reviewRequiredArtifacts": 1,
@@ -1403,6 +1407,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "creditsSpent": 2.5,
                         "durationSeconds": 8.25,
                         "timeline": {"steps": 6, "toolSteps": 3, "skillSteps": 1, "replayReadySessions": 1},
+                        "replayContracts": {"ready": 1, "blocked": 1},
                     },
                     "artifactOutputs": {
                         "total": 3,
@@ -1535,6 +1540,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First uncovered browser domain: unknown.example.net." in reply
     assert "Runtime cost: 2.5 credits, 8.25s duration." in reply
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
+    assert "Replay contracts: 1 ready, 1 blocked." in reply
     assert "Artifact outputs: 3 business output(s), 2 runtime-linked, 1 pending review." in reply
     assert "Artifact traceability: 3 separated from trace, 2 capability-linked, 1 work-linked, 1/2 reusable as knowledge." in reply
     assert "Business output delivery gate: blocked, 1/3 output(s) delivery-ready." in reply

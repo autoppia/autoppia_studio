@@ -450,6 +450,27 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
     assert contract["costState"]["durationSeconds"] == 3.25
     assert contract["traceState"]["traceIds"] == ["run-1", "trace-1"]
     assert contract["traceState"]["replayReady"] is True
+    assert contract["replayContract"] == {
+        "state": "blocked",
+        "ready": False,
+        "checks": {
+            "traceIds": True,
+            "timelineCaptured": True,
+            "failedStepsClear": True,
+            "pendingStepsClear": True,
+            "approvalsResolved": False,
+            "businessOutputsCaptured": True,
+        },
+        "blockers": ["approvalsResolved"],
+        "evidence": {
+            "traceIds": ["run-1", "trace-1"],
+            "timelineSteps": 3,
+            "failedSteps": 0,
+            "pendingSteps": 0,
+            "pendingApprovals": 1,
+            "artifactCount": 2,
+        },
+    }
 
 
 def test_summarize_session_contracts_counts_buildable_contract_shape():
@@ -483,6 +504,7 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["artifactOutputs"] == 1
     assert summary["traceIds"] == 1
     assert summary["replayReady"] == 1
+    assert summary["replayContracts"] == {"ready": 1, "blocked": 0, "total": 1}
     assert summary["durationSeconds"] == 2.75
     assert summary["runtimeKinds"] == [{"name": "api", "count": 1}]
     assert summary["timeline"] == {
@@ -498,6 +520,8 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["sample"][0]["durationSeconds"] == 2.75
     assert summary["sample"][0]["timelineSteps"] == 4
     assert summary["sample"][0]["toolSteps"] == 2
+    assert summary["sample"][0]["replayReady"] is True
+    assert summary["sample"][0]["replayContractState"] == "ready"
     assert summary["hardeningPlaybook"] == []
     assert summary["runtimeSessionGate"] == {
         "state": "ready",
