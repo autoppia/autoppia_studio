@@ -1566,6 +1566,7 @@ class AutomataAssistantService:
         if task_contracts or skills:
             coverage_text = (
                 f" Capability coverage: {task_contracts.get('ready', 0)}/{task_contracts.get('total', 0)} task contracts ready, "
+                f"{task_contracts.get('productionReady', 0)} production-ready, "
                 f"{skills.get('hardened', 0)}/{skills.get('total', 0)} skills hardened."
             )
             reproducibility = task_contracts.get("reproducibility") if isinstance(task_contracts.get("reproducibility"), dict) else {}

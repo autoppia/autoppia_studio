@@ -559,6 +559,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
     }
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["productionReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["replayReadyRatio"] == 1.0
@@ -1260,7 +1261,12 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     },
                 },
                 "capabilityMap": {
-                    "taskContracts": {"ready": 2, "total": 5, "reproducibility": {"readyForReplay": 3, "total": 5}},
+                    "taskContracts": {
+                        "ready": 2,
+                        "productionReady": 1,
+                        "total": 5,
+                        "reproducibility": {"readyForReplay": 3, "total": 5},
+                    },
                     "entityMap": {
                         "total": 4,
                         "ready": 2,
@@ -1510,7 +1516,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Missing benchmark connector refs: 2." in reply
     assert "Factory blockers: 1 entity pending, 1 tool synthesis pending, 1 ingestion blocked." in reply
     assert "First factory blocker: ERP needs business entity mapping." in reply
-    assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
+    assert "Capability coverage: 2/5 task contracts ready, 1 production-ready, 1/4 skills hardened." in reply
     assert "Task replayability: 3/5 replay-ready." in reply
     assert "Entity mapping: 2/4 ready, 1 runtime-bindable, 2 with relationships." in reply
     assert "First entity blocker: read_access." in reply

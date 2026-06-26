@@ -1022,6 +1022,7 @@ class AutomataAssistantTools:
                 "taskContracts": {
                     "total": counts["benchmarkTasks"],
                     "ready": task_contracts_ready,
+                    "productionReady": task_contract_hardening.get("productionReady", 0),
                     "expectedInputs": task_expected_inputs,
                     "expectedArtifacts": task_expected_artifacts,
                     "allowedSystems": task_allowed_systems,
