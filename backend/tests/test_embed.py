@@ -535,7 +535,8 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "sessionId": "session-browser",
                     "companyId": "company-1",
                     "email": "owner@example.com",
-                    "actionHistory": [{"action": "browser.navigate"}],
+                    "runtimeState": {"currentUrl": "https://portal.example.com/cases"},
+                    "actionHistory": [{"action": "browser.navigate", "url": "https://portal.example.com/cases"}],
                     "sessionContract": {
                         "agentRuntime": {"runtimeKind": "browser", "sourceKind": "work"},
                         "selectedSkill": {"matched": True, "skillId": "skill-1"},
@@ -658,6 +659,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["runtime"]["pendingApprovals"] == 2
     assert result["contract"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert result["contract"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
+    assert result["contract"]["runtimePolicyMap"]["browserDomainGovernance"]["allowedDomains"] == ["erp.example.com", "portal.example.com"]
+    assert result["contract"]["runtimePolicyMap"]["browserDomainGovernance"]["observedDomains"] == ["portal.example.com"]
+    assert result["contract"]["runtimePolicyMap"]["browserDomainGovernance"]["uncoveredDomains"] == []
     assert result["contract"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 2
     assert result["contract"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
     assert {"name": "write", "count": 4} in result["contract"]["runtimePolicyMap"]["approvalBoundaries"]["all"]

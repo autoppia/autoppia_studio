@@ -272,6 +272,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "email": "owner@example.com",
                 "companyId": "company-1",
                 "sessionId": "session-1",
+                "runtimeState": {"currentUrl": "https://claims.example.com/cases"},
+                "actionHistory": [{"action": "browser.navigate", "url": "https://claims.example.com/cases"}],
                 "sessionContract": {
                     "sessionId": "session-1",
                     "agentRuntime": {"runtimeKind": "hybrid", "sourceKind": "work", "workItemId": "work-1", "runId": "run-1"},
@@ -526,6 +528,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["sample"][0]["source"]["sourceTool"] == "smtp.draft_email"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["allowedDomains"] == ["claims.example.com"]
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["observedDomains"] == ["claims.example.com"]
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["coverageRatio"] == 1.0
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True

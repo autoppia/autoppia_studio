@@ -42,6 +42,7 @@ from app.services.resource_governance import resource_contract as _resource_cont
 from app.services.resource_governance import resource_read_tools as _resource_read_tools
 from app.services.resource_governance import resource_vector_id as _resource_vector_id
 from app.services.resource_governance import summarize_resource_governance
+from app.services.runtime_policy_summary import observed_browser_domains
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.runtime_sessions import session_runtime_kind, summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -414,12 +415,15 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         session_contracts = summarize_session_contracts(sessions)
         artifact_outputs = summarize_artifact_outputs(artifacts)
         work_contracts = summarize_work_orchestration_contracts(work_items)
-        browser_allowlisted = bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins"))
+        browser_allowed_domains = sorted({*connector_domains, *_allowed_origin_hosts(company)})
+        browser_allowlisted = bool(browser_allowed_domains)
         runtime_policy_map = summarize_runtime_policy_map(
             skills=skills,
             tools=tools,
             runtime_kinds=runtime_kinds,
             browser_allowlisted=browser_allowlisted,
+            browser_allowed_domains=browser_allowed_domains,
+            browser_observed_domains=observed_browser_domains(sessions),
             pending_approvals=sum(1 for doc in approvals if str(doc.get("status") or "") == "pending"),
             approved_approvals=sum(1 for doc in approvals if str(doc.get("status") or "") == "approved"),
         )

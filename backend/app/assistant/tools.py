@@ -37,6 +37,7 @@ from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
 from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.resource_governance import summarize_resource_governance
+from app.services.runtime_policy_summary import observed_browser_domains
 from app.services.runtime_policy_summary import summarize_runtime_policy_map
 from app.services.runtime_sessions import summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
@@ -254,12 +255,15 @@ class AutomataAssistantTools:
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
         company_doc = next((company for company in companies if str(company.get("companyId") or "") == company_id), companies[0] if companies else {})
-        browser_allowlisted = bool(_connector_domains(connector_docs) or _company_allowed_origin_hosts(company_doc))
+        browser_allowed_domains = sorted({*_connector_domains(connector_docs), *_company_allowed_origin_hosts(company_doc)})
+        browser_allowlisted = bool(browser_allowed_domains)
         runtime_policy_map = summarize_runtime_policy_map(
             skills=skill_docs,
             tools=tool_docs,
             runtime_kinds=[str(item.get("name") or "") for item in session_contracts.get("runtimeKinds") or [] for _ in range(int(item.get("count") or 0))],
             browser_allowlisted=browser_allowlisted,
+            browser_allowed_domains=browser_allowed_domains,
+            browser_observed_domains=observed_browser_domains(session_docs),
             pending_approvals=pending_approvals,
             approved_approvals=await self._count(approvals_collection, {**scoped, "status": "approved"}),
         )

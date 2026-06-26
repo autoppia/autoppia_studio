@@ -6,6 +6,7 @@ from app.services.runtime_policy import (
     ordered_policy_boundaries,
     serialize_runtime_policy,
 )
+from app.services.runtime_policy_summary import observed_browser_domains, summarize_runtime_policy_map
 
 
 def test_browser_runtime_policy_adds_website_host_to_allowlist_and_sandbox_signal():
@@ -108,3 +109,46 @@ def test_serialize_runtime_policy_exposes_approval_matrix_for_callable_capabilit
         "hasHumanBoundary": True,
     }
     assert policy["browserPolicy"]["allowedDomains"] == ["ERP.example.com"]
+
+
+def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
+    summary = summarize_runtime_policy_map(
+        skills=[{"runtimeRequirements": ["browser"], "runtimeSpec": {"allowedDomains": ["portal.example.com"]}}],
+        tools=[{"policyBoundary": "write", "riskPolicy": "human_approval_for_writes"}],
+        runtime_kinds=["browser"],
+        browser_allowlisted=True,
+        browser_allowed_domains=["portal.example.com"],
+        browser_observed_domains=["https://portal.example.com/cases", "https://unknown.example.net"],
+        pending_approvals=0,
+        approved_approvals=0,
+    )
+
+    assert summary["browserRestrictedByDomain"] is True
+    assert summary["browserDomainGovernance"] == {
+        "allowedDomains": ["portal.example.com"],
+        "observedDomains": ["portal.example.com", "unknown.example.net"],
+        "coveredDomains": ["portal.example.com"],
+        "uncoveredDomains": ["unknown.example.net"],
+        "coverageRatio": 0.5,
+        "sessionsRequireAllowlist": True,
+    }
+    assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
+
+
+def test_observed_browser_domains_extracts_urls_only_from_browser_sessions():
+    domains = observed_browser_domains(
+        [
+            {
+                "runtimeKind": "hybrid",
+                "runtimeState": {"currentUrl": "https://Portal.Example.com/cases"},
+                "actionHistory": [{"action": "browser.navigate", "url": "https://claims.example.com/claim/1"}],
+            },
+            {
+                "runtimeKind": "api",
+                "runtimeState": {"currentUrl": "https://ignored.example.com"},
+                "actionHistory": [{"action": "api.read"}],
+            },
+        ]
+    )
+
+    assert domains == ["claims.example.com", "portal.example.com"]
