@@ -90,5 +90,9 @@ async def test_approve_trajectory_as_skill_persists_ready_skill_package(monkeypa
     assert skill["skillPackage"]["format"] == "autoppia.agent_skill"
     assert skill["skillPackage"]["metadata"]["promotionStatus"] == "ready"
     assert skill["skillPackage"]["execution"]["trajectoryIds"] == ["traj-1"]
+    assert skill["skillPackage"]["productionGate"]["canPublish"] is False
+    assert skill["skillPackage"]["productionGate"]["blockers"] == ["publishableRegression"]
+    assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["trajectoryId"] == "traj-1"
+    assert skill["skillPackage"]["evidence"]["sourceTrajectories"][0]["actionCount"] == 1
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["benchmarkIds"] == ["bench-1"]
     assert skill["skillPackage"]["evidence"]["regressionSuite"]["publishable"] is False

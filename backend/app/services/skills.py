@@ -7,6 +7,7 @@ from typing import Any
 
 from app.database import agents_collection, capabilities_collection, trajectories_collection
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_manifests import skill_package_manifest
 from app.services.trajectory_judges import build_trajectory_judge_context, get_trajectory_judge
 
 
@@ -86,76 +87,17 @@ def _hardening_for_skill(skill: dict[str, Any], lineage: dict[str, Any]) -> dict
     }
 
 
-def _skill_package(skill: dict[str, Any], *, lineage: dict[str, Any], hardening: dict[str, Any], version_history: list[dict[str, Any]]) -> dict[str, Any]:
-    runtime_policy = serialize_runtime_policy(skill)
-    expected_artifacts = skill.get("expectedArtifacts") or []
-    preconditions = skill.get("preconditions") or []
-    io_contract = {
-        "inputs": {
-            "entities": skill.get("inputEntities") or [],
-            "preconditions": preconditions,
-        },
-        "outputs": {
-            "entity": skill.get("outputEntity", ""),
-            "artifacts": expected_artifacts,
-            "outputCard": skill.get("outputCard", {}),
-        },
-        "declared": bool(skill.get("inputEntities") or preconditions or skill.get("outputEntity") or expected_artifacts or skill.get("outputCard")),
-    }
+def _source_trajectory_evidence(trajectory: dict[str, Any]) -> dict[str, Any]:
+    actions = _trajectory_actions(trajectory)
     return {
-        "format": "autoppia.agent_skill",
-        "manifestVersion": 1,
-        "packageId": skill.get("capabilityId", ""),
-        "metadata": {
-            "name": skill.get("name", ""),
-            "description": skill.get("description", ""),
-            "version": skill.get("version", 1),
-            "versionLabel": skill.get("versionLabel", "v1"),
-            "promotionStatus": skill.get("promotionStatus", "ready"),
-            "source": skill.get("source", ""),
-            "createdAt": skill.get("createdAt"),
-            "updatedAt": skill.get("updatedAt"),
-        },
-        "activation": {
-            "description": skill.get("whenToUse", ""),
-            "preconditions": preconditions,
-        },
-        "interface": {
-            "inputEntities": skill.get("inputEntities") or [],
-            "outputEntity": skill.get("outputEntity", ""),
-            "expectedArtifacts": expected_artifacts,
-            "outputCard": skill.get("outputCard", {}),
-            "ioContract": io_contract,
-        },
-        "ioContract": io_contract,
-        "execution": {
-            "instructions": skill.get("instructions", ""),
-            "connectorIds": lineage.get("connectorIds", []),
-            "toolIds": lineage.get("toolIds", []),
-            "trajectoryIds": lineage.get("trajectoryIds", []),
-            "runtimeRequirements": skill.get("runtimeRequirements", []),
-            "runtime": skill.get("runtime", ""),
-        },
-        "policies": {
-            "riskPolicy": skill.get("riskPolicy", ""),
-            "permissions": skill.get("permissions", {}),
-            "runtimePolicy": runtime_policy,
-        },
-        "evidence": {
-            "lineage": lineage,
-            "latestRegression": None,
-            "hardeningStatus": hardening,
-            "versionHistory": version_history,
-            "regressionSuite": {
-                "benchmarkIds": lineage.get("benchmarkIds", []),
-                "evalIds": lineage.get("evalIds", []),
-                "publishable": False,
-            },
-        },
-        "progressiveDisclosure": {
-            "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
-            "fullFields": ["execution", "evidence"],
-        },
+        "trajectoryId": str(trajectory.get("trajectoryId") or ""),
+        "benchmarkId": str(trajectory.get("benchmarkId") or ""),
+        "evalId": str(trajectory.get("evalId") or trajectory.get("taskId") or ""),
+        "status": str(trajectory.get("status") or ""),
+        "source": str(trajectory.get("source") or ""),
+        "actionCount": len(actions),
+        "toolIds": _dedupe([*(trajectory.get("toolIds") or []), *[_action_name(action) for action in actions]]),
+        "connectorIds": _dedupe([*(trajectory.get("connectorIds") or [])]),
     }
 
 
@@ -259,7 +201,18 @@ async def approve_trajectory_as_skill(trajectory: dict[str, Any], *, judge: dict
     skill_doc["lineage"] = lineage
     skill_doc["hardeningStatus"] = hardening
     skill_doc["versionHistory"] = version_history
-    skill_doc["skillPackage"] = _skill_package(skill_doc, lineage=lineage, hardening=hardening, version_history=version_history)
+    skill_doc["skillPackage"] = skill_package_manifest(
+        skill_doc,
+        version=version,
+        promotion_status="ready",
+        runtime_policy=serialize_runtime_policy(skill_doc),
+        lineage=lineage,
+        hardening=hardening,
+        latest_regression=None,
+        source_trajectories=[_source_trajectory_evidence(trajectory)],
+        regression_cases=[],
+        version_history=version_history,
+    )
     await capabilities_collection.update_one(
         {"capabilityId": capability_id},
         {"$set": skill_doc},
