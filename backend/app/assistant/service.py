@@ -1827,12 +1827,14 @@ class AutomataAssistantService:
         next_action = guidance.get("primaryNextAction") if isinstance(guidance.get("primaryNextAction"), dict) else next_actions[0] if next_actions and isinstance(next_actions[0], dict) else {}
         risks = guidance.get("riskAlerts") if isinstance(guidance.get("riskAlerts"), list) else []
         risk_text = f" Automata sees {len(risks)} risk alert(s)." if risks else ""
+        failure_prompts = guidance.get("explainFailurePrompts") if isinstance(guidance.get("explainFailurePrompts"), list) else []
+        prompt_text = f" Ask Automata: {failure_prompts[0]}" if failure_prompts else ""
         next_text = f" Next: {next_action.get('action')}" if next_action.get("action") else " Tell me what you want to inspect or configure next."
         return (
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{studio_os_text}{company_setup_text}{factory_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
+            f"{score_text}{studio_os_text}{company_setup_text}{factory_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{prompt_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:

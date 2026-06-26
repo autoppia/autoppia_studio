@@ -1312,6 +1312,10 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 "automataGuidance": {
                     "primaryNextAction": {"area": "evals", "action": "Inspect failed traces before publishing."},
                     "riskAlerts": [{"area": "evals", "severity": "high", "message": "1 failing eval."}],
+                    "explainFailurePrompts": [
+                        "Why did the latest eval fail and which trace/tool call should I inspect?",
+                        "Which skills are blocked from publishing?",
+                    ],
                     "surfacePlaybook": [
                         {
                             "surface": "Capability Factory",
@@ -1396,6 +1400,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Work operations gate: blocked." in reply
     assert "First automation blocker: pending_approval." in reply
     assert "Automata sees 1 risk alert(s)." in reply
+    assert "Ask Automata: Why did the latest eval fail and which trace/tool call should I inspect?" in reply
     assert "Next: Inspect failed traces before publishing." in reply
 
 
