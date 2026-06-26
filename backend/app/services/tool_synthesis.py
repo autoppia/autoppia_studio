@@ -137,11 +137,11 @@ def _policy_boundary(tool_name: str, side_effects: str, contract: dict[str, Any]
         return explicit
     name = tool_name.lower()
     effects = side_effects.lower()
-    if "send" in name or effects == "send":
+    if "send" in name or effects in {"send", "sends"}:
         return "send"
-    if any(token in name for token in ("draft", "compose", "artifact", "prepare")) or effects == "draft":
+    if any(token in name for token in ("draft", "compose", "artifact", "prepare")) or effects in {"draft", "drafts"}:
         return "draft"
-    if effects in {"write", "writes", "mutate", "mutates"} or any(
+    if effects in {"write", "writes", "delete", "deletes", "mutate", "mutates"} or any(
         token in name
         for token in ("create", "update", "delete", "write", "post", "publish", "submit", "save", "upload", "call")
     ):

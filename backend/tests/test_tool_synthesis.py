@@ -31,6 +31,12 @@ def test_tool_synthesis_contract_exposes_schema_risk_permissions_and_entities():
     assert contract["entities"] == {"input": ["Claim"], "output": "Claim", "linked": True}
 
 
+def test_tool_synthesis_infers_policy_boundary_from_plural_side_effects():
+    assert tool_synthesis_contract({"name": "mail.deliver", "sideEffects": "sends"})["policyBoundary"] == "send"
+    assert tool_synthesis_contract({"name": "claims.mutate", "sideEffects": "writes"})["policyBoundary"] == "write"
+    assert tool_synthesis_contract({"name": "mail.prepare", "sideEffects": "drafts"})["policyBoundary"] == "draft"
+
+
 def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_factory():
     summary = summarize_tool_synthesis(
         [
