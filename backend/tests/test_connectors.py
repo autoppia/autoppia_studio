@@ -198,11 +198,35 @@ def test_email_toolkit_marks_send_as_governed_human_approval_tool():
     assert draft_tool["toolContract"]["riskLevel"] == "low"
     assert draft_tool["toolContract"]["approvalPolicy"]["required"] is False
     assert draft_tool["toolContract"]["permissions"]["requiresApproval"] is False
+    assert send_tool["sideEffects"] == "send"
+    assert send_tool["toolContract"]["sideEffects"] == "send"
     assert send_tool["toolContract"]["policyBoundary"] == "send"
     assert send_tool["toolContract"]["riskLevel"] == "high"
     assert send_tool["toolContract"]["approvalPolicy"]["required"] is True
     assert send_tool["toolContract"]["permissions"]["requiresApproval"] is True
     assert send_tool["toolContract"]["schema"]["typed"] is True
+
+
+def test_gmail_toolkit_marks_send_as_send_boundary():
+    toolkit = connectors_route.connector_toolkit(
+        {
+            "connectorId": "gmail-1",
+            "name": "Gmail",
+            "type": "gmail",
+            "category": "email",
+            "status": "connected",
+            "provider": "official",
+            "config": {},
+        }
+    )
+
+    send_tool = next(tool for tool in toolkit["tools"] if tool["name"] == "gmail.send_email")
+
+    assert send_tool["sideEffects"] == "send"
+    assert send_tool["toolContract"]["sideEffects"] == "send"
+    assert send_tool["toolContract"]["policyBoundary"] == "send"
+    assert send_tool["toolContract"]["approvalPolicy"]["required"] is True
+    assert send_tool["toolContract"]["permissions"]["requiresApproval"] is True
 
 
 @pytest.mark.parametrize(

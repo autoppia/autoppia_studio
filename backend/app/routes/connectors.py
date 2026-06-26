@@ -53,7 +53,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
         "tools": [
             {"name": "gmail.search_emails", "description": "Search client emails.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}}}},
             {"name": "gmail.read_email", "description": "Read an email thread.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"threadId": {"type": "string"}}}},
-            {"name": "gmail.send_email", "description": "Send an email after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
+            {"name": "gmail.send_email", "description": "Send an email after approval.", "sideEffects": "send", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
         ],
     },
     "smtp": {
@@ -65,7 +65,7 @@ CONNECTOR_TOOLKIT_DEFAULTS: dict[str, dict[str, Any]] = {
             {"name": "imap.search_emails", "description": "Search mailbox messages through IMAP by text query.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"query": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"}, "limit": {"type": "integer", "default": 10}}}},
             {"name": "imap.read_email", "description": "Read one email message body through IMAP by messageId/UID.", "sideEffects": "reads", "inputSchema": {"type": "object", "properties": {"messageId": {"type": "string"}, "uid": {"type": "string"}, "folder": {"type": "string", "default": "INBOX"}}}},
             {"name": "smtp.draft_email", "description": "Prepare an email draft without sending it.", "sideEffects": "draft", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
-            {"name": "smtp.send_email", "description": "Send an email through SMTP after approval.", "sideEffects": "writes", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
+            {"name": "smtp.send_email", "description": "Send an email through SMTP after approval.", "sideEffects": "send", "inputSchema": {"type": "object", "properties": {"to": {"type": "string"}, "subject": {"type": "string"}, "body": {"type": "string"}}}},
         ],
     },
     "holded": {
