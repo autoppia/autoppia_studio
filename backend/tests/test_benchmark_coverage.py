@@ -1,4 +1,25 @@
-from app.services.benchmark_coverage import benchmark_coverage_summary, coverage_portfolio, regression_gate_from_matrix
+from app.services.benchmark_coverage import (
+    benchmark_coverage_summary,
+    coverage_portfolio,
+    regression_gate_from_matrix,
+    task_contract_completeness,
+)
+
+
+def test_task_contract_completeness_reuses_central_hardening_with_legacy_field_names():
+    completeness = task_contract_completeness(
+        {
+            "businessIntent": "Answer claim status",
+            "allowedSystems": ["claims_erp"],
+            "successCriteria": "Draft exists.",
+            "riskClass": "draft",
+        }
+    )
+
+    assert completeness["checks"]["expectedArtifact"] is False
+    assert "expectedArtifacts" not in completeness["checks"]
+    assert completeness["missingFields"] == ["initialState", "expectedArtifact"]
+    assert completeness["state"] == "incomplete"
 
 
 def test_benchmark_coverage_summary_builds_eval_gate_evidence():
