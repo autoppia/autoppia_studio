@@ -92,5 +92,28 @@ def test_summarize_artifact_outputs_counts_reuse_ready_business_outputs():
     assert summary["reusableAsKnowledge"] == 1
     assert summary["blockedForReuse"] == 1
     assert summary["reviewRequired"] == 1
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "capability_link",
+            "count": 2,
+            "area": "capabilities",
+            "severity": "medium",
+            "action": "Link the artifact to a skill, trajectory, tool or work item.",
+        },
+        {
+            "gap": "artifact_review",
+            "count": 1,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Complete human review before reusing or delivering this business output.",
+        },
+        {
+            "gap": "knowledge_reuse",
+            "count": 1,
+            "area": "resources",
+            "severity": "medium",
+            "action": "Resolve review/runtime/type blockers before saving this artifact as reusable knowledge.",
+        },
+    ]
     assert summary["sample"][0]["reusableAsKnowledge"] is True
     assert summary["sample"][1]["reusableAsKnowledge"] is False

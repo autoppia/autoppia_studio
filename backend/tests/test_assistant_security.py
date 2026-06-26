@@ -632,6 +632,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["workLinked"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["knowledgeReady"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["reviewRequired"] == 1
+    assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["hardeningPlaybook"][0] == {
+        "gap": "artifact_review",
+        "count": 1,
+        "area": "approvals",
+        "severity": "high",
+        "action": "Complete human review before reusing or delivering this business output.",
+    }
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["sample"][0]["source"]["sourceTool"] == "smtp.draft_email"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["defaultBrowserUse"] == "exception"
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserRestrictedByDomain"] is True

@@ -5,6 +5,29 @@ from typing import Any
 
 KNOWLEDGE_READY_TYPES = {"markdown", "text", "html", "pdf", "csv", "json"}
 
+ARTIFACT_HARDENING_ACTIONS = {
+    "runtime_link": {
+        "area": "runtime",
+        "severity": "high",
+        "action": "Link the artifact to the originating Runtime Lab session and trace.",
+    },
+    "capability_link": {
+        "area": "capabilities",
+        "severity": "medium",
+        "action": "Link the artifact to a skill, trajectory, tool or work item.",
+    },
+    "artifact_review": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Complete human review before reusing or delivering this business output.",
+    },
+    "knowledge_reuse": {
+        "area": "resources",
+        "severity": "medium",
+        "action": "Resolve review/runtime/type blockers before saving this artifact as reusable knowledge.",
+    },
+}
+
 
 def _clean_type(value: Any) -> str:
     clean = str(value or "markdown").strip().lower()
@@ -22,6 +45,29 @@ def _count_by(values: list[str]) -> list[dict[str, Any]]:
         key = str(value or "unknown").strip() or "unknown"
         counts[key] = counts.get(key, 0) + 1
     return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
+
+
+def _hardening_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = ARTIFACT_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "artifacts",
+                "severity": "medium",
+                "action": "Review this artifact output before production reuse.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def _approval_state(doc: dict[str, Any], metadata: dict[str, Any]) -> str:
@@ -130,6 +176,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
     source_tools: list[str] = []
     samples: list[dict[str, Any]] = []
     gaps: list[dict[str, str]] = []
+    gap_counts: dict[str, int] = {}
 
     for doc in artifacts:
         metadata = _metadata(doc)
@@ -163,10 +210,15 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         title = str(doc.get("title") or doc.get("name") or doc.get("artifactId") or "Artifact").strip()
         if not session_id:
             gaps.append({"key": "runtime_link", "label": f"{title} is not linked to a Runtime Lab session.", "target": "runtime"})
+            gap_counts["runtime_link"] = gap_counts.get("runtime_link", 0) + 1
         if not (skill_id or trajectory_id or tool_id or work_item_id):
             gaps.append({"key": "capability_link", "label": f"{title} is not linked to a skill, trajectory, tool or work item.", "target": "capabilities"})
+            gap_counts["capability_link"] = gap_counts.get("capability_link", 0) + 1
         if requires_review and approval_state not in {"approved", "rejected"}:
             gaps.append({"key": "artifact_review", "label": f"{title} is waiting for human review before use.", "target": "approvals"})
+            gap_counts["artifact_review"] = gap_counts.get("artifact_review", 0) + 1
+        if artifact_type in KNOWLEDGE_READY_TYPES and not (session_id and not requires_review):
+            gap_counts["knowledge_reuse"] = gap_counts.get("knowledge_reuse", 0) + 1
 
         if len(samples) < sample_limit:
             samples.append(
@@ -207,6 +259,7 @@ def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit:
         "outputKinds": _count_by(output_kinds),
         "approvalStates": _count_by(approval_states),
         "sourceTools": _count_by(source_tools),
+        "hardeningPlaybook": _hardening_playbook(gap_counts),
         "sample": samples,
         "gaps": gaps[:gap_limit],
     }
