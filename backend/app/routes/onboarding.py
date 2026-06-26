@@ -21,6 +21,15 @@ from app.database import (
 )
 from app.routes.agent_creation import start_harvester
 from app.services.capability_discovery import run_capability_discovery
+from app.services.onboarding_connectors import connector_key as _connector_key
+from app.services.onboarding_connectors import custom_web_connector as _custom_web_connector
+from app.services.onboarding_connectors import extract_docs_url as _extract_docs_url
+from app.services.onboarding_connectors import has_auth_hint as _has_auth_hint
+from app.services.onboarding_connectors import looks_like_api_docs as _looks_like_api_docs
+from app.services.onboarding_connectors import looks_like_docs_url as _looks_like_docs_url
+from app.services.onboarding_connectors import normalized_connector_name as _normalized_connector_name
+from app.services.onboarding_connectors import url_host as _url_host
+from app.services.onboarding_connectors import web_auth_required as _web_auth_required
 from app.services.onboarding_tasks import extract_tasks as _extract_tasks
 from app.services.onboarding_tasks import extract_task_metadata as _extract_task_metadata
 from app.services.onboarding_tasks import extract_urls as _extract_urls
@@ -142,21 +151,6 @@ KNOWN_CONNECTORS: dict[str, dict[str, Any]] = {
 
 GENERIC_SOFTWARE_HINTS = ("crm", "erp", "saas", "dashboard", "stripe", "salesforce", "hubspot", "notion")
 GENERIC_BROWSER_HINTS = ("website", "web", "portal", "government", "gobierno", "bopa.ad", "url")
-AUTH_WEB_HINTS = (
-    "login",
-    "sign in",
-    "signin",
-    "log in",
-    "private",
-    "privado",
-    "privada",
-    "portal",
-    "usuario",
-    "password",
-    "contraseña",
-    "credenciales",
-    "auth",
-)
 SYSTEM_STOPWORDS = {
     "API",
     "CRM",
@@ -472,55 +466,9 @@ def _refresh_automation_plan(draft: dict[str, Any]) -> None:
             )
 
 
-def _connector_key(connector: dict[str, Any]) -> str:
-    return f"{connector.get('type')}:{str(connector.get('name') or '').lower()}"
-
-
-def _normalized_connector_name(value: str) -> str:
-    return re.sub(r"\b(api|connector|integration|toolkit)\b", "", value.lower()).strip(" -_:")
-
-
 def _clean_detected_name(value: str) -> str:
     cleaned = re.split(r"\s+(?:y|and|para|for|con|with|que|to)\b", value.strip(" .,:;"), maxsplit=1, flags=re.IGNORECASE)[0]
     return cleaned.strip(" .,:;") or value.strip(" .,:;")
-
-
-def _url_host(url: str) -> str:
-    return re.sub(r"^https?://", "", str(url or "").strip(), flags=re.IGNORECASE).split("/", 1)[0].strip().lower()
-
-
-def _display_name_from_url(url: str) -> str:
-    host = _url_host(url)
-    if not host:
-        return "Custom Web"
-    parts = [part for part in host.split(".") if part and part not in {"www", "app", "portal"}]
-    base = parts[0] if parts else host
-    return re.sub(r"[^a-zA-Z0-9]+", " ", base).strip().title() or host
-
-
-def _web_auth_required(text: str, url: str = "") -> bool:
-    lower = f"{text}\n{url}".lower()
-    return any(hint in lower for hint in AUTH_WEB_HINTS)
-
-
-def _custom_web_connector(url: str, user_message: str = "") -> dict[str, Any]:
-    auth_required = _web_auth_required(user_message, url)
-    host = _url_host(url)
-    return {
-        "name": _display_name_from_url(url),
-        "type": "web",
-        "category": "web",
-        "description": f"Custom web connector for {host or url}. Automata will discover whether this is best automated through HTTP/API tools or browser trajectories.",
-        "config": {"baseUrl": url, "startUrl": url},
-        "status": "needs_auth" if auth_required else "connected",
-        "provider": "custom",
-        "generationStatus": "start_url_provided",
-        "surface": "webapp",
-        "authRequired": auth_required,
-        "discoveryStatus": "pending",
-        "discoveryMode": "task_scoped",
-        "runtimeRequirements": ["browser", "network"],
-    }
 
 
 def _merge_connector(draft: dict[str, Any], connector: dict[str, Any]) -> None:
@@ -617,35 +565,6 @@ def _normalize_connector_duplicates(draft: dict[str, Any]) -> None:
     draft["connectors"] = normalized
 
 
-def _extract_urls(text: str) -> list[str]:
-    return [url.rstrip(".,;)") for url in re.findall(r"https?://[^\s,)]+", text)]
-
-
-def _looks_like_docs_url(url: str) -> bool:
-    lower = str(url or "").lower()
-    return any(token in lower for token in ("docs", "api-docs", "openapi", "swagger", "developer", "developers"))
-
-
-def _looks_like_api_docs(text: str) -> bool:
-    lower = text.lower()
-    return any(phrase in lower for phrase in ("api docs", "docs de la api", "documentacion de la api", "documentación de la api", "swagger", "openapi"))
-
-
-def _extract_docs_url(text: str, system_name: str = "") -> str:
-    urls = _extract_urls(text)
-    if not urls:
-        return ""
-    if system_name:
-        lowered = system_name.lower()
-        for url in urls:
-            if lowered in url.lower():
-                return url
-    for url in urls:
-        if any(token in url.lower() for token in ("docs", "api", "openapi", "swagger", "developer")):
-            return url
-    return urls[0]
-
-
 def _extract_custom_systems(text: str) -> list[str]:
     systems: list[str] = []
     patterns = [
@@ -680,10 +599,6 @@ def _extract_custom_systems(text: str) -> list[str]:
         if not any(existing.lower() == system.lower() for existing in deduped):
             deduped.append(system)
     return deduped[:5]
-
-
-def _has_auth_hint(text: str) -> bool:
-    return any(term in text.lower() for term in ("api token", "token", "api key", "auth", "oauth", "credential", "credencial", "bot token"))
 
 
 def _normalize_custom_connectors(draft: dict[str, Any], user_message: str) -> None:
