@@ -159,6 +159,17 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         "browserDefault": "exception",
         "apiFirst": True,
         "browserRequiresAllowlist": True,
+        "browserExceptionDiscipline": {
+            "state": "needs_review",
+            "ready": False,
+            "apiFirstSessions": 0,
+            "browserOnlySessions": 1,
+            "hybridSessions": 0,
+            "checks": {
+                "browserNotDefault": False,
+                "hybridCountsAsFallback": False,
+            },
+        },
         "modes": [
             {
                 "runtimeType": "api_runtime",

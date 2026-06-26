@@ -1862,6 +1862,13 @@ class AutomataAssistantService:
                             )
                     if mode_counts:
                         runtime_text += f" Runtime modes: {', '.join(mode_counts)}."
+                browser_discipline = taxonomy.get("browserExceptionDiscipline") if isinstance(taxonomy.get("browserExceptionDiscipline"), dict) else {}
+                if browser_discipline:
+                    runtime_text += (
+                        f" Browser exception discipline: {browser_discipline.get('state', 'unknown')}, "
+                        f"{browser_discipline.get('browserOnlySessions', 0)} browser-only session(s), "
+                        f"{browser_discipline.get('apiFirstSessions', 0)} API-first session(s)."
+                    )
             class_gate = runtime_policy.get("runtimeClassGate") if isinstance(runtime_policy.get("runtimeClassGate"), dict) else {}
             if class_gate:
                 runtime_text += f" Runtime class gate: {class_gate.get('state', 'unknown')}."

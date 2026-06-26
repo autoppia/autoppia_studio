@@ -191,6 +191,8 @@ def summarize_runtime_policy_map(
     api_session_count = sum(1 for kind in observed_runtime_classes if kind == "api")
     hybrid_session_count = sum(1 for kind in observed_runtime_classes if kind == "hybrid")
     browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime", "browser", "hybrid"})
+    browser_only_session_count = sum(1 for kind in observed_runtime_classes if kind == "browser")
+    api_first_session_count = api_session_count + hybrid_session_count
     allowed_domains = normalize_runtime_domains(browser_allowed_domains or [])
     observed_domains = normalize_runtime_domains(browser_observed_domains or [])
     covered_domains = [domain for domain in observed_domains if _domain_allowed(domain, allowed_domains)]
@@ -233,6 +235,17 @@ def summarize_runtime_policy_map(
             "browserDefault": "exception",
             "apiFirst": True,
             "browserRequiresAllowlist": bool(browser_policy_count or browser_session_count),
+            "browserExceptionDiscipline": {
+                "state": "ready" if not browser_only_session_count or api_first_session_count >= browser_only_session_count else "needs_review",
+                "ready": not browser_only_session_count or api_first_session_count >= browser_only_session_count,
+                "apiFirstSessions": api_first_session_count,
+                "browserOnlySessions": browser_only_session_count,
+                "hybridSessions": hybrid_session_count,
+                "checks": {
+                    "browserNotDefault": not browser_only_session_count or api_first_session_count >= browser_only_session_count,
+                    "hybridCountsAsFallback": hybrid_session_count > 0 or browser_only_session_count == 0,
+                },
+            },
             "modes": [
                 {
                     "runtimeType": "api_runtime",
