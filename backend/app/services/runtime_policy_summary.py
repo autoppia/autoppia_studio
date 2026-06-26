@@ -74,6 +74,8 @@ def _runtime_class_gate(
     restricted_by_domain: bool,
     uncovered_domains: list[str],
     missing_observed_approval: list[str],
+    browser_exception_ready: bool,
+    browser_only_session_count: int,
 ) -> dict[str, Any]:
     declared = {_runtime_class(policy.get("runtimeClass")) for policy in policies if policy.get("runtimeClass")}
     observed = {_runtime_class(kind) for kind in runtime_kinds if str(kind or "").strip()}
@@ -82,7 +84,7 @@ def _runtime_class_gate(
     checks = {
         "declaredPolicies": bool(policies),
         "observedRuntimeCovered": observed_supported,
-        "browserAsException": True,
+        "browserAsException": browser_exception_ready,
         "browserDomainGoverned": (not browser_in_use) or (restricted_by_domain and not uncovered_domains),
         "sideEffectsApproved": not missing_observed_approval,
     }
@@ -93,6 +95,8 @@ def _runtime_class_gate(
         blockers.append({"name": "observed_runtime_policy", "count": len(observed)})
     if not checks["browserDomainGoverned"]:
         blockers.append({"name": "browser_domain_governance", "count": len(uncovered_domains) or 1})
+    if not checks["browserAsException"]:
+        blockers.append({"name": "browser_runtime_default_discipline", "count": browser_only_session_count})
     if not checks["sideEffectsApproved"]:
         blockers.append({"name": "side_effect_approval_coverage", "count": len(missing_observed_approval)})
     ready = all(checks.values())
@@ -193,6 +197,7 @@ def summarize_runtime_policy_map(
     browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime", "browser", "hybrid"})
     browser_only_session_count = sum(1 for kind in observed_runtime_classes if kind == "browser")
     api_first_session_count = api_session_count + hybrid_session_count
+    browser_exception_ready = not browser_only_session_count or api_first_session_count >= browser_only_session_count
     allowed_domains = normalize_runtime_domains(browser_allowed_domains or [])
     observed_domains = normalize_runtime_domains(browser_observed_domains or [])
     covered_domains = [domain for domain in observed_domains if _domain_allowed(domain, allowed_domains)]
@@ -236,8 +241,8 @@ def summarize_runtime_policy_map(
             "apiFirst": True,
             "browserRequiresAllowlist": bool(browser_policy_count or browser_session_count),
             "browserExceptionDiscipline": {
-                "state": "ready" if not browser_only_session_count or api_first_session_count >= browser_only_session_count else "needs_review",
-                "ready": not browser_only_session_count or api_first_session_count >= browser_only_session_count,
+                "state": "ready" if browser_exception_ready else "needs_review",
+                "ready": browser_exception_ready,
                 "apiFirstSessions": api_first_session_count,
                 "browserOnlySessions": browser_only_session_count,
                 "hybridSessions": hybrid_session_count,
@@ -273,6 +278,8 @@ def summarize_runtime_policy_map(
             restricted_by_domain=restricted_by_domain,
             uncovered_domains=uncovered_domains,
             missing_observed_approval=missing_observed_approval,
+            browser_exception_ready=browser_exception_ready,
+            browser_only_session_count=browser_only_session_count,
         ),
         "approvalBoundaries": {
             "skills": _approval_boundary_counts(skill_policies),

@@ -148,11 +148,14 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         "checks": {
             "declaredPolicies": True,
             "observedRuntimeCovered": True,
-            "browserAsException": True,
+            "browserAsException": False,
             "browserDomainGoverned": False,
             "sideEffectsApproved": True,
         },
-        "blockers": [{"name": "browser_domain_governance", "count": 1}],
+        "blockers": [
+            {"name": "browser_domain_governance", "count": 1},
+            {"name": "browser_runtime_default_discipline", "count": 1},
+        ],
     }
     assert summary["runtimeTaxonomy"] == {
         "defaultMode": "api_runtime",

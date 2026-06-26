@@ -821,6 +821,9 @@ class AutomataAssistantTools:
                 {"area": "runtime", "severity": "high", "message": "Insurance replay contract is blocked; AgentRuntime replay, approved skill, draft artifact and approval boundary evidence must all be present."} if first_replay_contract and not first_replay_contract.get("ready") else None,
                 {"area": "artifacts", "severity": "high", "message": "Insurance business output contract is blocked; draft artifact, approval boundary and replay assertion must be proven before delivery."} if first_business_output_contract and not first_business_output_contract.get("ready") else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
+                {"area": "runtime", "severity": "medium", "message": "Browser runtime is being used as a default path instead of an API-first exception."}
+                if not ((runtime_policy_map.get("runtimeTaxonomy") or {}).get("browserExceptionDiscipline") or {}).get("ready", True)
+                else None,
                 {"area": "runtime", "severity": "medium", "message": "Runtime Lab sessions are not yet durable, replay-ready evidence."} if runtime_session_gate and not runtime_session_gate.get("ready") else None,
                 {
                     "area": "approvals",
