@@ -151,6 +151,14 @@ class _FakeCapabilitiesCollection:
                         "outputs": {"entity": "Draft email", "artifacts": ["draft_email"]},
                     },
                     "policies": {"riskPolicy": "human_approval_for_writes"},
+                    "assets": {
+                        "declared": True,
+                        "resourceIds": ["claims-handbook"],
+                        "scriptIds": ["normalize_claim_status"],
+                        "resources": [{"path": "resources/claims-handbook.md"}],
+                        "scripts": [{"path": "scripts/normalize_claim_status.py"}],
+                        "references": [],
+                    },
                     "productionGate": {"state": "publishable", "canPublish": True, "blockers": []},
                     "evidence": {
                         "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
@@ -454,8 +462,12 @@ async def test_runtime_contract_marks_unavailable_requirements(monkeypatch):
     assert contract["skillPackages"]["publishable"] == 1
     assert contract["skillPackages"]["withIoContract"] == 1
     assert contract["skillPackages"]["withRegressionSuite"] == 1
+    assert contract["skillPackages"]["withAssets"] == 1
+    assert contract["skillPackages"]["withResources"] == 1
+    assert contract["skillPackages"]["withScripts"] == 1
     assert contract["skillPackages"]["blocked"] == 0
     assert contract["skillPackages"]["packages"][0]["checks"]["expectedArtifacts"] is True
+    assert contract["skillPackages"]["packages"][0]["assets"]["resourceIds"] == ["claims-handbook"]
     assert contract["skillPackages"]["packages"][0]["progressiveDisclosure"]["summaryFields"] == ["metadata", "activation", "ioContract"]
 
 

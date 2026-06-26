@@ -29,6 +29,10 @@ def _manual_skill_doc():
         "permissions": {"approval": "always"},
         "runtime": "trajectory_replay_with_recovery",
         "runtimeRequirements": ["browser"],
+        "resourceIds": ["claims-handbook"],
+        "scriptIds": ["normalize_claim_status"],
+        "resources": [{"path": "resources/claims-handbook.md"}],
+        "scripts": [{"path": "scripts/normalize_claim_status.py"}],
         "promotionStatus": "ready",
         "version": 1,
         "versionLabel": "v1",
@@ -80,6 +84,9 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     assert package["ioContract"]["outputs"]["artifacts"] == ["draft_email"]
     assert package["execution"]["trajectoryIds"] == ["traj-1"]
     assert package["policies"]["runtimePolicy"]["approvalMode"] == "always"
+    assert package["assets"]["declared"] is True
+    assert package["assets"]["resourceIds"] == ["claims-handbook"]
+    assert package["assets"]["scriptIds"] == ["normalize_claim_status"]
     assert package["hardening"]["readyForPublish"] is False
     assert package["hardening"]["blockers"] == ["publishableRegression"]
     assert package["productionGate"]["state"] == "needs_regression"
@@ -94,6 +101,7 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     assert readiness["release"]["promotionStatus"] == "ready"
     assert readiness["release"]["version"] == 1
     assert readiness["release"]["historyCount"] == 1
+    assert readiness["assets"]["declared"] is True
     assert readiness["hardening"]["blockers"] == ["publishableRegression"]
 
 
@@ -124,6 +132,9 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
     summary = summarize_skill_packages([ready, published], package_limit=2)
 
     assert summary["releaseStatus"] == [{"name": "published", "count": 1}, {"name": "ready", "count": 1}]
+    assert summary["withAssets"] == 2
+    assert summary["withResources"] == 2
+    assert summary["withScripts"] == 2
     assert summary["releaseReadiness"] == {
         "readyForPublish": 1,
         "published": 1,
@@ -162,4 +173,9 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
         }
     ]
     assert summary["sample"][1]["promotionStatus"] == "published"
+    assert summary["sample"][1]["assets"] == {
+        "declared": True,
+        "resourceIds": ["claims-handbook"],
+        "scriptIds": ["normalize_claim_status"],
+    }
     assert summary["packages"][1]["release"]["latestEvent"]["reason"] == "promotion"

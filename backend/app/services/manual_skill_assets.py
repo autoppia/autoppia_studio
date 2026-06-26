@@ -4,6 +4,7 @@ from typing import Any
 
 from app.services.runtime_policy import serialize_runtime_policy
 from app.services.skill_manifests import skill_hardening_manifest
+from app.services.skill_manifests import skill_package_assets
 from app.services.skill_manifests import skill_production_gate
 
 
@@ -78,6 +79,7 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
         "declared": bool(doc.get("inputEntities") or doc.get("preconditions") or doc.get("outputEntity") or doc.get("expectedArtifacts") or doc.get("outputCard")),
     }
     latest_regression = doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else None
+    assets = skill_package_assets(doc)
     production_gate = skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
     hardening_manifest = skill_hardening_manifest(hardening=hardening, production_gate=production_gate)
     return {
@@ -119,6 +121,7 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
             "permissions": doc.get("permissions", {}),
             "runtimePolicy": serialize_runtime_policy(doc),
         },
+        "assets": assets,
         "hardening": hardening_manifest,
         "productionGate": production_gate,
         "evidence": {
@@ -135,7 +138,7 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
         },
         "progressiveDisclosure": {
             "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
-            "fullFields": ["execution", "evidence"],
+            "fullFields": ["execution", "assets", "evidence"],
         },
     }
 

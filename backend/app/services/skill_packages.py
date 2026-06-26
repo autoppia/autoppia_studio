@@ -5,6 +5,7 @@ from typing import Any
 from app.services.skill_lifecycle import skill_promotion_status
 from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
+from app.services.skill_manifests import skill_package_assets
 
 
 SKILL_PACKAGE_HARDENING_ACTIONS = {
@@ -146,6 +147,8 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
     outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
     production_gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else {}
     hardening = package.get("hardening") if isinstance(package.get("hardening"), dict) else {}
+    package_assets = package.get("assets") if isinstance(package.get("assets"), dict) else {}
+    assets = skill_package_assets({**doc, **package_assets})
     latest_regression = evidence.get("latestRegression") if isinstance(evidence.get("latestRegression"), dict) else doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else {}
     checks = {
         "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
@@ -204,6 +207,7 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         "blockers": blockers[:8],
         "versioned": bool(doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion") or metadata.get("version")),
         "release": release,
+        "assets": assets,
         "hardening": hardening,
         "progressiveDisclosure": package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {},
     }
@@ -214,6 +218,9 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
     with_io_contract = sum(1 for item in packages if item["checks"]["ioContract"])
     with_expected_artifacts = sum(1 for item in packages if item["checks"]["expectedArtifacts"])
     with_regression_suite = sum(1 for item in packages if item["checks"]["regressionSuite"])
+    with_assets = sum(1 for item in packages if item["assets"]["declared"])
+    with_resources = sum(1 for item in packages if item["assets"]["resources"] or item["assets"]["resourceIds"])
+    with_scripts = sum(1 for item in packages if item["assets"]["scripts"] or item["assets"]["scriptIds"])
     release_statuses = [str(item["release"].get("promotionStatus") or "draft") for item in packages]
     ready_for_publish = sum(1 for item in packages if item["release"].get("readyForPublish"))
     published = sum(1 for item in packages if item["release"].get("published"))
@@ -240,6 +247,11 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
             "regressionSuite": item["checks"]["regressionSuite"],
             "publishable": item["publishable"],
             "readyForPublish": item["release"]["readyForPublish"],
+            "assets": {
+                "declared": item["assets"]["declared"],
+                "resourceIds": item["assets"]["resourceIds"],
+                "scriptIds": item["assets"]["scriptIds"],
+            },
         }
         for item in packages[:5]
     ]
@@ -250,6 +262,9 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
         "withIoContract": with_io_contract,
         "withExpectedArtifacts": with_expected_artifacts,
         "withRegressionSuite": with_regression_suite,
+        "withAssets": with_assets,
+        "withResources": with_resources,
+        "withScripts": with_scripts,
         "versioned": sum(1 for item in packages if item["versioned"]),
         "blocked": sum(1 for item in packages if item["blockers"]),
         "releaseStatus": _sorted_counts(release_statuses),
