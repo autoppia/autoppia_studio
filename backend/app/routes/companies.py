@@ -477,6 +477,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             "resourceAcl": not knowledge_docs or docs_with_acl == len(knowledge_docs),
             "resourceRuntime": not knowledge_docs or runtime_ready_resources == len(knowledge_docs),
             "skillPackages": not skills or skill_packages["publishable"] > 0,
+            "toolHardening": connector_factory["needsHardeningCount"] == 0,
         }
         readiness_gaps = []
         if not readiness_checks["systems"]:
@@ -487,6 +488,14 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
             readiness_gaps.append({"key": "context", "label": "Add knowledge resources or mapped business entities.", "target": "knowledge"})
         if not readiness_checks["typedTools"]:
             readiness_gaps.append({"key": "typed_tools", "label": "Publish typed tools with entity mapping and side-effect metadata.", "target": "capabilities"})
+        if not readiness_checks["toolHardening"]:
+            readiness_gaps.append(
+                {
+                    "key": "tool_hardening",
+                    "label": f"{connector_factory['needsHardeningCount']} synthesized connector tool(s) still need policy, entity or approval hardening.",
+                    "target": "connectors",
+                }
+            )
         if not readiness_checks["benchmarks"]:
             readiness_gaps.append({"key": "benchmarks", "label": "Create benchmark tasks with success criteria and expected artifacts.", "target": "evals"})
         if counts["benchmarkTasks"] > 0 and task_contracts_ready == 0:

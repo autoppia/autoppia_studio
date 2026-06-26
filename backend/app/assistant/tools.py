@@ -317,6 +317,8 @@ class AutomataAssistantTools:
             recommended_actions.insert(0, {"area": "work", "action": "Review exhausted work budgets before retrying jobs.", "reason": f"{budget_exhausted} work item(s) exhausted their budget."})
         if counts["benchmarkTasks"] and task_contracts_ready == 0:
             recommended_actions.insert(0, {"area": "evals", "action": "Complete task contracts with business intent, allowed systems, artifacts, and risk class.", "reason": "Benchmark tasks exist but none are enterprise-ready."})
+        if connector_map["needsHardeningCount"]:
+            recommended_actions.insert(0, {"area": "connectors", "action": "Harden synthesized connector tools with policy, entity bindings, approval boundaries and regression evidence.", "reason": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) are not production-ready."})
         if resource_map["total"] and not resource_map["ready"]:
             first_gap = resource_map["gaps"][0]["label"] if resource_map["gaps"] else "Knowledge resources are not ready for governed runtime grounding."
             recommended_actions.insert(0, {"area": "knowledge", "action": "Finish resource governance before relying on knowledge grounding in skills.", "reason": first_gap})
@@ -355,6 +357,7 @@ class AutomataAssistantTools:
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist without explicit ACL visibility."} if resource_map["total"] and (resource_map.get("acl") or {}).get("withAcl") != resource_map["total"] else None,
                 {"area": "knowledge", "severity": "medium", "message": "Knowledge resources exist but are not fully governed, indexed and citable."} if resource_map["total"] and not resource_map["ready"] else None,
                 {"area": "connectors", "severity": "medium", "message": "Connector entity mapping is pending for one or more systems."} if connector_map["entityPending"] else None,
+                {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
                 {"area": "evals", "severity": "high", "message": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."} if skill_eval_gate["blockedByRegression"] else None,
                 {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,

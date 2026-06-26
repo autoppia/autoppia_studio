@@ -340,6 +340,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                         "toolSynthesis": {
                             "typedToolCount": 3,
                             "governedToolCount": 3,
+                            "hardenedToolCount": 2,
+                            "needsHardeningCount": 1,
+                            "hardeningGaps": {"approval_policy": 1},
                         },
                         "candidateTasks": {"recommended": True},
                         "ingestionPipeline": {
@@ -624,6 +627,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["systems"]["summary"]["connectedConnectors"] == 1
     assert result["contract"]["systemFactory"]["connectorMap"]["entityMapped"] == 1
     assert result["contract"]["systemFactory"]["connectorMap"]["typedToolReady"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["hardenedToolCount"] == 2
+    assert result["contract"]["systemFactory"]["connectorMap"]["needsHardeningCount"] == 1
+    assert result["contract"]["systemFactory"]["connectorMap"]["toolHardeningGaps"] == [{"name": "approval_policy", "count": 1}]
     assert result["contract"]["systemFactory"]["connectorMap"]["candidateTasksReady"] == 1
     assert result["contract"]["systemFactory"]["connectorMap"]["ingestionBlocked"] == 1
     assert result["contract"]["systemFactory"]["connectorMap"]["readyStages"] == 6
@@ -730,7 +736,9 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["factory"]["publishableSkillPackages"] == 1
     assert "draft_email" in result["contract"]["capabilityMap"]["skills"]["expectedArtifacts"]
     assert result["contract"]["readiness"]["checks"]["systems"] is True
+    assert result["contract"]["readiness"]["checks"]["toolHardening"] is False
     assert result["contract"]["readiness"]["checks"]["capabilityCoverage"] is True
     assert result["contract"]["readiness"]["checks"]["credentials"] is True
     assert result["contract"]["readiness"]["checks"]["runtime"] is True
     assert any(gap["key"] == "auth" for gap in result["contract"]["readiness"]["gaps"])
+    assert any(gap["key"] == "tool_hardening" for gap in result["contract"]["readiness"]["gaps"])
