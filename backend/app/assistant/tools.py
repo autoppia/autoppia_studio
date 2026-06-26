@@ -402,6 +402,7 @@ class AutomataAssistantTools:
             skills=skill_docs,
             runs=eval_run_docs,
         )
+        coverage_matrix = benchmark_portfolio.get("coverageMatrix") if isinstance(benchmark_portfolio.get("coverageMatrix"), dict) else {}
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
         resource_map = summarize_resource_governance(knowledge_docs)
@@ -661,6 +662,7 @@ class AutomataAssistantTools:
                     "packages": skill_package_summary,
                 },
                 "evalGate": skill_eval_gate,
+                "evalCoverage": coverage_matrix.get("summary") if isinstance(coverage_matrix.get("summary"), dict) else {},
                 "benchmarkPortfolio": benchmark_portfolio,
                 "verticalDemos": vertical_demos,
                 "verticalDemoGaps": vertical_demo_gaps,

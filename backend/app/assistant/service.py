@@ -1442,6 +1442,7 @@ class AutomataAssistantService:
         entity_map = capability_map.get("entityMap") if isinstance(capability_map.get("entityMap"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
+        eval_coverage = capability_map.get("evalCoverage") if isinstance(capability_map.get("evalCoverage"), dict) else {}
         benchmark_portfolio = capability_map.get("benchmarkPortfolio") if isinstance(capability_map.get("benchmarkPortfolio"), dict) else {}
         promotion_pipeline = capability_map.get("promotionPipeline") if isinstance(capability_map.get("promotionPipeline"), dict) else {}
         vertical_demos = capability_map.get("verticalDemos") if isinstance(capability_map.get("verticalDemos"), dict) else {}
@@ -1484,6 +1485,15 @@ class AutomataAssistantService:
                 coverage_text += (
                     f" Eval gates: {eval_gate.get('passing', 0)} passing, "
                     f"{eval_gate.get('blockedByRegression', 0)} blocked, {eval_gate.get('missing', 0)} missing regression."
+                )
+            if eval_coverage:
+                connector_coverage = eval_coverage.get("connectors") if isinstance(eval_coverage.get("connectors"), dict) else {}
+                entity_coverage = eval_coverage.get("entities") if isinstance(eval_coverage.get("entities"), dict) else {}
+                skill_coverage = eval_coverage.get("skills") if isinstance(eval_coverage.get("skills"), dict) else {}
+                coverage_text += (
+                    f" Eval coverage: connectors {connector_coverage.get('covered', 0)}/{connector_coverage.get('total', 0)}, "
+                    f"entities {entity_coverage.get('covered', 0)}/{entity_coverage.get('total', 0)}, "
+                    f"skills {skill_coverage.get('covered', 0)}/{skill_coverage.get('total', 0)}."
                 )
             if benchmark_portfolio:
                 promotion_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}

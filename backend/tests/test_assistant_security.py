@@ -518,6 +518,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["passing"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["missing"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["evalCoverage"]["connectors"]["total"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["evalCoverage"]["entities"]["total"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["evalCoverage"]["skills"]["total"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["benchmarks"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["tasks"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["taskContracts"]["complete"] == 0
@@ -934,6 +937,11 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         },
                     },
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
+                    "evalCoverage": {
+                        "connectors": {"covered": 2, "total": 3},
+                        "entities": {"covered": 1, "total": 4},
+                        "skills": {"covered": 2, "total": 5},
+                    },
                     "benchmarkPortfolio": {
                         "benchmarks": 2,
                         "tasks": 7,
@@ -1015,6 +1023,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
+    assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
