@@ -439,6 +439,8 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "instructions": "Look up claim state and prepare a concise summary.",
                     "expectedArtifacts": ["claim_summary"],
                     "preconditions": ["Customer identity verified"],
+                    "resourceIds": ["resource-claims"],
+                    "scripts": [{"path": "scripts/claim_summary.py", "description": "Normalize claim status summaries"}],
                     "version": 2,
                     "versionHistory": [
                         {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
@@ -624,6 +626,9 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["skills"]["packages"]["riskPolicies"] == 1
     assert graph["coverage"]["skills"]["packages"]["sourceTrajectories"] == 1
     assert graph["coverage"]["skills"]["packages"]["regressionSuites"] == 1
+    assert graph["coverage"]["skills"]["packages"]["assets"] == 1
+    assert graph["coverage"]["skills"]["packages"]["resources"] == 1
+    assert graph["coverage"]["skills"]["packages"]["scripts"] == 1
     assert graph["coverage"]["skills"]["packages"]["publishable"] == 1
     assert graph["coverage"]["skills"]["packages"]["versioned"] == 1
     assert graph["coverage"]["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]

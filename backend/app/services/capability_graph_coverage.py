@@ -11,6 +11,7 @@ from app.services.runtime_policy import serialize_runtime_policy
 from app.services.skill_lifecycle import skill_promotion_status
 from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
+from app.services.skill_manifests import skill_package_assets
 from app.services.skill_manifests import skill_io_contract
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_ready
@@ -151,6 +152,8 @@ def skill_package_coverage(
     package_regression = package_evidence.get("regressionSuite") if isinstance(package_evidence.get("regressionSuite"), dict) else {}
     package_io = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
     package_outputs = package_io.get("outputs") if isinstance(package_io.get("outputs"), dict) else {}
+    package_assets = package.get("assets") if isinstance(package.get("assets"), dict) else {}
+    assets = skill_package_assets({**skill, **package_assets})
     trajectory_ids = _dedupe_strings([str(value or "") for value in skill.get("trajectoryIds") or []])
     linked_trajectories = [
         trajectory
@@ -214,6 +217,9 @@ def skill_package_coverage(
         "riskPolicy": risk_policy,
         "sourceTrajectories": source_trajectories,
         "regressionSuite": regression,
+        "assets": bool(assets.get("declared")),
+        "resources": bool(assets.get("resources") or assets.get("resourceIds")),
+        "scripts": bool(assets.get("scripts") or assets.get("scriptIds")),
         "publishable": publishable,
         "versioned": bool(skill.get("version") or skill.get("versionHistory") or package.get("manifestVersion")),
         "release": {
@@ -537,6 +543,9 @@ def capability_graph_coverage(
                 "riskPolicies": sum(1 for item in skill_packages if item["riskPolicy"]),
                 "sourceTrajectories": sum(1 for item in skill_packages if item["sourceTrajectories"]),
                 "regressionSuites": sum(1 for item in skill_packages if item["regressionSuite"]),
+                "assets": sum(1 for item in skill_packages if item["assets"]),
+                "resources": sum(1 for item in skill_packages if item["resources"]),
+                "scripts": sum(1 for item in skill_packages if item["scripts"]),
                 "publishable": publishable_skills,
                 "versioned": sum(1 for item in skill_packages if item["versioned"]),
                 "releaseStatus": _sorted_counts(skill_release_statuses),

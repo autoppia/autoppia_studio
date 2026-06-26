@@ -42,6 +42,8 @@ def test_skill_package_coverage_detects_publishable_skill_package():
             "expectedArtifacts": ["draft_email"],
             "inputEntities": ["Claim"],
             "outputEntity": "DraftEmail",
+            "resourceIds": ["claims-handbook"],
+            "scripts": [{"path": "scripts/normalize_claim_status.py"}],
             "version": 2,
             "promotionStatus": "published",
             "versionHistory": [
@@ -59,6 +61,9 @@ def test_skill_package_coverage_detects_publishable_skill_package():
     assert coverage["manifestReady"] is True
     assert coverage["ioContract"] is True
     assert coverage["regressionSuite"] is True
+    assert coverage["assets"] is True
+    assert coverage["resources"] is True
+    assert coverage["scripts"] is True
     assert coverage["publishable"] is True
     assert coverage["versioned"] is True
     assert coverage["release"]["promotionStatus"] == "published"
@@ -156,6 +161,8 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "expectedArtifacts": ["draft_email"],
                 "inputEntities": ["Claim"],
                 "outputEntity": "DraftEmail",
+                "resourceIds": ["claims-handbook"],
+                "scripts": [{"path": "scripts/normalize_claim_status.py"}],
                 "version": 2,
                 "promotionStatus": "published",
                 "versionHistory": [
@@ -207,6 +214,9 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["policies"]["sendProtected"] is True
     assert coverage["benchmarks"]["tasksWithContracts"] == 1
     assert coverage["skills"]["packages"]["publishable"] == 1
+    assert coverage["skills"]["packages"]["assets"] == 1
+    assert coverage["skills"]["packages"]["resources"] == 1
+    assert coverage["skills"]["packages"]["scripts"] == 1
     assert coverage["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]
     assert coverage["skills"]["packages"]["releaseReadiness"] == {
         "readyForPublish": 1,

@@ -3,6 +3,27 @@ from __future__ import annotations
 from typing import Any
 
 
+def _list_values(value: Any) -> list[Any]:
+    return value if isinstance(value, list) else []
+
+
+def skill_package_assets(skill: dict[str, Any]) -> dict[str, Any]:
+    """Optional package assets loaded only when the skill is selected."""
+    resources = _list_values(skill.get("resources"))
+    scripts = _list_values(skill.get("scripts"))
+    references = _list_values(skill.get("references"))
+    resource_ids = [str(item).strip() for item in _list_values(skill.get("resourceIds")) if str(item or "").strip()]
+    script_ids = [str(item).strip() for item in _list_values(skill.get("scriptIds")) if str(item or "").strip()]
+    return {
+        "resources": resources,
+        "resourceIds": resource_ids,
+        "scripts": scripts,
+        "scriptIds": script_ids,
+        "references": references,
+        "declared": bool(resources or resource_ids or scripts or script_ids or references),
+    }
+
+
 def skill_io_contract(skill: dict[str, Any]) -> dict[str, Any]:
     input_entities = skill.get("inputEntities", [])
     parameters = skill.get("parameters", [])
@@ -115,6 +136,7 @@ def skill_package_manifest(
     output_card = skill.get("outputCard", {})
     actions = skill.get("actions") if isinstance(skill.get("actions"), list) else []
     io_contract = skill_io_contract(skill)
+    assets = skill_package_assets(skill)
     production_gate = skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
     hardening_manifest = skill_hardening_manifest(hardening=hardening, production_gate=production_gate)
     return {
@@ -158,6 +180,7 @@ def skill_package_manifest(
             "permissions": skill.get("permissions", {}),
             "runtimePolicy": runtime_policy,
         },
+        "assets": assets,
         "hardening": hardening_manifest,
         "productionGate": production_gate,
         "evidence": {
@@ -175,6 +198,6 @@ def skill_package_manifest(
         },
         "progressiveDisclosure": {
             "summaryFields": ["metadata", "activation", "interface", "ioContract", "policies"],
-            "fullFields": ["execution", "evidence"],
+            "fullFields": ["execution", "assets", "evidence"],
         },
     }
