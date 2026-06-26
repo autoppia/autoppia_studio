@@ -1684,6 +1684,10 @@ class AutomataAssistantService:
                             f" Insurance proof gate: {proof_gate.get('state') or 'blocked'}, "
                             f"{ready_steps}/{total_steps} proof step(s) ready."
                         )
+                    proof_playbook = proof_gate.get("hardeningPlaybook") if isinstance(proof_gate.get("hardeningPlaybook"), list) else []
+                    first_proof_action = proof_playbook[0] if proof_playbook and isinstance(proof_playbook[0], dict) else {}
+                    if first_proof_action.get("action"):
+                        coverage_text += f" First proof hardening: {first_proof_action['action']}"
                     coverage_text += f" First proof blocker: {missing[0] if missing else proof_gate.get('state') or 'proof evidence'}."
         resource_text = ""
         if resource_map:
