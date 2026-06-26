@@ -11,6 +11,9 @@ from pydantic import BaseModel, Field
 
 from app.database import artifacts_collection, companies_collection
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
+from app.services.artifact_outputs import artifact_approval_relation
+from app.services.artifact_outputs import artifact_capability_refs
+from app.services.artifact_outputs import artifact_output_contract
 
 router = APIRouter()
 
@@ -74,72 +77,19 @@ def _safe_file_name(title: str, artifact_type: str, file_name: str = "") -> str:
     return stem[:160]
 
 
-def _capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
-    refs = {
-        "skillId": str(metadata.get("skillId") or ""),
-        "trajectoryId": str(metadata.get("trajectoryId") or ""),
-        "toolId": str(metadata.get("toolId") or ""),
-        "workItemId": str(metadata.get("workItemId") or ""),
-    }
-    refs["linked"] = any(refs[key] for key in ("skillId", "trajectoryId", "toolId", "workItemId"))
-    return refs
-
-
-def _approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
-    approval_id = str(metadata.get("approvalId") or "")
-    approval_key = str(metadata.get("approvalKey") or "")
-    approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
-    boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
-    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
-    return {
-        "linked": bool(approval_id or approval_key or requires_review),
-        "approvalId": approval_id,
-        "approvalKey": approval_key,
-        "state": approval_state or ("pending" if requires_review else "not_required"),
-        "boundary": boundary,
-        "requiresReview": requires_review,
-    }
-
-
 def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
     artifact_type = _clean_type(doc.get("artifactType"))
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    capability_refs = _capability_refs(metadata)
-    approval_relation = _approval_relation(metadata)
+    capability_refs = artifact_capability_refs(metadata)
+    approval_relation = artifact_approval_relation(metadata)
     session_id = str(doc.get("sessionId", ""))
     source_tool = str(doc.get("sourceTool", ""))
-    artifact_contract = {
-        "artifactId": doc.get("artifactId", ""),
-        "outputKind": artifact_type,
-        "businessOutput": True,
-        "separatedFromTrace": True,
-        "runtimeLinked": bool(session_id),
-        "capabilityLinked": bool(capability_refs.get("linked")),
-        "workLinked": bool(capability_refs.get("workItemId")),
-        "source": {
-            "sessionId": session_id,
-            "sourceTool": source_tool,
-            "skillId": capability_refs["skillId"],
-            "trajectoryId": capability_refs["trajectoryId"],
-            "toolId": capability_refs["toolId"],
-            "workItemId": capability_refs["workItemId"],
-        },
-        "governance": {
-            "approvalState": approval_relation["state"],
-            "requiresReview": approval_relation["requiresReview"],
-            "approvalRelation": approval_relation,
-            "knowledgeReady": artifact_type in {"markdown", "text", "html", "pdf", "csv", "json"},
-        },
-        "nextActions": [
-            action
-            for action in [
-                "Open the originating Runtime Lab session." if session_id else "",
-                "Review linked capability evidence." if capability_refs.get("linked") else "",
-                "Save to Resources if this output should become reusable knowledge." if artifact_type in {"markdown", "text", "html", "pdf", "csv", "json"} else "",
-            ]
-            if action
-        ],
-    }
+    artifact_contract = artifact_output_contract(
+        doc,
+        artifact_type=artifact_type,
+        capability_refs=capability_refs,
+        approval_relation=approval_relation,
+    )
     return {
         "artifactId": doc.get("artifactId", ""),
         "companyId": doc.get("companyId", ""),

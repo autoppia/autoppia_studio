@@ -33,6 +33,76 @@ def _approval_state(doc: dict[str, Any], metadata: dict[str, Any]) -> str:
     return "not_required"
 
 
+def artifact_capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
+    refs = {
+        "skillId": str(metadata.get("skillId") or ""),
+        "trajectoryId": str(metadata.get("trajectoryId") or ""),
+        "toolId": str(metadata.get("toolId") or ""),
+        "workItemId": str(metadata.get("workItemId") or ""),
+    }
+    refs["linked"] = any(refs[key] for key in ("skillId", "trajectoryId", "toolId", "workItemId"))
+    return refs
+
+
+def artifact_approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
+    approval_id = str(metadata.get("approvalId") or "")
+    approval_key = str(metadata.get("approvalKey") or "")
+    approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
+    boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
+    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
+    return {
+        "linked": bool(approval_id or approval_key or requires_review),
+        "approvalId": approval_id,
+        "approvalKey": approval_key,
+        "state": approval_state or ("pending" if requires_review else "not_required"),
+        "boundary": boundary,
+        "requiresReview": requires_review,
+    }
+
+
+def artifact_output_contract(
+    doc: dict[str, Any],
+    *,
+    artifact_type: str,
+    capability_refs: dict[str, Any],
+    approval_relation: dict[str, Any],
+) -> dict[str, Any]:
+    session_id = str(doc.get("sessionId", ""))
+    source_tool = str(doc.get("sourceTool", ""))
+    return {
+        "artifactId": doc.get("artifactId", ""),
+        "outputKind": artifact_type,
+        "businessOutput": True,
+        "separatedFromTrace": True,
+        "runtimeLinked": bool(session_id),
+        "capabilityLinked": bool(capability_refs.get("linked")),
+        "workLinked": bool(capability_refs.get("workItemId")),
+        "source": {
+            "sessionId": session_id,
+            "sourceTool": source_tool,
+            "skillId": capability_refs["skillId"],
+            "trajectoryId": capability_refs["trajectoryId"],
+            "toolId": capability_refs["toolId"],
+            "workItemId": capability_refs["workItemId"],
+        },
+        "governance": {
+            "approvalState": approval_relation["state"],
+            "requiresReview": approval_relation["requiresReview"],
+            "approvalRelation": approval_relation,
+            "knowledgeReady": artifact_type in KNOWLEDGE_READY_TYPES,
+        },
+        "nextActions": [
+            action
+            for action in [
+                "Open the originating Runtime Lab session." if session_id else "",
+                "Review linked capability evidence." if capability_refs.get("linked") else "",
+                "Save to Resources if this output should become reusable knowledge." if artifact_type in KNOWLEDGE_READY_TYPES else "",
+            ]
+            if action
+        ],
+    }
+
+
 def summarize_artifact_outputs(artifacts: list[dict[str, Any]], *, sample_limit: int = 8, gap_limit: int = 10) -> dict[str, Any]:
     runtime_linked = 0
     capability_linked = 0

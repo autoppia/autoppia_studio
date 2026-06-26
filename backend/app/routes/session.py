@@ -11,6 +11,8 @@ from pydantic import BaseModel, Field
 
 from app.database import approvals_collection, artifacts_collection, session_documents_collection, sessions_collection
 from app.routes.knowledge import ALLOWED_EXTENSIONS, MAX_UPLOAD_BYTES, create_knowledge_document_record
+from app.services.artifact_outputs import artifact_approval_relation
+from app.services.artifact_outputs import artifact_capability_refs
 from app.services.runtime_sessions import build_runtime_audit_trail as _session_runtime_audit_trail
 from app.services.runtime_sessions import build_runtime_evidence as _session_runtime_evidence
 from app.services.runtime_sessions import build_runtime_lab as _session_runtime_lab
@@ -78,39 +80,12 @@ def _artifact_file_name(title: str, artifact_type: str, file_name: str = "") -> 
     return stem[:160]
 
 
-def _artifact_capability_refs(metadata: dict[str, Any]) -> dict[str, Any]:
-    refs = {
-        "skillId": str(metadata.get("skillId") or ""),
-        "trajectoryId": str(metadata.get("trajectoryId") or ""),
-        "toolId": str(metadata.get("toolId") or ""),
-        "workItemId": str(metadata.get("workItemId") or ""),
-    }
-    refs["linked"] = any(refs[key] for key in ("skillId", "trajectoryId", "toolId", "workItemId"))
-    return refs
-
-
-def _artifact_approval_relation(metadata: dict[str, Any]) -> dict[str, Any]:
-    approval_id = str(metadata.get("approvalId") or "")
-    approval_key = str(metadata.get("approvalKey") or "")
-    approval_state = str(metadata.get("approvalState") or metadata.get("approvalStatus") or "")
-    boundary = str(metadata.get("approvalBoundary") or metadata.get("policyBoundary") or "")
-    requires_review = bool(metadata.get("requiresReview") or approval_id or approval_key or approval_state in {"pending", "required"})
-    return {
-        "linked": bool(approval_id or approval_key or requires_review),
-        "approvalId": approval_id,
-        "approvalKey": approval_key,
-        "state": approval_state or ("pending" if requires_review else "not_required"),
-        "boundary": boundary,
-        "requiresReview": requires_review,
-    }
-
-
 def _serialize_session_artifact(doc: dict) -> dict:
     artifact_type = _clean_artifact_type(doc.get("artifactType") or doc.get("kind"))
     content_type, _ = ARTIFACT_TEXT_TYPES.get(artifact_type, ARTIFACT_TEXT_TYPES["text"])
     metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    capability_refs = _artifact_capability_refs(metadata)
-    approval_relation = _artifact_approval_relation(metadata)
+    capability_refs = artifact_capability_refs(metadata)
+    approval_relation = artifact_approval_relation(metadata)
     return {
         "artifactId": doc.get("artifactId", ""),
         "sessionId": doc.get("sessionId", ""),
