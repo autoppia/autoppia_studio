@@ -484,6 +484,18 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["regressionLinked"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["passing"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["evalGate"]["missing"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["benchmarks"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["tasks"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["taskContracts"]["complete"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["promotionGate"]["blockers"] == [
+        "incomplete_task_contracts",
+        "no_skills",
+        "no_regression_runs",
+    ]
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["regressionGate"]["state"] == "empty"
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["regressionGate"]["nextActions"] == [
+        "Create benchmarks that reference connectors, entities or skills before evaluating coverage."
+    ]
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["total"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["partial"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["enterpriseReady"] == 0
@@ -578,6 +590,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["automataGuidance"]["riskAlerts"][0]["area"] == "approvals"
     assert any(alert["area"] == "connectors" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])

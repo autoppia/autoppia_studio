@@ -33,6 +33,8 @@ from app.database import (
 )
 from app.services.queue import enqueue_job
 from app.services.artifact_outputs import summarize_artifact_outputs
+from app.services.benchmark_coverage import benchmark_coverage_summary
+from app.services.benchmark_coverage import coverage_portfolio
 from app.services.company_integration_contract import build_company_integration_contract
 from app.services.connector_factory import summarize_connector_factory
 from app.services.entity_mapper import propose_entities_from_openapi_url
@@ -224,6 +226,42 @@ def _vertical_demo_operational_gaps(vertical_demos: dict[str, Any]) -> list[dict
     return gaps
 
 
+def _benchmark_portfolio(
+    *,
+    benchmarks: list[dict[str, Any]],
+    tasks: list[dict[str, Any]],
+    skills: list[dict[str, Any]],
+    runs: list[dict[str, Any]],
+) -> dict[str, Any]:
+    tasks_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for task in tasks:
+        tasks_by_benchmark.setdefault(str(task.get("benchmarkId") or ""), []).append(task)
+    task_benchmark_by_id = {str(task.get("taskId") or ""): str(task.get("benchmarkId") or "") for task in tasks}
+    skills_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for skill in skills:
+        benchmark_id = str(skill.get("benchmarkId") or "")
+        if benchmark_id:
+            skills_by_benchmark.setdefault(benchmark_id, []).append(skill)
+        eval_id = str(skill.get("evalId") or "")
+        if eval_id and (task_benchmark_id := task_benchmark_by_id.get(eval_id)):
+            skills_by_benchmark.setdefault(task_benchmark_id, []).append(skill)
+    runs_by_benchmark: dict[str, list[dict[str, Any]]] = {}
+    for run in runs:
+        benchmark_id = str(run.get("benchmarkId") or "") or task_benchmark_by_id.get(str(run.get("evalId") or ""), "")
+        if benchmark_id:
+            runs_by_benchmark.setdefault(benchmark_id, []).append(run)
+    coverage_items = [
+        benchmark_coverage_summary(
+            tasks=tasks_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+            skills=skills_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+            runs=runs_by_benchmark.get(str(benchmark.get("benchmarkId") or ""), []),
+            benchmark=benchmark,
+        )
+        for benchmark in benchmarks
+    ]
+    return coverage_portfolio(coverage_items)
+
+
 class AutomataAssistantTools:
     """Scoped tools available to the internal Automata Assistant."""
 
@@ -294,6 +332,12 @@ class AutomataAssistantTools:
         skill_gate_summary = _skill_production_gate_summary(skill_docs)
         skill_package_summary = summarize_skill_packages(skill_docs, package_limit=5)
         skill_eval_gate = summarize_skill_eval_gates(skill_docs, eval_run_docs)
+        benchmark_portfolio = _benchmark_portfolio(
+            benchmarks=benchmark_docs,
+            tasks=task_docs,
+            skills=skill_docs,
+            runs=eval_run_docs,
+        )
         vertical_demos = summarize_vertical_demos(benchmarks=benchmark_docs, tasks=task_docs, skills=skill_docs, runs=eval_run_docs)
         vertical_demo_gaps = _vertical_demo_operational_gaps(vertical_demos)
         resource_map = summarize_resource_governance(knowledge_docs)
@@ -417,6 +461,14 @@ class AutomataAssistantTools:
             recommended_actions.append({"area": "evals", "action": "Link promoted skills to benchmark regressions before treating them as production capabilities.", "reason": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."})
         if counts["skills"] and skill_eval_gate["blockedByRegression"]:
             recommended_actions.insert(0, {"area": "evals", "action": "Resolve regression-blocked skills before publishing or widening runtime access.", "reason": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."})
+        benchmark_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}
+        regression_gate = benchmark_portfolio.get("regressionGate") if isinstance(benchmark_portfolio.get("regressionGate"), dict) else {}
+        if benchmark_gate and not benchmark_gate.get("canPromote"):
+            next_action = (benchmark_gate.get("nextActions") or ["Complete benchmark promotion gates before publishing capabilities."])[0]
+            recommended_actions.append({"area": "evals", "action": next_action, "reason": f"Benchmark promotion gate is {benchmark_gate.get('state') or 'blocked'}."})
+        if regression_gate and not regression_gate.get("ready"):
+            next_action = (regression_gate.get("nextActions") or ["Complete regression coverage across connectors, entities and skills."])[0]
+            recommended_actions.append({"area": "evals", "action": next_action, "reason": f"Benchmark regression gate is {regression_gate.get('state') or 'incomplete'}."})
         if promotion_pipeline["gaps"]:
             first_gap = promotion_pipeline["gaps"][0]
             recommended_actions.append({"area": "capabilities", "action": first_gap["label"], "reason": "The Task -> Trajectory -> Skill promotion path is incomplete."})
@@ -445,6 +497,7 @@ class AutomataAssistantTools:
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
                 {"area": "evals", "severity": "high", "message": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."} if skill_eval_gate["blockedByRegression"] else None,
+                {"area": "evals", "severity": "medium", "message": "Benchmark portfolio is not fully gated by passing regressions."} if benchmark_portfolio.get("regressionGate") and not (benchmark_portfolio.get("regressionGate") or {}).get("ready") else None,
                 {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "No skill package is publishable with IO contract and passing regression evidence."} if counts["skills"] and skill_package_summary["publishable"] == 0 else None,
                 {"area": "capabilities", "severity": "medium", "message": "Skills exist but none are hardened as reusable packages."} if counts["skills"] and hardened_skills == 0 else None,
@@ -543,6 +596,7 @@ class AutomataAssistantTools:
                     "packages": skill_package_summary,
                 },
                 "evalGate": skill_eval_gate,
+                "benchmarkPortfolio": benchmark_portfolio,
                 "verticalDemos": vertical_demos,
                 "verticalDemoGaps": vertical_demo_gaps,
                 "promotionPipeline": promotion_pipeline,
