@@ -327,6 +327,8 @@ def build_runtime_lab(
         "approvals": {
             "pending": pending_approval_count,
             "approvedConnectorCalls": len(approved_calls),
+            "approvedConnectorToolCalls": _list_values(approved_calls),
+            "pendingConnectorApproval": str(summary.get("pendingConnectorApproval") or runtime_state.get("pendingConnectorApproval") or ""),
             "requiredFor": policy_boundary.get("approvalRequiredFor") if isinstance(policy_boundary.get("approvalRequiredFor"), list) else [],
             "approvalPolicy": policy_boundary.get("approvalPolicy") if isinstance(policy_boundary.get("approvalPolicy"), dict) else {},
             "hasHumanBoundary": bool(policy_boundary.get("hasHumanBoundary")),
@@ -491,6 +493,7 @@ def build_session_contract(
     artifact_count: int,
     pending_approval_count: int,
 ) -> dict[str, Any]:
+    runtime_state = summary.get("runtimeState") if isinstance(summary.get("runtimeState"), dict) else {}
     runtime_metrics = summary.get("runtimeMetrics") if isinstance(summary.get("runtimeMetrics"), dict) else {}
     runtime_lab = summary.get("runtimeLab") if isinstance(summary.get("runtimeLab"), dict) else {}
     runtime_evidence = summary.get("runtimeEvidence") if isinstance(summary.get("runtimeEvidence"), dict) else {}
@@ -521,6 +524,17 @@ def build_session_contract(
         "approvalState": {
             "pending": pending_approval_count,
             "approvedConnectorCalls": int(approvals.get("approvedConnectorCalls") or 0),
+            "approvedConnectorToolCalls": (
+                approvals.get("approvedConnectorToolCalls")
+                if isinstance(approvals.get("approvedConnectorToolCalls"), list)
+                else _list_values(runtime_state.get("approvedConnectorToolCalls"))
+            ),
+            "pendingConnectorApproval": str(
+                approvals.get("pendingConnectorApproval")
+                or summary.get("pendingConnectorApproval")
+                or runtime_state.get("pendingConnectorApproval")
+                or ""
+            ),
             "requiredFor": approvals.get("requiredFor") if isinstance(approvals.get("requiredFor"), list) else [],
             "approvalPolicy": (
                 approvals.get("approvalPolicy")

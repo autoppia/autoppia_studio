@@ -214,7 +214,10 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
                 {"index": 1, "activity": "tool", "action": "imap.search_emails", "label": "imap.search_emails", "status": "ok", "traceId": "trace-tool", "elapsedSeconds": 0.75},
                 {"index": 2, "activity": "skill", "action": "skill.use", "label": "Using skill", "status": "pending", "traceId": "trace-skill", "elapsedSeconds": 0.25},
             ],
-            "runtimeState": {"approvedConnectorToolCalls": ["smtp.send_email:0:abc"]},
+            "runtimeState": {
+                "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+                "pendingConnectorApproval": "smtp.send_email:0:abc",
+            },
             "latestAction": "skill.use",
             "latestActivityAt": "t-3",
         },
@@ -238,6 +241,8 @@ def test_build_runtime_lab_projects_control_plane_timeline_and_outputs():
     assert lab["approvals"] == {
         "pending": 1,
         "approvedConnectorCalls": 1,
+        "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+        "pendingConnectorApproval": "smtp.send_email:0:abc",
         "requiredFor": ["send"],
         "approvalPolicy": {
             "boundaries": [
@@ -380,6 +385,8 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
             "skillMatch": {"matched": True, "skillId": "skill-1", "skillName": "Draft claim reply"},
             "approvals": {
                 "approvedConnectorCalls": 1,
+                "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+                "pendingConnectorApproval": "smtp.send_email:0:abc",
                 "requiredFor": ["send"],
                 "approvalPolicy": {
                     "boundaries": [
@@ -422,6 +429,8 @@ def test_build_session_contract_serializes_runtime_skill_artifacts_and_trace():
     assert contract["approvalState"] == {
         "pending": 1,
         "approvedConnectorCalls": 1,
+        "approvedConnectorToolCalls": ["smtp.send_email:0:abc"],
+        "pendingConnectorApproval": "smtp.send_email:0:abc",
         "requiredFor": ["send"],
         "approvalPolicy": {
             "boundaries": [
