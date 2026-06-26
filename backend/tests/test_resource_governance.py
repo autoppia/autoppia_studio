@@ -1,4 +1,4 @@
-from app.services.resource_governance import resource_payload, summarize_resource_governance
+from app.services.resource_governance import build_resource_contract, build_resource_gate, resource_payload, resource_tool_segment, summarize_resource_governance
 
 
 def _resource():
@@ -42,6 +42,59 @@ def test_resource_payload_exposes_governed_runtime_resource_contract():
     assert payload["sourceUrl"] == ""
     assert payload["freshnessStatus"] == "current"
     assert payload["readTools"] == ["knowledge.claims.search"]
+
+
+def test_build_resource_contract_declares_versioned_acl_citable_resource_gate():
+    contract = build_resource_contract(
+        {
+            "documentId": "doc-1",
+            "resourceId": "doc-1",
+            "companyId": "co-1",
+            "filename": "handbook.md",
+            "status": "indexed",
+            "source": "upload",
+            "connectorId": "knowledge-1",
+            "vectorDatabaseId": "vec-1",
+            "vectorDatabaseName": "Company Knowledge",
+            "vectorCollectionName": "company-co-1",
+            "acl": {"visibility": "company", "allowedRoles": ["ops"]},
+            "version": 2,
+            "createdAt": "t-1",
+            "updatedAt": "t-2",
+        }
+    )
+
+    assert contract["surface"] == "knowledge_resource"
+    assert contract["readOnly"] is True
+    assert contract["indexing"]["indexed"] is True
+    assert contract["governance"]["acl"]["allowedRoles"] == ["ops"]
+    assert contract["governance"]["versioning"]["version"] == 2
+    assert contract["governance"]["freshness"]["status"] == "current"
+    assert contract["governance"]["citability"]["citable"] is True
+    assert contract["readTools"] == [
+        "knowledge.company_knowledge.search",
+        "knowledge.company_knowledge.list_documents",
+        "knowledge.company_knowledge.stats",
+        "knowledge.company_knowledge.read_document",
+    ]
+    assert contract["resourceGate"]["readyForRuntime"] is True
+    assert resource_tool_segment("Company Knowledge!") == "company_knowledge"
+
+
+def test_build_resource_gate_blocks_unindexed_or_ungoverned_resources():
+    gate = build_resource_gate(
+        indexed=False,
+        vector_database_id="vec-1",
+        read_tools=["knowledge.company.search"],
+        acl={},
+        stale=False,
+        citation_label="",
+    )
+
+    assert gate["state"] == "blocked"
+    assert gate["readyForRuntime"] is False
+    assert gate["blockers"] == ["indexed", "acl", "freshness", "citability"]
+    assert "Declare ACL visibility, roles or users for the resource." in gate["nextActions"]
 
 
 def test_summarize_resource_governance_counts_runtime_ready_resources():

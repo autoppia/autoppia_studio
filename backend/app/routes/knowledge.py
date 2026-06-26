@@ -19,6 +19,7 @@ from app.database import (
 )
 from app.services.knowledge_index import delete_knowledge_document_vectors
 from app.services.queue import enqueue_job
+from app.services.resource_governance import build_resource_contract, resource_tool_segment
 
 router = APIRouter()
 
@@ -70,116 +71,11 @@ def _filename_from_url(url: str) -> str:
         return "document"
 
 
-def _resource_gate(
-    *,
-    indexed: bool,
-    vector_database_id: str,
-    read_tools: list[str],
-    acl: dict,
-    stale: bool,
-    citation_label: str,
-) -> dict:
-    checks = {
-        "indexed": indexed,
-        "vectorStore": bool(vector_database_id),
-        "readTools": bool(read_tools),
-        "acl": bool(acl),
-        "freshness": indexed and not stale,
-        "citability": indexed and bool(citation_label),
-    }
-    blockers = [key for key, ready in checks.items() if not ready]
-    next_actions: list[str] = []
-    if not checks["indexed"]:
-        next_actions.append("Wait for indexing to complete or rerun the knowledge indexing job.")
-    if not checks["vectorStore"]:
-        next_actions.append("Attach the resource to a vector store.")
-    if not checks["readTools"]:
-        next_actions.append("Expose read-only knowledge tools for this resource store.")
-    if not checks["acl"]:
-        next_actions.append("Declare ACL visibility, roles or users for the resource.")
-    if indexed and stale:
-        next_actions.append("Refresh or re-index stale resource content.")
-    if indexed and not citation_label:
-        next_actions.append("Add a citation label before relying on grounded answers.")
-    return {
-        "state": "ready" if not blockers else "indexing" if blockers == ["indexed", "freshness", "citability"] else "blocked",
-        "readyForRuntime": not blockers,
-        "blockers": blockers,
-        "nextActions": next_actions,
-        "checks": checks,
-    }
-
-
 def _serialize(doc: dict) -> dict:
     resource_id = doc.get("resourceId") or doc.get("documentId", "")
-    vector_name = doc.get("vectorDatabaseName", "")
-    vector_collection = doc.get("vectorCollectionName", "")
-    connector_id = doc.get("connectorId", "")
-    indexed = str(doc.get("status") or "").lower() in {"indexed", "ready"}
     created_at = doc.get("createdAt")
     updated_at = doc.get("updatedAt") or created_at
-    metadata = doc.get("metadata") if isinstance(doc.get("metadata"), dict) else {}
-    version = int(doc.get("version") or metadata.get("version") or 1)
-    acl = doc.get("acl") if isinstance(doc.get("acl"), dict) else metadata.get("acl") if isinstance(metadata.get("acl"), dict) else {}
-    segment = "_".join(part for part in re.sub(r"[^a-zA-Z0-9]+", "_", str(vector_name or "knowledge").lower()).split("_") if part)[:48] or "knowledge"
-    read_tools = [
-        f"knowledge.{segment}.search",
-        f"knowledge.{segment}.list_documents",
-        f"knowledge.{segment}.stats",
-        f"knowledge.{segment}.read_document",
-    ] if connector_id else []
-    stale = bool(doc.get("stale", False))
-    citation_label = doc.get("citationLabel") or doc.get("filename", "")
-    resource_contract = {
-        "resourceId": resource_id,
-        "resourceKind": "document",
-        "surface": "knowledge_resource",
-        "readOnly": True,
-        "status": doc.get("status", "uploaded"),
-        "indexing": {
-            "indexed": indexed,
-            "vectorDatabaseId": doc.get("vectorDatabaseId", ""),
-            "vectorDatabaseName": vector_name,
-            "vectorCollectionName": vector_collection,
-        },
-        "governance": {
-            "companyId": doc.get("companyId", ""),
-            "connectorId": connector_id,
-            "source": doc.get("source", "upload"),
-            "contentType": doc.get("contentType", ""),
-            "size": doc.get("size", 0),
-            "acl": {
-                "visibility": acl.get("visibility") or "company",
-                "allowedRoles": acl.get("allowedRoles") if isinstance(acl.get("allowedRoles"), list) else [],
-                "allowedUsers": acl.get("allowedUsers") if isinstance(acl.get("allowedUsers"), list) else [],
-            },
-            "versioning": {
-                "version": version,
-                "versionLabel": doc.get("versionLabel") or metadata.get("versionLabel") or f"v{version}",
-                "createdAt": created_at,
-                "updatedAt": updated_at,
-            },
-            "freshness": {
-                "lastIndexedAt": doc.get("lastIndexedAt") or doc.get("indexedAt") or updated_at,
-                "stale": stale,
-                "status": "current" if indexed and not stale else "stale" if stale else "indexing",
-            },
-            "citability": {
-                "citable": indexed,
-                "citationLabel": citation_label,
-                "sourceUrl": doc.get("sourceUrl") or metadata.get("sourceUrl") or "",
-            },
-        },
-        "readTools": read_tools,
-    }
-    resource_contract["resourceGate"] = _resource_gate(
-        indexed=indexed,
-        vector_database_id=str(doc.get("vectorDatabaseId") or ""),
-        read_tools=read_tools,
-        acl=acl,
-        stale=stale,
-        citation_label=str(citation_label or ""),
-    )
+    resource_contract = build_resource_contract(doc)
     return {
         "documentId": doc.get("documentId", ""),
         "resourceId": resource_id,
@@ -396,7 +292,7 @@ async def _ensure_knowledge_tools(email: str, company_id: str, connector_id: str
     connector = await connectors_collection.find_one({"connectorId": connector_id}, {"_id": 0}) or {}
     config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
     db_name = str(config.get("vectorDatabaseName") or connector.get("name") or "Knowledge")
-    tool_segment = "_".join(part for part in re.sub(r"[^a-zA-Z0-9]+", "_", db_name.lower()).split("_") if part)[:48] or "knowledge"
+    tool_segment = resource_tool_segment(db_name)
     specs = [
         {
             "name": f"knowledge.{tool_segment}.search",
