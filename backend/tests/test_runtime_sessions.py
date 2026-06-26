@@ -457,14 +457,25 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
         {
             "sessionId": "session-1",
             "runtimeKind": "api",
-            "runtimeLab": {"skillMatch": {"matched": True, "skillId": "skill-1"}},
-            "runtimeEvidence": {"trace": {"traceIds": ["trace-1"], "replayReady": True}},
+            "runtimeLab": {
+                "skillMatch": {"matched": True, "skillId": "skill-1"},
+                "timeline": {"steps": 4, "browserSteps": 1, "toolSteps": 2, "skillSteps": 1, "failedSteps": 0, "pendingSteps": 0},
+            },
+            "runtimeEvidence": {"trace": {"traceIds": ["trace-1"], "timelineSteps": 4, "failedSteps": 0, "pendingSteps": 0, "replayReady": True}},
         },
         artifact_count=1,
         pending_approval_count=0,
     )
 
-    summary = summarize_session_contracts([{"sessionId": "session-1", "sessionContract": contract}])
+    summary = summarize_session_contracts(
+        [
+            {
+                "sessionId": "session-1",
+                "sessionContract": contract,
+                "runtimeLab": {"timeline": {"steps": 4, "browserSteps": 1, "toolSteps": 2, "skillSteps": 1, "failedSteps": 0, "pendingSteps": 0}},
+            }
+        ]
+    )
 
     assert summary["withContract"] == 1
     assert summary["selectedSkill"] == 1
@@ -472,7 +483,18 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["traceIds"] == 1
     assert summary["replayReady"] == 1
     assert summary["runtimeKinds"] == [{"name": "api", "count": 1}]
+    assert summary["timeline"] == {
+        "steps": 4,
+        "browserSteps": 1,
+        "toolSteps": 2,
+        "skillSteps": 1,
+        "failedSteps": 0,
+        "pendingSteps": 0,
+        "replayReadySessions": 1,
+    }
     assert summary["sample"][0]["runtimeType"] == "api_runtime"
+    assert summary["sample"][0]["timelineSteps"] == 4
+    assert summary["sample"][0]["toolSteps"] == 2
 
 
 def test_runtime_type_helpers_keep_explicit_enterprise_runtime_names():

@@ -274,6 +274,9 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "sessionId": "session-1",
                 "runtimeState": {"currentUrl": "https://claims.example.com/cases"},
                 "actionHistory": [{"action": "browser.navigate", "url": "https://claims.example.com/cases"}],
+                "runtimeLab": {
+                    "timeline": {"steps": 4, "browserSteps": 1, "toolSteps": 2, "skillSteps": 1, "failedSteps": 0, "pendingSteps": 1},
+                },
                 "sessionContract": {
                     "sessionId": "session-1",
                     "agentRuntime": {"runtimeKind": "hybrid", "sourceKind": "work", "workItemId": "work-1", "runId": "run-1"},
@@ -524,9 +527,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeKinds"] == [{"name": "hybrid", "count": 1}]
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["steps"] == 4
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["toolSteps"] == 2
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["timeline"]["skillSteps"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["sessionId"] == "session-1"
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["skillId"] == "skill-1"
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["pendingApprovals"] == 1
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["timelineSteps"] == 4
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["total"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
     assert snapshot["operatingState"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
@@ -835,6 +842,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "runtimeClasses": {"browserSessions": 1},
                         "humanApproval": {"writesProtected": True, "sendsProtected": True},
                     },
+                    "sessionContracts": {
+                        "timeline": {"steps": 6, "toolSteps": 3, "skillSteps": 1, "replayReadySessions": 1},
+                    },
                 },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
@@ -857,6 +867,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
+    assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Work attention items: 3." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
     assert "Automata sees 1 risk alert(s)." in reply

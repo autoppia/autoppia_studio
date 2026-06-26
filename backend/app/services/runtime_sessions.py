@@ -571,10 +571,18 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
     replay_ready = 0
     total_credits = 0.0
     trace_count = 0
+    timeline_steps = 0
+    browser_steps = 0
+    tool_steps = 0
+    skill_steps = 0
+    failed_steps = 0
+    pending_steps = 0
     runtime_kinds: list[str] = []
     samples: list[dict[str, Any]] = []
     for session in sessions:
         contract = session.get("sessionContract") if isinstance(session.get("sessionContract"), dict) else {}
+        runtime_lab = session.get("runtimeLab") if isinstance(session.get("runtimeLab"), dict) else {}
+        lab_timeline = runtime_lab.get("timeline") if isinstance(runtime_lab.get("timeline"), dict) else {}
         runtime = contract.get("agentRuntime") if isinstance(contract.get("agentRuntime"), dict) else {}
         skill = contract.get("selectedSkill") if isinstance(contract.get("selectedSkill"), dict) else {}
         approvals = contract.get("approvalState") if isinstance(contract.get("approvalState"), dict) else {}
@@ -598,6 +606,18 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         traces = trace.get("traceIds") if isinstance(trace.get("traceIds"), list) else session.get("traceIds") if isinstance(session.get("traceIds"), list) else []
         trace_ids = _list_values(traces)
         trace_count += len(trace_ids)
+        timeline_count = int(trace.get("timelineSteps") or lab_timeline.get("steps") or 0)
+        browser_count = int(lab_timeline.get("browserSteps") or 0)
+        tool_count = int(lab_timeline.get("toolSteps") or 0)
+        skill_count = int(lab_timeline.get("skillSteps") or 0)
+        failed_count = int(trace.get("failedSteps") or lab_timeline.get("failedSteps") or 0)
+        pending_count = int(trace.get("pendingSteps") or lab_timeline.get("pendingSteps") or 0)
+        timeline_steps += timeline_count
+        browser_steps += browser_count
+        tool_steps += tool_count
+        skill_steps += skill_count
+        failed_steps += failed_count
+        pending_steps += pending_count
         if trace.get("replayReady"):
             replay_ready += 1
         if len(samples) < sample_limit:
@@ -611,6 +631,10 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
                     "artifacts": artifact_count,
                     "creditsSpent": round(credits, 4),
                     "traceCount": len(trace_ids),
+                    "timelineSteps": timeline_count,
+                    "browserSteps": browser_count,
+                    "toolSteps": tool_count,
+                    "skillSteps": skill_count,
                     "replayReady": bool(trace.get("replayReady")),
                 }
             )
@@ -624,5 +648,14 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
         "replayReady": replay_ready,
         "creditsSpent": round(total_credits, 4),
         "runtimeKinds": _sorted_counts(runtime_kinds),
+        "timeline": {
+            "steps": timeline_steps,
+            "browserSteps": browser_steps,
+            "toolSteps": tool_steps,
+            "skillSteps": skill_steps,
+            "failedSteps": failed_steps,
+            "pendingSteps": pending_steps,
+            "replayReadySessions": replay_ready,
+        },
         "sample": samples,
     }

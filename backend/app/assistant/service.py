@@ -1444,6 +1444,14 @@ class AutomataAssistantService:
                 f"{classes.get('browserSessions', 0)} browser sessions, "
                 f"write/send {'protected' if human.get('writesProtected') and human.get('sendsProtected') else 'incomplete'}."
             )
+            session_contracts = runtime.get("sessionContracts") if isinstance(runtime.get("sessionContracts"), dict) else {}
+            timeline = session_contracts.get("timeline") if isinstance(session_contracts.get("timeline"), dict) else {}
+            if timeline:
+                runtime_text += (
+                    f" Runtime timeline: {timeline.get('steps', 0)} steps, "
+                    f"{timeline.get('toolSteps', 0)} tool, {timeline.get('skillSteps', 0)} skill, "
+                    f"{timeline.get('replayReadySessions', 0)} replay-ready sessions."
+                )
         work_text = ""
         if sla:
             work_text = f" Work attention items: {sla.get('needsAttention', 0)}."

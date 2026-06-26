@@ -541,13 +541,16 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "email": "owner@example.com",
                     "runtimeState": {"currentUrl": "https://portal.example.com/cases"},
                     "actionHistory": [{"action": "browser.navigate", "url": "https://portal.example.com/cases"}],
+                    "runtimeLab": {
+                        "timeline": {"steps": 4, "browserSteps": 1, "toolSteps": 2, "skillSteps": 1, "failedSteps": 0, "pendingSteps": 1},
+                    },
                     "sessionContract": {
                         "agentRuntime": {"runtimeKind": "browser", "sourceKind": "work"},
                         "selectedSkill": {"matched": True, "skillId": "skill-1"},
                         "approvalState": {"pending": 1, "requiredFor": ["send"], "hasHumanBoundary": True},
                         "artifactState": {"count": 1, "hasBusinessOutput": True},
                         "costState": {"creditsSpent": 1.5},
-                        "traceState": {"traceIds": ["trace-1", "trace-2"], "replayReady": False},
+                        "traceState": {"traceIds": ["trace-1", "trace-2"], "timelineSteps": 4, "failedSteps": 0, "pendingSteps": 1, "replayReady": False},
                     },
                 },
             ]
@@ -649,9 +652,19 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert result["contract"]["runtime"]["sessionContracts"]["artifactOutputs"] == 1
     assert result["contract"]["runtime"]["sessionContracts"]["traceIds"] == 2
     assert result["contract"]["runtime"]["sessionContracts"]["creditsSpent"] == 1.5
+    assert result["contract"]["runtime"]["sessionContracts"]["timeline"] == {
+        "steps": 4,
+        "browserSteps": 1,
+        "toolSteps": 2,
+        "skillSteps": 1,
+        "failedSteps": 0,
+        "pendingSteps": 1,
+        "replayReadySessions": 0,
+    }
     assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["sessionId"] == "session-browser"
     assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["runtimeKind"] == "browser"
     assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["traceCount"] == 2
+    assert result["contract"]["runtime"]["sessionContracts"]["sample"][1]["timelineSteps"] == 4
     assert result["contract"]["runtime"]["artifactOutputs"]["total"] == 1
     assert result["contract"]["runtime"]["artifactOutputs"]["separatedFromTrace"] == 1
     assert result["contract"]["runtime"]["artifactOutputs"]["runtimeLinked"] == 1
