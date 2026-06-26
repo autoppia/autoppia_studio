@@ -320,11 +320,19 @@ def _runtime_replay_contract(
         "draftArtifactOutput": "Assert the replay produces draft_email as the business artifact.",
         "approvalBoundaryBeforeSend": "Assert the replay stops at a human approval boundary before final email send.",
     }
+    evidence_found = {
+        "passingRuns": passing_runs if passing_runs else 0,
+        "promotedSkillIds": promoted_skill_ids,
+        "artifacts": [artifact for artifact in expected_artifacts if artifact == "draft_email"],
+        "approvalBoundaries": approval_boundaries,
+        "riskClasses": risk_classes,
+    }
     missing = [key for key, ready in checks.items() if not ready]
     return {
         "state": "ready" if not missing else "needs_hardening",
         "ready": not missing,
         "checks": checks,
+        "evidenceFound": {key: value for key, value in evidence_found.items() if value},
         "requiredEvidence": [
             "passing AgentRuntime replay",
             "approved reusable insurance skill",

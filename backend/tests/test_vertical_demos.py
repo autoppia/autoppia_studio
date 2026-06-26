@@ -76,6 +76,13 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
             "draftArtifactOutput": True,
             "approvalBoundaryBeforeSend": True,
         },
+        "evidenceFound": {
+            "passingRuns": 1,
+            "promotedSkillIds": ["skill-claim-status"],
+            "artifacts": ["draft_email"],
+            "approvalBoundaries": ["draft_only_before_send"],
+            "riskClasses": ["send"],
+        },
         "requiredEvidence": [
             "passing AgentRuntime replay",
             "approved reusable insurance skill",
@@ -212,6 +219,11 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
         "agentRuntimeReplay",
         "approvedSkillAvailable",
     ]
+    assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["evidenceFound"] == {
+        "artifacts": ["draft_email"],
+        "approvalBoundaries": ["draft_only_before_send"],
+        "riskClasses": ["send"],
+    }
     assert partial_demo["smokeGate"]["state"] == "needs_hardening"
     assert partial_demo["smokeGate"]["missing"] == ["factoryReady", "runtimeReady", "passingReplay"]
     readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}
