@@ -250,6 +250,21 @@ def _runtime_replay_contract_present(payload: dict[str, Any]) -> bool:
     return isinstance(proof_gate.get("runtimeReplayContract"), dict)
 
 
+def _business_output_contract_ready(payload: dict[str, Any]) -> bool:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    output_contract = (
+        proof_gate.get("businessOutputContract")
+        if isinstance(proof_gate.get("businessOutputContract"), dict)
+        else {}
+    )
+    return bool(output_contract.get("ready"))
+
+
+def _business_output_contract_present(payload: dict[str, Any]) -> bool:
+    proof_gate = payload.get("insuranceFlowProofGate") if isinstance(payload.get("insuranceFlowProofGate"), dict) else {}
+    return isinstance(proof_gate.get("businessOutputContract"), dict)
+
+
 def _vertical_smoke_gate(
     *,
     objective: str,
@@ -299,6 +314,71 @@ def _vertical_smoke_gate(
         "missing": missing,
         "hardeningPlaybook": [
             {"gap": key, "count": 1, "area": "vertical_demo", "severity": "high", "action": actions[key]}
+            for key in missing
+        ],
+    }
+
+
+def _business_output_contract(
+    *,
+    objective: str,
+    expected_artifacts: list[str],
+    approval_boundaries: list[str],
+    risk_classes: list[str],
+    passing_runs: int,
+) -> dict[str, Any]:
+    boundary_text = " ".join([*approval_boundaries, *risk_classes]).lower()
+    no_send_guard = bool(
+        "draft" in boundary_text
+        or "no_send" in boundary_text
+        or "without_send" in boundary_text
+        or "before_send" in boundary_text
+        or "approval" in boundary_text
+        or "sin enviar" in objective.lower()
+        or "without sending" in objective.lower()
+    )
+    checks = {
+        "draftEmailArtifactDeclared": "draft_email" in expected_artifacts,
+        "artifactSeparatedFromTrace": "draft_email" in expected_artifacts,
+        "approvalBoundaryBeforeDelivery": no_send_guard,
+        "passingReplayAssertsOutput": passing_runs > 0,
+    }
+    actions = {
+        "draftEmailArtifactDeclared": "Declare draft_email as the required business output for the insurance flow.",
+        "artifactSeparatedFromTrace": "Store the draft response as a first-class artifact, not only in the agent transcript.",
+        "approvalBoundaryBeforeDelivery": "Keep the final email behind a human approval boundary before delivery.",
+        "passingReplayAssertsOutput": "Record a passing replay that proves the draft artifact and approval boundary.",
+    }
+    missing_evidence_labels = {
+        "draftEmailArtifactDeclared": "draft_email business artifact",
+        "artifactSeparatedFromTrace": "artifact stored separately from trace",
+        "approvalBoundaryBeforeDelivery": "human approval boundary before final delivery",
+        "passingReplayAssertsOutput": "passing replay asserting artifact and approval boundary",
+    }
+    evidence_found = {
+        "artifacts": [artifact for artifact in expected_artifacts if artifact == "draft_email"],
+        "approvalBoundaries": approval_boundaries,
+        "riskClasses": risk_classes,
+        "passingRuns": passing_runs if passing_runs else 0,
+    }
+    missing = [key for key, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not missing else "needs_hardening",
+        "ready": not missing,
+        "outputArtifact": "draft_email",
+        "deliveryPolicy": "human_approval_before_send",
+        "checks": checks,
+        "evidenceFound": {key: value for key, value in evidence_found.items() if value},
+        "requiredEvidence": [
+            "draft_email business artifact",
+            "artifact stored separately from trace",
+            "human approval boundary before final delivery",
+            "passing replay asserting artifact and approval boundary",
+        ],
+        "missing": missing,
+        "missingEvidence": [missing_evidence_labels[key] for key in missing],
+        "hardeningPlaybook": [
+            {"gap": key, "count": 1, "group": "runtime", "area": "artifacts", "severity": "high", "action": actions[key]}
             for key in missing
         ],
     }
@@ -372,6 +452,7 @@ def _insurance_flow_proof_gate(
     coverage: list[dict[str, Any]],
     smoke_gate: dict[str, Any],
     runtime_replay_contract: dict[str, Any],
+    business_output_contract: dict[str, Any],
 ) -> dict[str, Any]:
     coverage_by_key = {str(item.get("key") or ""): item for item in coverage if isinstance(item, dict)}
     steps: list[dict[str, Any]] = []
@@ -430,6 +511,7 @@ def _insurance_flow_proof_gate(
         "objective": objective,
         "steps": steps,
         "runtimeReplayContract": runtime_replay_contract,
+        "businessOutputContract": business_output_contract,
         "readySteps": sum(1 for step in steps if step["ready"]),
         "totalSteps": len(steps),
         "missing": missing,
@@ -619,11 +701,19 @@ def vertical_demo_payload(
         promoted_skill_ids=promoted_skill_ids,
         passing_runs=passing_runs,
     )
+    business_output_contract = _business_output_contract(
+        objective=objective,
+        expected_artifacts=expected_artifacts,
+        approval_boundaries=approval_boundaries,
+        risk_classes=risk_classes,
+        passing_runs=passing_runs,
+    )
     insurance_flow_proof_gate = _insurance_flow_proof_gate(
         objective=objective,
         coverage=coverage,
         smoke_gate=smoke_gate,
         runtime_replay_contract=runtime_replay_contract,
+        business_output_contract=business_output_contract,
     )
     return {
         "benchmarkId": str(benchmark.get("benchmarkId") or ""),
@@ -705,6 +795,8 @@ def summarize_vertical_demos(
         "runtimeReady": sum(1 for demo in demos if _operational_group_ready(demo, "runtime")),
         "replayContractReady": sum(1 for demo in demos if _runtime_replay_contract_ready(demo)),
         "replayContractBlocked": sum(1 for demo in demos if _runtime_replay_contract_present(demo) and not _runtime_replay_contract_ready(demo)),
+        "businessOutputContractReady": sum(1 for demo in demos if _business_output_contract_ready(demo)),
+        "businessOutputContractBlocked": sum(1 for demo in demos if _business_output_contract_present(demo) and not _business_output_contract_ready(demo)),
         "hardeningPlaybook": _vertical_demo_playbook(demos),
         "smokeHardeningPlaybook": _vertical_smoke_playbook(demos),
         "demos": demos[:limit],

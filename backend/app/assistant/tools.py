@@ -749,6 +749,8 @@ class AutomataAssistantTools:
                 "proofBlocked": vertical_demos.get("proofBlocked", 0),
                 "replayContractReady": vertical_demos.get("replayContractReady", 0),
                 "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
+                "businessOutputContractReady": vertical_demos.get("businessOutputContractReady", 0),
+                "businessOutputContractBlocked": vertical_demos.get("businessOutputContractBlocked", 0),
             },
             "Runtime Lab": {
                 "sessions": counts["sessions"],
@@ -758,6 +760,8 @@ class AutomataAssistantTools:
                 "reviewRequiredArtifacts": artifact_outputs.get("reviewRequired", 0),
                 "replayContractReady": vertical_demos.get("replayContractReady", 0),
                 "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
+                "businessOutputContractReady": vertical_demos.get("businessOutputContractReady", 0),
+                "businessOutputContractBlocked": vertical_demos.get("businessOutputContractBlocked", 0),
             },
             "Work Orchestration": {
                 "workItems": counts["workItems"],

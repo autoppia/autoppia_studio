@@ -848,6 +848,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "proofBlocked": 1,
         "replayContractReady": 0,
         "replayContractBlocked": 1,
+        "businessOutputContractReady": 0,
+        "businessOutputContractBlocked": 1,
     }
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")
@@ -861,6 +863,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "reviewRequiredArtifacts": 1,
         "replayContractReady": 0,
         "replayContractBlocked": 1,
+        "businessOutputContractReady": 0,
+        "businessOutputContractBlocked": 1,
     }
     assert runtime_lab["nextAction"] == runtime_lab["hardening"]["action"]
     work_orchestration = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Work Orchestration")

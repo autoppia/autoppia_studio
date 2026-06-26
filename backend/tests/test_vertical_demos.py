@@ -94,6 +94,33 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
         "missingEvidence": [],
         "hardeningPlaybook": [],
     }
+    assert payload["insuranceFlowProofGate"]["businessOutputContract"] == {
+        "state": "ready",
+        "ready": True,
+        "outputArtifact": "draft_email",
+        "deliveryPolicy": "human_approval_before_send",
+        "checks": {
+            "draftEmailArtifactDeclared": True,
+            "artifactSeparatedFromTrace": True,
+            "approvalBoundaryBeforeDelivery": True,
+            "passingReplayAssertsOutput": True,
+        },
+        "evidenceFound": {
+            "artifacts": ["draft_email"],
+            "approvalBoundaries": ["draft_only_before_send"],
+            "riskClasses": ["send"],
+            "passingRuns": 1,
+        },
+        "requiredEvidence": [
+            "draft_email business artifact",
+            "artifact stored separately from trace",
+            "human approval boundary before final delivery",
+            "passing replay asserting artifact and approval boundary",
+        ],
+        "missing": [],
+        "missingEvidence": [],
+        "hardeningPlaybook": [],
+    }
     assert [step["key"] for step in payload["insuranceFlowProofGate"]["steps"]] == [
         "email_read",
         "erp_lookup",
@@ -157,6 +184,8 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["proofBlocked"] == 2
     assert summary["replayContractReady"] == 0
     assert summary["replayContractBlocked"] == 2
+    assert summary["businessOutputContractReady"] == 0
+    assert summary["businessOutputContractBlocked"] == 2
     assert summary["enterpriseReady"] == 0
     assert summary["integrationReady"] == 1
     assert summary["factoryReady"] == 0
@@ -232,6 +261,16 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
         "approved reusable insurance skill",
     ]
     assert partial_demo["insuranceFlowProofGate"]["runtimeReplayContract"]["evidenceFound"] == {
+        "artifacts": ["draft_email"],
+        "approvalBoundaries": ["draft_only_before_send"],
+        "riskClasses": ["send"],
+    }
+    assert partial_demo["insuranceFlowProofGate"]["businessOutputContract"]["state"] == "needs_hardening"
+    assert partial_demo["insuranceFlowProofGate"]["businessOutputContract"]["missing"] == ["passingReplayAssertsOutput"]
+    assert partial_demo["insuranceFlowProofGate"]["businessOutputContract"]["missingEvidence"] == [
+        "passing replay asserting artifact and approval boundary"
+    ]
+    assert partial_demo["insuranceFlowProofGate"]["businessOutputContract"]["evidenceFound"] == {
         "artifacts": ["draft_email"],
         "approvalBoundaries": ["draft_only_before_send"],
         "riskClasses": ["send"],
