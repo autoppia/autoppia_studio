@@ -459,11 +459,15 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
                     "metadata": {
                         "taskContract": {
                             "businessIntent": "Respond to a customer about claim status",
+                            "initialState": {"mailbox": "claims"},
                             "allowedSystems": ["email", "insurance_erp", "knowledge"],
                             "expectedInputs": ["claim_id"],
                             "expectedArtifacts": ["draft_email", "claim_summary"],
                             "riskClass": "draft",
                             "successCriteria": "Draft response cites claim status and is not sent",
+                            "evaluatorConfig": {"evaluator": "rules"},
+                            "fixtures": ["claim-123"],
+                            "seed": "claim-seed",
                         },
                     },
                 }
@@ -716,6 +720,15 @@ async def test_company_setup_contract_aggregates_factory_runtime_and_governance(
     assert "claim_id" in result["contract"]["capabilityMap"]["taskContracts"]["expectedInputs"]
     assert "customer_email" in result["contract"]["capabilityMap"]["taskContracts"]["expectedInputs"]
     assert "claim_summary" in result["contract"]["capabilityMap"]["taskContracts"]["expectedArtifacts"]
+    assert result["contract"]["capabilityMap"]["taskContracts"]["reproducibility"] == {
+        "total": 1,
+        "withInitialState": 1,
+        "withEvaluatorConfig": 1,
+        "withFixtures": 1,
+        "withSeed": 1,
+        "readyForReplay": 1,
+        "replayReadyRatio": 1.0,
+    }
     assert result["contract"]["capabilityMap"]["benchmarks"]["verticals"] == [{"name": "insurance", "count": 1}]
     assert result["contract"]["capabilityMap"]["evalGate"]["totalSkills"] == 2
     assert result["contract"]["capabilityMap"]["evalGate"]["benchmarkLinked"] == 1

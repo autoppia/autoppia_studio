@@ -48,7 +48,7 @@ from app.services.runtime_sessions import session_runtime_kind, summarize_sessio
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
-from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.task_contracts import task_contract_from_record, task_contract_ready, task_reproducibility_summary
 from app.services.work_orchestration import summarize_work_orchestration_contracts
 
 router = APIRouter()
@@ -330,6 +330,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
         policy_counts = _sorted_counts([str(doc.get("riskPolicy") or "unspecified") for doc in skills])
         task_contracts_ready = sum(1 for task in benchmark_tasks if task_contract_ready(task))
         task_contracts = [task_contract_from_record(task) for task in benchmark_tasks]
+        task_reproducibility = task_reproducibility_summary(task_contracts)
         promotion_pipeline = summarize_promotion_pipeline(tasks=benchmark_tasks, trajectories=trajectories, skills=skills)
         task_artifacts = sorted({artifact for contract in task_contracts for artifact in _normalized_list(contract.get("expectedArtifacts"))})
         task_inputs = sorted({input_name for contract in task_contracts for input_name in _normalized_list(contract.get("expectedInputs"))})
@@ -691,6 +692,7 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                     "expectedInputs": task_inputs,
                     "expectedArtifacts": task_artifacts,
                     "riskClasses": _sorted_counts(task_risks),
+                    "reproducibility": task_reproducibility,
                 },
                 "benchmarks": {
                     "total": counts["benchmarks"],

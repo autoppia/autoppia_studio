@@ -43,7 +43,7 @@ from app.services.runtime_sessions import summarize_session_contracts
 from app.services.skill_eval_gates import summarize_skill_eval_gates
 from app.services.skill_packages import summarize_skill_packages
 from app.services.skill_readiness import skill_reusability_ready
-from app.services.task_contracts import task_contract_from_record, task_contract_ready
+from app.services.task_contracts import task_contract_from_record, task_contract_ready, task_reproducibility_summary
 from app.services.vertical_demos import summarize_vertical_demos
 from app.services.work_orchestration import summarize_work_orchestration_contracts
 
@@ -241,6 +241,7 @@ class AutomataAssistantTools:
         task_expected_artifacts = sorted({artifact for contract in task_contracts for artifact in _list_values(contract.get("expectedArtifacts"))})
         task_expected_inputs = sorted({input_name for contract in task_contracts for input_name in _list_values(contract.get("expectedInputs"))})
         task_allowed_systems = sorted({system for contract in task_contracts for system in _list_values(contract.get("allowedSystems"))})
+        task_reproducibility = task_reproducibility_summary(task_contracts)
         hardened_skills = sum(1 for skill in skill_docs if skill_reusability_ready(skill))
         skill_expected_artifacts = sorted({artifact for skill in skill_docs for artifact in _list_values(skill.get("expectedArtifacts"))})
         typed_tools = sum(1 for tool in tool_docs if _list_values(tool.get("inputEntities")) or str(tool.get("outputEntity") or "").strip())
@@ -442,6 +443,7 @@ class AutomataAssistantTools:
                     "expectedInputs": task_expected_inputs,
                     "expectedArtifacts": task_expected_artifacts,
                     "allowedSystems": task_allowed_systems,
+                    "reproducibility": task_reproducibility,
                 },
                 "tools": {
                     "total": counts["tools"],

@@ -312,10 +312,14 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                 "taskId": "task-claim",
                 "metadata": {
                     "businessIntent": "Respond to claim status",
+                    "initialState": {"mailbox": "claims"},
                     "allowedSystems": ["email", "insurance_erp"],
                     "expectedInputs": ["claim_id"],
                     "expectedArtifacts": ["draft_email"],
                     "riskClass": "draft",
+                    "evaluatorConfig": {"evaluator": "rules"},
+                    "fixtures": ["claim-123"],
+                    "seed": "claim-seed",
                 },
             }
         ]
@@ -453,6 +457,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["factory"]["approvedTrajectories"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["ready"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["replayReadyRatio"] == 1.0
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["hardened"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["productionGate"]["missingGate"] == 1
@@ -808,7 +814,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
             "operatingState": {
                 "readiness": {"score": 0.6},
                 "capabilityMap": {
-                    "taskContracts": {"ready": 2, "total": 5},
+                    "taskContracts": {"ready": 2, "total": 5, "reproducibility": {"readyForReplay": 3, "total": 5}},
                     "skills": {
                         "hardened": 1,
                         "total": 4,
@@ -845,6 +851,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
 
     assert "Readiness is 60%" in reply
     assert "Capability coverage: 2/5 task contracts ready, 1/4 skills hardened." in reply
+    assert "Task replayability: 3/5 replay-ready." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply

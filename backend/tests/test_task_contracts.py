@@ -1,4 +1,4 @@
-from app.services.task_contracts import build_task_contract, task_contract_from_record, task_contract_ready, task_evaluation_harness
+from app.services.task_contracts import build_task_contract, task_contract_from_record, task_contract_ready, task_evaluation_harness, task_reproducibility_summary
 
 
 def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
@@ -69,6 +69,25 @@ def test_task_evaluation_harness_layers_deterministic_stateful_llm_and_manual_re
     assert harness["statefulReplay"] is True
     assert harness["llmAsComplement"] is True
     assert harness["humanOverride"] is True
+
+
+def test_task_reproducibility_summary_counts_replay_ready_contracts():
+    summary = task_reproducibility_summary(
+        [
+            {"initialState": {"mailbox": "claims"}, "evaluatorConfig": {"evaluator": "rules"}, "fixtures": ["claim-1"], "seed": "seed-1"},
+            {"businessIntent": "Incomplete"},
+        ]
+    )
+
+    assert summary == {
+        "total": 2,
+        "withInitialState": 1,
+        "withEvaluatorConfig": 1,
+        "withFixtures": 1,
+        "withSeed": 1,
+        "readyForReplay": 1,
+        "replayReadyRatio": 0.5,
+    }
 
 
 def test_task_evaluation_harness_keeps_manual_override_when_contract_is_incomplete():

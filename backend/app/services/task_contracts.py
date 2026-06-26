@@ -164,6 +164,29 @@ def task_contract_ready(task: dict[str, Any]) -> bool:
     )
 
 
+def task_reproducibility_summary(contracts: list[dict[str, Any]]) -> dict[str, Any]:
+    total = len(contracts)
+    with_initial_state = sum(1 for contract in contracts if contract.get("initialUrl") or contract.get("initialState"))
+    with_evaluator_config = sum(1 for contract in contracts if contract.get("evaluatorConfig"))
+    with_fixtures = sum(1 for contract in contracts if contract.get("fixtures"))
+    with_seed = sum(1 for contract in contracts if str(contract.get("seed") or "").strip())
+    ready_for_replay = sum(
+        1
+        for contract in contracts
+        if (contract.get("initialUrl") or contract.get("initialState"))
+        and (contract.get("evaluatorConfig") or contract.get("fixtures") or str(contract.get("seed") or "").strip())
+    )
+    return {
+        "total": total,
+        "withInitialState": with_initial_state,
+        "withEvaluatorConfig": with_evaluator_config,
+        "withFixtures": with_fixtures,
+        "withSeed": with_seed,
+        "readyForReplay": ready_for_replay,
+        "replayReadyRatio": round(ready_for_replay / total, 3) if total else 0.0,
+    }
+
+
 def task_evaluation_harness(contract: dict[str, Any], judge_type: str = "manual") -> dict[str, Any]:
     deterministic_ready = bool(str(contract.get("successCriteria") or "").strip())
     stateful_ready = bool(contract.get("initialUrl") or contract.get("initialState"))
