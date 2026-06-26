@@ -1,4 +1,5 @@
 from app.services.tool_synthesis import summarize_tool_synthesis
+from app.services.tool_synthesis import capability_tool_synthesis_contract
 from app.services.tool_synthesis import tool_synthesis_contract
 
 
@@ -61,3 +62,48 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
     assert summary["policyBoundaryCounts"] == {"write": 1, "read": 1, "send": 1}
     assert summary["runtimeRequirements"] == ["network"]
     assert summary["tools"][1]["schema"]["inputTyped"] is True
+
+
+def test_capability_tool_synthesis_contract_preserves_route_payload_shape():
+    contract = capability_tool_synthesis_contract(
+        {
+            "toolId": "tool-1",
+            "name": "erp.update_claim",
+            "inputSchema": {"type": "object", "properties": {"claimId": {"type": "string"}}},
+            "outputSchema": {"type": "object", "properties": {"status": {"type": "string"}}},
+            "sideEffects": "writes",
+            "riskLevel": "high",
+            "permissions": {"approval": "always", "oauthScopes": ["claims:write"]},
+            "inputEntities": ["Claim"],
+            "outputEntity": "Claim",
+            "toolContract": {"format": "autoppia.tool_contract", "policyBoundary": "write"},
+        }
+    )
+
+    assert contract == {
+        "toolId": "tool-1",
+        "action": "erp.update_claim",
+        "atomic": True,
+        "typedInput": True,
+        "typedOutput": True,
+        "sideEffects": "writes",
+        "riskLevel": "high",
+        "policyBoundary": "write",
+        "riskClassification": {
+            "level": "high",
+            "requiresApproval": True,
+            "approvalMode": "always",
+        },
+        "permissions": {
+            "scopes": ["claims:write"],
+            "readTools": [],
+            "writeTools": [],
+            "approval": "always",
+        },
+        "entityBindings": {
+            "inputEntities": ["Claim"],
+            "outputEntity": "Claim",
+            "declared": True,
+        },
+        "readiness": {"status": "ready", "gaps": []},
+    }

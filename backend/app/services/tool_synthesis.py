@@ -28,6 +28,26 @@ def _schema_typed(schema: dict[str, Any]) -> bool:
     return schema.get("type") == "object" and isinstance(properties, dict) and bool(properties)
 
 
+def _permission_list(permissions: dict[str, Any], *keys: str) -> list[str]:
+    values: list[str] = []
+    seen: set[str] = set()
+    for key in keys:
+        raw = permissions.get(key)
+        if isinstance(raw, str) and raw.strip():
+            candidates = [raw.strip()]
+        elif isinstance(raw, list):
+            candidates = [str(item).strip() for item in raw if str(item).strip()]
+        else:
+            candidates = []
+        for value in candidates:
+            dedupe_key = value.lower()
+            if dedupe_key in seen:
+                continue
+            seen.add(dedupe_key)
+            values.append(value)
+    return values
+
+
 def _tool_contract(tool: dict[str, Any]) -> dict[str, Any]:
     return _dict(tool.get("toolContract"))
 
@@ -110,6 +130,75 @@ def tool_synthesis_contract(tool: dict[str, Any]) -> dict[str, Any]:
         "entities": entities,
         "runtimeRequirements": _list_values(tool.get("runtimeRequirements")) or _list_values(contract.get("runtimeRequirements")),
         "source": "tool_contract" if contract else "toolkit",
+    }
+
+
+def capability_tool_synthesis_contract(tool: dict[str, Any]) -> dict[str, Any]:
+    """Legacy-compatible route payload backed by the shared synthesis contract."""
+    contract = _tool_contract(tool)
+    input_schema = _input_schema(tool, contract)
+    output_schema = _output_schema(tool, contract)
+    permissions = _permissions(tool, contract)
+    synthesis = tool_synthesis_contract(
+        {
+            **tool,
+            "sideEffects": tool.get("sideEffects") or contract.get("sideEffects") or "reads",
+            "riskLevel": tool.get("riskLevel") or contract.get("riskLevel") or "low",
+        }
+    )
+    side_effects = synthesis["sideEffects"] or "reads"
+    risk_level = synthesis["riskLevel"] or "low"
+    scopes = _permission_list(permissions, "scopes", "oauthScopes", "requiredScopes") or synthesis["permissions"]["scopes"]
+    approval = str(permissions.get("approval") or "").strip()
+    read_tools = _permission_list(permissions, "readTools")
+    write_tools = _permission_list(permissions, "writeTools")
+    gaps = []
+    if not synthesis["schema"]["inputTyped"]:
+        gaps.append("typed input schema")
+    if not output_schema:
+        gaps.append("output schema")
+    if not side_effects:
+        gaps.append("side effects")
+    if not risk_level:
+        gaps.append("risk classification")
+    if side_effects.lower() in {"writes", "deletes", "sends"} and not approval:
+        gaps.append("approval policy")
+    if not scopes and not read_tools and not write_tools:
+        gaps.append("scopes or permissions")
+    entities = synthesis["entities"]
+    return {
+        "toolId": tool.get("toolId", ""),
+        "action": synthesis["toolName"],
+        "atomic": True,
+        "typedInput": synthesis["schema"]["inputTyped"],
+        "typedOutput": bool(output_schema),
+        "sideEffects": side_effects,
+        "riskLevel": risk_level,
+        "policyBoundary": synthesis["policyBoundary"],
+        "riskClassification": {
+            "level": risk_level,
+            "requiresApproval": bool(
+                approval == "always"
+                or side_effects.lower() in {"writes", "deletes", "sends"}
+                or risk_level.lower() in {"high", "critical"}
+            ),
+            "approvalMode": approval or "auto",
+        },
+        "permissions": {
+            "scopes": scopes,
+            "readTools": read_tools,
+            "writeTools": write_tools,
+            "approval": approval or "auto",
+        },
+        "entityBindings": {
+            "inputEntities": entities["input"],
+            "outputEntity": entities["output"],
+            "declared": bool(entities["linked"]),
+        },
+        "readiness": {
+            "status": "ready" if not gaps else "needs_hardening",
+            "gaps": gaps,
+        },
     }
 
 
