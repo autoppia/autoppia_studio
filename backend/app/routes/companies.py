@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -31,6 +30,10 @@ from app.harvesters.base import connector_surface
 from app.repositories import CompanyRepository
 from app.request_scope import RequestScope, coerce_request_scope, get_request_scope
 from app.services.artifact_outputs import summarize_artifact_outputs
+from app.services.company_integration_contract import allowed_origin_hosts as _allowed_origin_hosts
+from app.services.company_integration_contract import build_company_governance
+from app.services.company_integration_contract import build_company_integration_contract
+from app.services.company_integration_contract import connector_domains as _connector_domains
 from app.services.connector_factory import summarize_connector_factory
 from app.services.promotion_pipeline import summarize_promotion_pipeline
 from app.services.resource_governance import derived_resource_gate as _derived_resource_gate
@@ -98,32 +101,6 @@ def _serialize(doc: dict[str, Any]) -> dict[str, Any]:
         "createdAt": doc.get("createdAt"),
         "updatedAt": doc.get("updatedAt"),
     }
-
-
-def _connector_domains(connector: dict[str, Any]) -> list[str]:
-    config = connector.get("config") if isinstance(connector.get("config"), dict) else {}
-    domains: set[str] = set()
-    for key in ("baseUrl", "startUrl", "loginUrl", "docsUrl", "openApiUrl", "sourceUrl"):
-        raw = str(config.get(key) or "").strip()
-        if not raw:
-            continue
-        parsed = urlparse(raw)
-        if parsed.hostname:
-            domains.add(parsed.hostname.lower())
-    return sorted(domains)
-
-
-def _allowed_origin_hosts(company: dict[str, Any]) -> list[str]:
-    settings = company.get("embedSettings") if isinstance(company.get("embedSettings"), dict) else {}
-    hosts: set[str] = set()
-    for origin in settings.get("allowedOrigins") or []:
-        raw = str(origin or "").strip()
-        if not raw:
-            continue
-        parsed = urlparse(raw)
-        if parsed.hostname:
-            hosts.add(parsed.hostname.lower())
-    return sorted(hosts)
 
 
 async def _count(query: dict[str, Any], collection: Any) -> int:
@@ -667,50 +644,28 @@ async def get_company_setup_contract(company_id: str, scope: RequestScope = Depe
                 },
                 "contracts": work_contracts,
             },
-            "governance": {
-                "credentials": counts["credentials"],
-                "allowedOrigins": list((company.get("embedSettings") or {}).get("allowedOrigins") or []),
-                "allowedOriginHosts": _allowed_origin_hosts(company),
-                "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
-                "discoveredDomains": connector_domains,
-                "skillPolicies": policy_counts,
-                "resourceAcl": {
-                    "documents": len(knowledge_docs),
-                    "withAcl": docs_with_acl,
-                    "companyVisible": company_visible_docs,
-                    "restricted": restricted_docs,
-                    "visibility": acl_visibility_counts,
-                },
-            },
-            "integration": {
-                "systems": counts["connectors"],
-                "secrets": counts["credentials"],
-                "environments": surface_counts,
-                "domainAllowlist": sorted(set(connector_domains + _allowed_origin_hosts(company))),
-                "approvalBoundary": {
-                    "pending": counts["pendingApprovals"],
-                    "approved": counts["approvedApprovals"],
-                    "skillPolicies": policy_counts,
-                },
-                "acl": {
-                    "ownerEmail": email,
-                    "hostJwtConfigured": bool(((company.get("embedSettings") or {}).get("hostJwtConfigured")) or ((company.get("embedSettings") or {}).get("hostJwtSecret"))),
-                    "allowedOrigins": list((company.get("embedSettings") or {}).get("allowedOrigins") or []),
-                    "resourceVisibility": acl_visibility_counts,
-                    "resourcesWithAcl": docs_with_acl,
-                    "resourceAclComplete": not knowledge_docs or docs_with_acl == len(knowledge_docs),
-                },
-                "compliance": {
-                    "browserRestrictedByDomain": bool(connector_domains or (company.get("embedSettings") or {}).get("allowedOrigins")),
-                    "humanApprovalConfigured": bool(policy_counts or counts["pendingApprovals"] or counts["approvedApprovals"]),
-                    "resourceAclComplete": not knowledge_docs or docs_with_acl == len(knowledge_docs),
-                    "auditEvidence": {
-                        "sessions": counts["sessions"],
-                        "artifacts": counts["artifacts"],
-                        "evalRuns": counts["evalRuns"],
-                    },
-                },
-            },
+            "governance": build_company_governance(
+                company=company,
+                counts=counts,
+                connector_domains=connector_domains,
+                policy_counts=policy_counts,
+                acl_visibility_counts=acl_visibility_counts,
+                knowledge_doc_count=len(knowledge_docs),
+                docs_with_acl=docs_with_acl,
+                company_visible_docs=company_visible_docs,
+                restricted_docs=restricted_docs,
+            ),
+            "integration": build_company_integration_contract(
+                company=company,
+                owner_email=email,
+                counts=counts,
+                surface_counts=surface_counts,
+                connector_domains=connector_domains,
+                policy_counts=policy_counts,
+                acl_visibility_counts=acl_visibility_counts,
+                knowledge_doc_count=len(knowledge_docs),
+                docs_with_acl=docs_with_acl,
+            ),
             "capabilityMap": {
                 "taskContracts": {
                     "total": counts["benchmarkTasks"],
