@@ -137,6 +137,9 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
     total_synthesized_tools = 0
     send_tool_count = 0
     send_tools: list[str] = []
+    send_approval_required_tools: list[str] = []
+    uncovered_send_tools: list[str] = []
+    unknown_send_tool_count = 0
     ready_stage_count = 0
     total_stage_count = 0
     gaps: list[dict[str, str]] = []
@@ -154,9 +157,25 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         hardened_count = int(tool_synthesis.get("hardenedToolCount") or 0)
         needs_hardening = int(tool_synthesis.get("needsHardeningCount") or 0)
         connector_send_tools = _list_values(tool_synthesis.get("sendTools"))
+        connector_send_count = int(tool_synthesis.get("sendToolCount") or len(connector_send_tools))
+        connector_approval_tools = _list_values(tool_synthesis.get("approvalRequiredTools"))
+        connector_approval_tool_names = {item.lower() for item in connector_approval_tools}
+        connector_uncovered_send_tools = [
+            tool_name
+            for tool_name in connector_send_tools
+            if tool_name.lower() not in connector_approval_tool_names
+        ]
+        connector_unknown_send_tool_count = max(0, connector_send_count - len(connector_send_tools))
         total_synthesized_tools += hardened_count + needs_hardening
-        send_tool_count += int(tool_synthesis.get("sendToolCount") or len(connector_send_tools))
+        send_tool_count += connector_send_count
         send_tools.extend(connector_send_tools)
+        send_approval_required_tools.extend(
+            tool_name
+            for tool_name in connector_send_tools
+            if tool_name.lower() in connector_approval_tool_names
+        )
+        uncovered_send_tools.extend(connector_uncovered_send_tools)
+        unknown_send_tool_count += connector_unknown_send_tool_count
         hardened_tool_count += hardened_count
         needs_hardening_count += needs_hardening
         hardening_gaps = tool_synthesis.get("hardeningGaps") if isinstance(tool_synthesis.get("hardeningGaps"), dict) else {}
@@ -217,8 +236,19 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                     "governedToolCount": int(tool_synthesis.get("governedToolCount") or 0),
                     "hardenedToolCount": hardened_count,
                     "needsHardeningCount": needs_hardening,
-                    "sendToolCount": int(tool_synthesis.get("sendToolCount") or len(connector_send_tools)),
+                    "sendToolCount": connector_send_count,
                     "sendTools": connector_send_tools[:8],
+                    "sendApprovalGate": {
+                        "ready": connector_send_count == 0
+                        or (not connector_uncovered_send_tools and connector_unknown_send_tool_count == 0),
+                        "approvalRequiredTools": [
+                            tool_name
+                            for tool_name in connector_send_tools
+                            if tool_name.lower() in connector_approval_tool_names
+                        ][:8],
+                        "uncoveredSendTools": connector_uncovered_send_tools[:8],
+                        "unknownSendToolCount": connector_unknown_send_tool_count,
+                    },
                     "hardeningGaps": hardening_gaps,
                     "candidateTasksRecommended": bool(candidate_tasks.get("recommended")),
                     "ingestionState": ingestion_state or "unknown",
@@ -226,11 +256,18 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                     "totalStages": total_stages,
                 }
             )
+    send_approval_blocker_count = len(_dedupe_values(uncovered_send_tools)) + unknown_send_tool_count
     tool_gate_blockers = {
         **hardening_gap_counts,
         **({"tool_synthesis_pending": tool_synthesis_pending} if tool_synthesis_pending else {}),
     }
-    tool_gate_ready = bool(total_synthesized_tools) and not needs_hardening_count and not tool_synthesis_pending
+    if send_approval_blocker_count:
+        tool_gate_blockers["approval_policy"] = max(
+            int(tool_gate_blockers.get("approval_policy") or 0),
+            send_approval_blocker_count,
+        )
+    send_approval_ready = send_tool_count == 0 or send_approval_blocker_count == 0
+    tool_gate_ready = bool(total_synthesized_tools) and not needs_hardening_count and not tool_synthesis_pending and send_approval_ready
     factory_pipeline_gate = _factory_pipeline_gate(
         total=len(connectors),
         ingestion_ready=ingestion_ready,
@@ -252,6 +289,18 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         "needsHardeningCount": needs_hardening_count,
         "sendToolCount": send_tool_count,
         "sendTools": _dedupe_values(send_tools)[:20],
+        "sendApprovalGate": {
+            "required": send_tool_count > 0,
+            "ready": send_approval_ready,
+            "sendTools": _dedupe_values(send_tools)[:20],
+            "approvalRequiredTools": _dedupe_values(send_approval_required_tools)[:20],
+            "uncoveredSendTools": _dedupe_values(uncovered_send_tools)[:20],
+            "unknownSendToolCount": unknown_send_tool_count,
+            "checks": {
+                "sendToolsNamed": unknown_send_tool_count == 0,
+                "sendToolsRequireApproval": not uncovered_send_tools and unknown_send_tool_count == 0,
+            },
+        },
         "toolHardeningGaps": [
             {"name": key, "count": hardening_gap_counts[key]}
             for key in sorted(hardening_gap_counts, key=lambda item: (-hardening_gap_counts[item], item))

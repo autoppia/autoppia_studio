@@ -32,6 +32,7 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
                         "needsHardeningCount": 1,
                         "sendToolCount": 1,
                         "sendTools": ["smtp.send_email"],
+                        "approvalRequiredTools": ["smtp.send_email"],
                         "hardeningGaps": {"entity_bindings": 1},
                     },
                     "ingestionPipeline": {
@@ -61,6 +62,18 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
     assert summary["needsHardeningCount"] == 2
     assert summary["sendToolCount"] == 1
     assert summary["sendTools"] == ["smtp.send_email"]
+    assert summary["sendApprovalGate"] == {
+        "required": True,
+        "ready": True,
+        "sendTools": ["smtp.send_email"],
+        "approvalRequiredTools": ["smtp.send_email"],
+        "uncoveredSendTools": [],
+        "unknownSendToolCount": 0,
+        "checks": {
+            "sendToolsNamed": True,
+            "sendToolsRequireApproval": True,
+        },
+    }
     assert summary["toolHardeningGaps"] == [
         {"name": "entity_bindings", "count": 2},
         {"name": "approval_policy", "count": 1},
@@ -152,4 +165,54 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
     assert summary["sample"][0]["hardeningGaps"] == {"approval_policy": 1, "entity_bindings": 1}
     assert summary["sample"][1]["sendToolCount"] == 1
     assert summary["sample"][1]["sendTools"] == ["smtp.send_email"]
+    assert summary["sample"][1]["sendApprovalGate"] == {
+        "ready": True,
+        "approvalRequiredTools": ["smtp.send_email"],
+        "uncoveredSendTools": [],
+        "unknownSendToolCount": 0,
+    }
     assert any(gap["key"] == "tool_hardening" for gap in summary["gaps"])
+
+
+def test_connector_factory_flags_send_tools_without_approval_coverage():
+    summary = summarize_connector_factory(
+        [
+            {
+                "connectorId": "conn-mail",
+                "name": "Mail",
+                "capabilityDiscovery": {
+                    "entityMapping": {"status": "mapped", "readyForToolBinding": True},
+                    "toolSynthesis": {
+                        "typedToolCount": 1,
+                        "governedToolCount": 1,
+                        "hardenedToolCount": 0,
+                        "needsHardeningCount": 1,
+                        "sendToolCount": 1,
+                        "sendTools": ["smtp.send_email"],
+                        "hardeningGaps": {"approval_policy": 1},
+                    },
+                    "candidateTasks": {"recommended": True},
+                    "ingestionPipeline": {"state": "ready", "readyStages": 5, "totalStages": 5},
+                },
+            }
+        ]
+    )
+
+    assert summary["sendApprovalGate"] == {
+        "required": True,
+        "ready": False,
+        "sendTools": ["smtp.send_email"],
+        "approvalRequiredTools": [],
+        "uncoveredSendTools": ["smtp.send_email"],
+        "unknownSendToolCount": 0,
+        "checks": {
+            "sendToolsNamed": True,
+            "sendToolsRequireApproval": False,
+        },
+    }
+    assert summary["sample"][0]["sendApprovalGate"] == {
+        "ready": False,
+        "approvalRequiredTools": [],
+        "uncoveredSendTools": ["smtp.send_email"],
+        "unknownSendToolCount": 0,
+    }
