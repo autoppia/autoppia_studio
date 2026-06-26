@@ -563,12 +563,12 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     edge_relations = {edge["relation"] for edge in graph["edges"]}
     task_node = next(node for node in graph["nodes"] if node["id"] == "task:task-1")
 
-    assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "policy_boundary:write", "approval_mode:always", "approval_mode:auto", "browser_policy:domain_restricted", "benchmark:bench-1", "vertical_demo:bench-1:vertical_demo", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
+    assert {"connector:conn-1", "connector:knowledge-1", "entity:entity-claim", "resource:resource-claims", "vector_store:vector-claims", "tool:tool-claim", "tool:tool-knowledge", "policy_boundary:write", "approval_mode:always", "approval_mode:auto", "browser_policy:domain_restricted", "benchmark:bench-1", "vertical_demo:bench-1:vertical_demo", "vertical_demo_proof_gate:bench-1:insurance_flow_proof", "task:task-1", "trajectory:traj-1", "skill:skill-1"} <= node_ids
     assert {"eval_run:eval-run-1", "session:session-1", "approval:approval-1", "artifact:artifact-1", "work_item:work-1"} <= node_ids
     assert {"exposes_tool", "maps_entity", "contains_task", "produced_trajectory", "used_in_trajectory", "promoted_to", "used_by_skill"} <= edge_relations
     assert {"backs_vector_store", "indexes_resource", "grounds_connector", "read_by_tool", "grounds_task"} <= edge_relations
     assert {"has_regression_run", "evaluated_by_run", "gates_skill", "replayed_session"} <= edge_relations
-    assert {"validates_vertical_demo", "covers_demo_step", "implements_demo_capability", "proves_demo_replay"} <= edge_relations
+    assert {"validates_vertical_demo", "gated_by_proof", "covers_demo_step", "implements_demo_capability", "proves_demo_replay"} <= edge_relations
     assert {"governed_by_boundary", "uses_approval_mode", "requires_write_approval", "requires_send_approval", "uses_browser_policy", "requires_browser_sandbox", "restricted_to_domains"} <= edge_relations
     assert {"exercised_skill", "exercised_trajectory", "exercised_tool", "requested_approval", "requires_approval", "created_artifact", "produced_artifact"} <= edge_relations
     assert {"scheduled_from_benchmark", "scheduled_from_task", "opened_session", "orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} <= edge_relations
@@ -598,11 +598,16 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["verticalDemos"]["total"] == 1
     assert graph["coverage"]["verticalDemos"]["ready"] == 1
     assert graph["coverage"]["verticalDemos"]["enterpriseReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["proofReady"] == 1
+    assert graph["coverage"]["verticalDemos"]["proofBlocked"] == 0
+    assert graph["coverage"]["verticalDemos"]["proofReadySteps"] == 9
+    assert graph["coverage"]["verticalDemos"]["proofTotalSteps"] == 9
     assert graph["coverage"]["verticalDemos"]["integrationReady"] == 1
     assert graph["coverage"]["verticalDemos"]["factoryReady"] == 1
     assert graph["coverage"]["verticalDemos"]["runtimeReady"] == 1
     assert graph["coverage"]["verticalDemos"]["runtimeReplayReady"] == 1
     assert graph["coverage"]["verticalDemos"]["linkedToBenchmarks"] is True
+    assert graph["coverage"]["verticalDemos"]["linkedToProofGate"] is True
     assert graph["coverage"]["evals"]["runs"] == 1
     assert graph["coverage"]["evals"]["pass"] == 1
     assert graph["coverage"]["evals"]["fail"] == 0

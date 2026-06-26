@@ -979,6 +979,16 @@ async def get_company_capability_graph(company_id: str, email: str = ""):
             demo_payload,
         )
         _add_edge(edges, f"benchmark:{benchmark_id}", demo_node, "validates_vertical_demo", {"source": "benchmark.metadata.verticalDemo"})
+        proof_gate = demo_payload.get("insuranceFlowProofGate") if isinstance(demo_payload.get("insuranceFlowProofGate"), dict) else {}
+        if proof_gate:
+            proof_node = _add_node(
+                nodes,
+                "vertical_demo_proof_gate",
+                f"{benchmark_id}:insurance_flow_proof",
+                f"{demo_payload.get('objective') or benchmark_id} proof gate",
+                proof_gate,
+            )
+            _add_edge(edges, demo_node, proof_node, "gated_by_proof", {"source": "vertical_demo.insuranceFlowProofGate"})
         for task_node in task_nodes_by_benchmark_id.get(benchmark_id, []):
             _add_edge(edges, task_node, demo_node, "covers_demo_step", {"source": "task.benchmarkId"})
         for skill_node in skill_nodes_by_benchmark_id.get(benchmark_id, []):
