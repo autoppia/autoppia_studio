@@ -193,3 +193,33 @@ def test_capability_tool_synthesis_contract_preserves_route_payload_shape():
         },
         "readiness": {"status": "ready", "gaps": []},
     }
+
+
+def test_capability_tool_synthesis_requires_approval_for_singular_write_send_effects():
+    write_contract = capability_tool_synthesis_contract(
+        {
+            "name": "erp.set_claim_status",
+            "inputSchema": {"type": "object", "properties": {"claimId": {"type": "string"}}},
+            "outputSchema": {"type": "object", "properties": {"status": {"type": "string"}}},
+            "sideEffects": "write",
+            "riskLevel": "medium",
+            "permissions": {"oauthScopes": ["claims:write"]},
+            "inputEntities": ["Claim"],
+            "outputEntity": "Claim",
+        }
+    )
+    send_contract = capability_tool_synthesis_contract(
+        {
+            "name": "mail.deliver_reply",
+            "inputSchema": {"type": "object", "properties": {"messageId": {"type": "string"}}},
+            "outputSchema": {"type": "object", "properties": {"sent": {"type": "boolean"}}},
+            "sideEffects": "send",
+            "riskLevel": "medium",
+            "permissions": {"oauthScopes": ["mail:send"]},
+            "inputEntities": ["Email"],
+            "outputEntity": "Email",
+        }
+    )
+
+    assert write_contract["riskClassification"]["requiresApproval"] is True
+    assert send_contract["riskClassification"]["requiresApproval"] is True

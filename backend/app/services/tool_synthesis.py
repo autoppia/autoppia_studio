@@ -235,7 +235,7 @@ def capability_tool_synthesis_contract(tool: dict[str, Any]) -> dict[str, Any]:
             "level": risk_level,
             "requiresApproval": bool(
                 approval == "always"
-                or side_effects.lower() in {"writes", "deletes", "sends"}
+                or side_effects.lower() in {"write", "writes", "delete", "deletes", "send", "sends"}
                 or risk_level.lower() in {"high", "critical"}
             ),
             "approvalMode": approval or "auto",
