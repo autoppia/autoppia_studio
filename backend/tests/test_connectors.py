@@ -189,8 +189,15 @@ def test_email_toolkit_marks_send_as_governed_human_approval_tool():
         }
     )
 
+    draft_tool = next(tool for tool in toolkit["tools"] if tool["name"] == "smtp.draft_email")
     send_tool = next(tool for tool in toolkit["tools"] if tool["name"] == "smtp.send_email")
 
+    assert draft_tool["sideEffects"] == "draft"
+    assert draft_tool["toolContract"]["sideEffects"] == "draft"
+    assert draft_tool["toolContract"]["policyBoundary"] == "draft"
+    assert draft_tool["toolContract"]["riskLevel"] == "low"
+    assert draft_tool["toolContract"]["approvalPolicy"]["required"] is False
+    assert draft_tool["toolContract"]["permissions"]["requiresApproval"] is False
     assert send_tool["toolContract"]["policyBoundary"] == "send"
     assert send_tool["toolContract"]["riskLevel"] == "high"
     assert send_tool["toolContract"]["approvalPolicy"]["required"] is True
