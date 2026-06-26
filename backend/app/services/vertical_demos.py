@@ -211,6 +211,60 @@ def _operational_group_ready(payload: dict[str, Any], key: str) -> bool:
     return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
 
 
+def _vertical_smoke_gate(
+    *,
+    objective: str,
+    operational_readiness: dict[str, Any],
+    expected_artifacts: list[str],
+    approval_boundaries: list[str],
+    risk_classes: list[str],
+    passing_runs: int,
+) -> dict[str, Any]:
+    boundary_text = " ".join([*approval_boundaries, *risk_classes]).lower()
+    no_send_guard = bool(
+        "draft" in boundary_text
+        or "no_send" in boundary_text
+        or "without_send" in boundary_text
+        or "before_send" in boundary_text
+        or "sin enviar" in objective.lower()
+    )
+    groups = operational_readiness.get("groups") if isinstance(operational_readiness.get("groups"), list) else []
+    group_state = {
+        str(group.get("key") or ""): str(group.get("state") or "")
+        for group in groups
+        if isinstance(group, dict)
+    }
+    checks = {
+        "objectiveDeclared": bool(objective.strip()),
+        "integrationReady": group_state.get("integration") == "ready",
+        "factoryReady": group_state.get("factory") == "ready",
+        "runtimeReady": group_state.get("runtime") == "ready",
+        "draftArtifact": "draft_email" in expected_artifacts,
+        "noFinalSendGuard": no_send_guard,
+        "passingReplay": passing_runs > 0,
+    }
+    actions = {
+        "objectiveDeclared": "Declare the vertical smoke objective for the insurance workflow.",
+        "integrationReady": "Complete email, ERP and document grounding evidence.",
+        "factoryReady": "Create benchmark, approved trajectory and promoted skill evidence.",
+        "runtimeReady": "Capture draft artifact, approval boundary and runtime replay evidence.",
+        "draftArtifact": "Produce draft_email as the business output instead of sending directly.",
+        "noFinalSendGuard": "Declare a draft-only or before-send approval boundary for the final email.",
+        "passingReplay": "Run a passing replay or eval for the insurance smoke flow.",
+    }
+    missing = [key for key, ready in checks.items() if not ready]
+    return {
+        "state": "ready" if not missing else "needs_hardening",
+        "ready": not missing,
+        "checks": checks,
+        "missing": missing,
+        "hardeningPlaybook": [
+            {"gap": key, "count": 1, "area": "vertical_demo", "severity": "high", "action": actions[key]}
+            for key in missing
+        ],
+    }
+
+
 def _vertical_demo_playbook(demos: list[dict[str, Any]]) -> list[dict[str, Any]]:
     gap_counts: dict[str, int] = {}
     examples: dict[str, dict[str, str]] = {}
@@ -244,6 +298,40 @@ def _vertical_demo_playbook(demos: list[dict[str, Any]]) -> list[dict[str, Any]]
                 "area": metadata["area"],
                 "severity": metadata["severity"],
                 "action": metadata["action"],
+                "example": examples.get(gap, {}),
+            }
+        )
+    return playbook
+
+
+def _vertical_smoke_playbook(demos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    gap_counts: dict[str, int] = {}
+    examples: dict[str, dict[str, str]] = {}
+    for demo in demos:
+        smoke_gate = demo.get("smokeGate") if isinstance(demo.get("smokeGate"), dict) else {}
+        for item in smoke_gate.get("hardeningPlaybook") if isinstance(smoke_gate.get("hardeningPlaybook"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            gap = str(item.get("gap") or "")
+            if not gap:
+                continue
+            gap_counts[gap] = gap_counts.get(gap, 0) + int(item.get("count") or 1)
+            examples.setdefault(
+                gap,
+                {
+                    "benchmarkId": str(demo.get("benchmarkId") or ""),
+                    "objective": str(demo.get("objective") or ""),
+                },
+            )
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": "vertical_demo",
+                "severity": "high",
+                "action": "Complete the insurance smoke gate before using the vertical demo as enterprise proof.",
                 "example": examples.get(gap, {}),
             }
         )
@@ -341,9 +429,18 @@ def vertical_demo_payload(
     ready_count = sum(1 for item in coverage if item.get("ready"))
     missing = [str(item.get("key") or "") for item in coverage if not item.get("ready")]
     operational_readiness = _operational_readiness(coverage)
+    objective = str(vertical_demo.get("objective") or "")
+    smoke_gate = _vertical_smoke_gate(
+        objective=objective,
+        operational_readiness=operational_readiness,
+        expected_artifacts=expected_artifacts,
+        approval_boundaries=approval_boundaries,
+        risk_classes=risk_classes,
+        passing_runs=passing_runs,
+    )
     return {
         "benchmarkId": str(benchmark.get("benchmarkId") or ""),
-        "objective": str(vertical_demo.get("objective") or ""),
+        "objective": objective,
         "runtimePath": str(vertical_demo.get("runtimePath") or metadata.get("runtimePath") or ""),
         "vertical": str(metadata.get("vertical") or benchmark.get("vertical") or ""),
         "state": _readiness_state(total, ready_count),
@@ -352,6 +449,7 @@ def vertical_demo_payload(
         "missing": missing,
         "coverage": coverage,
         "operationalReadiness": operational_readiness,
+        "smokeGate": smoke_gate,
         "evidence": {
             "expectedTools": expected_tools,
             "allowedSystems": allowed_systems,
@@ -409,10 +507,13 @@ def summarize_vertical_demos(
         "ready": sum(1 for demo in demos if demo.get("state") == "ready"),
         "partial": sum(1 for demo in demos if demo.get("state") == "partial"),
         "missing": sum(1 for demo in demos if demo.get("state") == "missing"),
+        "smokeReady": sum(1 for demo in demos if bool((demo.get("smokeGate") or {}).get("ready"))),
+        "smokeBlocked": sum(1 for demo in demos if demo.get("smokeGate") and not (demo.get("smokeGate") or {}).get("ready")),
         "enterpriseReady": sum(1 for demo in demos if bool((demo.get("operationalReadiness") or {}).get("enterpriseReady"))),
         "integrationReady": sum(1 for demo in demos if _operational_group_ready(demo, "integration")),
         "factoryReady": sum(1 for demo in demos if _operational_group_ready(demo, "factory")),
         "runtimeReady": sum(1 for demo in demos if _operational_group_ready(demo, "runtime")),
         "hardeningPlaybook": _vertical_demo_playbook(demos),
+        "smokeHardeningPlaybook": _vertical_smoke_playbook(demos),
         "demos": demos[:limit],
     }

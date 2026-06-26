@@ -1540,7 +1540,8 @@ class AutomataAssistantService:
             if vertical_demos:
                 coverage_text += (
                     f" Vertical demos: {vertical_demos.get('ready', 0)}/{vertical_demos.get('total', 0)} ready, "
-                    f"{vertical_demos.get('enterpriseReady', 0)} enterprise-ready."
+                    f"{vertical_demos.get('enterpriseReady', 0)} enterprise-ready, "
+                    f"{vertical_demos.get('smokeReady', 0)} smoke-ready."
                 )
                 if vertical_demo_gaps:
                     first_gap = vertical_demo_gaps[0] if isinstance(vertical_demo_gaps[0], dict) else {}

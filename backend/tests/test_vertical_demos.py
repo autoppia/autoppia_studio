@@ -62,6 +62,21 @@ def test_vertical_demo_payload_marks_complete_insurance_flow_ready():
     assert payload["missing"] == []
     assert payload["operationalReadiness"]["enterpriseReady"] is True
     assert payload["operationalReadiness"]["state"] == "ready"
+    assert payload["smokeGate"] == {
+        "state": "ready",
+        "ready": True,
+        "checks": {
+            "objectiveDeclared": True,
+            "integrationReady": True,
+            "factoryReady": True,
+            "runtimeReady": True,
+            "draftArtifact": True,
+            "noFinalSendGuard": True,
+            "passingReplay": True,
+        },
+        "missing": [],
+        "hardeningPlaybook": [],
+    }
     readiness_by_key = {item["key"]: item for item in payload["operationalReadiness"]["groups"]}
     assert readiness_by_key["integration"]["state"] == "ready"
     assert readiness_by_key["factory"]["state"] == "ready"
@@ -93,6 +108,8 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["ready"] == 0
     assert summary["partial"] == 1
     assert summary["missing"] == 1
+    assert summary["smokeReady"] == 0
+    assert summary["smokeBlocked"] == 2
     assert summary["enterpriseReady"] == 0
     assert summary["integrationReady"] == 1
     assert summary["factoryReady"] == 0
@@ -123,8 +140,34 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
             },
         },
     ]
+    assert summary["smokeHardeningPlaybook"][:2] == [
+        {
+            "gap": "factoryReady",
+            "count": 2,
+            "area": "vertical_demo",
+            "severity": "high",
+            "action": "Complete the insurance smoke gate before using the vertical demo as enterprise proof.",
+            "example": {
+                "benchmarkId": "bench-partial",
+                "objective": "Reply to a customer about claim status without sending the final email.",
+            },
+        },
+        {
+            "gap": "passingReplay",
+            "count": 2,
+            "area": "vertical_demo",
+            "severity": "high",
+            "action": "Complete the insurance smoke gate before using the vertical demo as enterprise proof.",
+            "example": {
+                "benchmarkId": "bench-partial",
+                "objective": "Reply to a customer about claim status without sending the final email.",
+            },
+        },
+    ]
     partial_demo = summary["demos"][0]
     assert partial_demo["operationalReadiness"]["enterpriseReady"] is False
+    assert partial_demo["smokeGate"]["state"] == "needs_hardening"
+    assert partial_demo["smokeGate"]["missing"] == ["factoryReady", "runtimeReady", "passingReplay"]
     readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}
     assert readiness_by_key["integration"]["state"] == "ready"
     assert readiness_by_key["factory"]["state"] == "partial"
