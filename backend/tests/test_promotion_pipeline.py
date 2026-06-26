@@ -30,6 +30,19 @@ def test_promotion_pipeline_exposes_hardening_playbook_for_incomplete_flow():
     assert summary["tasks"]["withTrajectory"] == 2
     assert summary["trajectories"]["approved"] == 1
     assert summary["skills"]["withApprovedTrajectory"] == 0
+    assert summary["skillPromotionGate"]["state"] == "blocked"
+    assert summary["skillPromotionGate"]["checks"] == {
+        "skillsPresent": True,
+        "approvedTrajectoryLinked": False,
+        "reusablePackages": False,
+        "publishedOrReady": False,
+        "legacyPendingRowsCleared": True,
+    }
+    assert summary["skillPromotionGate"]["blockers"] == [
+        "approvedTrajectoryLinked",
+        "reusablePackages",
+        "publishedOrReady",
+    ]
     assert summary["gaps"] == [
         {
             "key": "trajectory_approval",
@@ -114,6 +127,8 @@ def test_promotion_pipeline_flags_legacy_pending_trajectory_rows():
 
     assert summary["ready"] is False
     assert summary["trajectories"]["legacyPendingRows"] == 1
+    assert summary["skillPromotionGate"]["checks"]["legacyPendingRowsCleared"] is False
+    assert "legacyPendingRowsCleared" in summary["skillPromotionGate"]["blockers"]
     assert {
         "key": "pending_trajectory_rows",
         "label": "Pending harvest work is still represented as trajectory rows.",

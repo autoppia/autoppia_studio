@@ -1308,6 +1308,10 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "tasks": {"total": 7, "withTrajectory": 4},
                         "trajectories": {"total": 5, "approved": 3, "legacyPendingRows": 1},
                         "skills": {"total": 4, "withApprovedTrajectory": 2},
+                        "skillPromotionGate": {
+                            "state": "blocked",
+                            "blockers": ["approvedTrajectoryLinked", "reusablePackages"],
+                        },
                         "gaps": [{"key": "skill_hardening", "label": "Some promoted skills are missing reusable package hardening."}],
                     },
                     "verticalDemos": {
@@ -1511,6 +1515,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful, 2 LLM-only." in reply
     assert "First judge hardening: Add deterministic checks or stateful replay so LLM judges remain complementary." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
+    assert "Skill promotion gate: blocked." in reply
+    assert "First skill promotion blocker: approvedTrajectoryLinked." in reply
     assert "Promotion data hygiene: 1 legacy pending trajectory row(s) should move to benchmark tasks." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready, 1 proof-blocked." in reply

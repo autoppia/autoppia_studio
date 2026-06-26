@@ -164,6 +164,14 @@ def summarize_promotion_pipeline(
     if legacy_pending_trajectories:
         gaps.append({"key": "pending_trajectory_rows", "label": "Pending harvest work is still represented as trajectory rows.", "target": "data_model"})
         gap_counts["pending_trajectory_rows"] = len(legacy_pending_trajectories)
+    skill_gate_checks = {
+        "skillsPresent": bool(skills),
+        "approvedTrajectoryLinked": bool(skills) and skills_with_approved_trajectory == len(skills),
+        "reusablePackages": bool(skills) and reusable_skills == len(skills),
+        "publishedOrReady": bool(skills) and published_skills == len(skills),
+        "legacyPendingRowsCleared": not legacy_pending_trajectories,
+    }
+    skill_gate_blockers = [name for name, ready in skill_gate_checks.items() if not ready]
 
     return {
         "tasks": {
@@ -186,6 +194,13 @@ def summarize_promotion_pipeline(
             "reusable": reusable_skills,
             "published": published_skills,
             "promotionRatio": round(skills_with_approved_trajectory / len(skills), 3) if skills else 0.0,
+        },
+        "skillPromotionGate": {
+            "state": "ready" if not skill_gate_blockers else ("no_skills" if not skills else "blocked"),
+            "ready": not skill_gate_blockers,
+            "checks": skill_gate_checks,
+            "blockers": skill_gate_blockers,
+            "hardeningPlaybook": _promotion_playbook(gap_counts),
         },
         "ready": bool(tasks and tasks_with_trajectory and approved_trajectories and skills_with_approved_trajectory and reusable_skills and not legacy_pending_trajectories),
         "path": {

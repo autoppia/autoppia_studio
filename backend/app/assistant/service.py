@@ -1662,6 +1662,12 @@ class AutomataAssistantService:
                     f"{pipeline_trajectories.get('approved', 0)}/{pipeline_trajectories.get('total', 0)} trajectories approved, "
                     f"{pipeline_skills.get('withApprovedTrajectory', 0)}/{pipeline_skills.get('total', 0)} skills trajectory-linked."
                 )
+                skill_promotion_gate = promotion_pipeline.get("skillPromotionGate") if isinstance(promotion_pipeline.get("skillPromotionGate"), dict) else {}
+                if skill_promotion_gate:
+                    coverage_text += f" Skill promotion gate: {skill_promotion_gate.get('state', 'unknown')}."
+                    blockers = skill_promotion_gate.get("blockers") if isinstance(skill_promotion_gate.get("blockers"), list) else []
+                    if blockers:
+                        coverage_text += f" First skill promotion blocker: {blockers[0]}."
                 legacy_pending_rows = int(pipeline_trajectories.get("legacyPendingRows") or 0)
                 if legacy_pending_rows:
                     coverage_text += (
