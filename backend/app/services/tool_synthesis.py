@@ -215,16 +215,41 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
     approval_tools = [tool["toolName"] for tool in tools if tool["approval"]["required"]]
     risk_counts: dict[str, int] = {}
     boundary_counts: dict[str, int] = {}
+    hardening_gaps: dict[str, int] = {}
+    hardened_tools: list[str] = []
     for tool in tools:
         risk = tool["riskLevel"] or "unknown"
         boundary = tool["policyBoundary"] or "unknown"
         risk_counts[risk] = risk_counts.get(risk, 0) + 1
         boundary_counts[boundary] = boundary_counts.get(boundary, 0) + 1
+        gaps: list[str] = []
+        if not tool["schema"]["inputTyped"]:
+            gaps.append("typed_input_schema")
+        if not tool["schema"]["outputTyped"]:
+            gaps.append("typed_output_schema")
+        if tool["sideEffects"] in {"unknown", ""}:
+            gaps.append("side_effects")
+        if tool["riskLevel"] in {"unknown", ""}:
+            gaps.append("risk_classification")
+        if tool["policyBoundary"] in {"write", "send"} and not tool["approval"]["required"]:
+            gaps.append("approval_policy")
+        if not tool["permissions"]["scopes"]:
+            gaps.append("scopes")
+        if not tool["entities"]["linked"]:
+            gaps.append("entity_bindings")
+        if not gaps:
+            hardened_tools.append(tool["toolName"])
+        for gap in gaps:
+            hardening_gaps[gap] = hardening_gaps.get(gap, 0) + 1
     return {
         "toolCount": len(tools),
         "typedToolCount": len(typed_tools),
         "governedToolCount": len(governed_tools),
         "typedTools": typed_tools,
+        "hardenedToolCount": len(hardened_tools),
+        "needsHardeningCount": len(tools) - len(hardened_tools),
+        "hardenedTools": hardened_tools,
+        "hardeningGaps": hardening_gaps,
         "writeToolCount": len(write_tools),
         "writeTools": write_tools,
         "approvalRequiredTools": approval_tools,

@@ -40,6 +40,10 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
                 "sideEffects": "reads",
                 "riskLevel": "low",
                 "inputSchema": {"type": "object", "properties": {"policyId": {"type": "string"}}},
+                "outputSchema": {"type": "object", "properties": {"claims": {"type": "array"}}},
+                "inputEntities": ["Policy"],
+                "outputEntity": "Claim",
+                "permissions": {"scopes": ["claims:read"]},
                 "toolContract": {"format": "autoppia.tool_contract", "policyBoundary": "read"},
             },
             {
@@ -55,6 +59,17 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
 
     assert summary["toolCount"] == 3
     assert summary["typedTools"] == ["claims.search_claims"]
+    assert summary["hardenedToolCount"] == 1
+    assert summary["needsHardeningCount"] == 2
+    assert summary["hardenedTools"] == ["claims.search_claims"]
+    assert summary["hardeningGaps"] == {
+        "typed_input_schema": 2,
+        "typed_output_schema": 2,
+        "side_effects": 1,
+        "approval_policy": 1,
+        "scopes": 2,
+        "entity_bindings": 2,
+    }
     assert summary["governedToolCount"] == 3
     assert summary["writeTools"] == ["api.call", "smtp.send_email"]
     assert summary["approvalRequiredTools"] == ["smtp.send_email"]
