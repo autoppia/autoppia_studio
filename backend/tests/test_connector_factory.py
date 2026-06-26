@@ -47,5 +47,12 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
         {"name": "entity_bindings", "count": 2},
         {"name": "approval_policy", "count": 1},
     ]
+    assert summary["toolHardeningPlaybook"][0] == {
+        "gap": "entity_bindings",
+        "count": 2,
+        "area": "entities",
+        "severity": "medium",
+        "action": "Bind input and output business entities before promoting reusable skills.",
+    }
     assert summary["sample"][0]["hardeningGaps"] == {"approval_policy": 1, "entity_bindings": 1}
     assert any(gap["key"] == "tool_hardening" for gap in summary["gaps"])

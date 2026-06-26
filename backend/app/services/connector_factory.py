@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.tool_synthesis import tool_hardening_playbook
+
 
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
@@ -106,6 +108,7 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
             {"name": key, "count": hardening_gap_counts[key]}
             for key in sorted(hardening_gap_counts, key=lambda item: (-hardening_gap_counts[item], item))
         ],
+        "toolHardeningPlaybook": tool_hardening_playbook(hardening_gap_counts),
         "candidateTasksReady": candidate_tasks_ready,
         "ingestionReady": ingestion_ready,
         "ingestionBlocked": ingestion_blocked,

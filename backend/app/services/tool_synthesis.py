@@ -13,6 +13,45 @@ GENERIC_DISCOVERY_TOOLS = {
 }
 
 
+HARDENING_GAP_PLAYBOOK = {
+    "typed_input_schema": {
+        "area": "schema",
+        "severity": "high",
+        "action": "Define a typed input schema with required business identifiers.",
+    },
+    "typed_output_schema": {
+        "area": "schema",
+        "severity": "medium",
+        "action": "Define a typed output schema so downstream skills can consume artifacts safely.",
+    },
+    "side_effects": {
+        "area": "policy",
+        "severity": "high",
+        "action": "Declare whether the tool reads, drafts, writes or sends before runtime use.",
+    },
+    "risk_classification": {
+        "area": "policy",
+        "severity": "high",
+        "action": "Classify risk level before exposing the tool to production agents.",
+    },
+    "approval_policy": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Require human approval for write/send boundaries.",
+    },
+    "scopes": {
+        "area": "permissions",
+        "severity": "medium",
+        "action": "Attach connector scopes or permission claims for least-privilege execution.",
+    },
+    "entity_bindings": {
+        "area": "entities",
+        "severity": "medium",
+        "action": "Bind input and output business entities before promoting reusable skills.",
+    },
+}
+
+
 def _list_values(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
@@ -214,6 +253,29 @@ def capability_tool_synthesis_contract(tool: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def tool_hardening_playbook(hardening_gaps: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(hardening_gaps, key=lambda item: (-hardening_gaps[item], item)):
+        metadata = HARDENING_GAP_PLAYBOOK.get(
+            gap,
+            {
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Review and harden this tool contract before production use.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": hardening_gaps[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
+
+
 def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requirements: list[Any] | None = None) -> dict[str, Any]:
     tools = [tool_synthesis_contract(tool) for tool in tool_specs if isinstance(tool, dict)]
     typed_tools = [tool["toolName"] for tool in tools if tool["typed"]]
@@ -282,6 +344,7 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
         "needsHardeningCount": len(tools) - len(hardened_tools),
         "hardenedTools": hardened_tools,
         "hardeningGaps": hardening_gaps,
+        "hardeningPlaybook": tool_hardening_playbook(hardening_gaps),
         "promotionReadiness": {
             "publishable": _dedupe_values([*publishable_tools, *safe_atomic_tools]),
             "hardened": publishable_tools,

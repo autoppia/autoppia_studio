@@ -70,6 +70,29 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
         "scopes": 2,
         "entity_bindings": 2,
     }
+    assert summary["hardeningPlaybook"][:3] == [
+        {
+            "gap": "entity_bindings",
+            "count": 2,
+            "area": "entities",
+            "severity": "medium",
+            "action": "Bind input and output business entities before promoting reusable skills.",
+        },
+        {
+            "gap": "scopes",
+            "count": 2,
+            "area": "permissions",
+            "severity": "medium",
+            "action": "Attach connector scopes or permission claims for least-privilege execution.",
+        },
+        {
+            "gap": "typed_input_schema",
+            "count": 2,
+            "area": "schema",
+            "severity": "high",
+            "action": "Define a typed input schema with required business identifiers.",
+        },
+    ]
     assert summary["promotionReadiness"] == {
         "publishable": ["claims.search_claims"],
         "hardened": ["claims.search_claims"],
