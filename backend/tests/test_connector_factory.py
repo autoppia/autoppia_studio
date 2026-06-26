@@ -30,6 +30,8 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
                         "governedToolCount": 1,
                         "hardenedToolCount": 0,
                         "needsHardeningCount": 1,
+                        "sendToolCount": 1,
+                        "sendTools": ["smtp.send_email"],
                         "hardeningGaps": {"entity_bindings": 1},
                     },
                     "ingestionPipeline": {
@@ -57,6 +59,8 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
     assert summary["typedToolReady"] == 2
     assert summary["hardenedToolCount"] == 1
     assert summary["needsHardeningCount"] == 2
+    assert summary["sendToolCount"] == 1
+    assert summary["sendTools"] == ["smtp.send_email"]
     assert summary["toolHardeningGaps"] == [
         {"name": "entity_bindings", "count": 2},
         {"name": "approval_policy", "count": 1},
@@ -146,4 +150,6 @@ def test_connector_factory_summarizes_tool_hardening_gaps():
         }
     ]
     assert summary["sample"][0]["hardeningGaps"] == {"approval_policy": 1, "entity_bindings": 1}
+    assert summary["sample"][1]["sendToolCount"] == 1
+    assert summary["sample"][1]["sendTools"] == ["smtp.send_email"]
     assert any(gap["key"] == "tool_hardening" for gap in summary["gaps"])

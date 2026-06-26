@@ -45,6 +45,18 @@ def _list_values(value: Any) -> list[str]:
     return [str(item).strip() for item in value if str(item or "").strip()]
 
 
+def _dedupe_values(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        item = str(value or "").strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
 def _factory_pipeline_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
     playbook: list[dict[str, Any]] = []
     for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
@@ -123,6 +135,8 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
     ingestion_ready = 0
     ingestion_blocked = 0
     total_synthesized_tools = 0
+    send_tool_count = 0
+    send_tools: list[str] = []
     ready_stage_count = 0
     total_stage_count = 0
     gaps: list[dict[str, str]] = []
@@ -139,7 +153,10 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         typed_tool_count = int(tool_synthesis.get("typedToolCount") or 0)
         hardened_count = int(tool_synthesis.get("hardenedToolCount") or 0)
         needs_hardening = int(tool_synthesis.get("needsHardeningCount") or 0)
+        connector_send_tools = _list_values(tool_synthesis.get("sendTools"))
         total_synthesized_tools += hardened_count + needs_hardening
+        send_tool_count += int(tool_synthesis.get("sendToolCount") or len(connector_send_tools))
+        send_tools.extend(connector_send_tools)
         hardened_tool_count += hardened_count
         needs_hardening_count += needs_hardening
         hardening_gaps = tool_synthesis.get("hardeningGaps") if isinstance(tool_synthesis.get("hardeningGaps"), dict) else {}
@@ -200,6 +217,8 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
                     "governedToolCount": int(tool_synthesis.get("governedToolCount") or 0),
                     "hardenedToolCount": hardened_count,
                     "needsHardeningCount": needs_hardening,
+                    "sendToolCount": int(tool_synthesis.get("sendToolCount") or len(connector_send_tools)),
+                    "sendTools": connector_send_tools[:8],
                     "hardeningGaps": hardening_gaps,
                     "candidateTasksRecommended": bool(candidate_tasks.get("recommended")),
                     "ingestionState": ingestion_state or "unknown",
@@ -231,6 +250,8 @@ def summarize_connector_factory(connectors: list[dict[str, Any]], *, sample_limi
         "toolSynthesisPending": tool_synthesis_pending,
         "hardenedToolCount": hardened_tool_count,
         "needsHardeningCount": needs_hardening_count,
+        "sendToolCount": send_tool_count,
+        "sendTools": _dedupe_values(send_tools)[:20],
         "toolHardeningGaps": [
             {"name": key, "count": hardening_gap_counts[key]}
             for key in sorted(hardening_gap_counts, key=lambda item: (-hardening_gap_counts[item], item))
