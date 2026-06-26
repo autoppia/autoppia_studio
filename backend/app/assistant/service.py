@@ -1798,6 +1798,11 @@ class AutomataAssistantService:
                     f"{contracts.get('slaTracked', 0)} SLA-tracked, {contracts.get('auditTrails', 0)} with audit trails."
                 )
                 work_text += (
+                    f" Work controls: {contracts.get('approvalGates', 0)} approval-gated, "
+                    f"{contracts.get('browserAllowlists', 0)} browser-allowlisted, "
+                    f"{contracts.get('runAttempts', 0)} run attempt(s)."
+                )
+                work_text += (
                     f" Automation gate: {contracts.get('unattendedReady', 0)} unattended-ready, "
                     f"{contracts.get('unattendedBlocked', 0)} blocked."
                 )

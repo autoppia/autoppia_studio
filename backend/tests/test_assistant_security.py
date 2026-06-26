@@ -1293,6 +1293,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "total": 4,
                         "slaTracked": 3,
                         "auditTrails": 2,
+                        "approvalGates": 2,
+                        "browserAllowlists": 1,
+                        "runAttempts": 5,
                         "unattendedReady": 1,
                         "unattendedBlocked": 2,
                         "workOperationsGate": {"state": "blocked"},
@@ -1380,6 +1383,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Work attention items: 3." in reply
     assert "Work operations: 2 due trigger(s), 1 budget-exhausted item(s), 4 retry attempt(s)." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
+    assert "Work controls: 2 approval-gated, 1 browser-allowlisted, 5 run attempt(s)." in reply
     assert "Automation gate: 1 unattended-ready, 2 blocked." in reply
     assert "Work operations gate: blocked." in reply
     assert "First automation blocker: pending_approval." in reply
