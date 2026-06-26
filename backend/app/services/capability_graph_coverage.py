@@ -348,17 +348,45 @@ def _operational_graph_gate(edge_relations: set[Any]) -> dict[str, Any]:
         "workLinked": bool({"scheduled_from_task", "opened_session"} & edge_relations)
         and bool({"orchestrates_skill", "orchestrates_trajectory", "orchestrates_tool"} & edge_relations),
     }
-    actions = {
-        "factoryAssetsLinked": "Link connectors, entities, tools and benchmark tasks inside the capability graph.",
-        "promotionPathLinked": "Connect benchmark tasks to generated trajectories and promoted skills.",
-        "evalsLinked": "Attach eval runs to benchmark tasks and use passing runs as skill gates.",
-        "runtimeEvidenceLinked": "Link Runtime Lab sessions to exercised capabilities, approvals and artifacts.",
-        "workLinked": "Connect Work Orchestration items to source tasks, sessions and capabilities.",
+    playbook_metadata = {
+        "factoryAssetsLinked": {
+            "area": "factory",
+            "severity": "high",
+            "action": "Link connectors, entities, tools and benchmark tasks inside the capability graph.",
+        },
+        "promotionPathLinked": {
+            "area": "promotion",
+            "severity": "high",
+            "action": "Connect benchmark tasks to generated trajectories and promoted skills.",
+        },
+        "evalsLinked": {
+            "area": "evals",
+            "severity": "high",
+            "action": "Attach eval runs to benchmark tasks and use passing runs as skill gates.",
+        },
+        "runtimeEvidenceLinked": {
+            "area": "runtime",
+            "severity": "high",
+            "action": "Link Runtime Lab sessions to exercised capabilities, approvals and artifacts.",
+        },
+        "workLinked": {
+            "area": "work",
+            "severity": "medium",
+            "action": "Connect Work Orchestration items to source tasks, sessions and capabilities.",
+        },
     }
-    blockers = [
-        {"name": key, "action": actions[key]}
+    hardening_playbook = [
+        {
+            "gap": key,
+            "count": 1,
+            **playbook_metadata[key],
+        }
         for key, ready in checks.items()
         if not ready
+    ]
+    blockers = [
+        {"name": item["gap"], "action": item["action"]}
+        for item in hardening_playbook
     ]
     ready_count = sum(1 for ready in checks.values() if ready)
     ready = ready_count == len(checks)
@@ -370,6 +398,7 @@ def _operational_graph_gate(edge_relations: set[Any]) -> dict[str, Any]:
         "coverageRatio": round(ready_count / len(checks), 3) if checks else 1.0,
         "checks": checks,
         "blockers": blockers,
+        "hardeningPlaybook": hardening_playbook,
     }
 
 

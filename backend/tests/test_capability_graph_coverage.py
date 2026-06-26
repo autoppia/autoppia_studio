@@ -244,6 +244,7 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
             "workLinked": True,
         },
         "blockers": [],
+        "hardeningPlaybook": [],
     }
     assert coverage["coveragePlaybook"] == [
         {
@@ -259,5 +260,51 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
             "area": "approvals",
             "severity": "high",
             "action": "Resolve pending approvals blocking write/send boundaries.",
+        },
+    ]
+
+
+def test_capability_graph_coverage_operational_gate_exposes_hardening_playbook():
+    coverage = capability_graph_coverage(
+        entity_docs=[],
+        resource_docs=[],
+        vector_store_docs=[],
+        tool_docs=[],
+        benchmark_docs=[],
+        task_docs=[],
+        trajectory_docs=[],
+        skill_docs=[],
+        eval_run_docs=[],
+        session_docs=[],
+        approval_docs=[],
+        artifact_docs=[],
+        work_item_docs=[],
+        vertical_demo_payloads=[],
+        edges=[{"relation": "produced_trajectory"}],
+    )
+
+    assert coverage["operationalGraphGate"]["state"] == "needs_hardening"
+    assert coverage["operationalGraphGate"]["readyCount"] == 0
+    assert coverage["operationalGraphGate"]["hardeningPlaybook"][:3] == [
+        {
+            "gap": "factoryAssetsLinked",
+            "count": 1,
+            "area": "factory",
+            "severity": "high",
+            "action": "Link connectors, entities, tools and benchmark tasks inside the capability graph.",
+        },
+        {
+            "gap": "promotionPathLinked",
+            "count": 1,
+            "area": "promotion",
+            "severity": "high",
+            "action": "Connect benchmark tasks to generated trajectories and promoted skills.",
+        },
+        {
+            "gap": "evalsLinked",
+            "count": 1,
+            "area": "evals",
+            "severity": "high",
+            "action": "Attach eval runs to benchmark tasks and use passing runs as skill gates.",
         },
     ]

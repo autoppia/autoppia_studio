@@ -677,6 +677,7 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
             "workLinked": True,
         },
         "blockers": [],
+        "hardeningPlaybook": [],
     }
 
 
