@@ -1487,6 +1487,9 @@ class AutomataAssistantService:
                         f" Skill releases: {release.get('published', 0)} published, "
                         f"{release.get('readyForPublish', 0)} ready for publish, {release.get('draft', 0)} draft."
                     )
+                release_gate = packages.get("releaseGate") if isinstance(packages.get("releaseGate"), dict) else {}
+                if release_gate:
+                    coverage_text += f" Skill release gate: {release_gate.get('state', 'unknown')}."
             if eval_gate:
                 coverage_text += (
                     f" Eval gates: {eval_gate.get('passing', 0)} passing, "

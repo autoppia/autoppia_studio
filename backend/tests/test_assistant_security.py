@@ -548,6 +548,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseStatus"] == [{"name": "draft", "count": 1}]
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["readyForPublish"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseReadiness"]["draft"] == 1
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseGate"]["state"] == "needs_hardening"
+    assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["releaseGate"]["checks"] == {
+        "versionedPackages": True,
+        "publishablePackages": True,
+        "reviewedReleaseStatus": False,
+        "publishedSkillsSafe": True,
+    }
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["hardeningPlaybook"][0] == {
         "gap": "release_status",
         "count": 1,
@@ -1045,6 +1052,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                             "ioContracts": 2,
                             "regressionSuites": 1,
                             "releaseReadiness": {"published": 1, "readyForPublish": 2, "draft": 1},
+                            "releaseGate": {"state": "needs_hardening", "ready": False},
                         },
                     },
                     "evalGate": {"passing": 1, "blockedByRegression": 1, "missing": 2},
@@ -1134,6 +1142,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First entity blocker: read_access." in reply
     assert "Skill packages: 1/4 publishable, 2 with IO contracts, 1 with regressions." in reply
     assert "Skill releases: 1 published, 2 ready for publish, 1 draft." in reply
+    assert "Skill release gate: needs_hardening." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply

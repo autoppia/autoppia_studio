@@ -58,6 +58,11 @@ SKILL_PACKAGE_HARDENING_ACTIONS = {
         "severity": "high",
         "action": "Unpublish or remediate published skills that no longer satisfy production gates.",
     },
+    "versioning": {
+        "area": "release",
+        "severity": "medium",
+        "action": "Assign a version and version history before operating this skill as a reusable capability.",
+    },
 }
 
 
@@ -96,6 +101,39 @@ def _skill_package_hardening_playbook(gap_counts: dict[str, int]) -> list[dict[s
             }
         )
     return playbook
+
+
+def _skill_release_gate(packages: list[dict[str, Any]], gap_counts: dict[str, int]) -> dict[str, Any]:
+    total = len(packages)
+    publishable = sum(1 for item in packages if item["publishable"])
+    ready_or_published = sum(
+        1
+        for item in packages
+        if str(item["release"].get("promotionStatus") or "draft") in {"ready", "published"}
+    )
+    published_not_publishable = sum(
+        1
+        for item in packages
+        if str(item["release"].get("promotionStatus") or "draft") == "published" and not item["publishable"]
+    )
+    versioned = sum(1 for item in packages if item["versioned"])
+    checks = {
+        "versionedPackages": bool(total) and versioned == total,
+        "publishablePackages": bool(total) and publishable == total,
+        "reviewedReleaseStatus": bool(total) and ready_or_published == total,
+        "publishedSkillsSafe": published_not_publishable == 0,
+    }
+    ready = bool(total) and all(checks.values())
+    return {
+        "state": "ready" if ready else ("no_skills" if not total else "needs_hardening"),
+        "ready": ready,
+        "checks": checks,
+        "blockers": [
+            {"name": key, "count": gap_counts[key]}
+            for key in sorted(gap_counts, key=lambda item: (-gap_counts[item], item))
+        ],
+        "hardeningPlaybook": _skill_package_hardening_playbook(gap_counts),
+    }
 
 
 def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
@@ -184,6 +222,8 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
     for item in packages:
         for blocker in item["blockers"]:
             gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
+        if not item["versioned"]:
+            gap_counts["versioning"] = gap_counts.get("versioning", 0) + 1
         promotion_status = str(item["release"].get("promotionStatus") or "draft")
         if item["publishable"] and not item["release"].get("readyForPublish"):
             gap_counts["release_status"] = gap_counts.get("release_status", 0) + 1
@@ -221,6 +261,7 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
             "ready": release_statuses.count("ready"),
             "archived": release_statuses.count("archived"),
         },
+        "releaseGate": _skill_release_gate(packages, gap_counts),
         "packages": packages[:package_limit],
         "ioContracts": with_io_contract,
         "expectedArtifacts": with_expected_artifacts,

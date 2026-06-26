@@ -132,6 +132,26 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
         "ready": 1,
         "archived": 0,
     }
+    assert summary["releaseGate"] == {
+        "state": "needs_hardening",
+        "ready": False,
+        "checks": {
+            "versionedPackages": True,
+            "publishablePackages": False,
+            "reviewedReleaseStatus": True,
+            "publishedSkillsSafe": True,
+        },
+        "blockers": [{"name": "publishableRegression", "count": 1}],
+        "hardeningPlaybook": [
+            {
+                "gap": "publishableRegression",
+                "count": 1,
+                "area": "evals",
+                "severity": "high",
+                "action": "Run or link a passing regression before publishing this skill.",
+            }
+        ],
+    }
     assert summary["hardeningPlaybook"] == [
         {
             "gap": "publishableRegression",
