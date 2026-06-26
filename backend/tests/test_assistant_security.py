@@ -900,7 +900,15 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                 },
                 "workOrchestration": {
                     "sla": {"needsAttention": 3},
-                    "contracts": {"withContract": 2, "total": 4, "slaTracked": 3, "auditTrails": 2},
+                    "contracts": {
+                        "withContract": 2,
+                        "total": 4,
+                        "slaTracked": 3,
+                        "auditTrails": 2,
+                        "unattendedReady": 1,
+                        "unattendedBlocked": 2,
+                        "automationBlockers": [{"name": "pending_approval", "count": 2}],
+                    },
                 },
                 "recommendedNextActions": [{"area": "benchmarks", "action": "Create benchmark tasks for the top insurance workflows."}],
                 "automataGuidance": {
@@ -928,6 +936,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Runtime timeline: 6 steps, 3 tool, 1 skill, 1 replay-ready sessions." in reply
     assert "Work attention items: 3." in reply
     assert "Work contracts: 2/4 normalized, 3 SLA-tracked, 2 with audit trails." in reply
+    assert "Automation gate: 1 unattended-ready, 2 blocked." in reply
+    assert "First automation blocker: pending_approval." in reply
     assert "Automata sees 1 risk alert(s)." in reply
     assert "Next: Inspect failed traces before publishing." in reply
 

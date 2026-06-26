@@ -1497,6 +1497,14 @@ class AutomataAssistantService:
                     f" Work contracts: {contracts.get('withContract', 0)}/{contracts.get('total', 0)} normalized, "
                     f"{contracts.get('slaTracked', 0)} SLA-tracked, {contracts.get('auditTrails', 0)} with audit trails."
                 )
+                work_text += (
+                    f" Automation gate: {contracts.get('unattendedReady', 0)} unattended-ready, "
+                    f"{contracts.get('unattendedBlocked', 0)} blocked."
+                )
+                blockers = contracts.get("automationBlockers") if isinstance(contracts.get("automationBlockers"), list) else []
+                if blockers:
+                    first_blocker = blockers[0] if isinstance(blockers[0], dict) else {}
+                    work_text += f" First automation blocker: {first_blocker.get('name') or 'unknown'}."
         next_action = guidance.get("primaryNextAction") if isinstance(guidance.get("primaryNextAction"), dict) else next_actions[0] if next_actions and isinstance(next_actions[0], dict) else {}
         risks = guidance.get("riskAlerts") if isinstance(guidance.get("riskAlerts"), list) else []
         risk_text = f" Automata sees {len(risks)} risk alert(s)." if risks else ""
