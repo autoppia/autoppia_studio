@@ -32,6 +32,11 @@ PROMOTION_PIPELINE_ACTIONS = {
         "severity": "medium",
         "action": "Publish a hardened skill once task and approved trajectory evidence exist.",
     },
+    "pending_trajectory_rows": {
+        "area": "data_model",
+        "severity": "medium",
+        "action": "Keep pending harvest work in benchmark tasks; trajectories should contain generated execution evidence only.",
+    },
 }
 
 
@@ -95,6 +100,12 @@ def summarize_promotion_pipeline(
         for trajectory in trajectories
         if _clean_id(trajectory.get("trajectoryId")) and _status(trajectory.get("status")) in {"approved", "accepted"}
     }
+    legacy_pending_trajectories = [
+        trajectory
+        for trajectory in trajectories
+        if _status(trajectory.get("status")) in {"needs_harvest", "draft", "harvester_pending", "harvesting"}
+        or trajectory.get("needs_harvest") is True
+    ]
     trajectories_by_task = {
         _clean_id(trajectory.get("taskId"))
         for trajectory in trajectories
@@ -150,6 +161,9 @@ def summarize_promotion_pipeline(
     if ready_tasks and approved_trajectories and not published_skills:
         gaps.append({"key": "publish_skill", "label": "Approved task/trajectory evidence exists but no skill is published.", "target": "capabilities"})
         gap_counts["publish_skill"] = 1
+    if legacy_pending_trajectories:
+        gaps.append({"key": "pending_trajectory_rows", "label": "Pending harvest work is still represented as trajectory rows.", "target": "data_model"})
+        gap_counts["pending_trajectory_rows"] = len(legacy_pending_trajectories)
 
     return {
         "tasks": {
@@ -163,6 +177,7 @@ def summarize_promotion_pipeline(
             "approved": approved_trajectories,
             "linkedToTasks": len(trajectories_by_task & task_ids),
             "approvalRatio": round(approved_trajectories / len(trajectories), 3) if trajectories else 0.0,
+            "legacyPendingRows": len(legacy_pending_trajectories),
         },
         "skills": {
             "total": len(skills),
@@ -172,7 +187,7 @@ def summarize_promotion_pipeline(
             "published": published_skills,
             "promotionRatio": round(skills_with_approved_trajectory / len(skills), 3) if skills else 0.0,
         },
-        "ready": bool(tasks and tasks_with_trajectory and approved_trajectories and skills_with_approved_trajectory and reusable_skills),
+        "ready": bool(tasks and tasks_with_trajectory and approved_trajectories and skills_with_approved_trajectory and reusable_skills and not legacy_pending_trajectories),
         "path": {
             "taskToTrajectory": bool(tasks_with_trajectory),
             "trajectoryApproved": bool(approved_trajectories),
