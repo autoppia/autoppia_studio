@@ -56,6 +56,31 @@ def _approval_hardening(missing_boundaries: list[str]) -> dict[str, Any]:
     }
 
 
+def _runtime_policy_playbook(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    actions = {
+        "browser_allowlist": "Configure explicit domain allowlists before enabling browser-capable runtime sessions.",
+        "browser_domain_coverage": "Restrict or approve the observed browser domains before replaying or publishing the capability.",
+        "browser_default_discipline": "Move repeat browser-only paths behind API or hybrid capabilities so browser remains an exception.",
+        "side_effect_approval_coverage": "Require human approval for observed write/send side effects before production runtime use.",
+        "write_approval": "Add write approval boundaries to writable runtime capabilities.",
+        "runtime_policy": "Declare runtime policies for tools and skills before using them in AgentRuntime.",
+    }
+    severities = {
+        "browser_default_discipline": "medium",
+        "side_effect_approval_coverage": "high",
+        "write_approval": "high",
+    }
+    return [
+        {
+            "gap": str(gap.get("key") or "runtime_policy"),
+            "target": gap.get("target") or "runtime",
+            "severity": severities.get(str(gap.get("key") or ""), "medium"),
+            "action": actions.get(str(gap.get("key") or ""), str(gap.get("label") or "Resolve runtime policy gap.")),
+        }
+        for gap in gaps
+    ]
+
+
 def _runtime_class(value: Any) -> str:
     raw = str(value or "").strip().lower()
     if raw in {"hybrid", "hybrid_runtime"}:
@@ -208,6 +233,7 @@ def summarize_runtime_policy_map(
         for gap in [
             {"key": "browser_allowlist", "label": "Browser-capable runtime exists but no domain allowlist is configured.", "target": "governance"} if (browser_policy_count or browser_session_count) and not restricted_by_domain else None,
             {"key": "browser_domain_coverage", "label": "Browser runtime observed domains outside the configured allowlist.", "target": "governance"} if browser_session_count and uncovered_domains else None,
+            {"key": "browser_default_discipline", "label": "Browser-only runtime sessions exceed API-first or hybrid runtime evidence.", "target": "runtime"} if not browser_exception_ready else None,
             {"key": "side_effect_approval_coverage", "label": "Write or send capability boundaries were observed without matching approval requirements.", "target": "capabilities"} if missing_observed_approval else None,
             {"key": "write_approval", "label": "Writable tools or skills exist without write approval boundaries.", "target": "capabilities"} if all_policies and not any("write" in (policy.get("approvalRequiredFor") or []) for policy in all_policies) else None,
             {"key": "runtime_policy", "label": "No tool or skill runtime policies are available yet.", "target": "capabilities"} if not all_policies else None,
@@ -296,4 +322,5 @@ def summarize_runtime_policy_map(
             "sendsProtected": any("send" in (policy.get("approvalRequiredFor") or []) for policy in all_policies),
         },
         "gaps": gaps,
+        "hardeningPlaybook": _runtime_policy_playbook(gaps),
     }

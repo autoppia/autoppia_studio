@@ -909,6 +909,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "replayContractBlocked": 1,
         "businessOutputContractReady": 0,
         "businessOutputContractBlocked": 1,
+        "runtimeClassGate": "ready",
+        "browserExceptionDiscipline": "ready",
     }
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")

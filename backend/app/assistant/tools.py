@@ -861,6 +861,7 @@ class AutomataAssistantTools:
             first_replay_contract.get("hardeningPlaybook"),
             session_contracts.get("hardeningPlaybook"),
             artifact_outputs.get("hardeningPlaybook"),
+            runtime_policy_map.get("hardeningPlaybook"),
             (runtime_policy_map.get("approvalBoundaries") or {}).get("hardening", {}).get("playbook"),
         )
         work_orchestration_hardening = _first_playbook_item(
@@ -893,6 +894,11 @@ class AutomataAssistantTools:
                 "replayContractBlocked": vertical_demos.get("replayContractBlocked", 0),
                 "businessOutputContractReady": vertical_demos.get("businessOutputContractReady", 0),
                 "businessOutputContractBlocked": vertical_demos.get("businessOutputContractBlocked", 0),
+                "runtimeClassGate": (runtime_policy_map.get("runtimeClassGate") or {}).get("state") or "unknown",
+                "browserExceptionDiscipline": (
+                    ((runtime_policy_map.get("runtimeTaxonomy") or {}).get("browserExceptionDiscipline") or {}).get("state")
+                    or "unknown"
+                ),
             },
             "Runtime Lab": {
                 "sessions": counts["sessions"],
@@ -950,6 +956,7 @@ class AutomataAssistantTools:
                 "status": _surface_status(
                     bool(runtime_session_gate.get("ready"))
                     and bool((artifact_outputs.get("businessOutputDeliveryGate") or {}).get("ready", True))
+                    and bool((runtime_policy_map.get("runtimeClassGate") or {}).get("ready", True))
                     and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
                     and not vertical_demos.get("replayContractBlocked", 0)
                 ),

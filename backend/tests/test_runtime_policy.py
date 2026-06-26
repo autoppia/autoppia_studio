@@ -195,6 +195,13 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         ],
     }
     assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
+    assert any(gap["key"] == "browser_default_discipline" for gap in summary["gaps"])
+    assert {
+        "gap": "browser_default_discipline",
+        "target": "runtime",
+        "severity": "medium",
+        "action": "Move repeat browser-only paths behind API or hybrid capabilities so browser remains an exception.",
+    } in summary["hardeningPlaybook"]
 
 
 def test_runtime_policy_summary_flags_observed_side_effects_without_approval():
@@ -224,6 +231,12 @@ def test_runtime_policy_summary_flags_observed_side_effects_without_approval():
     assert summary["runtimeClassGate"]["checks"]["sideEffectsApproved"] is False
     assert {"name": "side_effect_approval_coverage", "count": 1} in summary["runtimeClassGate"]["blockers"]
     assert any(gap["key"] == "side_effect_approval_coverage" for gap in summary["gaps"])
+    assert {
+        "gap": "side_effect_approval_coverage",
+        "target": "capabilities",
+        "severity": "high",
+        "action": "Require human approval for observed write/send side effects before production runtime use.",
+    } in summary["hardeningPlaybook"]
 
 
 def test_observed_browser_domains_extracts_urls_only_from_browser_sessions():
