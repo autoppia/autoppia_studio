@@ -1388,6 +1388,7 @@ class AutomataAssistantService:
             return "You do not have a company configured yet. I can help you start onboarding and create the company, connectors, tasks, and first agent."
         operating_state = snapshot.get("operatingState") if isinstance(snapshot.get("operatingState"), dict) else {}
         readiness = operating_state.get("readiness") if isinstance(operating_state.get("readiness"), dict) else {}
+        company_setup = operating_state.get("companySetup") if isinstance(operating_state.get("companySetup"), dict) else {}
         capability_map = operating_state.get("capabilityMap") if isinstance(operating_state.get("capabilityMap"), dict) else {}
         resource_map = operating_state.get("resourceMap") if isinstance(operating_state.get("resourceMap"), dict) else {}
         runtime = operating_state.get("runtime") if isinstance(operating_state.get("runtime"), dict) else {}
@@ -1396,6 +1397,18 @@ class AutomataAssistantService:
         guidance = operating_state.get("automataGuidance") if isinstance(operating_state.get("automataGuidance"), dict) else {}
         score = readiness.get("score")
         score_text = f" Readiness is {int(float(score) * 100)}%." if isinstance(score, (int, float)) else ""
+        company_setup_text = ""
+        setup_gate = company_setup.get("setupGate") if isinstance(company_setup.get("setupGate"), dict) else {}
+        integration = company_setup.get("integration") if isinstance(company_setup.get("integration"), dict) else {}
+        if setup_gate:
+            blockers = setup_gate.get("blockers") if isinstance(setup_gate.get("blockers"), list) else []
+            company_setup_text = (
+                f" Company Setup gate: {setup_gate.get('state', 'unknown')}, "
+                f"{integration.get('systems', 0)} system(s), {integration.get('secrets', 0)} secret(s), "
+                f"{len(integration.get('domainAllowlist') or [])} allowed domain(s)."
+            )
+            if blockers:
+                company_setup_text += f" First setup blocker: {blockers[0]}."
         task_contracts = capability_map.get("taskContracts") if isinstance(capability_map.get("taskContracts"), dict) else {}
         skills = capability_map.get("skills") if isinstance(capability_map.get("skills"), dict) else {}
         eval_gate = capability_map.get("evalGate") if isinstance(capability_map.get("evalGate"), dict) else {}
@@ -1492,7 +1505,7 @@ class AutomataAssistantService:
             f"I can see {counts.get('companies', 0)} company, {counts.get('agents', 0)} agent config(s), "
             f"{counts.get('connectors', 0)} connector(s), {counts.get('tools', 0)} tool(s), "
             f"and {counts.get('skills', 0)} skill(s) in your scoped Studio workspace."
-            f"{score_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
+            f"{score_text}{company_setup_text}{coverage_text}{resource_text}{runtime_text}{work_text}{risk_text}{next_text}"
         )
 
     def _connectors_reply(self, connectors: list[dict[str, Any]]) -> str:
