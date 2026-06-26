@@ -1242,6 +1242,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "proofBlocked": 1,
                         "replayContractReady": 1,
                         "replayContractBlocked": 1,
+                        "businessOutputContractReady": 1,
+                        "businessOutputContractBlocked": 1,
                         "demos": [
                             {
                                 "insuranceFlowProofGate": {
@@ -1258,6 +1260,20 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                                         "missingEvidence": ["passing AgentRuntime replay"],
                                         "evidenceFound": {
                                             "promotedSkillIds": ["skill-claims"],
+                                            "artifacts": ["draft_email"],
+                                            "approvalBoundaries": ["draft_only_before_send"],
+                                        },
+                                    },
+                                    "businessOutputContract": {
+                                        "state": "needs_hardening",
+                                        "ready": False,
+                                        "outputArtifact": "draft_email",
+                                        "deliveryPolicy": "human_approval_before_send",
+                                        "missing": ["passingReplayAssertsOutput"],
+                                        "missingEvidence": [
+                                            "passing replay asserting artifact and approval boundary"
+                                        ],
+                                        "evidenceFound": {
                                             "artifacts": ["draft_email"],
                                             "approvalBoundaries": ["draft_only_before_send"],
                                         },
@@ -1412,10 +1428,13 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready, 1 proof-blocked." in reply
     assert "Replay contracts: 1 ready, 1 blocked." in reply
+    assert "Business output contracts: 1 ready, 1 blocked." in reply
     assert "First demo blocker: Capability factory." in reply
     assert "Insurance proof gate: needs_hardening, 7/9 proof step(s) ready." in reply
     assert "Runtime replay contract: needs_hardening, missing passing AgentRuntime replay." in reply
     assert "Replay evidence: 0 passing run(s), 1 promoted skill(s), 1 artifact(s), 1 approval boundary marker(s)." in reply
+    assert "Business output contract: needs_hardening, artifact draft_email, delivery human_approval_before_send, missing passing replay asserting artifact and approval boundary." in reply
+    assert "Business output evidence: 1 artifact(s), 1 approval boundary marker(s), 0 passing run(s)." in reply
     assert "First proof hardening: Replay the approved insurance skill in AgentRuntime before declaring the demo production-ready." in reply
     assert "First proof blocker: Runtime replay." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply

@@ -1675,6 +1675,14 @@ class AutomataAssistantService:
                     f" Replay contracts: {vertical_demos.get('replayContractReady', 0)} ready, "
                     f"{vertical_demos.get('replayContractBlocked', 0)} blocked."
                 )
+                if (
+                    "businessOutputContractReady" in vertical_demos
+                    or "businessOutputContractBlocked" in vertical_demos
+                ):
+                    coverage_text += (
+                        f" Business output contracts: {vertical_demos.get('businessOutputContractReady', 0)} ready, "
+                        f"{vertical_demos.get('businessOutputContractBlocked', 0)} blocked."
+                    )
                 if vertical_demo_gaps:
                     first_gap = vertical_demo_gaps[0] if isinstance(vertical_demo_gaps[0], dict) else {}
                     coverage_text += f" First demo blocker: {first_gap.get('label') or first_gap.get('group') or 'operational evidence'}."
@@ -1728,6 +1736,38 @@ class AutomataAssistantService:
                                 f"{len(replay_evidence.get('promotedSkillIds') or [])} promoted skill(s), "
                                 f"{len(replay_evidence.get('artifacts') or [])} artifact(s), "
                                 f"{len(replay_evidence.get('approvalBoundaries') or [])} approval boundary marker(s)."
+                            )
+                    output_contract = (
+                        proof_gate.get("businessOutputContract")
+                        if isinstance(proof_gate.get("businessOutputContract"), dict)
+                        else {}
+                    )
+                    if output_contract:
+                        output_missing = (
+                            output_contract.get("missingEvidence")
+                            if isinstance(output_contract.get("missingEvidence"), list)
+                            else output_contract.get("missing")
+                            if isinstance(output_contract.get("missing"), list)
+                            else []
+                        )
+                        output_missing_text = ", ".join(str(item) for item in output_missing) or "none"
+                        coverage_text += (
+                            f" Business output contract: {output_contract.get('state') or 'unknown'}, "
+                            f"artifact {output_contract.get('outputArtifact') or 'business output'}, "
+                            f"delivery {output_contract.get('deliveryPolicy') or 'policy'}, "
+                            f"missing {output_missing_text}."
+                        )
+                        output_evidence = (
+                            output_contract.get("evidenceFound")
+                            if isinstance(output_contract.get("evidenceFound"), dict)
+                            else {}
+                        )
+                        if output_evidence:
+                            coverage_text += (
+                                f" Business output evidence: "
+                                f"{len(output_evidence.get('artifacts') or [])} artifact(s), "
+                                f"{len(output_evidence.get('approvalBoundaries') or [])} approval boundary marker(s), "
+                                f"{int(output_evidence.get('passingRuns') or 0)} passing run(s)."
                             )
                     proof_playbook = proof_gate.get("hardeningPlaybook") if isinstance(proof_gate.get("hardeningPlaybook"), list) else []
                     first_proof_action = proof_playbook[0] if proof_playbook and isinstance(proof_playbook[0], dict) else {}
