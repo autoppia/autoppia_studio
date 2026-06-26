@@ -1,4 +1,5 @@
 from app.services.runtime_sessions import (
+    build_runtime_evidence,
     build_runtime_metrics,
     build_runtime_policy_boundary,
     build_runtime_timeline,
@@ -59,6 +60,67 @@ def test_build_runtime_policy_boundary_counts_side_effect_boundaries_and_approva
         "artifactCount": 2,
         "hasHumanBoundary": True,
     }
+
+
+def test_build_runtime_evidence_summarizes_trace_capability_and_outputs():
+    evidence = build_runtime_evidence(
+        {
+            "runtimeKind": "hybrid",
+            "browserActionCount": 1,
+            "connectorActionCount": 2,
+            "creditsSpent": 3.25,
+            "matchedSkillId": "skill-1",
+            "matchedSkillName": "Draft claim reply",
+            "workItemId": "work-1",
+            "runId": "run-1",
+            "pendingConnectorApproval": "smtp.send_email:0:abc",
+            "runtimeMetrics": {
+                "runtimeKind": "hybrid",
+                "traceIds": ["run-1", "trace-1", "trace-2"],
+                "durationSeconds": 4.5,
+            },
+            "runtimeTimeline": [
+                {"action": "browser.navigate", "status": "ok"},
+                {"action": "imap.search_emails", "status": "pending"},
+                {"action": "skill.use", "status": "failed"},
+            ],
+            "runtimePolicyBoundary": {"approvalRequiredFor": ["send"], "hasHumanBoundary": True},
+        },
+        artifact_count=2,
+        pending_approval_count=1,
+    )
+
+    assert evidence["summary"] == {
+        "runtimeKind": "hybrid",
+        "toolCalls": 2,
+        "browserSteps": 1,
+        "artifacts": 2,
+        "pendingApprovals": 1,
+        "creditsSpent": 3.25,
+        "durationSeconds": 4.5,
+    }
+    assert evidence["trace"] == {
+        "traceIds": ["run-1", "trace-1", "trace-2"],
+        "traceCount": 3,
+        "timelineSteps": 3,
+        "failedSteps": 1,
+        "pendingSteps": 1,
+        "lastTraceId": "trace-2",
+        "replayReady": False,
+    }
+    assert evidence["capabilityRefs"] == {
+        "skillId": "skill-1",
+        "skillName": "Draft claim reply",
+        "workItemId": "work-1",
+        "runId": "run-1",
+        "linked": True,
+    }
+    assert evidence["approvalBoundary"] == {
+        "approvalRequiredFor": ["send"],
+        "hasHumanBoundary": True,
+        "pendingConnectorApproval": "smtp.send_email:0:abc",
+    }
+    assert evidence["outputs"] == {"artifactCount": 2, "hasBusinessOutput": True}
 
 
 def test_build_runtime_timeline_normalizes_actions_status_and_trace_fields():
