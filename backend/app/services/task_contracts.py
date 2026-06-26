@@ -205,6 +205,7 @@ def task_contract_hardening(contract: dict[str, Any]) -> dict[str, Any]:
         "totalChecks": total,
         "score": round(passed / total, 3) if total else 0.0,
         "evaluationReady": bool(checks["successCriteria"] and reproducibility["readyForReplay"]),
+        "productionReady": bool(not missing and reproducibility["readyForReplay"]),
         "reproducibility": reproducibility,
     }
 
@@ -232,6 +233,7 @@ def task_contract_hardening_summary(contracts: list[dict[str, Any]], *, sample_l
         "total": len(contracts),
         "complete": sum(1 for item in hardening if item["state"] == "complete"),
         "evaluationReady": sum(1 for item in hardening if item["evaluationReady"]),
+        "productionReady": sum(1 for item in hardening if item["productionReady"]),
         "averageScore": round(sum(float(item.get("score") or 0) for item in hardening) / len(hardening), 3) if hardening else 0.0,
         "missingFields": [{"name": key, "count": missing_counts[key]} for key in sorted(missing_counts, key=lambda item: (-missing_counts[item], item))],
         "playbook": playbook,

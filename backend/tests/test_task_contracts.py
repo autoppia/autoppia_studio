@@ -120,6 +120,7 @@ def test_task_contract_hardening_surfaces_missing_eval_gate_fields():
     assert hardening["state"] == "incomplete"
     assert hardening["missingFields"] == ["initialState", "successCriteria", "riskClass"]
     assert hardening["evaluationReady"] is False
+    assert hardening["productionReady"] is False
     assert hardening["nextActions"] == [
         "Attach an initial URL or state so the task can be replayed.",
         "Add deterministic success criteria before using this task as an eval gate.",
@@ -146,6 +147,7 @@ def test_task_contract_hardening_summary_builds_actionable_playbook():
     assert summary["total"] == 2
     assert summary["complete"] == 1
     assert summary["evaluationReady"] == 1
+    assert summary["productionReady"] == 1
     assert summary["averageScore"] == 0.584
     assert summary["missingFields"] == [
         {"name": "allowedSystems", "count": 1},

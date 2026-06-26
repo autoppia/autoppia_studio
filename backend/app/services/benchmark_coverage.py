@@ -135,6 +135,7 @@ def task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
         "score": hardening["score"],
         "state": hardening["state"],
         "evaluationReady": hardening["evaluationReady"],
+        "productionReady": hardening["productionReady"],
         "reproducibility": hardening["reproducibility"],
     }
 
@@ -313,6 +314,7 @@ def benchmark_coverage_summary(
     ready_statuses = {"ready", *published_statuses}
     task_complete = sum(1 for item in completeness if item.get("state") == "complete")
     task_evaluation_ready = sum(1 for item in completeness if item.get("evaluationReady"))
+    task_production_ready = sum(1 for item in completeness if item.get("productionReady"))
     missing_field_counts: dict[str, int] = {}
     for item in completeness:
         for field in item.get("missingFields") or []:
@@ -330,6 +332,7 @@ def benchmark_coverage_summary(
             "total": len(completeness),
             "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
             "evaluationReady": task_evaluation_ready,
+            "productionReady": task_production_ready,
             "missingFields": [{"name": key, "count": missing_field_counts[key]} for key in sorted(missing_field_counts, key=lambda item: (-missing_field_counts[item], item))],
             "reproducibility": {
                 "withInitialState": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("initialState")),
@@ -385,6 +388,7 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     task_total = sum(int((item.get("taskContractCoverage") or {}).get("total") or 0) for item in coverage_items)
     task_complete = sum(int((item.get("taskContractCoverage") or {}).get("complete") or 0) for item in coverage_items)
     task_evaluation_ready = sum(int((item.get("taskContractCoverage") or {}).get("evaluationReady") or 0) for item in coverage_items)
+    task_production_ready = sum(int((item.get("taskContractCoverage") or {}).get("productionReady") or 0) for item in coverage_items)
     missing_task_fields: dict[str, int] = {}
     for item in coverage_items:
         for field in (item.get("taskContractCoverage") or {}).get("missingFields") or []:
@@ -417,6 +421,7 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
             "complete": task_complete,
             "total": task_total,
             "evaluationReady": task_evaluation_ready,
+            "productionReady": task_production_ready,
             "coverageRatio": round(task_complete / task_total, 3) if task_total else 0.0,
             "missingFields": [{"name": key, "count": missing_task_fields[key]} for key in sorted(missing_task_fields, key=lambda item: (-missing_task_fields[item], item))],
         },
@@ -473,6 +478,7 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         task_total=task_total,
         task_complete=task_complete,
         task_evaluation_ready=task_evaluation_ready,
+        task_production_ready=task_production_ready,
         coverage_items=coverage_items,
         promotion_gate=portfolio["promotionGate"],
         regression_gate=portfolio["regressionGate"],
@@ -516,6 +522,7 @@ def eval_center_gate(
     task_total: int,
     task_complete: int,
     task_evaluation_ready: int,
+    task_production_ready: int,
     coverage_items: list[dict[str, Any]],
     promotion_gate: dict[str, Any],
     regression_gate: dict[str, Any],
@@ -529,6 +536,7 @@ def eval_center_gate(
         "benchmarksPresent": bool(coverage_items) and task_total > 0,
         "taskContractsComplete": bool(task_total) and task_complete == task_total,
         "tasksEvaluationReady": bool(task_total) and task_evaluation_ready == task_total,
+        "tasksProductionReady": bool(task_total) and task_production_ready == task_total,
         "tasksReplayReady": bool(task_total) and ready_for_replay == task_total,
         "judgeStrategyReady": bool(judge_strategy_gate.get("ready")),
         "regressionMatrixReady": bool(regression_gate.get("ready")),
@@ -538,8 +546,8 @@ def eval_center_gate(
     gap_counts: dict[str, int] = {}
     if not checks["benchmarksPresent"]:
         gap_counts["eval_center_empty"] = 1
-    if not checks["taskContractsComplete"] or not checks["tasksEvaluationReady"]:
-        gap_counts["task_eval_contracts"] = max(1, task_total - min(task_complete, task_evaluation_ready))
+    if not checks["taskContractsComplete"] or not checks["tasksEvaluationReady"] or not checks["tasksProductionReady"]:
+        gap_counts["task_eval_contracts"] = max(1, task_total - min(task_complete, task_evaluation_ready, task_production_ready))
     if not checks["tasksReplayReady"]:
         gap_counts["task_replayability"] = max(1, task_total - ready_for_replay)
     if not checks["judgeStrategyReady"]:
@@ -557,6 +565,7 @@ def eval_center_gate(
             "total": task_total,
             "complete": task_complete,
             "evaluationReady": task_evaluation_ready,
+            "productionReady": task_production_ready,
             "replayReady": ready_for_replay,
         },
         "capabilityRegression": {
