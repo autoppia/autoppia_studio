@@ -509,6 +509,11 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["expectedInputs"] == ["claim_id"]
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["readyForReplay"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["reproducibility"]["replayReadyRatio"] == 1.0
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["hardening"]["complete"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["hardening"]["evaluationReady"] == 0
+    assert snapshot["operatingState"]["capabilityMap"]["taskContracts"]["hardening"]["missingFields"] == [
+        {"name": "successCriteria", "count": 1}
+    ]
     assert snapshot["operatingState"]["capabilityMap"]["tools"]["typed"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["total"] == 2
     assert snapshot["operatingState"]["capabilityMap"]["entityMap"]["ready"] == 1

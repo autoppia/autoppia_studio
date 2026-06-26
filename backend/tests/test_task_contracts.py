@@ -1,4 +1,12 @@
-from app.services.task_contracts import build_task_contract, task_contract_from_record, task_contract_ready, task_evaluation_harness, task_reproducibility_summary
+from app.services.task_contracts import (
+    build_task_contract,
+    task_contract_from_record,
+    task_contract_hardening,
+    task_contract_hardening_summary,
+    task_contract_ready,
+    task_evaluation_harness,
+    task_reproducibility_summary,
+)
 
 
 def test_task_contract_from_record_normalizes_current_and_legacy_shapes():
@@ -98,3 +106,57 @@ def test_task_evaluation_harness_keeps_manual_override_when_contract_is_incomple
     assert harness["statefulReplay"] is False
     assert harness["llmAsComplement"] is False
     assert harness["layers"][-1]["key"] == "manual"
+
+
+def test_task_contract_hardening_surfaces_missing_eval_gate_fields():
+    hardening = task_contract_hardening(
+        {
+            "businessIntent": "Answer claim status",
+            "allowedSystems": ["claims_erp"],
+            "expectedArtifacts": ["draft_email"],
+        }
+    )
+
+    assert hardening["state"] == "incomplete"
+    assert hardening["missingFields"] == ["initialState", "successCriteria", "riskClass"]
+    assert hardening["evaluationReady"] is False
+    assert hardening["nextActions"] == [
+        "Attach an initial URL or state so the task can be replayed.",
+        "Add deterministic success criteria before using this task as an eval gate.",
+        "Assign a risk class for runtime policy and approval routing.",
+    ]
+
+
+def test_task_contract_hardening_summary_builds_actionable_playbook():
+    summary = task_contract_hardening_summary(
+        [
+            {
+                "businessIntent": "Answer claim status",
+                "initialUrl": "https://claims.example.com",
+                "allowedSystems": ["claims_erp"],
+                "expectedArtifacts": ["draft_email"],
+                "successCriteria": "Draft exists and email is not sent.",
+                "riskClass": "medium",
+                "fixtures": ["claim-1"],
+            },
+            {"businessIntent": "Incomplete"},
+        ]
+    )
+
+    assert summary["total"] == 2
+    assert summary["complete"] == 1
+    assert summary["evaluationReady"] == 1
+    assert summary["averageScore"] == 0.584
+    assert summary["missingFields"] == [
+        {"name": "allowedSystems", "count": 1},
+        {"name": "expectedArtifacts", "count": 1},
+        {"name": "initialState", "count": 1},
+        {"name": "riskClass", "count": 1},
+        {"name": "successCriteria", "count": 1},
+    ]
+    assert summary["playbook"][0] == {
+        "field": "allowedSystems",
+        "count": 1,
+        "severity": "medium",
+        "action": "List the systems, connectors, or domains the agent may use.",
+    }

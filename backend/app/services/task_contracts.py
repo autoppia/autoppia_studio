@@ -4,6 +4,16 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+TASK_CONTRACT_ACTIONS = {
+    "businessIntent": "Declare the business intent this task evaluates.",
+    "initialState": "Attach an initial URL or state so the task can be replayed.",
+    "allowedSystems": "List the systems, connectors, or domains the agent may use.",
+    "expectedArtifacts": "Declare the business artifact expected from this task.",
+    "successCriteria": "Add deterministic success criteria before using this task as an eval gate.",
+    "riskClass": "Assign a risk class for runtime policy and approval routing.",
+}
+
+
 def _clean_string(value: Any) -> str:
     return str(value or "").strip()
 
@@ -162,6 +172,71 @@ def task_contract_ready(task: dict[str, Any]) -> bool:
         and contract["expectedArtifacts"]
         and contract["riskClass"]
     )
+
+
+def task_contract_hardening(contract: dict[str, Any]) -> dict[str, Any]:
+    checks = {
+        "businessIntent": bool(str(contract.get("businessIntent") or "").strip()),
+        "initialState": bool(contract.get("initialUrl") or contract.get("initialState")),
+        "allowedSystems": bool(contract.get("allowedSystems")),
+        "expectedArtifacts": bool(contract.get("expectedArtifacts")),
+        "successCriteria": bool(str(contract.get("successCriteria") or "").strip()),
+        "riskClass": bool(str(contract.get("riskClass") or "").strip()),
+    }
+    missing = [field for field, ready in checks.items() if not ready]
+    passed = sum(1 for ready in checks.values() if ready)
+    total = len(checks)
+    reproducibility = {
+        "initialState": checks["initialState"],
+        "evaluatorConfig": bool(contract.get("evaluatorConfig")),
+        "fixtures": bool(contract.get("fixtures")),
+        "seed": bool(str(contract.get("seed") or "").strip()),
+        "readyForReplay": bool(
+            checks["initialState"]
+            and (contract.get("evaluatorConfig") or contract.get("fixtures") or str(contract.get("seed") or "").strip())
+        ),
+    }
+    return {
+        "state": "complete" if not missing else "incomplete",
+        "checks": checks,
+        "missingFields": missing,
+        "nextActions": [TASK_CONTRACT_ACTIONS[field] for field in missing],
+        "passedChecks": passed,
+        "totalChecks": total,
+        "score": round(passed / total, 3) if total else 0.0,
+        "evaluationReady": bool(checks["successCriteria"] and reproducibility["readyForReplay"]),
+        "reproducibility": reproducibility,
+    }
+
+
+def task_contract_hardening_summary(contracts: list[dict[str, Any]], *, sample_limit: int = 5) -> dict[str, Any]:
+    hardening = [task_contract_hardening(contract) for contract in contracts]
+    missing_counts: dict[str, int] = {}
+    playbook: list[dict[str, Any]] = []
+    for item in hardening:
+        for field in item.get("missingFields") or []:
+            field_name = str(field or "").strip()
+            if not field_name:
+                continue
+            missing_counts[field_name] = missing_counts.get(field_name, 0) + 1
+    for field in sorted(missing_counts, key=lambda item: (-missing_counts[item], item)):
+        playbook.append(
+            {
+                "field": field,
+                "count": missing_counts[field],
+                "severity": "high" if field in {"successCriteria", "riskClass"} else "medium",
+                "action": TASK_CONTRACT_ACTIONS.get(field, "Complete this task contract field."),
+            }
+        )
+    return {
+        "total": len(contracts),
+        "complete": sum(1 for item in hardening if item["state"] == "complete"),
+        "evaluationReady": sum(1 for item in hardening if item["evaluationReady"]),
+        "averageScore": round(sum(float(item.get("score") or 0) for item in hardening) / len(hardening), 3) if hardening else 0.0,
+        "missingFields": [{"name": key, "count": missing_counts[key]} for key in sorted(missing_counts, key=lambda item: (-missing_counts[item], item))],
+        "playbook": playbook,
+        "sample": hardening[:sample_limit],
+    }
 
 
 def task_reproducibility_summary(contracts: list[dict[str, Any]]) -> dict[str, Any]:
