@@ -29,6 +29,22 @@ ASSISTANT_MAX_OUTPUT_TOKENS = int(os.getenv("AUTOMATA_ASSISTANT_MAX_OUTPUT_TOKEN
 MAX_TOOL_ROUNDS = 4
 
 
+def _coverage_gap_label(eval_coverage: dict[str, Any]) -> str:
+    missing: list[str] = []
+    singular = {"connectors": "connector", "entities": "entity", "skills": "skill"}
+    for kind in ("connectors", "entities", "skills"):
+        coverage = eval_coverage.get(kind) if isinstance(eval_coverage.get(kind), dict) else {}
+        try:
+            total = int(coverage.get("total") or 0)
+            covered = int(coverage.get("covered") or 0)
+        except (TypeError, ValueError):
+            continue
+        count = max(0, total - covered)
+        if count:
+            missing.append(f"{count} {singular.get(kind, kind) if count == 1 else kind}")
+    return ", ".join(missing)
+
+
 def normalize_assistant_model(model: str) -> str:
     clean = (model or "").strip().lower().replace("_", "-")
     aliases = {
@@ -1521,6 +1537,9 @@ class AutomataAssistantService:
                     f"entities {entity_coverage.get('covered', 0)}/{entity_coverage.get('total', 0)}, "
                     f"skills {skill_coverage.get('covered', 0)}/{skill_coverage.get('total', 0)}."
                 )
+                coverage_gap = _coverage_gap_label(eval_coverage)
+                if coverage_gap:
+                    coverage_text += f" First eval coverage blocker: {coverage_gap}."
             if benchmark_portfolio:
                 promotion_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}
                 regression_gate = benchmark_portfolio.get("regressionGate") if isinstance(benchmark_portfolio.get("regressionGate"), dict) else {}

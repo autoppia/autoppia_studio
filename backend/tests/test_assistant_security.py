@@ -1248,6 +1248,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Skill release gate: needs_hardening." in reply
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
+    assert "First eval coverage blocker: 1 connector, 3 entities, 3 skills." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
     assert "Eval center gate: blocked, 3/7 replay-ready task(s)." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
