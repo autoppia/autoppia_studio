@@ -140,6 +140,20 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
         "severity": "none",
         "nextActions": [],
     }
+    assert summary["runtimeClassGate"] == {
+        "state": "needs_hardening",
+        "ready": False,
+        "declared": ["api", "browser"],
+        "observed": ["browser"],
+        "checks": {
+            "declaredPolicies": True,
+            "observedRuntimeCovered": True,
+            "browserAsException": True,
+            "browserDomainGoverned": False,
+            "sideEffectsApproved": True,
+        },
+        "blockers": [{"name": "browser_domain_governance", "count": 1}],
+    }
     assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
 
 
@@ -167,6 +181,8 @@ def test_runtime_policy_summary_flags_observed_side_effects_without_approval():
             }
         ],
     }
+    assert summary["runtimeClassGate"]["checks"]["sideEffectsApproved"] is False
+    assert {"name": "side_effect_approval_coverage", "count": 1} in summary["runtimeClassGate"]["blockers"]
     assert any(gap["key"] == "side_effect_approval_coverage" for gap in summary["gaps"])
 
 

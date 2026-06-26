@@ -714,6 +714,14 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["coverageRatio"] == 1.0
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClassGate"]["state"] == "ready"
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClassGate"]["checks"] == {
+        "declaredPolicies": True,
+        "observedRuntimeCovered": True,
+        "browserAsException": True,
+        "browserDomainGoverned": True,
+        "sideEffectsApproved": True,
+    }
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["approvalBoundaries"]["hardening"]["ready"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["sendsProtected"] is True
@@ -1087,6 +1095,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "runtimePolicyMap": {
                         "defaultBrowserUse": "exception",
                         "runtimeClasses": {"browserSessions": 1},
+                        "runtimeClassGate": {"state": "needs_hardening"},
                         "humanApproval": {"writesProtected": True, "sendsProtected": True},
                         "approvalBoundaries": {"sideEffectsProtected": False, "missingObservedApproval": ["write"]},
                         "browserDomainGovernance": {
@@ -1155,6 +1164,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
     assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply
+    assert "Runtime class gate: needs_hardening." in reply
     assert "Side-effect approvals: incomplete." in reply
     assert "Missing approval boundary: write." in reply
     assert "Browser domain governance: 1/2 observed domain(s) covered, 1 allowed." in reply

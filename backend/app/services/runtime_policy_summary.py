@@ -56,6 +56,56 @@ def _approval_hardening(missing_boundaries: list[str]) -> dict[str, Any]:
     }
 
 
+def _runtime_class(value: Any) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"hybrid", "hybrid_runtime"}:
+        return "hybrid"
+    if raw in {"browser", "browser_runtime", "computer_use", "web_runtime"}:
+        return "browser"
+    if raw in {"api", "api_runtime", "connector", "connector_runtime"}:
+        return "api"
+    return raw or "unknown"
+
+
+def _runtime_class_gate(
+    *,
+    policies: list[dict[str, Any]],
+    runtime_kinds: list[str],
+    restricted_by_domain: bool,
+    uncovered_domains: list[str],
+    missing_observed_approval: list[str],
+) -> dict[str, Any]:
+    declared = {_runtime_class(policy.get("runtimeClass")) for policy in policies if policy.get("runtimeClass")}
+    observed = {_runtime_class(kind) for kind in runtime_kinds if str(kind or "").strip()}
+    observed_supported = not observed or bool(declared & observed) or ("hybrid" in declared and observed <= {"api", "browser", "hybrid"})
+    browser_in_use = bool({"browser", "hybrid"} & (declared | observed))
+    checks = {
+        "declaredPolicies": bool(policies),
+        "observedRuntimeCovered": observed_supported,
+        "browserAsException": True,
+        "browserDomainGoverned": (not browser_in_use) or (restricted_by_domain and not uncovered_domains),
+        "sideEffectsApproved": not missing_observed_approval,
+    }
+    blockers = []
+    if not checks["declaredPolicies"]:
+        blockers.append({"name": "runtime_policy", "count": 1})
+    if not checks["observedRuntimeCovered"]:
+        blockers.append({"name": "observed_runtime_policy", "count": len(observed)})
+    if not checks["browserDomainGoverned"]:
+        blockers.append({"name": "browser_domain_governance", "count": len(uncovered_domains) or 1})
+    if not checks["sideEffectsApproved"]:
+        blockers.append({"name": "side_effect_approval_coverage", "count": len(missing_observed_approval)})
+    ready = all(checks.values())
+    return {
+        "state": "ready" if ready else "needs_hardening",
+        "ready": ready,
+        "declared": sorted(declared),
+        "observed": sorted(observed),
+        "checks": checks,
+        "blockers": blockers,
+    }
+
+
 def normalize_runtime_domains(values: list[Any]) -> list[str]:
     domains: set[str] = set()
     for value in values:
@@ -171,6 +221,13 @@ def summarize_runtime_policy_map(
             "browserCapabilities": browser_policy_count,
             "browserSessions": browser_session_count,
         },
+        "runtimeClassGate": _runtime_class_gate(
+            policies=all_policies,
+            runtime_kinds=runtime_kinds,
+            restricted_by_domain=restricted_by_domain,
+            uncovered_domains=uncovered_domains,
+            missing_observed_approval=missing_observed_approval,
+        ),
         "approvalBoundaries": {
             "skills": _approval_boundary_counts(skill_policies),
             "tools": _approval_boundary_counts(tool_policies),

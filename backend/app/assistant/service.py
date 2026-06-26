@@ -1567,6 +1567,9 @@ class AutomataAssistantService:
                 f"{classes.get('browserSessions', 0)} browser sessions, "
                 f"write/send {'protected' if human.get('writesProtected') and human.get('sendsProtected') else 'incomplete'}."
             )
+            class_gate = runtime_policy.get("runtimeClassGate") if isinstance(runtime_policy.get("runtimeClassGate"), dict) else {}
+            if class_gate:
+                runtime_text += f" Runtime class gate: {class_gate.get('state', 'unknown')}."
             approval_boundaries = runtime_policy.get("approvalBoundaries") if isinstance(runtime_policy.get("approvalBoundaries"), dict) else {}
             if approval_boundaries:
                 missing_approvals = approval_boundaries.get("missingObservedApproval") if isinstance(approval_boundaries.get("missingObservedApproval"), list) else []
