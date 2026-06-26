@@ -97,6 +97,32 @@ def test_summarize_vertical_demos_counts_partial_and_missing_states():
     assert summary["integrationReady"] == 1
     assert summary["factoryReady"] == 0
     assert summary["runtimeReady"] == 0
+    assert summary["hardeningPlaybook"][:2] == [
+        {
+            "gap": "runtime_replay",
+            "count": 2,
+            "group": "runtime",
+            "area": "runtime",
+            "severity": "high",
+            "action": "Capture a passing runtime replay or eval run for the vertical flow.",
+            "example": {
+                "benchmarkId": "bench-partial",
+                "objective": "Reply to a customer about claim status without sending the final email.",
+            },
+        },
+        {
+            "gap": "skill_promotion",
+            "count": 2,
+            "group": "factory",
+            "area": "skills",
+            "severity": "high",
+            "action": "Promote the approved trajectory into a reusable skill package.",
+            "example": {
+                "benchmarkId": "bench-partial",
+                "objective": "Reply to a customer about claim status without sending the final email.",
+            },
+        },
+    ]
     partial_demo = summary["demos"][0]
     assert partial_demo["operationalReadiness"]["enterpriseReady"] is False
     readiness_by_key = {item["key"]: item for item in partial_demo["operationalReadiness"]["groups"]}

@@ -575,6 +575,18 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["factoryReady"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["runtimeReady"] == 1
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["demos"][0]["missing"] == ["trajectory", "skill_promotion"]
+    assert {
+        "gap": "skill_promotion",
+        "count": 1,
+        "group": "factory",
+        "area": "skills",
+        "severity": "high",
+        "action": "Promote the approved trajectory into a reusable skill package.",
+        "example": {
+            "benchmarkId": "bench-insurance",
+            "objective": "Responder a cliente sobre estado de siniestro sin enviar el correo final.",
+        },
+    } in snapshot["operatingState"]["capabilityMap"]["verticalDemos"]["hardeningPlaybook"]
     assert snapshot["operatingState"]["capabilityMap"]["verticalDemoGaps"] == [
         {
             "benchmarkId": "bench-insurance",

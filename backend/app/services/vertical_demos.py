@@ -5,6 +5,64 @@ from typing import Any
 from app.services.task_contracts import task_contract_from_record
 
 
+VERTICAL_DEMO_ACTIONS = {
+    "email_read": {
+        "group": "integration",
+        "area": "connectors",
+        "severity": "high",
+        "action": "Connect email read access through IMAP/Gmail tools or task allowed systems.",
+    },
+    "erp_lookup": {
+        "group": "integration",
+        "area": "connectors",
+        "severity": "high",
+        "action": "Expose an insurance ERP lookup tool or allowed system for claim status retrieval.",
+    },
+    "document_grounding": {
+        "group": "integration",
+        "area": "resources",
+        "severity": "high",
+        "action": "Attach governed knowledge resources or read tools for document grounding.",
+    },
+    "draft_artifact": {
+        "group": "runtime",
+        "area": "artifacts",
+        "severity": "high",
+        "action": "Declare draft_email as a first-class business artifact for the vertical flow.",
+    },
+    "approval_boundary": {
+        "group": "runtime",
+        "area": "approvals",
+        "severity": "high",
+        "action": "Declare human approval or send boundary before any final email side effect.",
+    },
+    "benchmark": {
+        "group": "factory",
+        "area": "evals",
+        "severity": "high",
+        "action": "Create benchmark tasks for the vertical workflow.",
+    },
+    "trajectory": {
+        "group": "factory",
+        "area": "trajectories",
+        "severity": "high",
+        "action": "Harvest and approve at least one trajectory for the vertical workflow.",
+    },
+    "skill_promotion": {
+        "group": "factory",
+        "area": "skills",
+        "severity": "high",
+        "action": "Promote the approved trajectory into a reusable skill package.",
+    },
+    "runtime_replay": {
+        "group": "runtime",
+        "area": "runtime",
+        "severity": "high",
+        "action": "Capture a passing runtime replay or eval run for the vertical flow.",
+    },
+}
+
+
 def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
     metadata = doc.get("metadata")
     return metadata if isinstance(metadata, dict) else {}
@@ -151,6 +209,45 @@ def _operational_group_ready(payload: dict[str, Any], key: str) -> bool:
     if not isinstance(groups, list):
         return False
     return any(isinstance(group, dict) and group.get("key") == key and group.get("state") == "ready" for group in groups)
+
+
+def _vertical_demo_playbook(demos: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    gap_counts: dict[str, int] = {}
+    examples: dict[str, dict[str, str]] = {}
+    for demo in demos:
+        benchmark_id = str(demo.get("benchmarkId") or "")
+        objective = str(demo.get("objective") or "")
+        for item in demo.get("coverage") if isinstance(demo.get("coverage"), list) else []:
+            if not isinstance(item, dict) or item.get("ready"):
+                continue
+            key = str(item.get("key") or "")
+            if not key:
+                continue
+            gap_counts[key] = gap_counts.get(key, 0) + 1
+            examples.setdefault(key, {"benchmarkId": benchmark_id, "objective": objective})
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = VERTICAL_DEMO_ACTIONS.get(
+            gap,
+            {
+                "group": "factory",
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Complete missing vertical demo evidence before enterprise promotion.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "group": metadata["group"],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+                "example": examples.get(gap, {}),
+            }
+        )
+    return playbook
 
 
 def vertical_demo_payload(
@@ -316,5 +413,6 @@ def summarize_vertical_demos(
         "integrationReady": sum(1 for demo in demos if _operational_group_ready(demo, "integration")),
         "factoryReady": sum(1 for demo in demos if _operational_group_ready(demo, "factory")),
         "runtimeReady": sum(1 for demo in demos if _operational_group_ready(demo, "runtime")),
+        "hardeningPlaybook": _vertical_demo_playbook(demos),
         "demos": demos[:limit],
     }
