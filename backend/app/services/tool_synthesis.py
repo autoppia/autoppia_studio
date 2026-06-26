@@ -19,6 +19,18 @@ def _list_values(value: Any) -> list[str]:
     return [str(item).strip() for item in value if str(item or "").strip()]
 
 
+def _dedupe_values(values: list[Any]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        clean = str(value or "").strip()
+        if not clean or clean in seen:
+            continue
+        seen.add(clean)
+        result.append(clean)
+    return result
+
+
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -217,6 +229,10 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
     boundary_counts: dict[str, int] = {}
     hardening_gaps: dict[str, int] = {}
     hardened_tools: list[str] = []
+    publishable_tools: list[str] = []
+    safe_atomic_tools: list[str] = []
+    blocked_by_approval: list[str] = []
+    needs_hardening_tools: list[dict[str, Any]] = []
     for tool in tools:
         risk = tool["riskLevel"] or "unknown"
         boundary = tool["policyBoundary"] or "unknown"
@@ -239,6 +255,22 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
             gaps.append("entity_bindings")
         if not gaps:
             hardened_tools.append(tool["toolName"])
+            publishable_tools.append(tool["toolName"])
+        else:
+            needs_hardening_tools.append({"toolName": tool["toolName"], "gaps": gaps})
+        safe_atomic = bool(
+            tool["toolName"]
+            and tool["toolName"] not in GENERIC_DISCOVERY_TOOLS
+            and tool["policyBoundary"] == "read"
+            and tool["sideEffects"] in {"read", "reads"}
+            and tool["riskLevel"] in {"low", ""}
+            and not tool["approval"]["required"]
+            and not tool["schema"]["required"]
+        )
+        if safe_atomic:
+            safe_atomic_tools.append(tool["toolName"])
+        if "approval_policy" in gaps:
+            blocked_by_approval.append(tool["toolName"])
         for gap in gaps:
             hardening_gaps[gap] = hardening_gaps.get(gap, 0) + 1
     return {
@@ -250,6 +282,15 @@ def summarize_tool_synthesis(tool_specs: list[dict[str, Any]], *, runtime_requir
         "needsHardeningCount": len(tools) - len(hardened_tools),
         "hardenedTools": hardened_tools,
         "hardeningGaps": hardening_gaps,
+        "promotionReadiness": {
+            "publishable": _dedupe_values([*publishable_tools, *safe_atomic_tools]),
+            "hardened": publishable_tools,
+            "safeAtomicReadOnly": safe_atomic_tools,
+            "needsHardening": needs_hardening_tools,
+            "blockedByApproval": blocked_by_approval,
+            "canPromoteCount": len(_dedupe_values([*publishable_tools, *safe_atomic_tools])),
+            "blockedCount": len(needs_hardening_tools),
+        },
         "writeToolCount": len(write_tools),
         "writeTools": write_tools,
         "approvalRequiredTools": approval_tools,

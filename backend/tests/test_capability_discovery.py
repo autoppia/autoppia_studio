@@ -111,6 +111,9 @@ async def test_task_scoped_discovery_publishes_tools_without_skills(monkeypatch)
     assert result["tools"][0]["toolContract"]["format"] == "autoppia.tool_contract"
     assert result["tools"][0]["toolContract"]["policyBoundary"] == "read"
     assert result["tools"][0]["toolContract"]["permissions"]["requiresApproval"] is False
+    assert result["toolSynthesis"]["toolCount"] == 1
+    assert result["toolSynthesis"]["promotionReadiness"]["canPromoteCount"] == 1
+    assert result["toolSynthesis"]["promotionReadiness"]["publishable"] == ["bopa.latest_bulletin_pdf"]
     assert result["targetTasks"][0]["name"] == "Download latest PDF"
     assert result["skills"] == []
     assert trajectories.docs == []
@@ -146,6 +149,14 @@ async def test_broad_discovery_promotes_safe_atomic_tools(monkeypatch):
     assert result["mode"] == "broad_autodiscovery"
     assert len(result["tools"]) == 3
     assert len(result["skills"]) == 3
+    assert result["toolSynthesis"]["hardenedToolCount"] == 0
+    assert result["toolSynthesis"]["needsHardeningCount"] == 3
+    assert result["toolSynthesis"]["promotionReadiness"]["canPromoteCount"] == 3
+    assert set(result["toolSynthesis"]["promotionReadiness"]["safeAtomicReadOnly"]) == {
+        "bopa.latest_bulletin_pdf",
+        "bopa.latest_bulletin",
+        "bopa.list_bulletins",
+    }
     assert len(promoted) == 3
     assert {doc["trajectory"][0]["name"] for doc in trajectories.docs} == {
         "bopa.latest_bulletin_pdf",

@@ -70,6 +70,24 @@ def test_summarize_tool_synthesis_keeps_atomic_tool_inventory_for_capability_fac
         "scopes": 2,
         "entity_bindings": 2,
     }
+    assert summary["promotionReadiness"] == {
+        "publishable": ["claims.search_claims"],
+        "hardened": ["claims.search_claims"],
+        "safeAtomicReadOnly": ["claims.search_claims"],
+        "needsHardening": [
+            {
+                "toolName": "api.call",
+                "gaps": ["typed_input_schema", "typed_output_schema", "side_effects", "approval_policy", "scopes", "entity_bindings"],
+            },
+            {
+                "toolName": "smtp.send_email",
+                "gaps": ["typed_input_schema", "typed_output_schema", "scopes", "entity_bindings"],
+            },
+        ],
+        "blockedByApproval": ["api.call"],
+        "canPromoteCount": 1,
+        "blockedCount": 2,
+    }
     assert summary["governedToolCount"] == 3
     assert summary["writeTools"] == ["api.call", "smtp.send_email"]
     assert summary["approvalRequiredTools"] == ["smtp.send_email"]

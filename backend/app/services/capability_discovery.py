@@ -9,6 +9,7 @@ from typing import Any, Protocol
 from app.database import harvester_runs_collection, tools_collection, trajectories_collection
 from app.harvesters.toolkit import ToolkitHarvester
 from app.services.skills import approve_trajectory_as_skill
+from app.services.tool_synthesis import summarize_tool_synthesis
 
 
 def now_iso() -> str:
@@ -280,6 +281,10 @@ class DefaultToolkitDiscoverer:
                 "$push": {"logs": {"$each": logs}},
             },
         )
+        tool_synthesis = summarize_tool_synthesis(
+            published_tools,
+            runtime_requirements=agent_config.get("runtimeRequirements") if isinstance(agent_config.get("runtimeRequirements"), list) else [],
+        )
         return {
             "discovererName": self.name,
             "discovererVersion": self.version,
@@ -288,6 +293,7 @@ class DefaultToolkitDiscoverer:
             "status": status,
             "tools": published_tools,
             "skills": created_skills,
+            "toolSynthesis": tool_synthesis,
             "targetTasks": [
                 {
                     "name": task.get("name", ""),
