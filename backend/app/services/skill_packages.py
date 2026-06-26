@@ -64,6 +64,11 @@ SKILL_PACKAGE_HARDENING_ACTIONS = {
         "severity": "medium",
         "action": "Assign a version and version history before operating this skill as a reusable capability.",
     },
+    "progressiveDisclosure": {
+        "area": "runtime",
+        "severity": "medium",
+        "action": "Declare summary and full-load fields so AgentRuntime can load the skill progressively.",
+    },
 }
 
 
@@ -118,11 +123,13 @@ def _skill_release_gate(packages: list[dict[str, Any]], gap_counts: dict[str, in
         if str(item["release"].get("promotionStatus") or "draft") == "published" and not item["publishable"]
     )
     versioned = sum(1 for item in packages if item["versioned"])
+    progressive = sum(1 for item in packages if item["checks"]["progressiveDisclosure"])
     checks = {
         "versionedPackages": bool(total) and versioned == total,
         "publishablePackages": bool(total) and publishable == total,
         "reviewedReleaseStatus": bool(total) and ready_or_published == total,
         "publishedSkillsSafe": published_not_publishable == 0,
+        "progressiveDisclosurePackages": bool(total) and progressive == total,
     }
     ready = bool(total) and all(checks.values())
     return {
@@ -149,6 +156,9 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
     hardening = package.get("hardening") if isinstance(package.get("hardening"), dict) else {}
     package_assets = package.get("assets") if isinstance(package.get("assets"), dict) else {}
     assets = skill_package_assets({**doc, **package_assets})
+    progressive_disclosure = package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {}
+    summary_fields = _list_values(progressive_disclosure.get("summaryFields"))
+    full_fields = _list_values(progressive_disclosure.get("fullFields"))
     latest_regression = evidence.get("latestRegression") if isinstance(evidence.get("latestRegression"), dict) else doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else {}
     checks = {
         "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
@@ -158,6 +168,7 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         "ioContract": bool(io_contract.get("declared") or _list_values(doc.get("inputEntities")) or str(doc.get("outputEntity") or "").strip()),
         "expectedArtifacts": bool(_list_values(doc.get("expectedArtifacts")) or _list_values(outputs.get("artifacts")) or doc.get("outputCard") or outputs.get("outputCard")),
         "regressionSuite": bool(regression.get("cases") or _list_values(regression.get("benchmarkIds")) or _list_values(regression.get("evalIds")) or latest_regression),
+        "progressiveDisclosure": bool(summary_fields and full_fields),
     }
     manifest_ready = checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["sourceTrajectory"] and checks["ioContract"]
     publishable_regression = bool(
@@ -209,7 +220,12 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         "release": release,
         "assets": assets,
         "hardening": hardening,
-        "progressiveDisclosure": package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {},
+        "progressiveDisclosure": {
+            **progressive_disclosure,
+            "summaryFields": summary_fields,
+            "fullFields": full_fields,
+            "declared": checks["progressiveDisclosure"],
+        },
     }
 
 
@@ -221,6 +237,7 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
     with_assets = sum(1 for item in packages if item["assets"]["declared"])
     with_resources = sum(1 for item in packages if item["assets"]["resources"] or item["assets"]["resourceIds"])
     with_scripts = sum(1 for item in packages if item["assets"]["scripts"] or item["assets"]["scriptIds"])
+    with_progressive_disclosure = sum(1 for item in packages if item["checks"]["progressiveDisclosure"])
     release_statuses = [str(item["release"].get("promotionStatus") or "draft") for item in packages]
     ready_for_publish = sum(1 for item in packages if item["release"].get("readyForPublish"))
     published = sum(1 for item in packages if item["release"].get("published"))
@@ -231,6 +248,8 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
             gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
         if not item["versioned"]:
             gap_counts["versioning"] = gap_counts.get("versioning", 0) + 1
+        if not item["checks"]["progressiveDisclosure"]:
+            gap_counts["progressiveDisclosure"] = gap_counts.get("progressiveDisclosure", 0) + 1
         promotion_status = str(item["release"].get("promotionStatus") or "draft")
         if item["publishable"] and not item["release"].get("readyForPublish"):
             gap_counts["release_status"] = gap_counts.get("release_status", 0) + 1
@@ -247,6 +266,7 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
             "regressionSuite": item["checks"]["regressionSuite"],
             "publishable": item["publishable"],
             "readyForPublish": item["release"]["readyForPublish"],
+            "progressiveDisclosure": item["checks"]["progressiveDisclosure"],
             "assets": {
                 "declared": item["assets"]["declared"],
                 "resourceIds": item["assets"]["resourceIds"],
@@ -265,6 +285,7 @@ def summarize_skill_packages(skill_docs: list[dict[str, Any]], *, package_limit:
         "withAssets": with_assets,
         "withResources": with_resources,
         "withScripts": with_scripts,
+        "withProgressiveDisclosure": with_progressive_disclosure,
         "versioned": sum(1 for item in packages if item["versioned"]),
         "blocked": sum(1 for item in packages if item["blockers"]),
         "releaseStatus": _sorted_counts(release_statuses),

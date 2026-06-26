@@ -135,6 +135,7 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
     assert summary["withAssets"] == 2
     assert summary["withResources"] == 2
     assert summary["withScripts"] == 2
+    assert summary["withProgressiveDisclosure"] == 2
     assert summary["releaseReadiness"] == {
         "readyForPublish": 1,
         "published": 1,
@@ -151,6 +152,7 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
             "publishablePackages": False,
             "reviewedReleaseStatus": True,
             "publishedSkillsSafe": True,
+            "progressiveDisclosurePackages": True,
         },
         "blockers": [{"name": "publishableRegression", "count": 1}],
         "hardeningPlaybook": [
@@ -178,4 +180,5 @@ def test_summarize_skill_packages_exposes_release_readiness_and_status_counts():
         "resourceIds": ["claims-handbook"],
         "scriptIds": ["normalize_claim_status"],
     }
+    assert summary["sample"][1]["progressiveDisclosure"] is True
     assert summary["packages"][1]["release"]["latestEvent"]["reason"] == "promotion"

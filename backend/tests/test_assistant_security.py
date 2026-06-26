@@ -256,6 +256,10 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
                     "evidence": {
                         "regressionSuite": {"cases": [{"taskId": "task-claim"}], "publishable": True},
                     },
+                    "progressiveDisclosure": {
+                        "summaryFields": ["metadata", "activation", "ioContract"],
+                        "fullFields": ["execution", "assets", "evidence"],
+                    },
                 },
             },
             {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "tool", "name": "Not a skill"},
@@ -597,6 +601,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "publishablePackages": True,
         "reviewedReleaseStatus": False,
         "publishedSkillsSafe": True,
+        "progressiveDisclosurePackages": True,
     }
     assert snapshot["operatingState"]["capabilityMap"]["skills"]["packages"]["hardeningPlaybook"][0] == {
         "gap": "release_status",
