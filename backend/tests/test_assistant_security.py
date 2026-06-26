@@ -1234,6 +1234,9 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "total": 3,
                     "indexed": 2,
                     "citable": 1,
+                    "acl": {"withAcl": 1},
+                    "readTools": ["knowledge.claims.search", "knowledge.claims.read_document"],
+                    "grounding": {"requirements": {"readTools": 2, "current": 2}},
                     "runtimeGate": {"ready": 1, "blocked": 2, "blockers": [{"name": "acl", "count": 2}]},
                 },
                 "runtime": {
@@ -1346,6 +1349,8 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "First demo blocker: Capability factory." in reply
     assert "First proof blocker: runtime_replay." in reply
     assert "Resource grounding: 2/3 indexed, 1/3 citable." in reply
+    assert "Resource governance: 1/3 ACL-scoped, 2 read-tool-ready, 2 current." in reply
+    assert "First resource read tool: knowledge.claims.search." in reply
     assert "Resource runtime gate: 1/3 ready, 2 blocked." in reply
     assert "First resource blocker: acl." in reply
     assert "Runtime policy: browser default exception, 1 browser sessions, write/send protected." in reply

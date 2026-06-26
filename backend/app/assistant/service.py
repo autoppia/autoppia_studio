@@ -1673,6 +1673,18 @@ class AutomataAssistantService:
                 f" Resource grounding: {resource_map.get('indexed', 0)}/{resource_map.get('total', 0)} indexed, "
                 f"{resource_map.get('citable', 0)}/{resource_map.get('total', 0)} citable."
             )
+            acl = resource_map.get("acl") if isinstance(resource_map.get("acl"), dict) else {}
+            grounding = resource_map.get("grounding") if isinstance(resource_map.get("grounding"), dict) else {}
+            requirements = grounding.get("requirements") if isinstance(grounding.get("requirements"), dict) else {}
+            if acl or requirements or resource_map.get("readTools"):
+                resource_text += (
+                    f" Resource governance: {acl.get('withAcl', 0)}/{resource_map.get('total', 0)} ACL-scoped, "
+                    f"{requirements.get('readTools', len(resource_map.get('readTools') or []))} read-tool-ready, "
+                    f"{requirements.get('current', 0)} current."
+                )
+                read_tools = resource_map.get("readTools") if isinstance(resource_map.get("readTools"), list) else []
+                if read_tools:
+                    resource_text += f" First resource read tool: {read_tools[0]}."
             runtime_gate = resource_map.get("runtimeGate") if isinstance(resource_map.get("runtimeGate"), dict) else {}
             if runtime_gate:
                 ready_resources = int(runtime_gate.get("ready") or 0)
