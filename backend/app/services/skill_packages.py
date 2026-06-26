@@ -30,6 +30,7 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
     io_contract = package.get("ioContract") if isinstance(package.get("ioContract"), dict) else {}
     outputs = io_contract.get("outputs") if isinstance(io_contract.get("outputs"), dict) else {}
     production_gate = package.get("productionGate") if isinstance(package.get("productionGate"), dict) else {}
+    hardening = package.get("hardening") if isinstance(package.get("hardening"), dict) else {}
     latest_regression = evidence.get("latestRegression") if isinstance(evidence.get("latestRegression"), dict) else doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else {}
     checks = {
         "activation": bool(str(doc.get("whenToUse") or activation.get("description") or "").strip()),
@@ -88,6 +89,7 @@ def skill_package_readiness(doc: dict[str, Any]) -> dict[str, Any]:
         "blockers": blockers[:8],
         "versioned": bool(doc.get("version") or doc.get("versionHistory") or package.get("manifestVersion") or metadata.get("version")),
         "release": release,
+        "hardening": hardening,
         "progressiveDisclosure": package.get("progressiveDisclosure") if isinstance(package.get("progressiveDisclosure"), dict) else {},
     }
 

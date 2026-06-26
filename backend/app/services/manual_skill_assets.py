@@ -3,6 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_manifests import skill_hardening_manifest
+from app.services.skill_manifests import skill_production_gate
 
 
 def dedupe_manual_skill_values(values: list[Any]) -> list[str]:
@@ -75,6 +77,9 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
         },
         "declared": bool(doc.get("inputEntities") or doc.get("preconditions") or doc.get("outputEntity") or doc.get("expectedArtifacts") or doc.get("outputCard")),
     }
+    latest_regression = doc.get("latestRegression") if isinstance(doc.get("latestRegression"), dict) else None
+    production_gate = skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
+    hardening_manifest = skill_hardening_manifest(hardening=hardening, production_gate=production_gate)
     return {
         "format": "autoppia.agent_skill",
         "manifestVersion": 1,
@@ -114,9 +119,11 @@ def manual_skill_package(doc: dict[str, Any], lineage: dict[str, Any], hardening
             "permissions": doc.get("permissions", {}),
             "runtimePolicy": serialize_runtime_policy(doc),
         },
+        "hardening": hardening_manifest,
+        "productionGate": production_gate,
         "evidence": {
             "lineage": lineage,
-            "latestRegression": None,
+            "latestRegression": latest_regression,
             "hardeningStatus": hardening,
             "versionHistory": doc.get("versionHistory", []),
             "regressionSuite": {

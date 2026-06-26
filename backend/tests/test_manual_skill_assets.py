@@ -80,6 +80,10 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     assert package["ioContract"]["outputs"]["artifacts"] == ["draft_email"]
     assert package["execution"]["trajectoryIds"] == ["traj-1"]
     assert package["policies"]["runtimePolicy"]["approvalMode"] == "always"
+    assert package["hardening"]["readyForPublish"] is False
+    assert package["hardening"]["blockers"] == ["publishableRegression"]
+    assert package["productionGate"]["state"] == "needs_regression"
+    assert package["productionGate"]["checks"]["sourceTrajectory"] is True
     assert package["evidence"]["regressionSuite"] == {
         "benchmarkIds": ["bench-1"],
         "evalIds": ["task-1", "task-2"],
@@ -90,6 +94,7 @@ def test_manual_skill_package_keeps_existing_agent_skill_contract():
     assert readiness["release"]["promotionStatus"] == "ready"
     assert readiness["release"]["version"] == 1
     assert readiness["release"]["historyCount"] == 1
+    assert readiness["hardening"]["blockers"] == ["publishableRegression"]
 
 
 def test_attach_manual_skill_assets_returns_skill_with_lineage_hardening_and_package():

@@ -62,6 +62,9 @@ def test_skill_package_manifest_exposes_publishable_agent_skill_contract():
     assert package["ioContract"]["declared"] is True
     assert package["ioContract"]["inputs"]["parameters"][0]["name"] == "claim_id"
     assert package["execution"]["actions"][0]["action"] == "erp.claims.get"
+    assert package["hardening"]["readyForPublish"] is True
+    assert package["hardening"]["blockers"] == []
+    assert package["hardening"]["checks"]["sourceTrajectory"] is True
     assert package["productionGate"]["state"] == "publishable"
     assert package["productionGate"]["canPublish"] is True
     assert package["evidence"]["regressionSuite"]["publishable"] is True

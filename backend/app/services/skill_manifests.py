@@ -77,6 +77,22 @@ def skill_production_gate(
     }
 
 
+def skill_hardening_manifest(*, hardening: dict[str, Any], production_gate: dict[str, Any]) -> dict[str, Any]:
+    raw_checks = hardening.get("checks") if isinstance(hardening.get("checks"), dict) else {}
+    gate_checks = production_gate.get("checks") if isinstance(production_gate.get("checks"), dict) else {}
+    checks = gate_checks or raw_checks
+    return {
+        "state": str(hardening.get("state") or production_gate.get("state") or "drafting"),
+        "score": float(hardening.get("score") or 0.0),
+        "passedChecks": int(hardening.get("passedChecks") or sum(1 for ready in raw_checks.values() if ready)),
+        "totalChecks": int(hardening.get("totalChecks") or len(raw_checks or checks)),
+        "checks": checks,
+        "blockers": production_gate.get("blockers") if isinstance(production_gate.get("blockers"), list) else [],
+        "nextActions": production_gate.get("nextActions") if isinstance(production_gate.get("nextActions"), list) else [],
+        "readyForPublish": bool(production_gate.get("canPublish")),
+    }
+
+
 def skill_package_manifest(
     skill: dict[str, Any],
     *,
@@ -100,6 +116,7 @@ def skill_package_manifest(
     actions = skill.get("actions") if isinstance(skill.get("actions"), list) else []
     io_contract = skill_io_contract(skill)
     production_gate = skill_production_gate(hardening=hardening, latest_regression=latest_regression, io_contract=io_contract)
+    hardening_manifest = skill_hardening_manifest(hardening=hardening, production_gate=production_gate)
     return {
         "format": "autoppia.agent_skill",
         "manifestVersion": 1,
@@ -141,6 +158,7 @@ def skill_package_manifest(
             "permissions": skill.get("permissions", {}),
             "runtimePolicy": runtime_policy,
         },
+        "hardening": hardening_manifest,
         "productionGate": production_gate,
         "evidence": {
             "lineage": lineage,
