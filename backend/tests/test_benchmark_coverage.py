@@ -38,6 +38,8 @@ def test_benchmark_coverage_summary_builds_eval_gate_evidence():
 
     assert coverage["taskCount"] == 1
     assert coverage["taskContractCoverage"]["complete"] == 1
+    assert coverage["taskContractCoverage"]["evaluationReady"] == 1
+    assert coverage["taskContractCoverage"]["missingFields"] == []
     assert coverage["taskContractCoverage"]["reproducibility"] == {
         "withInitialState": 1,
         "withEvaluatorConfig": 1,
@@ -58,7 +60,7 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
     portfolio = coverage_portfolio(
         [
             {
-                "taskContractCoverage": {"complete": 0, "total": 1},
+                "taskContractCoverage": {"complete": 0, "total": 1, "evaluationReady": 0, "missingFields": [{"name": "successCriteria", "count": 1}]},
                 "connectorIds": ["email-1"],
                 "systems": ["email"],
                 "entityNames": ["Claim"],
@@ -71,6 +73,8 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
 
     assert portfolio["benchmarks"] == 1
     assert portfolio["taskContracts"]["coverageRatio"] == 0.0
+    assert portfolio["taskContracts"]["evaluationReady"] == 0
+    assert portfolio["taskContracts"]["missingFields"] == [{"name": "successCriteria", "count": 1}]
     assert portfolio["promotionGate"]["state"] == "blocked"
     assert portfolio["promotionGate"]["blockers"] == ["incomplete_task_contracts", "no_ready_skills", "no_passing_regression", "failing_regressions"]
     assert portfolio["coverageMatrix"]["connectors"][0]["state"] == "failing"

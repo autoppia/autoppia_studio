@@ -26,21 +26,34 @@ def task_contract_completeness(contract: dict[str, Any]) -> dict[str, Any]:
         "successCriteria": bool(str(contract.get("successCriteria") or "").strip()),
         "riskClass": bool(str(contract.get("riskClass") or "").strip()),
     }
+    next_action_by_field = {
+        "businessIntent": "Declare the business intent this task evaluates.",
+        "initialState": "Attach an initial URL or state so the task can be replayed.",
+        "allowedSystems": "List the systems, connectors, or domains the agent may use.",
+        "expectedArtifact": "Declare the business artifact expected from this task.",
+        "successCriteria": "Add deterministic success criteria before using this task as an eval gate.",
+        "riskClass": "Assign a risk class for runtime policy and approval routing.",
+    }
     passed = sum(1 for value in checks.values() if value)
     total = len(checks)
+    reproducibility = {
+        "initialState": checks["initialState"],
+        "evaluatorConfig": bool(contract.get("evaluatorConfig")),
+        "fixtures": bool(contract.get("fixtures")),
+        "seed": bool(str(contract.get("seed") or "").strip()),
+        "readyForReplay": bool(checks["initialState"] and (contract.get("evaluatorConfig") or contract.get("fixtures") or str(contract.get("seed") or "").strip())),
+    }
+    missing_fields = [field for field, ready in checks.items() if not ready]
     return {
         "checks": checks,
+        "missingFields": missing_fields,
+        "nextActions": [next_action_by_field[field] for field in missing_fields],
         "passedChecks": passed,
         "totalChecks": total,
         "score": round(passed / total, 3) if total else 0.0,
         "state": "complete" if passed == total else "incomplete",
-        "reproducibility": {
-            "initialState": checks["initialState"],
-            "evaluatorConfig": bool(contract.get("evaluatorConfig")),
-            "fixtures": bool(contract.get("fixtures")),
-            "seed": bool(str(contract.get("seed") or "").strip()),
-            "readyForReplay": bool(checks["initialState"] and (contract.get("evaluatorConfig") or contract.get("fixtures") or str(contract.get("seed") or "").strip())),
-        },
+        "evaluationReady": bool(checks["successCriteria"] and reproducibility["readyForReplay"]),
+        "reproducibility": reproducibility,
     }
 
 
@@ -139,6 +152,13 @@ def benchmark_coverage_summary(
     published_statuses = {"published", "approved", "active", "production"}
     ready_statuses = {"ready", *published_statuses}
     task_complete = sum(1 for item in completeness if item.get("state") == "complete")
+    task_evaluation_ready = sum(1 for item in completeness if item.get("evaluationReady"))
+    missing_field_counts: dict[str, int] = {}
+    for item in completeness:
+        for field in item.get("missingFields") or []:
+            key = str(field or "").strip()
+            if key:
+                missing_field_counts[key] = missing_field_counts.get(key, 0) + 1
     skill_ready = sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in ready_statuses)
     skill_published = sum(1 for skill in skills if str(skill.get("promotionStatus") or skill.get("status") or "").lower() in published_statuses)
     run_pass = labels.count("pass")
@@ -149,6 +169,8 @@ def benchmark_coverage_summary(
             "complete": task_complete,
             "total": len(completeness),
             "averageScore": round(sum(float(item.get("score") or 0) for item in completeness) / len(completeness), 3) if completeness else 0.0,
+            "evaluationReady": task_evaluation_ready,
+            "missingFields": [{"name": key, "count": missing_field_counts[key]} for key in sorted(missing_field_counts, key=lambda item: (-missing_field_counts[item], item))],
             "reproducibility": {
                 "withInitialState": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("initialState")),
                 "withEvaluatorConfig": sum(1 for item in completeness if (item.get("reproducibility") or {}).get("evaluatorConfig")),
@@ -201,6 +223,13 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     latest_runs = sorted(latest_runs, key=lambda item: str(item.get("latestCreatedAt") or ""), reverse=True)
     task_total = sum(int((item.get("taskContractCoverage") or {}).get("total") or 0) for item in coverage_items)
     task_complete = sum(int((item.get("taskContractCoverage") or {}).get("complete") or 0) for item in coverage_items)
+    task_evaluation_ready = sum(int((item.get("taskContractCoverage") or {}).get("evaluationReady") or 0) for item in coverage_items)
+    missing_task_fields: dict[str, int] = {}
+    for item in coverage_items:
+        for field in (item.get("taskContractCoverage") or {}).get("missingFields") or []:
+            key = str(field.get("name") if isinstance(field, dict) else field or "").strip()
+            if key:
+                missing_task_fields[key] = missing_task_fields.get(key, 0) + int((field.get("count") if isinstance(field, dict) else 1) or 0)
     run_total = sum(int((item.get("runCoverage") or {}).get("total") or 0) for item in coverage_items)
     run_pass = sum(int((item.get("runCoverage") or {}).get("pass") or 0) for item in coverage_items)
     run_fail = sum(int((item.get("runCoverage") or {}).get("fail") or 0) for item in coverage_items)
@@ -218,7 +247,9 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         "taskContracts": {
             "complete": task_complete,
             "total": task_total,
+            "evaluationReady": task_evaluation_ready,
             "coverageRatio": round(task_complete / task_total, 3) if task_total else 0.0,
+            "missingFields": [{"name": key, "count": missing_task_fields[key]} for key in sorted(missing_task_fields, key=lambda item: (-missing_task_fields[item], item))],
         },
         "connectors": _dedupe_strings([connector_id for item in coverage_items for connector_id in (item.get("connectorIds") or [])]),
         "systems": _dedupe_strings([system for item in coverage_items for system in (item.get("systems") or [])]),
