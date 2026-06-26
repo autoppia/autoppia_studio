@@ -548,6 +548,13 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
+                {
+                    "area": "approvals",
+                    "severity": "high",
+                    "message": "Observed side-effect runtime boundaries are missing human approval requirements.",
+                }
+                if any(gap.get("key") == "side_effect_approval_coverage" for gap in runtime_policy_map["gaps"])
+                else None,
                 {"area": "runtime", "severity": "medium", "message": "Writable runtime capabilities are missing write approval boundaries."} if any(gap.get("key") == "write_approval" for gap in runtime_policy_map["gaps"]) else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts require human review before reuse or delivery."} if artifact_outputs["reviewRequired"] else None,
                 {"area": "artifacts", "severity": "medium", "message": "Some business artifacts are missing Runtime Lab traceability."} if artifact_outputs["total"] and artifact_outputs["runtimeLinked"] < artifact_outputs["total"] else None,

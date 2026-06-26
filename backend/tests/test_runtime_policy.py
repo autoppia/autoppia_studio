@@ -134,6 +134,12 @@ def test_runtime_policy_summary_exposes_browser_domain_coverage_gaps():
     }
     assert summary["approvalBoundaries"]["missingObservedApproval"] == []
     assert summary["approvalBoundaries"]["sideEffectsProtected"] is True
+    assert summary["approvalBoundaries"]["hardening"] == {
+        "ready": True,
+        "missingBoundaries": [],
+        "severity": "none",
+        "nextActions": [],
+    }
     assert any(gap["key"] == "browser_domain_coverage" for gap in summary["gaps"])
 
 
@@ -149,6 +155,18 @@ def test_runtime_policy_summary_flags_observed_side_effects_without_approval():
 
     assert summary["approvalBoundaries"]["missingObservedApproval"] == ["write"]
     assert summary["approvalBoundaries"]["sideEffectsProtected"] is False
+    assert summary["approvalBoundaries"]["hardening"] == {
+        "ready": False,
+        "missingBoundaries": ["write"],
+        "severity": "high",
+        "nextActions": [
+            {
+                "boundary": "write",
+                "severity": "high",
+                "action": "Require human approval for observed write side effects before publishing runtime capabilities.",
+            }
+        ],
+    }
     assert any(gap["key"] == "side_effect_approval_coverage" for gap in summary["gaps"])
 
 

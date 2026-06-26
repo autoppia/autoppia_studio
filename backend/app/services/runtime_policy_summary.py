@@ -33,6 +33,29 @@ def _missing_observed_approval_boundaries(policies: list[dict[str, Any]]) -> lis
     return sorted(missing)
 
 
+def _approval_hardening(missing_boundaries: list[str]) -> dict[str, Any]:
+    next_actions = [
+        {
+            "boundary": boundary,
+            "severity": "high" if boundary in {"write", "send"} else "medium",
+            "action": f"Require human approval for observed {boundary} side effects before publishing runtime capabilities.",
+        }
+        for boundary in missing_boundaries
+    ]
+    return {
+        "ready": not missing_boundaries,
+        "missingBoundaries": missing_boundaries,
+        "severity": (
+            "high"
+            if any(boundary in {"write", "send"} for boundary in missing_boundaries)
+            else "medium"
+            if missing_boundaries
+            else "none"
+        ),
+        "nextActions": next_actions,
+    }
+
+
 def normalize_runtime_domains(values: list[Any]) -> list[str]:
     domains: set[str] = set()
     for value in values:
@@ -110,6 +133,7 @@ def summarize_runtime_policy_map(
     tool_policies = [serialize_runtime_policy(tool) for tool in tools]
     all_policies = [*skill_policies, *tool_policies]
     missing_observed_approval = _missing_observed_approval_boundaries(all_policies)
+    approval_hardening = _approval_hardening(missing_observed_approval)
     browser_policy_count = sum(1 for policy in all_policies if policy.get("browserRuntime"))
     api_policy_count = sum(1 for policy in all_policies if policy.get("runtimeClass") == "api")
     browser_session_count = sum(1 for kind in runtime_kinds if kind in {"browser_runtime", "hybrid_runtime", "browser", "hybrid"})
@@ -153,6 +177,7 @@ def summarize_runtime_policy_map(
             "all": _approval_boundary_counts(all_policies),
             "missingObservedApproval": missing_observed_approval,
             "sideEffectsProtected": not missing_observed_approval,
+            "hardening": approval_hardening,
         },
         "humanApproval": {
             "pending": pending_approvals,

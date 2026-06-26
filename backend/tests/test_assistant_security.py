@@ -635,6 +635,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["browserDomainGovernance"]["coverageRatio"] == 1.0
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserCapabilities"] == 1
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["runtimeClasses"]["browserSessions"] == 1
+    assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["approvalBoundaries"]["hardening"]["ready"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["writesProtected"] is True
     assert snapshot["operatingState"]["runtime"]["runtimePolicyMap"]["humanApproval"]["sendsProtected"] is True
     assert snapshot["operatingState"]["recommendedNextActions"][0]["area"] == "evals"
