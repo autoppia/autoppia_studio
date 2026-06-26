@@ -1528,6 +1528,16 @@ class AutomataAssistantService:
                 f"{classes.get('browserSessions', 0)} browser sessions, "
                 f"write/send {'protected' if human.get('writesProtected') and human.get('sendsProtected') else 'incomplete'}."
             )
+            browser_governance = runtime_policy.get("browserDomainGovernance") if isinstance(runtime_policy.get("browserDomainGovernance"), dict) else {}
+            if browser_governance:
+                uncovered_domains = browser_governance.get("uncoveredDomains") if isinstance(browser_governance.get("uncoveredDomains"), list) else []
+                runtime_text += (
+                    f" Browser domain governance: {len(browser_governance.get('coveredDomains') or [])}/"
+                    f"{len(browser_governance.get('observedDomains') or [])} observed domain(s) covered, "
+                    f"{len(browser_governance.get('allowedDomains') or [])} allowed."
+                )
+                if uncovered_domains:
+                    runtime_text += f" First uncovered browser domain: {uncovered_domains[0]}."
             session_contracts = runtime.get("sessionContracts") if isinstance(runtime.get("sessionContracts"), dict) else {}
             timeline = session_contracts.get("timeline") if isinstance(session_contracts.get("timeline"), dict) else {}
             if timeline:
