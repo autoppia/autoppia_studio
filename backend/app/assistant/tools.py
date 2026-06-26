@@ -702,11 +702,51 @@ class AutomataAssistantTools:
             work_operations_gate.get("hardeningPlaybook"),
             work_contracts.get("hardeningPlaybook"),
         )
+        surface_evidence = {
+            "Company Setup": {
+                "systems": company_integration.get("systems", 0),
+                "secrets": company_integration.get("secrets", 0),
+                "allowedDomains": len(company_integration.get("domainAllowlist") or []),
+                "setupGate": setup_gate.get("state") or "unknown",
+            },
+            "Capability Factory": {
+                "connectors": counts["connectors"],
+                "typedTools": connector_map.get("typedToolReady", 0),
+                "entities": counts["entities"],
+                "benchmarkTasks": counts["benchmarkTasks"],
+                "approvedTrajectories": (promotion_pipeline.get("trajectories") or {}).get("approved", 0),
+                "skills": counts["skills"],
+                "proofReady": vertical_demos.get("proofReady", 0),
+                "proofBlocked": vertical_demos.get("proofBlocked", 0),
+            },
+            "Runtime Lab": {
+                "sessions": counts["sessions"],
+                "replayReadySessions": session_contracts.get("replayReady", 0),
+                "pendingApprovals": pending_approvals,
+                "artifacts": artifact_outputs.get("total", 0),
+                "reviewRequiredArtifacts": artifact_outputs.get("reviewRequired", 0),
+            },
+            "Work Orchestration": {
+                "workItems": counts["workItems"],
+                "contractReady": work_contracts.get("withContract", 0),
+                "scheduledDue": scheduled_due,
+                "approvalBlocked": review_blocked,
+                "budgetExhausted": budget_exhausted,
+                "retries": total_retries,
+            },
+            "Automata": {
+                "role": "studio_copilot",
+                "riskAlerts": len(risk_alerts),
+                "recommendedActionCandidates": len(recommended_actions),
+                "failurePrompts": 3,
+            },
+        }
         surface_playbook = [
             {
                 "surface": "Company Setup",
                 "status": _surface_status(bool(company_id) and bool(setup_gate.get("ready"))),
                 "hardening": company_setup_hardening,
+                "evidence": surface_evidence["Company Setup"],
                 "nextAction": _surface_next_action("Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.", company_setup_hardening),
             },
             {
@@ -718,6 +758,7 @@ class AutomataAssistantTools:
                     and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)
                 ),
                 "hardening": capability_factory_hardening,
+                "evidence": surface_evidence["Capability Factory"],
                 "nextAction": _surface_next_action("Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.", capability_factory_hardening),
             },
             {
@@ -727,18 +768,21 @@ class AutomataAssistantTools:
                     and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
                 ),
                 "hardening": runtime_lab_hardening,
+                "evidence": surface_evidence["Runtime Lab"],
                 "nextAction": _surface_next_action("Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.", runtime_lab_hardening),
             },
             {
                 "surface": "Work Orchestration",
                 "status": _surface_status(bool(work_operations_gate.get("ready"))),
                 "hardening": work_orchestration_hardening,
+                "evidence": surface_evidence["Work Orchestration"],
                 "nextAction": _surface_next_action("Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.", work_orchestration_hardening),
             },
             {
                 "surface": "Automata",
                 "status": "ready",
                 "hardening": {},
+                "evidence": surface_evidence["Automata"],
                 "nextAction": "Ask Automata to explain failing tasks, suggest missing benchmarks, or draft the next capability-hardening step.",
             },
         ]

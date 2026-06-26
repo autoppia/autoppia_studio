@@ -810,15 +810,52 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
         "severity": "high",
         "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
     }
+    assert company_setup["evidence"] == {
+        "systems": 1,
+        "secrets": 0,
+        "allowedDomains": 1,
+        "setupGate": "partial",
+    }
     assert company_setup["nextAction"] == company_setup["hardening"]["action"]
     capability_factory = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Capability Factory")
     assert capability_factory["status"] == "needs_work"
     assert capability_factory["hardening"]["action"]
+    assert capability_factory["evidence"] == {
+        "connectors": 1,
+        "typedTools": 0,
+        "entities": 2,
+        "benchmarkTasks": 1,
+        "approvedTrajectories": 1,
+        "skills": 1,
+        "proofReady": 0,
+        "proofBlocked": 1,
+    }
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")
     assert runtime_lab["status"] == "needs_work"
     assert runtime_lab["hardening"]["gap"] == "pending_approvals"
+    assert runtime_lab["evidence"] == {
+        "sessions": 1,
+        "replayReadySessions": 0,
+        "pendingApprovals": 1,
+        "artifacts": 1,
+        "reviewRequiredArtifacts": 1,
+    }
     assert runtime_lab["nextAction"] == runtime_lab["hardening"]["action"]
+    work_orchestration = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Work Orchestration")
+    assert work_orchestration["evidence"] == {
+        "workItems": 1,
+        "contractReady": 1,
+        "scheduledDue": 1,
+        "approvalBlocked": 1,
+        "budgetExhausted": 1,
+        "retries": 1,
+    }
+    automata = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Automata")
+    assert automata["evidence"]["role"] == "studio_copilot"
+    assert automata["evidence"]["riskAlerts"] == len(snapshot["automataGuidance"]["riskAlerts"])
+    assert automata["evidence"]["recommendedActionCandidates"] >= len(snapshot["operatingState"]["recommendedNextActions"])
+    assert automata["evidence"]["failurePrompts"] == 3
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert len(capabilities_payload["skills"]) == 1
     listed_skill = capabilities_payload["skills"][0]
