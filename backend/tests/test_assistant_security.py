@@ -1149,7 +1149,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                     "promotionPipeline": {
                         "ready": False,
                         "tasks": {"total": 7, "withTrajectory": 4},
-                        "trajectories": {"total": 5, "approved": 3},
+                        "trajectories": {"total": 5, "approved": 3, "legacyPendingRows": 1},
                         "skills": {"total": 4, "withApprovedTrajectory": 2},
                         "gaps": [{"key": "skill_hardening", "label": "Some promoted skills are missing reusable package hardening."}],
                     },
@@ -1254,6 +1254,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
     assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply
+    assert "Promotion data hygiene: 1 legacy pending trajectory row(s) should move to benchmark tasks." in reply
     assert "First promotion blocker: Some promoted skills are missing reusable package hardening." in reply
     assert "Vertical demos: 1/2 ready, 1 enterprise-ready, 1 smoke-ready, 1 proof-ready, 1 proof-blocked." in reply
     assert "First demo blocker: Capability factory." in reply

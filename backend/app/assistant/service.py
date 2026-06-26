@@ -1575,6 +1575,12 @@ class AutomataAssistantService:
                     f"{pipeline_trajectories.get('approved', 0)}/{pipeline_trajectories.get('total', 0)} trajectories approved, "
                     f"{pipeline_skills.get('withApprovedTrajectory', 0)}/{pipeline_skills.get('total', 0)} skills trajectory-linked."
                 )
+                legacy_pending_rows = int(pipeline_trajectories.get("legacyPendingRows") or 0)
+                if legacy_pending_rows:
+                    coverage_text += (
+                        f" Promotion data hygiene: {legacy_pending_rows} legacy pending trajectory row(s) "
+                        "should move to benchmark tasks."
+                    )
                 if not promotion_pipeline.get("ready"):
                     gaps = promotion_pipeline.get("gaps") if isinstance(promotion_pipeline.get("gaps"), list) else []
                     first_gap = gaps[0] if gaps and isinstance(gaps[0], dict) else {}
