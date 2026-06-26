@@ -603,7 +603,7 @@ class AutomataAssistantTools:
                             skill_eval_gate.get("hardeningPlaybook"),
                             benchmark_portfolio.get("hardeningPlaybook"),
                             vertical_demos.get("hardeningPlaybook"),
-                            promotion_pipeline.get("coveragePlaybook"),
+                            promotion_pipeline.get("hardeningPlaybook"),
                         )
                     ),
                     "nextAction": _surface_next_action("Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.", capability_factory_hardening),

@@ -6,6 +6,35 @@ from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_ready
 
 
+PROMOTION_PIPELINE_ACTIONS = {
+    "task_to_trajectory": {
+        "area": "trajectories",
+        "severity": "high",
+        "action": "Harvest candidate trajectories for benchmark tasks that do not have execution evidence.",
+    },
+    "trajectory_approval": {
+        "area": "judging",
+        "severity": "high",
+        "action": "Judge and approve generated trajectories before skill promotion.",
+    },
+    "trajectory_to_skill": {
+        "area": "skills",
+        "severity": "high",
+        "action": "Link skills to approved source trajectories before treating them as reusable capabilities.",
+    },
+    "skill_hardening": {
+        "area": "skills",
+        "severity": "high",
+        "action": "Harden promoted skills with activation, instructions, artifacts, policy and evidence.",
+    },
+    "publish_skill": {
+        "area": "release",
+        "severity": "medium",
+        "action": "Publish a hardened skill once task and approved trajectory evidence exist.",
+    },
+}
+
+
 def _clean_id(value: Any) -> str:
     return str(value or "").strip()
 
@@ -27,6 +56,29 @@ def _trajectory_ids(skill: dict[str, Any]) -> list[str]:
 
 def _published_skill(skill: dict[str, Any]) -> bool:
     return _status(skill.get("promotionStatus") or skill.get("status")) in {"published", "approved", "ready", "production", "active"}
+
+
+def _promotion_playbook(gap_counts: dict[str, int]) -> list[dict[str, Any]]:
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = PROMOTION_PIPELINE_ACTIONS.get(
+            gap,
+            {
+                "area": "capabilities",
+                "severity": "medium",
+                "action": "Review the Task -> Trajectory -> Skill promotion path before production release.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
 
 
 def summarize_promotion_pipeline(
@@ -82,16 +134,22 @@ def summarize_promotion_pipeline(
     reusable_skills = sum(1 for skill in skills if skill_reusability_ready(skill))
     published_skills = sum(1 for skill in skills if _published_skill(skill))
     gaps: list[dict[str, str]] = []
+    gap_counts: dict[str, int] = {}
     if tasks and tasks_with_trajectory < len(tasks):
         gaps.append({"key": "task_to_trajectory", "label": "Some benchmark tasks have no generated trajectory evidence.", "target": "capabilities"})
+        gap_counts["task_to_trajectory"] = len(tasks) - tasks_with_trajectory
     if trajectories and approved_trajectories < len(trajectories):
         gaps.append({"key": "trajectory_approval", "label": "Some generated trajectories are not approved for promotion.", "target": "capabilities"})
+        gap_counts["trajectory_approval"] = len(trajectories) - approved_trajectories
     if skills and skills_with_approved_trajectory < len(skills):
         gaps.append({"key": "trajectory_to_skill", "label": "Some skills are not linked to approved source trajectories.", "target": "capabilities"})
+        gap_counts["trajectory_to_skill"] = len(skills) - skills_with_approved_trajectory
     if skills and reusable_skills < len(skills):
         gaps.append({"key": "skill_hardening", "label": "Some promoted skills are missing reusable package hardening.", "target": "capabilities"})
+        gap_counts["skill_hardening"] = len(skills) - reusable_skills
     if ready_tasks and approved_trajectories and not published_skills:
         gaps.append({"key": "publish_skill", "label": "Approved task/trajectory evidence exists but no skill is published.", "target": "capabilities"})
+        gap_counts["publish_skill"] = 1
 
     return {
         "tasks": {
@@ -123,4 +181,5 @@ def summarize_promotion_pipeline(
         },
         "sample": sample,
         "gaps": gaps[:gap_limit],
+        "hardeningPlaybook": _promotion_playbook(gap_counts),
     }
