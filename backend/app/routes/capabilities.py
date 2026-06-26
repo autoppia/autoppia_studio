@@ -37,6 +37,9 @@ from app.services.resource_governance import resource_payload
 from app.services.resource_governance import resource_read_tools
 from app.services.resource_governance import resource_vector_id
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_evidence import skill_hardening_status
+from app.services.skill_evidence import skill_lineage
+from app.services.skill_evidence import source_trajectory_evidence
 from app.services.skill_lifecycle import append_skill_version_event
 from app.services.skill_lifecycle import skill_lifecycle_fields
 from app.services.skill_lifecycle import skill_promotion_status
@@ -346,8 +349,8 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         trajectory_docs = []
         latest_regression = None
         regression_cases = []
-    lineage = _skill_lineage(doc, trajectory_docs)
-    hardening = _skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
+    lineage = skill_lineage(doc, trajectory_docs)
+    hardening = skill_hardening_status(doc, trajectory_docs=trajectory_docs, latest_regression=latest_regression)
     runtime_policy = serialize_runtime_policy(doc)
     version_history = skill_version_history(doc, version=version, promotion_status=skill_promotion_status(doc))
     package = skill_package_manifest(
@@ -358,7 +361,7 @@ async def _serialize_skill(doc: dict[str, Any]) -> dict[str, Any]:
         lineage=lineage,
         hardening=hardening,
         latest_regression=latest_regression,
-        source_trajectories=_source_trajectory_evidence(trajectory_docs),
+        source_trajectories=source_trajectory_evidence(trajectory_docs),
         regression_cases=regression_cases,
         version_history=version_history,
     )
@@ -1075,56 +1078,6 @@ def _capability_graph_coverage(
     }
 
 
-def _source_trajectory_evidence(trajectory_docs: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    evidence: list[dict[str, Any]] = []
-    for trajectory in trajectory_docs:
-        actions = trajectory.get("steps") or trajectory.get("trajectory") or trajectory.get("actions") or []
-        judge = trajectory.get("judge") if isinstance(trajectory.get("judge"), dict) else {}
-        review = trajectory.get("review") if isinstance(trajectory.get("review"), dict) else {}
-        evidence.append(
-            {
-                "trajectoryId": trajectory.get("trajectoryId", ""),
-                "taskId": trajectory.get("taskId", ""),
-                "benchmarkId": trajectory.get("benchmarkId", ""),
-                "evalId": trajectory.get("evalId", ""),
-                "name": trajectory.get("name") or trajectory.get("taskName", ""),
-                "status": trajectory.get("status", ""),
-                "judgeLabel": judge.get("label") or review.get("label") or "",
-                "connectorIds": _dedupe_strings([str(value or "") for value in trajectory.get("connectorIds") or []]),
-                "toolIds": _dedupe_strings([str(value or "") for value in trajectory.get("toolIds") or []]),
-                "actionCount": len(actions) if isinstance(actions, list) else 0,
-                "createdAt": trajectory.get("createdAt"),
-                "updatedAt": trajectory.get("updatedAt"),
-            }
-        )
-    return evidence
-
-
-def _skill_lineage(skill: dict[str, Any], trajectory_docs: list[dict[str, Any]]) -> dict[str, Any]:
-    benchmark_ids = _dedupe_strings([str(skill.get("benchmarkId") or "")])
-    eval_ids = _dedupe_strings([str(skill.get("evalId") or "")])
-    connector_ids = _dedupe_strings([str(value or "") for value in skill.get("connectorIds") or []])
-    tool_ids = _dedupe_strings([str(value or "") for value in skill.get("toolIds") or []])
-    trajectory_ids = _dedupe_strings([str(value or "") for value in skill.get("trajectoryIds") or []])
-    sources = _dedupe_strings([str(skill.get("source") or "")])
-
-    for trajectory in trajectory_docs:
-        benchmark_ids.extend(_dedupe_strings([str(trajectory.get("benchmarkId") or "")]))
-        eval_ids.extend(_dedupe_strings([str(trajectory.get("evalId") or "")]))
-        connector_ids.extend(_dedupe_strings([str(value or "") for value in trajectory.get("connectorIds") or []]))
-        tool_ids.extend(_dedupe_strings([str(value or "") for value in trajectory.get("toolIds") or []]))
-        sources.extend(_dedupe_strings([str(trajectory.get("source") or "")]))
-
-    return {
-        "trajectoryIds": _dedupe_strings(trajectory_ids),
-        "benchmarkIds": _dedupe_strings(benchmark_ids),
-        "evalIds": _dedupe_strings(eval_ids),
-        "connectorIds": _dedupe_strings(connector_ids),
-        "toolIds": _dedupe_strings(tool_ids),
-        "sources": _dedupe_strings(sources),
-    }
-
-
 def _regression_case_key(case: dict[str, Any]) -> str:
     return str(case.get("taskId") or case.get("evalId") or f"{case.get('source')}:{case.get('benchmarkId')}:{case.get('name')}")
 
@@ -1186,32 +1139,6 @@ async def _skill_regression_cases(skill: dict[str, Any], *, trajectory_docs: lis
         await collect(evals_collection, {"benchmarkId": {"$in": benchmark_ids}}, "legacy_eval")
 
     return list(cases_by_key.values())[:100]
-
-
-def _skill_hardening_status(
-    skill: dict[str, Any],
-    *,
-    trajectory_docs: list[dict[str, Any]],
-    latest_regression: dict[str, Any] | None,
-) -> dict[str, Any]:
-    checks = {
-        "activation": bool(str(skill.get("whenToUse") or "").strip()),
-        "instructions": bool(str(skill.get("instructions") or "").strip()),
-        "riskPolicy": bool(str(skill.get("riskPolicy") or "").strip()),
-        "lineage": bool(skill.get("trajectoryIds") or trajectory_docs),
-        "regression": latest_regression is not None,
-        "publishableRegression": bool(latest_regression and latest_regression.get("label") == "pass"),
-        "entities": bool((skill.get("inputEntities") or []) or str(skill.get("outputEntity") or "").strip()),
-        "artifacts": bool(skill.get("expectedArtifacts") or skill.get("outputCard")),
-    }
-    passed = sum(1 for value in checks.values() if value)
-    return {
-        "checks": checks,
-        "passedChecks": passed,
-        "totalChecks": len(checks),
-        "score": round(passed / len(checks), 3) if checks else 0.0,
-        "state": "hardened" if checks["activation"] and checks["instructions"] and checks["riskPolicy"] and checks["lineage"] and checks["publishableRegression"] else "drafting",
-    }
 
 
 async def _skill_eval_ids(
@@ -1293,7 +1220,7 @@ async def _assert_skill_publishable(skill: dict[str, Any], trajectory_docs: list
             status_code=400,
             detail=f"Skill cannot be published because the latest benchmark run is {latest.get('label') or 'pending'}.",
         )
-    hardening = _skill_hardening_status(skill, trajectory_docs=trajectory_docs, latest_regression=latest)
+    hardening = skill_hardening_status(skill, trajectory_docs=trajectory_docs, latest_regression=latest)
     gate = skill_production_gate(
         hardening=hardening,
         latest_regression=latest,
