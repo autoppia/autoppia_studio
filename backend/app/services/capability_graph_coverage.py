@@ -8,6 +8,9 @@ from app.services.resource_governance import resource_indexed
 from app.services.resource_governance import resource_read_tools
 from app.services.resource_governance import resource_vector_id
 from app.services.runtime_policy import serialize_runtime_policy
+from app.services.skill_lifecycle import skill_promotion_status
+from app.services.skill_lifecycle import skill_version
+from app.services.skill_lifecycle import skill_version_history
 from app.services.skill_manifests import skill_io_contract
 from app.services.skill_readiness import skill_reusability_ready
 from app.services.task_contracts import task_contract_ready
@@ -42,6 +45,14 @@ def _dedupe_strings(values: list[str]) -> list[str]:
             seen.add(clean)
             result.append(clean)
     return result
+
+
+def _sorted_counts(values: list[str]) -> list[dict[str, Any]]:
+    counts: dict[str, int] = {}
+    for value in values:
+        key = str(value or "unknown").strip() or "unknown"
+        counts[key] = counts.get(key, 0) + 1
+    return [{"name": key, "count": counts[key]} for key in sorted(counts, key=lambda item: (-counts[item], item))]
 
 
 def _metadata(doc: dict[str, Any]) -> dict[str, Any]:
@@ -171,6 +182,19 @@ def skill_package_coverage(
         or package_regression.get("publishable")
     )
     manifest_ready = activation and instructions and risk_policy and source_trajectories and io_declared
+    metadata = package.get("metadata") if isinstance(package.get("metadata"), dict) else {}
+    lifecycle_doc = {
+        **skill,
+        "promotionStatus": skill.get("promotionStatus") or metadata.get("promotionStatus"),
+        "status": skill.get("status") or metadata.get("status"),
+        "version": skill.get("version") or metadata.get("version"),
+        "versionLabel": skill.get("versionLabel") or metadata.get("versionLabel"),
+        "versionHistory": skill.get("versionHistory") if isinstance(skill.get("versionHistory"), list) else package_evidence.get("versionHistory"),
+    }
+    promotion_status = skill_promotion_status(lifecycle_doc)
+    version = skill_version(lifecycle_doc)
+    version_history = skill_version_history(lifecycle_doc, version=version, promotion_status=promotion_status)
+    publishable = manifest_ready and publishable_regression
     return {
         "manifestReady": manifest_ready,
         "activation": activation,
@@ -180,8 +204,17 @@ def skill_package_coverage(
         "riskPolicy": risk_policy,
         "sourceTrajectories": source_trajectories,
         "regressionSuite": regression,
-        "publishable": manifest_ready and publishable_regression,
+        "publishable": publishable,
         "versioned": bool(skill.get("version") or skill.get("versionHistory") or package.get("manifestVersion")),
+        "release": {
+            "promotionStatus": promotion_status,
+            "version": version,
+            "versionLabel": lifecycle_doc.get("versionLabel") or f"v{version}",
+            "published": promotion_status == "published",
+            "readyForPublish": publishable and promotion_status in {"ready", "published"},
+            "historyCount": len(version_history),
+            "latestEvent": version_history[-1] if version_history else {},
+        },
     }
 
 
@@ -269,6 +302,7 @@ def capability_graph_coverage(
         skill_package_coverage(skill, trajectory_docs=trajectory_docs, eval_run_docs=eval_run_docs)
         for skill in skill_docs
     ]
+    skill_release_statuses = [str(item.get("release", {}).get("promotionStatus") or "draft") for item in skill_packages]
     work_orchestration = [work_orchestration_coverage(item) for item in work_item_docs]
     recent_eval_runs = sorted(eval_run_docs, key=_eval_run_timestamp, reverse=True)
     recent_eval_failures = [run for run in recent_eval_runs if _eval_run_label(run) == "fail"]
@@ -335,6 +369,15 @@ def capability_graph_coverage(
                 "regressionSuites": sum(1 for item in skill_packages if item["regressionSuite"]),
                 "publishable": sum(1 for item in skill_packages if item["publishable"]),
                 "versioned": sum(1 for item in skill_packages if item["versioned"]),
+                "releaseStatus": _sorted_counts(skill_release_statuses),
+                "releaseReadiness": {
+                    "readyForPublish": sum(1 for item in skill_packages if item.get("release", {}).get("readyForPublish")),
+                    "published": sum(1 for item in skill_packages if item.get("release", {}).get("published")),
+                    "withVersionHistory": sum(1 for item in skill_packages if int(item.get("release", {}).get("historyCount") or 0) > 1),
+                    "draft": skill_release_statuses.count("draft"),
+                    "ready": skill_release_statuses.count("ready"),
+                    "archived": skill_release_statuses.count("archived"),
+                },
             },
         },
         "runtime": {

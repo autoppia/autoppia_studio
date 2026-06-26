@@ -440,6 +440,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
                     "expectedArtifacts": ["claim_summary"],
                     "preconditions": ["Customer identity verified"],
                     "version": 2,
+                    "versionHistory": [
+                        {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
+                        {"version": 2, "promotionStatus": "published", "reason": "promoted", "createdAt": "t-2"},
+                    ],
                 }
             ]
         ),
@@ -613,6 +617,10 @@ async def test_company_capability_graph_links_factory_assets(monkeypatch):
     assert graph["coverage"]["skills"]["packages"]["regressionSuites"] == 1
     assert graph["coverage"]["skills"]["packages"]["publishable"] == 1
     assert graph["coverage"]["skills"]["packages"]["versioned"] == 1
+    assert graph["coverage"]["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]
+    assert graph["coverage"]["skills"]["packages"]["releaseReadiness"]["published"] == 1
+    assert graph["coverage"]["skills"]["packages"]["releaseReadiness"]["readyForPublish"] == 1
+    assert graph["coverage"]["skills"]["packages"]["releaseReadiness"]["withVersionHistory"] == 1
     assert graph["coverage"]["runtime"]["sessions"] == 1
     assert graph["coverage"]["runtime"]["sessionContracts"]["withContract"] == 1
     assert graph["coverage"]["runtime"]["sessionContracts"]["selectedSkill"] == 1

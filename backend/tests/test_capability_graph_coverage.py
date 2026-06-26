@@ -43,6 +43,11 @@ def test_skill_package_coverage_detects_publishable_skill_package():
             "inputEntities": ["Claim"],
             "outputEntity": "DraftEmail",
             "version": 2,
+            "promotionStatus": "published",
+            "versionHistory": [
+                {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
+                {"version": 2, "promotionStatus": "published", "reason": "promoted", "createdAt": "t-2"},
+            ],
         },
         trajectory_docs=[{"trajectoryId": "traj-1", "benchmarkId": "bench-1", "evalId": "task-1"}],
         eval_run_docs=[
@@ -56,6 +61,10 @@ def test_skill_package_coverage_detects_publishable_skill_package():
     assert coverage["regressionSuite"] is True
     assert coverage["publishable"] is True
     assert coverage["versioned"] is True
+    assert coverage["release"]["promotionStatus"] == "published"
+    assert coverage["release"]["readyForPublish"] is True
+    assert coverage["release"]["historyCount"] == 2
+    assert coverage["release"]["latestEvent"]["reason"] == "promoted"
 
 
 def test_work_orchestration_coverage_tracks_enterprise_controls():
@@ -147,6 +156,11 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
                 "inputEntities": ["Claim"],
                 "outputEntity": "DraftEmail",
                 "version": 2,
+                "promotionStatus": "published",
+                "versionHistory": [
+                    {"version": 1, "promotionStatus": "ready", "reason": "initial", "createdAt": "t-1"},
+                    {"version": 2, "promotionStatus": "published", "reason": "promoted", "createdAt": "t-2"},
+                ],
             }
         ],
         eval_run_docs=[
@@ -191,6 +205,15 @@ def test_capability_graph_coverage_aggregates_factory_runtime_and_policy_state()
     assert coverage["policies"]["sendProtected"] is True
     assert coverage["benchmarks"]["tasksWithContracts"] == 1
     assert coverage["skills"]["packages"]["publishable"] == 1
+    assert coverage["skills"]["packages"]["releaseStatus"] == [{"name": "published", "count": 1}]
+    assert coverage["skills"]["packages"]["releaseReadiness"] == {
+        "readyForPublish": 1,
+        "published": 1,
+        "withVersionHistory": 1,
+        "draft": 0,
+        "ready": 0,
+        "archived": 0,
+    }
     assert coverage["evals"]["recentRuns"][0]["runId"] == "run-fail"
     assert coverage["evals"]["recentFailures"] == [
         {
