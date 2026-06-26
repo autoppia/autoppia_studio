@@ -722,8 +722,17 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     )
     company_setup = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Company Setup")
     assert company_setup["status"] == "needs_work"
+    assert company_setup["hardening"] == {
+        "gap": "secrets",
+        "area": "credentials",
+        "severity": "high",
+        "action": "Attach credentials or OAuth profiles for systems that need authenticated runtime access.",
+    }
+    assert company_setup["nextAction"] == company_setup["hardening"]["action"]
     capability_factory = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Capability Factory")
     assert capability_factory["status"] == "needs_work"
+    assert capability_factory["hardening"]["action"]
+    assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert len(capabilities_payload["skills"]) == 1
     listed_skill = capabilities_payload["skills"][0]

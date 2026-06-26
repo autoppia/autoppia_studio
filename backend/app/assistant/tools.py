@@ -144,6 +144,20 @@ def _surface_status(ready: bool) -> str:
     return "ready" if ready else "needs_work"
 
 
+def _first_playbook_item(*playbooks: Any) -> dict[str, Any]:
+    for playbook in playbooks:
+        if not isinstance(playbook, list):
+            continue
+        for item in playbook:
+            if isinstance(item, dict) and item.get("action"):
+                return item
+    return {}
+
+
+def _surface_next_action(default: str, hardening: dict[str, Any]) -> str:
+    return str(hardening.get("action") or default)
+
+
 def _connector_domains(docs: list[dict[str, Any]]) -> list[str]:
     domains: set[str] = set()
     for doc in docs:
@@ -575,26 +589,47 @@ class AutomataAssistantTools:
                 {
                     "surface": "Company Setup",
                     "status": _surface_status(bool(company_id) and bool(setup_gate.get("ready"))),
-                    "nextAction": "Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.",
+                    "hardening": (company_setup_hardening := _first_playbook_item(setup_gate.get("hardeningPlaybook"))),
+                    "nextAction": _surface_next_action("Confirm systems, credentials, domains, approvals, ACLs and compliance boundaries.", company_setup_hardening),
                 },
                 {
                     "surface": "Capability Factory",
                     "status": _surface_status(counts["tools"] > 0 and counts["benchmarkTasks"] > 0 and counts["skills"] > 0 and not any(gap["group"] == "factory" for gap in vertical_demo_gaps)),
-                    "nextAction": "Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.",
+                    "hardening": (
+                        capability_factory_hardening := _first_playbook_item(
+                            connector_map.get("toolHardeningPlaybook"),
+                            connector_map.get("ingestionPlaybook"),
+                            skill_package_summary.get("hardeningPlaybook"),
+                            skill_eval_gate.get("hardeningPlaybook"),
+                            benchmark_portfolio.get("hardeningPlaybook"),
+                            vertical_demos.get("hardeningPlaybook"),
+                            promotion_pipeline.get("coveragePlaybook"),
+                        )
+                    ),
+                    "nextAction": _surface_next_action("Move from connector access to typed tools, benchmark tasks, judged trajectories and hardened skills.", capability_factory_hardening),
                 },
                 {
                     "surface": "Runtime Lab",
                     "status": _surface_status(counts["sessions"] > 0 and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)),
-                    "nextAction": "Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.",
+                    "hardening": (
+                        runtime_lab_hardening := _first_playbook_item(
+                            session_contracts.get("hardeningPlaybook"),
+                            artifact_outputs.get("hardeningPlaybook"),
+                            (runtime_policy_map.get("approvalBoundaries") or {}).get("hardening", {}).get("playbook"),
+                        )
+                    ),
+                    "nextAction": _surface_next_action("Run or inspect sessions for skill match, tool calls, approvals, artifacts, cost and replay.", runtime_lab_hardening),
                 },
                 {
                     "surface": "Work Orchestration",
                     "status": _surface_status(counts["workItems"] > 0 and review_blocked == 0 and budget_exhausted == 0),
-                    "nextAction": "Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.",
+                    "hardening": (work_orchestration_hardening := _first_playbook_item(work_contracts.get("hardeningPlaybook"))),
+                    "nextAction": _surface_next_action("Review queues, schedules, retries, budgets, SLAs and approval-blocked jobs.", work_orchestration_hardening),
                 },
                 {
                     "surface": "Automata",
                     "status": "ready",
+                    "hardening": {},
                     "nextAction": "Ask Automata to explain failing tasks, suggest missing benchmarks, or draft the next capability-hardening step.",
                 },
             ],
