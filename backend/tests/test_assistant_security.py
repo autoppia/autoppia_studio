@@ -690,6 +690,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["skillId"] == "skill-1"
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["pendingApprovals"] == 1
     assert snapshot["operatingState"]["runtime"]["sessionContracts"]["sample"][0]["timelineSteps"] == 4
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeSessionGate"]["state"] == "blocked"
+    assert snapshot["operatingState"]["runtime"]["sessionContracts"]["runtimeSessionGate"]["checks"]["approvalsResolved"] is False
     assert {
         "gap": "pending_approvals",
         "count": 1,
@@ -739,6 +741,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["area"] == "company_setup" for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
     assert any(
@@ -760,6 +763,10 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert capability_factory["status"] == "needs_work"
     assert capability_factory["hardening"]["action"]
     assert capability_factory["nextAction"] == capability_factory["hardening"]["action"]
+    runtime_lab = next(item for item in snapshot["automataGuidance"]["surfacePlaybook"] if item["surface"] == "Runtime Lab")
+    assert runtime_lab["status"] == "needs_work"
+    assert runtime_lab["hardening"]["gap"] == "pending_approvals"
+    assert runtime_lab["nextAction"] == runtime_lab["hardening"]["action"]
     assert capabilities.last_count_query == {"email": "owner@example.com", "companyId": "company-1", "capabilityKind": "skill"}
     assert len(capabilities_payload["skills"]) == 1
     listed_skill = capabilities_payload["skills"][0]

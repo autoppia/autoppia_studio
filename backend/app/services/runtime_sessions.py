@@ -630,6 +630,36 @@ def build_session_contract(
     }
 
 
+def _runtime_session_gate(
+    *,
+    total: int,
+    with_contract: int,
+    selected_skill: int,
+    pending_approvals: int,
+    artifact_outputs: int,
+    replay_ready: int,
+    trace_count: int,
+    gap_counts: dict[str, int],
+) -> dict[str, Any]:
+    checks = {
+        "sessionsObserved": total > 0,
+        "contractsDurable": total > 0 and with_contract == total,
+        "selectedSkillLinked": total > 0 and selected_skill == total,
+        "traceAuditable": total > 0 and trace_count >= total and not gap_counts.get("trace_ids"),
+        "replayReady": total > 0 and replay_ready == total,
+        "approvalsResolved": pending_approvals == 0,
+        "artifactOutputsCaptured": total > 0 and artifact_outputs >= total and not gap_counts.get("artifact_outputs"),
+    }
+    blockers = [name for name, passed in checks.items() if not passed]
+    return {
+        "state": "ready" if not blockers else "blocked",
+        "ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "hardeningPlaybook": _session_hardening_playbook(gap_counts),
+    }
+
+
 def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit: int = 8) -> dict[str, Any]:
     with_contract = 0
     selected_skill = 0
@@ -726,6 +756,7 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
                     "replayReady": bool(trace.get("replayReady")),
                 }
             )
+    hardening_playbook = _session_hardening_playbook(gap_counts)
     return {
         "total": len(sessions),
         "withContract": with_contract,
@@ -747,5 +778,15 @@ def summarize_session_contracts(sessions: list[dict[str, Any]], *, sample_limit:
             "replayReadySessions": replay_ready,
         },
         "sample": samples,
-        "hardeningPlaybook": _session_hardening_playbook(gap_counts),
+        "runtimeSessionGate": _runtime_session_gate(
+            total=len(sessions),
+            with_contract=with_contract,
+            selected_skill=selected_skill,
+            pending_approvals=pending_approvals,
+            artifact_outputs=artifact_outputs,
+            replay_ready=replay_ready,
+            trace_count=trace_count,
+            gap_counts=gap_counts,
+        ),
+        "hardeningPlaybook": hardening_playbook,
     }

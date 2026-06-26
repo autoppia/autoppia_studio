@@ -406,6 +406,11 @@ class AutomataAssistantTools:
         )
         setup_gate = company_integration.get("setupGate") if isinstance(company_integration.get("setupGate"), dict) else {}
         session_contracts = summarize_session_contracts(session_docs, sample_limit=5)
+        runtime_session_gate = (
+            session_contracts.get("runtimeSessionGate")
+            if isinstance(session_contracts.get("runtimeSessionGate"), dict)
+            else {}
+        )
         artifact_outputs = summarize_artifact_outputs(artifact_docs, sample_limit=5)
         work_contracts = summarize_work_orchestration_contracts(work_docs, sample_limit=5)
         browser_allowed_domains = sorted({*connector_domain_hosts, *_company_allowed_origin_hosts(company_doc)})
@@ -566,6 +571,7 @@ class AutomataAssistantTools:
                 {"area": "capabilities", "severity": "medium", "message": "The Task -> Trajectory -> Skill promotion path is incomplete."} if promotion_pipeline["gaps"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "A vertical demo is missing operational readiness evidence."} if vertical_demo_gaps else None,
                 {"area": "runtime", "severity": "medium", "message": "Browser-capable runtime exists without a domain allowlist."} if any(gap.get("key") == "browser_allowlist" for gap in runtime_policy_map["gaps"]) else None,
+                {"area": "runtime", "severity": "medium", "message": "Runtime Lab sessions are not yet durable, replay-ready evidence."} if runtime_session_gate and not runtime_session_gate.get("ready") else None,
                 {
                     "area": "approvals",
                     "severity": "high",
@@ -611,7 +617,10 @@ class AutomataAssistantTools:
                 },
                 {
                     "surface": "Runtime Lab",
-                    "status": _surface_status(counts["sessions"] > 0 and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)),
+                    "status": _surface_status(
+                        bool(runtime_session_gate.get("ready"))
+                        and not any(gap["group"] == "runtime" for gap in vertical_demo_gaps)
+                    ),
                     "hardening": (
                         runtime_lab_hardening := _first_playbook_item(
                             session_contracts.get("hardeningPlaybook"),

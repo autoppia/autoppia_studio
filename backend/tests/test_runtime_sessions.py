@@ -499,6 +499,21 @@ def test_summarize_session_contracts_counts_buildable_contract_shape():
     assert summary["sample"][0]["timelineSteps"] == 4
     assert summary["sample"][0]["toolSteps"] == 2
     assert summary["hardeningPlaybook"] == []
+    assert summary["runtimeSessionGate"] == {
+        "state": "ready",
+        "ready": True,
+        "checks": {
+            "sessionsObserved": True,
+            "contractsDurable": True,
+            "selectedSkillLinked": True,
+            "traceAuditable": True,
+            "replayReady": True,
+            "approvalsResolved": True,
+            "artifactOutputsCaptured": True,
+        },
+        "blockers": [],
+        "hardeningPlaybook": [],
+    }
 
 
 def test_summarize_session_contracts_returns_runtime_lab_hardening_playbook():
@@ -576,6 +591,18 @@ def test_summarize_session_contracts_returns_runtime_lab_hardening_playbook():
             "severity": "high",
             "action": "Attach trace identifiers so tool calls, approvals, artifacts and replay evidence remain auditable.",
         },
+    ]
+    assert summary["runtimeSessionGate"]["state"] == "blocked"
+    assert summary["runtimeSessionGate"]["checks"]["contractsDurable"] is False
+    assert summary["runtimeSessionGate"]["checks"]["approvalsResolved"] is False
+    assert summary["runtimeSessionGate"]["checks"]["artifactOutputsCaptured"] is False
+    assert summary["runtimeSessionGate"]["blockers"] == [
+        "contractsDurable",
+        "selectedSkillLinked",
+        "traceAuditable",
+        "replayReady",
+        "approvalsResolved",
+        "artifactOutputsCaptured",
     ]
 
 
