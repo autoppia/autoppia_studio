@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.services.tool_synthesis import GENERIC_DISCOVERY_TOOLS
+from app.services.tool_synthesis import summarize_tool_synthesis
+
 
 def connector_capability_discovery(
     connector: dict[str, Any],
@@ -32,27 +35,12 @@ def connector_capability_discovery(
         or bool(config.get(field))
     )
     tool_specs = list(toolkit.get("tools") or [])
-    generic_discovery_tools = {"api.discover_schema", "api.generate_toolkit", "api.call", "browser.open", "browser.click", "browser.type"}
+    tool_synthesis = summarize_tool_synthesis(tool_specs, runtime_requirements=toolkit.get("runtimeRequirements", []))
     typed_tools = [
         str(tool.get("name") or "")
         for tool in tool_specs
-        if str(tool.get("name") or "") and str(tool.get("name") or "") not in generic_discovery_tools
+        if str(tool.get("name") or "") and str(tool.get("name") or "") not in GENERIC_DISCOVERY_TOOLS
     ]
-    write_tools = [
-        tool.get("name", "")
-        for tool in tool_specs
-        if str(tool.get("sideEffects") or "").lower() in {"write", "writes", "send", "mutates"}
-    ]
-    governed_tools = [tool for tool in tool_specs if isinstance(tool.get("toolContract"), dict)]
-    approval_tools = [
-        tool.get("name", "")
-        for tool in tool_specs
-        if isinstance(tool.get("approvalPolicy"), dict) and tool["approvalPolicy"].get("required")
-    ]
-    risk_counts: dict[str, int] = {}
-    for tool in tool_specs:
-        risk = str(tool.get("riskLevel") or (tool.get("toolContract") or {}).get("riskLevel") or "unknown").lower()
-        risk_counts[risk] = risk_counts.get(risk, 0) + 1
     tool_entity_names: list[str] = []
     read_tools: list[str] = []
     write_tools_for_entities: list[str] = []
@@ -180,17 +168,7 @@ def connector_capability_discovery(
             "readyForToolBinding": bool(entity_names and tool_specs),
             "nextAction": "Review and persist business entities from tool contracts." if entity_names else "Generate entity models from OpenAPI/schema/docs or runtime observations.",
         },
-        "toolSynthesis": {
-            "toolCount": len(tool_specs),
-            "typedToolCount": len(typed_tools),
-            "governedToolCount": len(governed_tools),
-            "typedTools": typed_tools,
-            "writeToolCount": len(write_tools),
-            "writeTools": write_tools,
-            "approvalRequiredTools": approval_tools,
-            "riskCounts": risk_counts,
-            "runtimeRequirements": toolkit.get("runtimeRequirements", []),
-        },
+        "toolSynthesis": {**tool_synthesis, "typedToolCount": len(typed_tools), "typedTools": typed_tools},
         "candidateTasks": {
             "recommended": provider == "custom",
             "source": "benchmarks",

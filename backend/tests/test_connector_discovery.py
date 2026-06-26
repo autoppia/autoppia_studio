@@ -31,6 +31,9 @@ def test_connector_capability_discovery_blocks_custom_api_until_docs_and_auth():
     assert discovery["docs"]["surfaceUrls"] == ["https://erp.example.com"]
     assert discovery["auth"]["configuredFields"] == 0
     assert discovery["toolSynthesis"]["approvalRequiredTools"] == ["api.call"]
+    assert discovery["toolSynthesis"]["tools"][0]["toolName"] == "api.call"
+    assert discovery["toolSynthesis"]["tools"][0]["governed"] is True
+    assert discovery["toolSynthesis"]["tools"][0]["policyBoundary"] == "write"
     assert discovery["ingestionPipeline"]["state"] == "blocked"
     assert discovery["ingestionPipeline"]["nextStage"]["key"] == "connector_docs"
     assert {gap["key"] for gap in discovery["gaps"]} == {"docs", "auth"}
@@ -76,4 +79,6 @@ def test_connector_capability_discovery_maps_entities_from_tool_contracts():
     assert discovery["entityMapping"]["permissions"]["readTools"] == ["claims.search_claims"]
     assert discovery["entityMapping"]["permissions"]["writeTools"] == ["claims.update_claim"]
     assert discovery["toolSynthesis"]["typedTools"] == ["claims.search_claims", "claims.update_claim"]
+    assert discovery["toolSynthesis"]["tools"][0]["entities"] == {"input": ["Policy"], "output": "Claim", "linked": True}
+    assert discovery["toolSynthesis"]["tools"][1]["approval"]["required"] is True
     assert discovery["ingestionPipeline"]["state"] == "needs_benchmark"
