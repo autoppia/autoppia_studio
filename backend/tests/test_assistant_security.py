@@ -583,6 +583,8 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["regressionGate"]["nextActions"] == [
         "Create benchmarks that reference connectors, entities or skills before evaluating coverage."
     ]
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["evalCenterGate"]["state"] == "blocked"
+    assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["evalCenterGate"]["checks"]["promotionGateReady"] is False
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["state"] == "needs_hardening"
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["deterministic"] == 0
     assert snapshot["operatingState"]["capabilityMap"]["benchmarkPortfolio"]["judgeStrategyGate"]["stateful"] == 1
@@ -744,6 +746,7 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert any(alert["message"] == "Benchmark portfolio is not fully gated by passing regressions." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "A vertical demo is missing operational readiness evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Capability Factory pipeline is not ready end-to-end." for alert in snapshot["automataGuidance"]["riskAlerts"])
+    assert any(alert["message"] == "Eval center gate is not ready for production promotion." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Runtime Lab sessions are not yet durable, replay-ready evidence." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(alert["message"] == "Knowledge resources exist without explicit ACL visibility." for alert in snapshot["automataGuidance"]["riskAlerts"])
     assert any(item["surface"] == "Capability Factory" for item in snapshot["automataGuidance"]["surfacePlaybook"])
@@ -1089,6 +1092,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
                         "benchmarks": 2,
                         "tasks": 7,
                         "promotionGate": {"state": "blocked"},
+                        "evalCenterGate": {"state": "blocked", "taskCoverage": {"replayReady": 3, "total": 7}},
                         "regressionGate": {"state": "needs_regression", "gatedCapabilities": 3, "totalCapabilities": 5},
                         "judgeStrategyGate": {"state": "needs_hardening", "total": 7, "deterministic": 4, "stateful": 6},
                     },
@@ -1173,6 +1177,7 @@ def test_assistant_snapshot_reply_surfaces_operating_next_action():
     assert "Eval gates: 1 passing, 1 blocked, 2 missing regression." in reply
     assert "Eval coverage: connectors 2/3, entities 1/4, skills 2/5." in reply
     assert "Benchmark portfolio: 2 benchmark(s), 7 task(s), promotion gate blocked." in reply
+    assert "Eval center gate: blocked, 3/7 replay-ready task(s)." in reply
     assert "Regression gate: 3/5 capabilities gated, state needs_regression." in reply
     assert "Judge strategy gate: needs_hardening, 4/7 deterministic, 6 stateful." in reply
     assert "Promotion pipeline: 4/7 tasks with trajectories, 3/5 trajectories approved, 2/4 skills trajectory-linked." in reply

@@ -1510,10 +1510,17 @@ class AutomataAssistantService:
             if benchmark_portfolio:
                 promotion_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}
                 regression_gate = benchmark_portfolio.get("regressionGate") if isinstance(benchmark_portfolio.get("regressionGate"), dict) else {}
+                eval_center_gate = benchmark_portfolio.get("evalCenterGate") if isinstance(benchmark_portfolio.get("evalCenterGate"), dict) else {}
                 coverage_text += (
                     f" Benchmark portfolio: {benchmark_portfolio.get('benchmarks', 0)} benchmark(s), "
                     f"{benchmark_portfolio.get('tasks', 0)} task(s), promotion gate {promotion_gate.get('state', 'unknown')}."
                 )
+                if eval_center_gate:
+                    task_coverage = eval_center_gate.get("taskCoverage") if isinstance(eval_center_gate.get("taskCoverage"), dict) else {}
+                    coverage_text += (
+                        f" Eval center gate: {eval_center_gate.get('state', 'unknown')}, "
+                        f"{task_coverage.get('replayReady', 0)}/{task_coverage.get('total', 0)} replay-ready task(s)."
+                    )
                 if regression_gate:
                     coverage_text += (
                         f" Regression gate: {regression_gate.get('gatedCapabilities', 0)}/{regression_gate.get('totalCapabilities', 0)} "

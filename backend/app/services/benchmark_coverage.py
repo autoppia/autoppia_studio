@@ -63,6 +63,31 @@ BENCHMARK_PORTFOLIO_ACTIONS = {
         "severity": "medium",
         "action": "Reference connectors, entities or skills from benchmarks before evaluating coverage.",
     },
+    "eval_center_empty": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Create benchmark tasks and regression runs before treating evals as the central promotion gate.",
+    },
+    "task_eval_contracts": {
+        "area": "tasks",
+        "severity": "high",
+        "action": "Complete every task contract and make it evaluation-ready before promotion.",
+    },
+    "task_replayability": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Add initial state, evaluator config, fixtures and seed so task trials can be replayed.",
+    },
+    "capability_regression_matrix": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Gate connectors, entities and skills with passing regressions before release.",
+    },
+    "benchmark_promotion_gate": {
+        "area": "evals",
+        "severity": "high",
+        "action": "Resolve benchmark promotion blockers before publishing capabilities.",
+    },
     "judge_strategy": {
         "area": "evals",
         "severity": "high",
@@ -444,6 +469,15 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
     matrix = coverage_matrix(coverage_items)
     portfolio["coverageMatrix"] = matrix
     portfolio["regressionGate"] = regression_gate_from_matrix(matrix)
+    portfolio["evalCenterGate"] = eval_center_gate(
+        task_total=task_total,
+        task_complete=task_complete,
+        task_evaluation_ready=task_evaluation_ready,
+        coverage_items=coverage_items,
+        promotion_gate=portfolio["promotionGate"],
+        regression_gate=portfolio["regressionGate"],
+        judge_strategy_gate=portfolio["judgeStrategyGate"],
+    )
     gap_counts: dict[str, int] = {}
     for blocker in portfolio["promotionGate"].get("blockers") or []:
         if blocker == "incomplete_task_contracts":
@@ -475,6 +509,63 @@ def coverage_portfolio(coverage_items: list[dict[str, Any]]) -> dict[str, Any]:
         gap_counts[blocker] = gap_counts.get(blocker, 0) + max(1, count)
     portfolio["hardeningPlaybook"] = _benchmark_portfolio_playbook({key: count for key, count in gap_counts.items() if count})
     return portfolio
+
+
+def eval_center_gate(
+    *,
+    task_total: int,
+    task_complete: int,
+    task_evaluation_ready: int,
+    coverage_items: list[dict[str, Any]],
+    promotion_gate: dict[str, Any],
+    regression_gate: dict[str, Any],
+    judge_strategy_gate: dict[str, Any],
+) -> dict[str, Any]:
+    ready_for_replay = sum(
+        int(((item.get("taskContractCoverage") or {}).get("reproducibility") or {}).get("readyForReplay") or 0)
+        for item in coverage_items
+    )
+    checks = {
+        "benchmarksPresent": bool(coverage_items) and task_total > 0,
+        "taskContractsComplete": bool(task_total) and task_complete == task_total,
+        "tasksEvaluationReady": bool(task_total) and task_evaluation_ready == task_total,
+        "tasksReplayReady": bool(task_total) and ready_for_replay == task_total,
+        "judgeStrategyReady": bool(judge_strategy_gate.get("ready")),
+        "regressionMatrixReady": bool(regression_gate.get("ready")),
+        "promotionGateReady": bool(promotion_gate.get("canPromote")),
+    }
+    blockers = [name for name, ready in checks.items() if not ready]
+    gap_counts: dict[str, int] = {}
+    if not checks["benchmarksPresent"]:
+        gap_counts["eval_center_empty"] = 1
+    if not checks["taskContractsComplete"] or not checks["tasksEvaluationReady"]:
+        gap_counts["task_eval_contracts"] = max(1, task_total - min(task_complete, task_evaluation_ready))
+    if not checks["tasksReplayReady"]:
+        gap_counts["task_replayability"] = max(1, task_total - ready_for_replay)
+    if not checks["judgeStrategyReady"]:
+        gap_counts["judge_strategy"] = max(1, int(judge_strategy_gate.get("total") or task_total or 1))
+    if not checks["regressionMatrixReady"]:
+        gap_counts["capability_regression_matrix"] = max(1, int(regression_gate.get("totalCapabilities") or len(coverage_items) or 1))
+    if not checks["promotionGateReady"]:
+        gap_counts["benchmark_promotion_gate"] = max(1, len(promotion_gate.get("blockers") or []) or 1)
+    return {
+        "state": "ready" if not blockers else ("empty" if not checks["benchmarksPresent"] else "blocked"),
+        "ready": not blockers,
+        "checks": checks,
+        "blockers": blockers,
+        "taskCoverage": {
+            "total": task_total,
+            "complete": task_complete,
+            "evaluationReady": task_evaluation_ready,
+            "replayReady": ready_for_replay,
+        },
+        "capabilityRegression": {
+            "gated": int(regression_gate.get("gatedCapabilities") or 0),
+            "total": int(regression_gate.get("totalCapabilities") or 0),
+            "state": str(regression_gate.get("state") or "unknown"),
+        },
+        "hardeningPlaybook": _benchmark_portfolio_playbook(gap_counts),
+    }
 
 
 def regression_gate_from_matrix(matrix: dict[str, Any]) -> dict[str, Any]:

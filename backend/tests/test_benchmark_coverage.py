@@ -174,6 +174,30 @@ def test_coverage_portfolio_rolls_up_matrix_and_blockers():
     assert portfolio["regressionGate"]["state"] == "failing"
     assert portfolio["regressionGate"]["ready"] is False
     assert portfolio["regressionGate"]["blockers"] == ["failing_regression", "skill_hardening"]
+    assert portfolio["evalCenterGate"]["state"] == "blocked"
+    assert portfolio["evalCenterGate"]["checks"] == {
+        "benchmarksPresent": True,
+        "taskContractsComplete": False,
+        "tasksEvaluationReady": False,
+        "tasksReplayReady": False,
+        "judgeStrategyReady": False,
+        "regressionMatrixReady": False,
+        "promotionGateReady": False,
+    }
+    assert portfolio["evalCenterGate"]["taskCoverage"] == {
+        "total": 1,
+        "complete": 0,
+        "evaluationReady": 0,
+        "replayReady": 0,
+    }
+    assert portfolio["evalCenterGate"]["capabilityRegression"] == {"gated": 0, "total": 3, "state": "failing"}
+    assert portfolio["evalCenterGate"]["hardeningPlaybook"][0] == {
+        "gap": "benchmark_promotion_gate",
+        "count": 4,
+        "area": "evals",
+        "severity": "high",
+        "action": "Resolve benchmark promotion blockers before publishing capabilities.",
+    }
     assert portfolio["judgeStrategyGate"]["state"] == "needs_hardening"
     assert portfolio["judgeStrategyGate"]["llmOnly"] == 1
     assert portfolio["regressionGate"]["failingRegression"] == [

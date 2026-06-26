@@ -533,6 +533,11 @@ class AutomataAssistantTools:
             )
         benchmark_gate = benchmark_portfolio.get("promotionGate") if isinstance(benchmark_portfolio.get("promotionGate"), dict) else {}
         regression_gate = benchmark_portfolio.get("regressionGate") if isinstance(benchmark_portfolio.get("regressionGate"), dict) else {}
+        eval_center_gate = benchmark_portfolio.get("evalCenterGate") if isinstance(benchmark_portfolio.get("evalCenterGate"), dict) else {}
+        if eval_center_gate and not eval_center_gate.get("ready"):
+            playbook = eval_center_gate.get("hardeningPlaybook") if isinstance(eval_center_gate.get("hardeningPlaybook"), list) else []
+            first_action = playbook[0].get("action") if playbook and isinstance(playbook[0], dict) else "Make benchmark evals the central promotion gate before publishing capabilities."
+            recommended_actions.append({"area": "evals", "action": first_action, "reason": f"Eval center gate is {eval_center_gate.get('state') or 'blocked'}."})
         if benchmark_gate and not benchmark_gate.get("canPromote"):
             next_action = (benchmark_gate.get("nextActions") or ["Complete benchmark promotion gates before publishing capabilities."])[0]
             recommended_actions.append({"area": "evals", "action": next_action, "reason": f"Benchmark promotion gate is {benchmark_gate.get('state') or 'blocked'}."})
@@ -569,6 +574,7 @@ class AutomataAssistantTools:
                 {"area": "connectors", "severity": "medium", "message": f"{connector_map['needsHardeningCount']} synthesized connector tool(s) need hardening before production runtime use."} if connector_map["needsHardeningCount"] else None,
                 {"area": "capabilities", "severity": "medium", "message": "Some skills are blocked by production gate checks."} if skill_gate_summary["blocked"] or skill_gate_summary["needsRegression"] else None,
                 {"area": "evals", "severity": "high", "message": f"{skill_eval_gate['blockedByRegression']} skill(s) are blocked by regression evidence."} if skill_eval_gate["blockedByRegression"] else None,
+                {"area": "evals", "severity": "high", "message": "Eval center gate is not ready for production promotion."} if eval_center_gate and not eval_center_gate.get("ready") else None,
                 {"area": "evals", "severity": "medium", "message": "Benchmark portfolio is not fully gated by passing regressions."} if benchmark_portfolio.get("regressionGate") and not (benchmark_portfolio.get("regressionGate") or {}).get("ready") else None,
                 {"area": "evals", "severity": "medium", "message": f"Eval coverage is missing for {eval_coverage_gap['label']}."} if eval_coverage_gap else None,
                 {"area": "evals", "severity": "medium", "message": f"{skill_eval_gate['missing']} skill(s) are missing regression evidence."} if counts["skills"] and skill_eval_gate["missing"] else None,
@@ -621,6 +627,7 @@ class AutomataAssistantTools:
                             skill_package_summary.get("hardeningPlaybook"),
                             skill_eval_gate.get("hardeningPlaybook"),
                             benchmark_portfolio.get("hardeningPlaybook"),
+                            eval_center_gate.get("hardeningPlaybook"),
                             vertical_demos.get("hardeningPlaybook"),
                             promotion_pipeline.get("hardeningPlaybook"),
                         )
