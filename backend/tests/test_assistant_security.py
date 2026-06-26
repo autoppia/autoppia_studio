@@ -608,6 +608,13 @@ async def test_assistant_tools_count_and_list_skills_from_capabilities(monkeypat
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["approvalGates"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["auditTrails"] == 1
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["browserAllowlists"] == 1
+    assert snapshot["operatingState"]["workOrchestration"]["contracts"]["hardeningPlaybook"][0] == {
+        "gap": "budget_exhausted",
+        "count": 1,
+        "area": "budgets",
+        "severity": "high",
+        "action": "Increase budget or reduce runtime scope before retrying this work item.",
+    }
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["sample"][0]["workItemId"] == "work-1"
     assert snapshot["operatingState"]["workOrchestration"]["contracts"]["sample"][0]["slaState"] == "blocked"
     assert snapshot["operatingState"]["runtime"]["failingEvalRuns"] == 1

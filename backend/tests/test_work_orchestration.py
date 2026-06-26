@@ -108,4 +108,27 @@ def test_summarize_work_orchestration_contracts_counts_normalized_controls():
     assert summary["unattendedBlocked"] == 1
     assert summary["automationBlockers"] == [{"name": "budget_exhausted", "count": 1}, {"name": "pending_approval", "count": 1}]
     assert summary["automationNextActions"] == ["Resolve pending approvals before allowing unattended execution."]
+    assert summary["hardeningPlaybook"] == [
+        {
+            "gap": "budget_exhausted",
+            "count": 1,
+            "area": "budgets",
+            "severity": "high",
+            "action": "Increase budget or reduce runtime scope before retrying this work item.",
+        },
+        {
+            "gap": "pending_approval",
+            "count": 1,
+            "area": "approvals",
+            "severity": "high",
+            "action": "Resolve pending approvals before allowing unattended execution.",
+        },
+        {
+            "gap": "sla_attention",
+            "count": 1,
+            "area": "sla",
+            "severity": "medium",
+            "action": "Review overdue or blocked SLA state before dispatching more work.",
+        },
+    ]
     assert summary["sample"][0]["automationBlockers"] == ["pending_approval", "budget_exhausted"]

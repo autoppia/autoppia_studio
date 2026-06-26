@@ -5,6 +5,50 @@ from typing import Any
 from urllib.parse import urlparse
 
 
+WORK_HARDENING_ACTIONS = {
+    "missing_contract": {
+        "area": "work",
+        "severity": "high",
+        "action": "Normalize this work item with orchestration metadata for SLA, budget, retry, approvals and audit.",
+    },
+    "pending_approval": {
+        "area": "approvals",
+        "severity": "high",
+        "action": "Resolve pending approvals before allowing unattended execution.",
+    },
+    "budget_exhausted": {
+        "area": "budgets",
+        "severity": "high",
+        "action": "Increase budget or reduce runtime scope before retrying this work item.",
+    },
+    "failed_state": {
+        "area": "queues",
+        "severity": "high",
+        "action": "Inspect the latest failed run and retry only after fixing the cause.",
+    },
+    "missing_schedule": {
+        "area": "triggers",
+        "severity": "medium",
+        "action": "Set the next scheduled run time or switch this item to manual.",
+    },
+    "missing_browser_allowlist": {
+        "area": "browser_policy",
+        "severity": "high",
+        "action": "Add allowed domains before running browser-enabled scheduled work unattended.",
+    },
+    "sla_attention": {
+        "area": "sla",
+        "severity": "medium",
+        "action": "Review overdue or blocked SLA state before dispatching more work.",
+    },
+    "missing_audit_trail": {
+        "area": "audit",
+        "severity": "medium",
+        "action": "Attach a uniform audit trail with queue, budget, retry, approval and browser policy checkpoints.",
+    },
+}
+
+
 def _list_values(values: Any) -> list[str]:
     if not isinstance(values, list):
         return []
@@ -338,6 +382,39 @@ def work_orchestration_contract(work_item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _work_hardening_playbook(contracts: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    gap_counts: dict[str, int] = {}
+    for contract in contracts:
+        if not contract["withContract"]:
+            gap_counts["missing_contract"] = gap_counts.get("missing_contract", 0) + 1
+        if contract["slaNeedsAttention"]:
+            gap_counts["sla_attention"] = gap_counts.get("sla_attention", 0) + 1
+        if not contract["auditTrail"]:
+            gap_counts["missing_audit_trail"] = gap_counts.get("missing_audit_trail", 0) + 1
+        for blocker in contract["automationBlockers"]:
+            gap_counts[blocker] = gap_counts.get(blocker, 0) + 1
+    playbook: list[dict[str, Any]] = []
+    for gap in sorted(gap_counts, key=lambda item: (-gap_counts[item], item)):
+        metadata = WORK_HARDENING_ACTIONS.get(
+            gap,
+            {
+                "area": "work",
+                "severity": "medium",
+                "action": "Review this operational blocker before dispatching more work.",
+            },
+        )
+        playbook.append(
+            {
+                "gap": gap,
+                "count": gap_counts[gap],
+                "area": metadata["area"],
+                "severity": metadata["severity"],
+                "action": metadata["action"],
+            }
+        )
+    return playbook
+
+
 def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, sample_limit: int = 8) -> dict[str, Any]:
     contracts = [work_orchestration_contract(item) for item in work_items]
     blocker_counts: dict[str, int] = {}
@@ -367,5 +444,6 @@ def summarize_work_orchestration_contracts(work_items: list[dict[str, Any]], *, 
         "unattendedBlocked": sum(1 for item in contracts if item["automationBlockers"]),
         "automationBlockers": [{"name": key, "count": blocker_counts[key]} for key in sorted(blocker_counts, key=lambda item: (-blocker_counts[item], item))],
         "automationNextActions": next_actions[:8],
+        "hardeningPlaybook": _work_hardening_playbook(contracts),
         "sample": [item["sample"] for item in contracts[:sample_limit]],
     }
