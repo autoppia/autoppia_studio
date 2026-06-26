@@ -45,6 +45,23 @@ def test_entity_mapping_contract_models_aliases_relationships_permissions_and_re
     assert contract["readiness"]["status"] == "ready"
     assert contract["readiness"]["identifierFields"] == ["id"]
     assert contract["readiness"]["hasRelationships"] is True
+    assert contract["mappingCoverage"] == {
+        "score": 1.0,
+        "passedChecks": 7,
+        "totalChecks": 7,
+        "checks": {
+            "aliases": True,
+            "fields": True,
+            "identifier": True,
+            "permissions": True,
+            "sourceConnector": True,
+            "systemSchema": True,
+            "relationships": True,
+        },
+        "fieldCount": 2,
+        "relationshipCount": 1,
+        "sourcePathCount": 2,
+    }
 
 
 def test_entity_mapping_contract_surfaces_mapping_gaps():
@@ -53,6 +70,8 @@ def test_entity_mapping_contract_surfaces_mapping_gaps():
     assert contract["readiness"]["status"] == "needs_mapping"
     assert contract["readiness"]["gaps"] == ["aliases", "fields", "permissions", "source connector"]
     assert contract["readiness"]["hasIdentifier"] is False
+    assert contract["mappingCoverage"]["score"] == 0.0
+    assert contract["mappingCoverage"]["checks"]["fields"] is False
 
 
 def test_relationship_edges_remain_stable_for_graph_views():

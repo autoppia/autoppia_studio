@@ -86,6 +86,17 @@ def build_entity_mapping_contract(
         readiness_gaps.append("permissions")
     if not doc.get("sourceConnectorId"):
         readiness_gaps.append("source connector")
+    source_paths = _field_source_paths(fields)
+    coverage_checks = {
+        "aliases": bool(aliases),
+        "fields": bool(fields),
+        "identifier": bool(identifiers),
+        "permissions": bool(read_tools or write_tools or scopes),
+        "sourceConnector": bool(doc.get("sourceConnectorId")),
+        "systemSchema": bool(schema_name or source_paths),
+        "relationships": bool(relationship_refs),
+    }
+    passed_checks = sum(1 for ready in coverage_checks.values() if ready)
     return {
         "businessObject": doc.get("name", ""),
         "aliases": aliases,
@@ -93,7 +104,7 @@ def build_entity_mapping_contract(
             "sourceConnectorId": doc.get("sourceConnectorId", ""),
             "source": doc.get("source", "manual"),
             "schemaName": schema_name,
-            "sourcePaths": _field_source_paths(fields),
+            "sourcePaths": source_paths,
         },
         "relationships": relationship_refs,
         "relationshipTargets": [item["target"] for item in relationship_refs],
@@ -108,6 +119,15 @@ def build_entity_mapping_contract(
             "hasIdentifier": bool(identifiers),
             "identifierFields": identifiers,
             "hasRelationships": bool(relationship_refs),
+        },
+        "mappingCoverage": {
+            "score": round(passed_checks / len(coverage_checks), 3),
+            "passedChecks": passed_checks,
+            "totalChecks": len(coverage_checks),
+            "checks": coverage_checks,
+            "fieldCount": len(fields),
+            "relationshipCount": len(relationship_refs),
+            "sourcePathCount": len(source_paths),
         },
     }
 
