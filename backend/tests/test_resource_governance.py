@@ -31,6 +31,7 @@ def test_resource_payload_exposes_governed_runtime_resource_contract():
     payload = resource_payload(_resource())
 
     assert payload["resourceId"] == "resource-claims"
+    assert payload["name"] == "claims-handbook.md"
     assert payload["connectorId"] == "knowledge-1"
     assert payload["vectorDatabaseId"] == "vector-claims"
     assert payload["vectorDatabaseName"] == "Claims Store"
@@ -38,6 +39,8 @@ def test_resource_payload_exposes_governed_runtime_resource_contract():
     assert payload["indexed"] is True
     assert payload["citable"] is True
     assert payload["citationLabel"] == "Claims handbook"
+    assert payload["sourceUrl"] == ""
+    assert payload["freshnessStatus"] == "current"
     assert payload["readTools"] == ["knowledge.claims.search"]
 
 

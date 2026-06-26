@@ -93,22 +93,28 @@ def resource_payload(resource: dict[str, Any]) -> dict[str, Any]:
     indexing = resource_indexing(resource)
     governance = resource_governance(resource)
     citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
+    freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
+    filename = resource.get("filename") or resource.get("name") or resource.get("title") or ""
+    indexed = resource_indexed(resource)
     return {
         "resourceId": resource.get("resourceId") or resource.get("documentId", ""),
         "documentId": resource.get("documentId", ""),
         "resourceKind": resource.get("resourceKind") or contract.get("resourceKind") or "document",
-        "filename": resource.get("filename") or resource.get("name") or resource.get("title") or "",
-        "status": resource.get("status", "uploaded"),
-        "source": resource.get("source", "upload"),
+        "filename": filename,
+        "name": filename or "Untitled resource",
+        "status": resource.get("status") or contract.get("status") or "uploaded",
+        "source": resource.get("source") or governance.get("source") or "upload",
         "connectorId": resource.get("connectorId") or governance.get("connectorId") or "",
         "vectorDatabaseId": resource_vector_id(resource),
         "vectorDatabaseName": resource.get("vectorDatabaseName") or indexing.get("vectorDatabaseName") or "",
         "vectorCollectionName": resource.get("vectorCollectionName") or indexing.get("vectorCollectionName") or "",
-        "contentType": resource.get("contentType", ""),
+        "contentType": resource.get("contentType") or governance.get("contentType") or "",
         "size": resource.get("size", 0),
-        "indexed": resource_indexed(resource),
+        "indexed": indexed,
         "citable": resource_citable(resource),
-        "citationLabel": citability.get("citationLabel") or resource.get("filename") or "",
+        "citationLabel": citability.get("citationLabel") or resource.get("citationLabel") or resource.get("filename") or "",
+        "sourceUrl": citability.get("sourceUrl") or "",
+        "freshnessStatus": freshness.get("status") or ("current" if indexed else "indexing"),
         "readTools": resource_read_tools(resource),
         "resourceContract": contract,
         "createdAt": resource.get("createdAt"),

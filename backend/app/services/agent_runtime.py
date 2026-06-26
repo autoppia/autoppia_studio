@@ -24,6 +24,7 @@ from app.models.agent_config import AgentCallable, AgentConfig
 from app.services.approvals import create_pending_approval, stable_approval_key
 from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
+from app.services.resource_governance import resource_payload
 from app.services.skill_packages import summarize_skill_packages
 
 
@@ -231,74 +232,12 @@ async def _capability_context(agent_config: dict[str, Any]) -> dict[str, Any]:
     return {"skills": skills, "tools": tools, "entities": entity_graph, "resources": resources, "callables": callables}
 
 
-def _resource_contract(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = doc.get("resourceContract")
-    return contract if isinstance(contract, dict) else {}
-
-
-def _resource_governance(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    governance = contract.get("governance")
-    return governance if isinstance(governance, dict) else {}
-
-
-def _resource_indexing(doc: dict[str, Any]) -> dict[str, Any]:
-    contract = _resource_contract(doc)
-    indexing = contract.get("indexing")
-    return indexing if isinstance(indexing, dict) else {}
-
-
-def _resource_read_tools(doc: dict[str, Any]) -> list[str]:
-    contract = _resource_contract(doc)
-    tools = contract.get("readTools") or doc.get("readTools") or []
-    return [str(item).strip() for item in tools if str(item or "").strip()] if isinstance(tools, list) else []
-
-
-def _resource_indexed(doc: dict[str, Any]) -> bool:
-    indexing = _resource_indexing(doc)
-    if isinstance(indexing.get("indexed"), bool):
-        return indexing["indexed"]
-    return str(doc.get("status") or "").lower() in {"indexed", "ready", "active", "completed"}
-
-
-def _resource_citable(doc: dict[str, Any]) -> bool:
-    citability = _resource_governance(doc).get("citability")
-    if isinstance(citability, dict) and isinstance(citability.get("citable"), bool):
-        return citability["citable"]
-    return _resource_indexed(doc)
-
-
-def _resource_payload(doc: dict[str, Any]) -> dict[str, Any]:
-    governance = _resource_governance(doc)
-    citability = governance.get("citability") if isinstance(governance.get("citability"), dict) else {}
-    freshness = governance.get("freshness") if isinstance(governance.get("freshness"), dict) else {}
-    indexing = _resource_indexing(doc)
-    return {
-        "documentId": str(doc.get("documentId") or ""),
-        "resourceId": str(doc.get("resourceId") or doc.get("documentId") or ""),
-        "resourceKind": str(doc.get("resourceKind") or _resource_contract(doc).get("resourceKind") or "document"),
-        "name": str(doc.get("filename") or doc.get("name") or "Untitled resource"),
-        "status": str(doc.get("status") or _resource_contract(doc).get("status") or "unknown"),
-        "source": str(doc.get("source") or governance.get("source") or ""),
-        "contentType": str(doc.get("contentType") or governance.get("contentType") or ""),
-        "vectorDatabaseId": str(doc.get("vectorDatabaseId") or indexing.get("vectorDatabaseId") or ""),
-        "vectorCollectionName": str(doc.get("vectorCollectionName") or indexing.get("vectorCollectionName") or ""),
-        "indexed": _resource_indexed(doc),
-        "citable": _resource_citable(doc),
-        "citationLabel": str(citability.get("citationLabel") or doc.get("citationLabel") or doc.get("filename") or ""),
-        "sourceUrl": str(citability.get("sourceUrl") or ""),
-        "freshnessStatus": str(freshness.get("status") or ("current" if _resource_indexed(doc) else "indexing")),
-        "readTools": _resource_read_tools(doc),
-        "resourceContract": _resource_contract(doc),
-    }
-
-
 async def _resource_context(company_id: str) -> list[dict[str, Any]]:
     docs = await knowledge_documents_collection.find(
         {"companyId": company_id},
         {"_id": 0, "storagePath": 0},
     ).to_list(length=200)
-    resources = [_resource_payload(doc) for doc in docs]
+    resources = [resource_payload(doc) for doc in docs]
     resources.sort(key=lambda item: (not bool(item.get("indexed")), str(item.get("name") or "")))
     return resources
 
