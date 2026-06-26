@@ -1,6 +1,7 @@
 from app.services.skill_lifecycle import (
     append_skill_version_event,
     skill_lifecycle_fields,
+    skill_material_change_keys,
     skill_promotion_status,
     skill_version,
     skill_version_history,
@@ -38,6 +39,18 @@ def test_skill_lifecycle_fields_marks_publish_and_archive_timestamps():
         "archivedAt": "t-archive",
         "lastPromotedAt": "t-archive",
     }
+
+
+def test_skill_material_change_keys_only_tracks_runtime_contract_changes():
+    previous = {"instructions": "old", "metadata": {"ui": "a"}, "riskPolicy": "approval"}
+    next_doc = {"instructions": "new", "metadata": {"ui": "b"}, "riskPolicy": "approval"}
+
+    assert skill_material_change_keys(
+        previous,
+        next_doc,
+        touched_keys={"instructions", "metadata"},
+    ) == ["instructions"]
+    assert skill_material_change_keys(previous, next_doc, touched_keys={"metadata"}) == []
 
 
 def test_skill_version_history_normalizes_and_appends_events():

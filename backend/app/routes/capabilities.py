@@ -60,6 +60,7 @@ from app.services.skill_evidence import skill_lineage
 from app.services.skill_evidence import source_trajectory_evidence
 from app.services.skill_lifecycle import append_skill_version_event
 from app.services.skill_lifecycle import skill_lifecycle_fields
+from app.services.skill_lifecycle import skill_material_change_keys
 from app.services.skill_lifecycle import skill_promotion_status
 from app.services.skill_lifecycle import skill_version
 from app.services.skill_lifecycle import skill_version_history
@@ -1222,8 +1223,7 @@ async def update_company_skill(skill_id: str, body: SkillUpdateRequest):
         await _assert_skill_publishable(candidate_skill, trajectory_docs=trajectory_docs)
 
     now = _now()
-    material_keys = {"name", "description", "whenToUse", "instructions", "preconditions", "expectedArtifacts", "riskPolicy", "status", "inputEntities", "outputEntity", "outputCard", "trajectoryIds", "connectorIds", "toolIds", "runtimeRequirements", "benchmarkId", "evalId"}
-    material_changed = any(key in update and skill.get(key) != candidate_skill.get(key) for key in material_keys)
+    material_changed = bool(skill_material_change_keys(skill, candidate_skill, touched_keys=set(update)))
     previous_promotion_status = skill_promotion_status(skill)
     if material_changed:
         next_version = skill_version(skill) + 1

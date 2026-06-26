@@ -3,6 +3,27 @@ from __future__ import annotations
 from typing import Any
 
 
+MATERIAL_SKILL_VERSION_KEYS = {
+    "name",
+    "description",
+    "whenToUse",
+    "instructions",
+    "preconditions",
+    "expectedArtifacts",
+    "riskPolicy",
+    "status",
+    "inputEntities",
+    "outputEntity",
+    "outputCard",
+    "trajectoryIds",
+    "connectorIds",
+    "toolIds",
+    "runtimeRequirements",
+    "benchmarkId",
+    "evalId",
+}
+
+
 def skill_version(doc: dict[str, Any]) -> int:
     try:
         value = int(doc.get("version") or 1)
@@ -23,6 +44,21 @@ def skill_promotion_status(doc: dict[str, Any]) -> str:
     if status in {"needs_review", "needs_harvest"}:
         return "draft"
     return "draft"
+
+
+def skill_material_change_keys(
+    previous: dict[str, Any],
+    next_doc: dict[str, Any],
+    *,
+    touched_keys: set[str] | None = None,
+) -> list[str]:
+    candidate_keys = touched_keys if touched_keys is not None else MATERIAL_SKILL_VERSION_KEYS
+    changed = [
+        key
+        for key in sorted(MATERIAL_SKILL_VERSION_KEYS & set(candidate_keys))
+        if previous.get(key) != next_doc.get(key)
+    ]
+    return changed
 
 
 def skill_lifecycle_fields(*, previous: dict[str, Any], next_doc: dict[str, Any], now: str) -> dict[str, Any]:
