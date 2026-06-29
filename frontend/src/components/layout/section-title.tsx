@@ -20,17 +20,16 @@ export default function SectionTitle({
 }) {
   return (
     <div className="flex items-center gap-3">
-      <span className="relative flex h-9 w-9 flex-shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-primary text-white shadow-glow">
-        <span className="absolute inset-0 bg-white/15 opacity-0 transition-opacity duration-200 hover:opacity-100" />
-        <FontAwesomeIcon icon={icon} className="relative text-sm" />
+      <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-[10px] border border-[color:var(--accent-line)] bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
+        <FontAwesomeIcon icon={icon} className="text-sm" />
       </span>
       <div className="min-w-0">
         <div className="flex items-center gap-2">
-          <h1 className="truncate text-lg font-semibold leading-tight text-gray-900 dark:text-white">{title}</h1>
+          <h1 className="font-display truncate text-[20px] font-extrabold leading-tight tracking-[-0.01em] text-gray-900 dark:text-white">{title}</h1>
           {info}
         </div>
         {subtitle && (
-          <p className="truncate text-[11px] leading-tight text-gray-500 dark:text-gray-400">{subtitle}</p>
+          <p className="truncate text-[12px] leading-tight text-[color:var(--muted)]">{subtitle}</p>
         )}
       </div>
     </div>
