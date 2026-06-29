@@ -22,7 +22,6 @@ import {
   faTriangleExclamation,
   faWandMagicSparkles,
 } from "@fortawesome/free-solid-svg-icons";
-import SectionTitle from "../components/layout/section-title";
 import { Company } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
 import { apiErrorMessage } from "../utils/api-error";
@@ -547,41 +546,37 @@ export default function Onboarding(): React.ReactElement {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-full overflow-auto bg-gray-50/70 px-4 py-6 dark:bg-dark-bg sm:px-6">
-      <div className="mx-auto flex max-w-6xl flex-col gap-5">{children}</div>
+    <div className="h-full overflow-auto dark:bg-dark-bg" style={{ background: "var(--bg)" }}>
+      <div className="ck-page">{children}</div>
     </div>
   );
 }
 
 function Header({ company, mode, hasRun, onReset }: { company: Company; mode: string; hasRun: boolean; onReset: () => void }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
-          <SectionTitle
-            icon={faWandMagicSparkles}
-            title="Automata onboarding"
-            subtitle="Chat with Automata. Share company docs, URLs, auth notes and tasks; Automata will discover systems and prepare agents."
-          />
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Chip icon={faBuilding} label={company.name} />
-            <Chip icon={mode === "dev" ? faCode : faRobot} label={mode === "dev" ? "Dev mode" : "Normal mode"} />
-          </div>
+    <div className="ck-pagehead ck-rise">
+      <div className="min-w-0">
+        <span className="ck-pagehead-label">Company onboarding</span>
+        <h1>Set up {company.name}</h1>
+        <p>Chat with Automata — share company docs, URLs, auth notes and tasks, and it discovers your systems and prepares agents.</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Chip icon={faBuilding} label={company.name} />
+          <Chip icon={mode === "dev" ? faCode : faRobot} label={mode === "dev" ? "Dev mode" : "Guided mode"} />
         </div>
-        {hasRun ? (
-          <button type="button" onClick={onReset} className="inline-flex h-9 flex-shrink-0 items-center gap-2 self-start rounded-xl border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-300 dark:hover:bg-dark-bg">
-            <FontAwesomeIcon icon={faRotateRight} className="text-[10px]" />
-            New onboarding
-          </button>
-        ) : null}
       </div>
+      {hasRun ? (
+        <button type="button" onClick={onReset} className="ck-btn ck-btn--sm">
+          <FontAwesomeIcon icon={faRotateRight} className="text-[10px]" />
+          New onboarding
+        </button>
+      ) : null}
     </div>
   );
 }
 
 function Chip({ icon, label }: { icon: IconDefinition; label: string }) {
   return (
-    <span className="inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300">
+    <span className="ck-pill">
       <FontAwesomeIcon icon={icon} className="text-[10px]" />
       {label}
     </span>
