@@ -35,7 +35,7 @@ function setMode(mode: "normal" | "dev") {
   localStorage.setItem("automata_studio_mode", mode);
 }
 
-describe("Company onboarding page", () => {
+describe("Automata onboarding chat", () => {
   beforeEach(() => {
     mockNavigate.mockReset();
     localStorage.clear();
@@ -49,7 +49,7 @@ describe("Company onboarding page", () => {
     localStorage.clear();
   });
 
-  it("renders the guided wizard and submits a company intake", async () => {
+  it("opens in chat mode and submits collected context to CompanyHarvester", async () => {
     mockFetch((url, options) => {
       if (url.includes("/company-intakes") && options?.method === "POST") {
         return Promise.resolve({ ok: true, json: async () => ({ success: true, intake: { intakeId: "intake-1" }, harvestRun: { runId: "run-1" } }) });
@@ -62,13 +62,13 @@ describe("Company onboarding page", () => {
               runId: "run-1",
               intakeId: "intake-1",
               companyId: "company-1",
-              status: "indexing_knowledge",
-              currentStep: "indexing_knowledge",
-              steps: [{ key: "intaking", label: "Understand uploaded company material", status: "done" }],
-              summary: { materialsReceived: 1, recommendedNextAction: "Review discovered company material." },
+              status: "solving_tasks",
+              currentStep: "solving_tasks",
+              steps: [{ key: "intaking", label: "Understanding your company", status: "done" }],
+              summary: { materialsReceived: 1, recommendedNextAction: "Automata is testing tasks." },
               delivery: {},
               questions: [],
-              nextAction: { kind: "review_material" },
+              nextAction: { kind: "judge_trajectories" },
               errors: [],
             },
           }),
@@ -79,38 +79,35 @@ describe("Company onboarding page", () => {
 
     render(<Onboarding />);
 
-    expect(await screen.findByText("Tell us about your company")).toBeInTheDocument();
-    expect(await screen.findByText("Add your docs, website, API & knowledge")).toBeInTheDocument();
+    expect(await screen.findByText("Onboarding chat")).toBeInTheDocument();
+    expect(screen.getByText(/Hi, I'm Automata/i)).toBeInTheDocument();
 
-    // Company name is prefilled from the selected company.
-    const nameInput = screen.getByPlaceholderText("Acme Inc.") as HTMLInputElement;
-    expect(nameInput.value).toBe("Celeris");
+    const input = screen.getByPlaceholderText(/Send docs, URLs/i);
+    fireEvent.change(input, { target: { value: "Our web app is https://app.celeris.example\nTasks:\n- Answer payroll questions from docs" } });
+    fireEvent.click(screen.getByLabelText("Send onboarding message"));
 
-    // Add a website material.
-    const urlInput = screen.getByPlaceholderText("https://app.yourcompany.com");
-    fireEvent.change(urlInput, { target: { value: "https://app.celeris.example" } });
-    fireEvent.click(screen.getByRole("button", { name: /^Add$/i }));
     expect(await screen.findByText("https://app.celeris.example")).toBeInTheDocument();
+    expect(await screen.findByText("Answer payroll questions from docs")).toBeInTheDocument();
 
-    // Start onboarding -> POST /company-intakes.
     fireEvent.click(screen.getByRole("button", { name: /Start onboarding/i }));
 
     await waitFor(() => {
       const calls = (global.fetch as jest.Mock).mock.calls;
-      const intakeCall = calls.find((c) => String(c[0]).includes("/company-intakes") && c[1]?.method === "POST");
+      const intakeCall = calls.find((call) => String(call[0]).includes("/company-intakes") && call[1]?.method === "POST");
       expect(intakeCall).toBeTruthy();
       const body = JSON.parse(intakeCall[1].body);
       expect(body.companyId).toBe("company-1");
       expect(body.startHarvest).toBe(true);
       expect(body.materials).toHaveLength(1);
       expect(body.materials[0].kind).toBe("website");
+      expect(body.userTasks[0].prompt).toBe("Answer payroll questions from docs");
+      expect(body.runtimeKinds).toEqual(["model_agent", "codex", "claude_code"]);
     });
 
-    // After starting it transitions to the progress view.
-    expect(await screen.findByText("Progress")).toBeInTheDocument();
+    expect((await screen.findAllByText("Automata is testing tasks.")).length).toBeGreaterThan(0);
   });
 
-  it("renders normal progress and at-a-glance counts for an active run", async () => {
+  it("renders normal progress for an active run", async () => {
     localStorage.setItem("automata_harvest_run_company-1", "run-1");
     mockFetch((url) => {
       if (url.includes("/company-harvest-runs/run-1/status")) {
@@ -124,8 +121,8 @@ describe("Company onboarding page", () => {
               status: "solving_tasks",
               currentStep: "solving_tasks",
               steps: [
-                { key: "intaking", label: "Understand uploaded company material", status: "done" },
-                { key: "discovering_tasks", label: "Infer useful company tasks", status: "in_progress" },
+                { key: "intaking", label: "Understanding your company", status: "done" },
+                { key: "discovering_tasks", label: "Finding useful work", status: "in_progress" },
               ],
               summary: { materialsReceived: 3, systemsFound: 2, knowledgeSourcesFound: 1, taskCandidatesFound: 4, agentsReady: 0, recommendedNextAction: "Automata is testing tasks." },
               delivery: {},
@@ -141,14 +138,13 @@ describe("Company onboarding page", () => {
 
     render(<Onboarding />);
 
-    expect(await screen.findByText("Progress")).toBeInTheDocument();
-    expect(await screen.findByText("Infer useful company tasks")).toBeInTheDocument();
-    expect(await screen.findByText("Automata is testing tasks.")).toBeInTheDocument();
+    expect(await screen.findByText("Finding useful work")).toBeInTheDocument();
+    expect((await screen.findAllByText("Automata is testing tasks.")).length).toBeGreaterThan(0);
     expect(screen.getByText("Systems")).toBeInTheDocument();
-    expect(screen.getByText("Knowledge")).toBeInTheDocument();
+    expect(screen.getAllByText("Tasks").length).toBeGreaterThan(0);
   });
 
-  it("renders the conversational questions flow and submits answers", async () => {
+  it("submits backend questions as chat answers", async () => {
     localStorage.setItem("automata_harvest_run_company-1", "run-1");
     mockFetch((url, options) => {
       if (url.includes("/company-harvest-runs/run-1/answers") && options?.method === "POST") {
@@ -164,7 +160,7 @@ describe("Company onboarding page", () => {
               companyId: "company-1",
               status: "needs_user_input",
               currentStep: "needs_user_input",
-              steps: [{ key: "intaking", label: "Understand uploaded company material", status: "done" }],
+              steps: [{ key: "intaking", label: "Understanding your company", status: "done" }],
               summary: { materialsReceived: 1 },
               delivery: {},
               questions: [
@@ -181,16 +177,15 @@ describe("Company onboarding page", () => {
 
     render(<Onboarding />);
 
-    expect(await screen.findByText("Automata needs a little more")).toBeInTheDocument();
     expect(await screen.findByText("Provide the URL for your web app.")).toBeInTheDocument();
 
-    const answerInput = screen.getByPlaceholderText("https://…");
-    fireEvent.change(answerInput, { target: { value: "https://app.celeris.example" } });
-    fireEvent.click(screen.getByRole("button", { name: /Send answers/i }));
+    const input = screen.getByPlaceholderText("Answer Automata...");
+    fireEvent.change(input, { target: { value: "https://app.celeris.example" } });
+    fireEvent.click(screen.getByLabelText("Send onboarding message"));
 
     await waitFor(() => {
       const calls = (global.fetch as jest.Mock).mock.calls;
-      const answerCall = calls.find((c) => String(c[0]).includes("/answers") && c[1]?.method === "POST");
+      const answerCall = calls.find((call) => String(call[0]).includes("/answers") && call[1]?.method === "POST");
       expect(answerCall).toBeTruthy();
       const body = JSON.parse(answerCall[1].body);
       expect(body.answers[0].questionId).toBe("q1");
@@ -199,7 +194,7 @@ describe("Company onboarding page", () => {
     });
   });
 
-  it("shows ready delivery surfaces (chat / API / widget)", async () => {
+  it("shows ready delivery surfaces", async () => {
     localStorage.setItem("automata_harvest_run_company-1", "run-1");
     mockFetch((url) => {
       if (url.includes("/company-harvest-runs/run-1/status")) {
@@ -212,7 +207,7 @@ describe("Company onboarding page", () => {
               companyId: "company-1",
               status: "ready",
               currentStep: "ready",
-              steps: [{ key: "building_agents", label: "Build deployable agent configs", status: "done" }],
+              steps: [{ key: "building_agents", label: "Preparing agents", status: "done" }],
               summary: { agentsReady: 1, recommendedNextAction: "Use generated company agents." },
               delivery: {
                 state: "ready",
@@ -243,32 +238,24 @@ describe("Company onboarding page", () => {
 
     render(<Onboarding />);
 
-    expect(await screen.findByText("Your agents are ready")).toBeInTheDocument();
+    expect(await screen.findByText("Agents ready")).toBeInTheDocument();
     expect(await screen.findByText("Celeris Agent")).toBeInTheDocument();
     expect(screen.getByText("Chat")).toBeInTheDocument();
     expect(screen.getByText("Widget")).toBeInTheDocument();
-    expect(screen.getByText("API endpoint")).toBeInTheDocument();
-    expect(screen.getByText(/\/runtime\/agents\/company-1:model_agent\/step/)).toBeInTheDocument();
+    expect(screen.getByText(/runtime\/agents\/company-1:model_agent\/step/)).toBeInTheDocument();
   });
 
-  it("exposes the developer raw view in dev mode", async () => {
+  it("shows dev details only in dev mode", async () => {
     setMode("dev");
     localStorage.setItem("automata_harvest_run_company-1", "run-1");
     mockFetch((url) => {
-      if (url.includes("/company-harvest-runs/run-1/status") && url.includes("mode=dev")) {
+      if (url.includes("mode=dev")) {
         return Promise.resolve({
           ok: true,
           json: async () => ({
             status: {
-              runId: "run-1",
-              status: "discovering_tools",
-              currentStep: "discovering_tools",
-              steps: [{ key: "discovering_connectors", label: "Create connector candidates", status: "done", visibility: "dev" }],
-              artifacts: [
-                { artifactId: "a1", kind: "connector_candidate", title: "Company API", status: "discovered", visibility: "dev", summary: "Discovered api." },
-              ],
-              devSummary: { plannedPipeline: ["intaking", "discovering_tools"] },
-              nextAction: { kind: "review_material" },
+              artifacts: [{ artifactId: "a1", kind: "connector_candidate", status: "ready" }],
+              devSummary: { artifactKinds: ["connector_candidate"] },
             },
           }),
         });
@@ -281,13 +268,13 @@ describe("Company onboarding page", () => {
               runId: "run-1",
               intakeId: "intake-1",
               companyId: "company-1",
-              status: "discovering_tools",
-              currentStep: "discovering_tools",
-              steps: [{ key: "discovering_tasks", label: "Infer useful company tasks", status: "pending" }],
-              summary: { materialsReceived: 2 },
+              status: "solving_tasks",
+              currentStep: "solving_tasks",
+              steps: [],
+              summary: {},
               delivery: {},
               questions: [],
-              nextAction: { kind: "review_material" },
+              nextAction: {},
               errors: [],
             },
           }),
@@ -298,8 +285,7 @@ describe("Company onboarding page", () => {
 
     render(<Onboarding />);
 
-    expect(await screen.findByText("Developer view")).toBeInTheDocument();
-    expect(await screen.findByText("Company API")).toBeInTheDocument();
-    expect(screen.getByText("Dev summary")).toBeInTheDocument();
+    expect(await screen.findByText("Dev mode details")).toBeInTheDocument();
+    expect(await screen.findByText(/connector candidate/i)).toBeInTheDocument();
   });
 });
