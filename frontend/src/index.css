@@ -35,8 +35,30 @@
   }
 
   ::selection {
-    background-color: rgba(255, 153, 109, 0.3);
+    background-color: rgba(79, 143, 224, 0.3);
     color: inherit;
+  }
+
+  :focus-visible {
+    outline: 2px solid rgba(79, 143, 224, 0.7);
+    outline-offset: 2px;
+    border-radius: 6px;
+  }
+
+  /* Cool blue-gray scrollbars on dark, matching the terminal references. */
+  .dark *::-webkit-scrollbar-thumb {
+    background-color: rgba(177, 206, 224, 0.18);
+  }
+  .dark *::-webkit-scrollbar-thumb:hover {
+    background-color: rgba(177, 206, 224, 0.3);
+  }
+
+  /* Subtle top-light radial glow behind scrolling page surfaces (dark only). */
+  .dark :where([class*="overflow-auto"][class*="dark:bg-dark-bg"]) {
+    background-image:
+      radial-gradient(1100px 560px at 16% -12%, rgba(255, 255, 255, 0.045), transparent 60%),
+      radial-gradient(900px 520px at 88% -8%, rgba(207, 224, 236, 0.04), transparent 60%);
+    background-attachment: fixed;
   }
 }
 
@@ -77,9 +99,9 @@
   }
 
   .dark .glass {
-    background: rgba(14, 12, 22, 0.8);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: rgba(7, 10, 16, 0.82);
+    backdrop-filter: blur(12px) saturate(140%);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
   }
 
   .glass-subtle {
@@ -89,7 +111,7 @@
   }
 
   .dark .glass-subtle {
-    background: rgba(26, 24, 37, 0.6);
+    background: rgba(16, 22, 32, 0.62);
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
   }
@@ -108,9 +130,9 @@
 
   .dark :where([class*="bg-white"][class*="dark:bg-dark-surface"][class*="rounded-xl"][class*="border-gray-200"]) {
     background:
-      linear-gradient(180deg, rgba(31, 29, 44, 0.94), rgba(18, 16, 28, 0.92)) !important;
-    border-color: rgba(63, 60, 82, 0.86) !important;
-    box-shadow: 0 18px 42px -28px rgba(0, 0, 0, 0.72), 0 1px 0 rgba(255, 255, 255, 0.06) inset !important;
+      linear-gradient(180deg, rgba(21, 29, 40, 0.94), rgba(13, 19, 28, 0.92)) !important;
+    border-color: rgba(177, 206, 224, 0.12) !important;
+    box-shadow: 0 18px 42px -28px rgba(0, 0, 0, 0.72), 0 1px 0 rgba(255, 255, 255, 0.05) inset !important;
   }
 
   :where([class*="bg-white/80"][class*="border-b"][class*="backdrop-blur-sm"]) {
@@ -121,8 +143,8 @@
 
   .dark :where([class*="dark:bg-dark-bg/80"][class*="border-b"][class*="backdrop-blur-sm"]) {
     background:
-      linear-gradient(180deg, rgba(15, 13, 24, 0.92), rgba(10, 9, 18, 0.86)) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset, 0 12px 36px -28px rgba(0, 0, 0, 0.9) !important;
+      linear-gradient(180deg, rgba(11, 16, 24, 0.92), rgba(7, 10, 16, 0.86)) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 36px -28px rgba(0, 0, 0, 0.9) !important;
   }
 
   :where([class*="hover:shadow-soft"], [class*="hover:shadow-soft-lg"]) {
@@ -140,11 +162,15 @@
 
   .dark :where([class*="border-dashed"][class*="rounded-xl"][class*="text-center"]) {
     background:
-      linear-gradient(180deg, rgba(24, 22, 36, 0.72), rgba(13, 12, 22, 0.62)) !important;
+      linear-gradient(180deg, rgba(18, 25, 35, 0.72), rgba(10, 14, 21, 0.62)) !important;
   }
 
-  :where(section > h2, div > h2) {
-    letter-spacing: 0;
+  /* Uppercase, letter-spaced labels read as monospace eyebrows in the
+   * terminal aesthetic — apply JetBrains Mono app-wide without touching
+   * every component. */
+  :where([class*="uppercase"][class*="tracking-w"]) {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-feature-settings: "tnum" 1;
   }
 }
 

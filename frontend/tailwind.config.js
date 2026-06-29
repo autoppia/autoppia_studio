@@ -6,22 +6,37 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#E97C3C",
+        // Cool finance-terminal accent (aligned with the canvas blues). Brand
+        // orange is preserved separately for the logo / agent marks.
+        primary: "#4F8FE0",
+        "primary-strong": "#3B72C9",
         secondary: "#FBFBFB",
-        "dark-bg": "#0E0C16",
-        "dark-surface": "#1A1825",
-        "dark-border": "#2A2838",
+        brand: "#E97C3C",
+        accent2: "#CFE0EC",
+        success: "#58D68D",
+        danger: "#EF5B5B",
+        warning: "#F0B429",
+        // Blue-tinted dark surfaces (from the hedge-fund / trading UIs).
+        "dark-bg": "#070A10",
+        "dark-surface": "#101620",
+        "dark-surface-2": "#151D28",
+        "dark-border": "#1F2A37",
+      },
+      fontFamily: {
+        sans: ["Inter", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", '"Segoe UI"', "sans-serif"],
+        display: ['"Space Grotesk"', "Inter", "ui-sans-serif", "system-ui", "sans-serif"],
+        mono: ['"JetBrains Mono"', "ui-monospace", "SFMono-Regular", "Menlo", "Consolas", "monospace"],
       },
       backgroundImage: {
-        "gradient-primary": "linear-gradient(135deg, #F08C4A, #D2622C)",
-        "gradient-secondary": "linear-gradient(135deg, #CB587E, #145CC2)",
+        "gradient-primary": "linear-gradient(135deg, #5C9BEC, #3B72C9)",
+        "gradient-secondary": "linear-gradient(135deg, #4F8FE0, #2C6FB3)",
         "gradient-glass": "linear-gradient(135deg, rgba(255,255,255,0.1), rgba(255,255,255,0.05))",
       },
       boxShadow: {
         "soft": "0 2px 15px -3px rgba(0, 0, 0, 0.07), 0 10px 20px -2px rgba(0, 0, 0, 0.04)",
         "soft-lg": "0 10px 40px -10px rgba(0, 0, 0, 0.1)",
-        "glow": "0 0 20px rgba(233, 124, 60, 0.16)",
-        "glow-lg": "0 0 40px rgba(233, 124, 60, 0.20)",
+        "glow": "0 0 20px rgba(79, 143, 224, 0.18)",
+        "glow-lg": "0 0 40px rgba(79, 143, 224, 0.24)",
         "inner-soft": "inset 0 2px 4px 0 rgba(0, 0, 0, 0.04)",
       },
       borderRadius: {
