@@ -217,9 +217,9 @@ export default function TopBar() {
         title="Autoppia Studio — Canvas"
       >
         <img src="/assets/images/logos/main.webp" alt="Autoppia" className="h-6 w-6 object-contain" />
-        <span className="hidden items-center gap-1.5 sm:flex">
-          <span className="text-[15px] font-semibold tracking-tight text-gray-900 dark:text-white">Autoppia</span>
-          <span className="rounded-md bg-primary/15 px-1.5 py-0.5 text-[9px] font-bold uppercase leading-none tracking-wider text-primary">
+        <span className="hidden flex-col leading-none sm:flex">
+          <span className="font-display text-[15px] font-bold tracking-tight text-gray-900 dark:text-white">Autoppia</span>
+          <span className="font-mono text-[9px] font-semibold uppercase leading-none tracking-[0.22em] text-gray-400 dark:text-zinc-500">
             Studio
           </span>
         </span>

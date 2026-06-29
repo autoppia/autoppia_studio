@@ -19,17 +19,16 @@ export default function SectionSubNav() {
   if (!group || items.length === 0) return null;
 
   return (
-    <aside className="flex h-full w-52 flex-shrink-0 flex-col border-r border-gray-200 bg-white px-3 py-4 dark:border-dark-border dark:bg-dark-bg">
-      <div className="mb-3 px-2">
-        <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-zinc-500">
-          <FontAwesomeIcon icon={group.icon} className="text-[11px]" />
+    <aside className="flex h-full w-56 flex-shrink-0 flex-col gap-4 border-r border-gray-200 bg-white px-3 py-5 dark:border-dark-border dark:bg-[#080c13]">
+      <div className="px-3">
+        <div className="font-mono text-[10px] font-extrabold uppercase tracking-[0.16em] text-gray-400 dark:text-zinc-500">
           {group.label}
         </div>
-        <p className="mt-2 text-[11px] leading-4 text-gray-500 dark:text-zinc-400">
+        <p className="mt-2 text-[11px] leading-4 text-gray-500 dark:text-zinc-500">
           {group.description}
         </p>
       </div>
-      <div className="flex flex-col gap-0.5">
+      <div className="flex flex-col gap-1">
         {items.map((item) => {
           const isActive =
             location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
@@ -38,13 +37,19 @@ export default function SectionSubNav() {
               key={item.path}
               type="button"
               onClick={() => navigate(item.path)}
-              className={`flex h-9 items-center gap-2.5 rounded-lg px-3 text-sm font-medium transition-colors ${
+              className={`group relative flex items-center gap-3 rounded-[11px] px-3.5 py-2.5 text-left font-mono text-[13px] font-bold transition-colors ${
                 isActive
-                  ? "bg-primary/10 text-primary"
-                  : "text-gray-600 hover:bg-gray-100 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-200"
+                  ? "bg-gray-100 text-gray-900 dark:bg-white/[0.07] dark:text-white"
+                  : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-100"
               }`}
             >
-              <FontAwesomeIcon icon={item.icon} className="w-4 text-[12px]" />
+              {isActive && (
+                <span className="absolute -left-3 top-1/2 h-5 w-[3px] -translate-y-1/2 rounded-r-full bg-primary shadow-[0_0_10px_rgba(79,143,224,0.5)]" />
+              )}
+              <FontAwesomeIcon
+                icon={item.icon}
+                className={`w-4 text-[12px] transition-transform group-hover:scale-110 ${isActive ? "text-primary" : "text-gray-400 dark:text-zinc-500 group-hover:text-primary"}`}
+              />
               {item.label}
             </button>
           );

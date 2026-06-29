@@ -116,61 +116,76 @@
     -webkit-backdrop-filter: blur(8px);
   }
 
-  /*
-   * Studio-wide surface polish. Most section pages predate the shared layout
-   * components and use Tailwind utility strings directly; these selectors lift
-   * those existing cards without changing their data or interaction code.
-   */
-  :where([class*="bg-white"][class*="dark:bg-dark-surface"][class*="rounded-xl"][class*="border-gray-200"]) {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(249, 250, 251, 0.9)) !important;
-    border-color: rgba(229, 231, 235, 0.92) !important;
-    box-shadow: 0 12px 32px -24px rgba(17, 24, 39, 0.42), 0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
+  /* ════════════════════════════════════════════════════════════════════
+   * COCKPIT SKIN — re-skins Studio to the autonomous-hedge-fund / trading
+   * terminal design language without touching every component. Studio pages
+   * use Tailwind utility strings directly; these selectors morph the common
+   * card / surface / label patterns into flat, hairline-bordered cockpit
+   * panels with mono section headers. Data and interaction code are untouched.
+   * ════════════════════════════════════════════════════════════════════ */
+
+  /* Flatten over-rounded corners app-wide (terminal panels are crisp). */
+  :where([class*="rounded-3xl"]) { border-radius: 14px !important; }
+  :where([class*="rounded-2xl"]) { border-radius: 12px !important; }
+
+  /* Cards → flat panels with a hairline border and almost no shadow. */
+  :where([class*="bg-white"][class*="dark:bg-dark-surface"]):where([class*="rounded-3xl"], [class*="rounded-2xl"], [class*="rounded-xl"]) {
+    background: #ffffff !important;
+    border-color: rgba(18, 38, 63, 0.12) !important;
+    box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04) !important;
+  }
+  .dark :where([class*="bg-white"][class*="dark:bg-dark-surface"]):where([class*="rounded-3xl"], [class*="rounded-2xl"], [class*="rounded-xl"]) {
+    background: #101620 !important;
+    border-color: rgba(177, 206, 224, 0.10) !important;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.03) inset !important;
   }
 
-  .dark :where([class*="bg-white"][class*="dark:bg-dark-surface"][class*="rounded-xl"][class*="border-gray-200"]) {
-    background:
-      linear-gradient(180deg, rgba(21, 29, 40, 0.94), rgba(13, 19, 28, 0.92)) !important;
-    border-color: rgba(177, 206, 224, 0.12) !important;
-    box-shadow: 0 18px 42px -28px rgba(0, 0, 0, 0.72), 0 1px 0 rgba(255, 255, 255, 0.05) inset !important;
+  /* Nested tiles (bg-gray-50 / dark:bg-dark-bg) → recessed inset panels. */
+  .dark :where([class*="bg-gray-50"][class*="dark:bg-dark-bg"]):where([class*="rounded"]),
+  .dark :where([class*="dark:bg-dark-bg"]):where([class*="border-gray-200"]):where([class*="rounded-2xl"], [class*="rounded-xl"], [class*="rounded-lg"]) {
+    background: #0b1018 !important;
+    border-color: rgba(177, 206, 224, 0.08) !important;
   }
 
-  :where([class*="bg-white/80"][class*="border-b"][class*="backdrop-blur-sm"]) {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(249, 250, 251, 0.82)) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.86) inset, 0 10px 32px -28px rgba(17, 24, 39, 0.4) !important;
+  /* Sticky translucent header bars → flat cockpit topbar. */
+  :where([class*="border-b"][class*="backdrop-blur-sm"]) {
+    background: linear-gradient(180deg, rgba(18, 38, 63, 0.02), transparent), rgba(255, 255, 255, 0.82) !important;
+    box-shadow: none !important;
   }
-
-  .dark :where([class*="dark:bg-dark-bg/80"][class*="border-b"][class*="backdrop-blur-sm"]) {
-    background:
-      linear-gradient(180deg, rgba(11, 16, 24, 0.92), rgba(7, 10, 16, 0.86)) !important;
-    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 12px 36px -28px rgba(0, 0, 0, 0.9) !important;
-  }
-
-  :where([class*="hover:shadow-soft"], [class*="hover:shadow-soft-lg"]) {
-    will-change: transform, box-shadow;
+  .dark :where([class*="border-b"][class*="backdrop-blur-sm"]) {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), transparent), rgba(7, 10, 16, 0.82) !important;
+    border-color: rgba(177, 206, 224, 0.10) !important;
+    box-shadow: none !important;
   }
 
   :where([class*="hover:shadow-soft"], [class*="hover:shadow-soft-lg"]):hover {
     transform: translateY(-1px);
   }
 
-  :where([class*="border-dashed"][class*="rounded-xl"][class*="text-center"]) {
-    background:
-      linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(249, 250, 251, 0.68)) !important;
+  /* Empty / dashed states stay flat. */
+  .dark :where([class*="border-dashed"][class*="rounded"]) {
+    background: #0b1018 !important;
+    border-color: rgba(177, 206, 224, 0.14) !important;
   }
 
-  .dark :where([class*="border-dashed"][class*="rounded-xl"][class*="text-center"]) {
-    background:
-      linear-gradient(180deg, rgba(18, 25, 35, 0.72), rgba(10, 14, 21, 0.62)) !important;
-  }
-
-  /* Uppercase, letter-spaced labels read as monospace eyebrows in the
-   * terminal aesthetic — apply JetBrains Mono app-wide without touching
-   * every component. */
+  /* Uppercase, letter-spaced labels become monospace cockpit eyebrows. */
   :where([class*="uppercase"][class*="tracking-w"]) {
     font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-feature-settings: "tnum" 1;
+  }
+
+  /* The muted eyebrow labels Studio uses for section headers get the iconic
+   * little square bullet from the cockpit cards. */
+  :where([class*="uppercase"][class*="tracking-w"][class*="text-gray-400"])::before {
+    content: "";
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin-right: 8px;
+    vertical-align: middle;
+    border-radius: 1px;
+    background: #4F8FE0;
+    box-shadow: 0 0 8px rgba(79, 143, 224, 0.5);
   }
 }
 

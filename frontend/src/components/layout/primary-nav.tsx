@@ -13,29 +13,22 @@ export default function PrimaryNav() {
   const groups = visibleNavGroups(mode);
 
   return (
-    <nav className="flex items-center gap-2.5">
+    <nav className="flex items-center gap-1">
       {groups.map((group) => {
         const isActive = active?.key === group.key;
-        const className = group.cta
-          ? `flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-semibold transition-colors border ${
-              isActive
-                ? "bg-white text-gray-900 border-white shadow-sm"
-                : "bg-white text-gray-900 border-white/80 hover:bg-gray-100 shadow-sm"
-            }`
-          : `flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-medium transition-colors ${
-              isActive
-                ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-gray-900"
-                : "text-gray-600 hover:bg-gray-100 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-200"
-            }`;
         return (
           <button
             key={group.key}
             type="button"
             onClick={() => navigate(groupLandingPath(group))}
-            className={className}
+            className={`flex h-8 items-center gap-2 rounded-lg px-3 font-mono text-[12px] font-bold uppercase tracking-[0.04em] transition-colors ${
+              isActive
+                ? "bg-gray-100 text-gray-900 dark:bg-white/[0.08] dark:text-white"
+                : "text-gray-500 hover:bg-gray-100 hover:text-gray-900 dark:text-zinc-400 dark:hover:bg-white/[0.05] dark:hover:text-zinc-100"
+            }`}
             title={group.label}
           >
-            <FontAwesomeIcon icon={group.icon} className="text-[12px]" />
+            <FontAwesomeIcon icon={group.icon} className={`text-[12px] ${isActive ? "text-primary" : ""}`} />
             <span className="hidden lg:inline">{group.label}</span>
           </button>
         );
