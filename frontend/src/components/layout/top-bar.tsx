@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -23,7 +23,7 @@ import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
-import PrimaryNav from "./primary-nav";
+import { resolvePageMeta } from "./nav-config";
 import ModeToggle from "../common/mode-toggle";
 import { getApiUrl } from "../../utils/api-url";
 
@@ -31,6 +31,8 @@ const apiUrl = getApiUrl();
 
 export default function TopBar() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { eyebrow, title } = resolvePageMeta(location.pathname);
   const dispatch = useDispatch();
   const user = useSelector((state: any) => state.user);
   const [companies, setCompanies] = useState<Company[]>([]);
@@ -206,28 +208,14 @@ export default function TopBar() {
   };
 
   return (
-    <header
-      className="relative flex items-center h-14 px-4 flex-shrink-0 gap-2
-        border-b border-gray-200 dark:border-dark-border
-        bg-white dark:bg-dark-bg"
-    >
-      <button
-        onClick={() => navigate("/canvas")}
-        className="flex h-9 flex-shrink-0 items-center gap-2 rounded-xl px-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-        title="Autoppia Studio — Canvas"
-      >
-        <img src="/assets/images/logos/main.webp" alt="Autoppia" className="h-6 w-6 object-contain" />
-        <span className="hidden flex-col leading-none sm:flex">
-          <span className="font-display text-[15px] font-bold tracking-tight text-gray-900 dark:text-white">Autoppia</span>
-          <span className="font-mono text-[9px] font-semibold uppercase leading-none tracking-[0.22em] text-gray-400 dark:text-zinc-500">
-            Studio
-          </span>
-        </span>
-      </button>
-
-      <div className="mx-1 hidden h-6 w-px bg-gray-200 dark:bg-zinc-800/80 sm:block" />
-
-      <div className="flex items-center gap-2 min-w-0">
+    <header className="ck-topbar relative">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="ck-topbar-title">
+          <span className="ck-eyebrow">{eyebrow}</span>
+          <h1 className="ck-title">{title}</h1>
+        </div>
+        <div className="mx-1 hidden h-7 w-px bg-[color:var(--line)] sm:block" />
+        <div className="flex items-center gap-2 min-w-0">
         <div className="relative">
           <button
             onClick={() => setCompanyMenuOpen((open) => !open)}
@@ -286,23 +274,16 @@ export default function TopBar() {
         )}
       </div>
 
-      {/* Spacer pushes the right-side actions to the edge. */}
-      <div className="min-w-0 flex-1" />
-
-      {/* Primary navigation — centered to the header (viewport), not the free space. */}
-      <div className="pointer-events-none absolute left-1/2 top-0 flex h-14 -translate-x-1/2 items-center">
-        <div className="pointer-events-auto">
-          <PrimaryNav />
-        </div>
       </div>
 
-      {/* Normal / Dev experience switch */}
-      <ModeToggle />
+      <div className="ck-topbar-actions">
+        {/* Normal / Dev experience switch */}
+        <ModeToggle />
 
       {/* New session call-to-action */}
       <button
         onClick={() => navigate("/home")}
-        className="flex h-8 items-center gap-2 rounded-lg border border-white/80 bg-white px-3 text-sm font-semibold text-gray-900 shadow-sm transition-colors hover:bg-gray-100"
+        className="flex h-9 flex-none items-center gap-2 whitespace-nowrap rounded-lg border border-[color:var(--line-strong)] bg-[color:var(--bg-2)] px-3 text-[13px] font-semibold text-[color:var(--ink)] transition-colors hover:border-[color:var(--accent-line)]"
         title="New session"
       >
         <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
@@ -367,6 +348,7 @@ export default function TopBar() {
             </div>
           </>
         )}
+      </div>
       </div>
 
       {confirmDeleteCompany && selectedCompany && (

@@ -139,3 +139,21 @@ export function resolveActiveGroup(pathname: string): NavGroup | null {
   }
   return null;
 }
+
+/** Eyebrow + title for the top bar, derived from the active route. */
+export function resolvePageMeta(pathname: string): { eyebrow: string; title: string } {
+  const group = resolveActiveGroup(pathname);
+  if (!group) return { eyebrow: "Autoppia Studio", title: "Workspace" };
+  // Find the most specific owning item within the group.
+  let item: NavItem | undefined;
+  let best = -1;
+  for (const candidate of group.items) {
+    if ((pathname === candidate.path || pathname.startsWith(`${candidate.path}/`)) && candidate.path.length > best) {
+      item = candidate;
+      best = candidate.path.length;
+    }
+  }
+  if (item) return { eyebrow: group.label, title: item.label };
+  // Path-only group (Canvas, Onboarding): the group is the page.
+  return { eyebrow: "Autoppia Studio", title: group.label };
+}

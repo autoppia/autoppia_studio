@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import { useSelector } from "react-redux";
 import TopBar from "./top-bar";
-import SectionSubNav from "./section-subnav";
+import CockpitSidebar from "./cockpit-sidebar";
 import ChatHistoryRail from "./chat-history-rail";
 import AutomataAssistant from "../assistant/automata-assistant";
 import { getApiUrl } from "../../utils/api-url";
@@ -55,12 +55,15 @@ export default function MainLayout() {
     location.pathname === "/home" || location.pathname.startsWith("/session/");
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden">
-      <TopBar />
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-        {isChatSurface ? <ChatHistoryRail histories={histories} /> : <SectionSubNav />}
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <Outlet context={{ sidebarExpanded: false, addHistoryItem }} />
+    <div className="ck-shell">
+      <CockpitSidebar />
+      <div className="ck-main">
+        <TopBar />
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+          {isChatSurface ? <ChatHistoryRail histories={histories} /> : null}
+          <div className="min-w-0 flex-1 overflow-hidden">
+            <Outlet context={{ sidebarExpanded: false, addHistoryItem }} />
+          </div>
         </div>
       </div>
       <AutomataAssistant />
