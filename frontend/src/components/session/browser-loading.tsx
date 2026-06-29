@@ -58,8 +58,8 @@ export default function BrowserLoading({ minHeight = "600px" }: BrowserLoadingPr
             <div
               className="absolute inset-2 rounded-full border-2 border-transparent animate-spin"
               style={{
-                borderTopColor: "#4F8FE0",
-                borderRightColor: "rgba(79,143,224,0.3)",
+                borderTopColor: "#E97C3C",
+                borderRightColor: "rgba(255,153,109,0.3)",
                 animationDuration: "1.5s",
               }}
             />
