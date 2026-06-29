@@ -1118,6 +1118,105 @@ class AutomataAssistantTools:
     async def list_work_items(self, limit: int = 20) -> list[dict[str, Any]]:
         return await _to_list(work_items_collection.find(self._query(), {"_id": 0}).sort("createdAt", -1), limit)
 
+    async def start_company_harvest_onboarding(
+        self,
+        *,
+        company_name: str = "",
+        description: str = "",
+        materials: list[dict[str, Any]] | None = None,
+        user_tasks: list[dict[str, Any]] | None = None,
+        mode: str = "normal",
+        auto_solve_tasks: bool = False,
+        auto_promote_skills: bool = False,
+        build_agents: bool = False,
+        runtime_kinds: list[str] | None = None,
+        runtime_profiles: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        from app.services.company_harvester import company_harvest_status, create_company_intake, start_company_harvest
+
+        company_id = self.context.company_id
+        if not company_id:
+            return {"success": False, "error": "companyId is required. Select or create a company before starting CompanyHarvester."}
+        clean_mode = "dev" if mode == "dev" else "normal"
+        kinds = [str(item) for item in (runtime_kinds or ["model_agent", "codex", "claude_code"]) if str(item or "").strip()]
+        profiles = runtime_profiles if isinstance(runtime_profiles, dict) else {}
+        intake = await create_company_intake(
+            email=self.context.email,
+            company_id=company_id,
+            company_name=company_name,
+            description=description,
+            materials=materials or [],
+            user_tasks=user_tasks or [],
+            mode=clean_mode,
+        )
+        harvest_run = await start_company_harvest(str(intake["intakeId"]), mode=clean_mode, email=self.context.email)
+        job = await enqueue_job(
+            "company_harvest",
+            {
+                "runId": harvest_run["runId"],
+                "intakeId": intake["intakeId"],
+                "companyId": company_id,
+                "companyName": company_name,
+                "autoSolveTasks": auto_solve_tasks,
+                "autoPromoteSkills": auto_promote_skills,
+                "buildAgents": build_agents,
+                "runtimeKinds": kinds,
+                "runtimeProfiles": profiles,
+            },
+            dedupe_key=f"company_harvest:{harvest_run['runId']}",
+            max_attempts=1,
+        )
+        status = await company_harvest_status(str(harvest_run["runId"]), mode=clean_mode, email=self.context.email)
+        return {"success": True, "intake": intake, "harvestRun": status, "job": job}
+
+    async def answer_company_harvest(
+        self,
+        run_id: str,
+        *,
+        answers: list[dict[str, Any]],
+        continue_harvest: bool = True,
+        auto_solve_tasks: bool = False,
+        auto_promote_skills: bool = False,
+        build_agents: bool = False,
+        runtime_kinds: list[str] | None = None,
+        runtime_profiles: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        from app.services.company_harvester import answer_company_harvest_questions, company_harvest_status
+
+        if not run_id:
+            return {"success": False, "error": "runId is required"}
+        if not answers:
+            return {"success": False, "error": "answers are required"}
+        kinds = [str(item) for item in (runtime_kinds or ["model_agent", "codex", "claude_code"]) if str(item or "").strip()]
+        profiles = runtime_profiles if isinstance(runtime_profiles, dict) else {}
+        harvest_run = await answer_company_harvest_questions(run_id, answers=answers, email=self.context.email)
+        response: dict[str, Any] = {"success": True, "harvestRun": harvest_run}
+        if continue_harvest and harvest_run.get("status") != "needs_user_input":
+            response["job"] = await enqueue_job(
+                "company_harvest",
+                {
+                    "runId": harvest_run["runId"],
+                    "intakeId": harvest_run["intakeId"],
+                    "companyId": harvest_run.get("companyId", self.context.company_id),
+                    "autoSolveTasks": auto_solve_tasks,
+                    "autoPromoteSkills": auto_promote_skills,
+                    "buildAgents": build_agents,
+                    "runtimeKinds": kinds,
+                    "runtimeProfiles": profiles,
+                },
+                dedupe_key=f"company_harvest:{harvest_run['runId']}:assistant:{harvest_run.get('updatedAt', '')}",
+                max_attempts=1,
+            )
+        response["status"] = await company_harvest_status(run_id, mode=str(harvest_run.get("mode") or "normal"), email=self.context.email)
+        return response
+
+    async def get_company_harvest_status(self, run_id: str, *, mode: str = "normal") -> dict[str, Any]:
+        from app.services.company_harvester import company_harvest_status
+
+        if not run_id:
+            return {"success": False, "error": "runId is required"}
+        return {"success": True, "harvestRun": await company_harvest_status(run_id, mode="dev" if mode == "dev" else "normal", email=self.context.email)}
+
     def _request_scope(self):
         from app.request_scope import RequestScope
 

@@ -141,6 +141,100 @@ ASSISTANT_FUNCTION_TOOLS: list[dict[str, Any]] = [
     },
     {
         "type": "function",
+        "name": "studio_start_company_harvest",
+        "description": "Start CompanyHarvester onboarding for the scoped company from docs, PDFs, website URLs, API docs, auth notes, knowledge notes, and optional user tasks. Use when the user wants Automata to understand a company, infer tasks/benchmarks/connectors/tools, and prepare agents.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "companyName": {"type": "string"},
+                "description": {"type": "string"},
+                "materials": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {"type": "string", "enum": ["document_url", "file", "website", "api_docs", "openapi", "auth_note", "knowledge_note", "task_list"]},
+                            "name": {"type": "string"},
+                            "url": {"type": "string"},
+                            "documentId": {"type": "string"},
+                            "connectorId": {"type": "string"},
+                            "content": {"type": "string"},
+                            "metadata": {"type": "object", "additionalProperties": True},
+                        },
+                        "required": ["kind"],
+                        "additionalProperties": False,
+                    },
+                },
+                "userTasks": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "mode": {"type": "string", "enum": ["normal", "dev"]},
+                "autoSolveTasks": {"type": "boolean"},
+                "autoPromoteSkills": {"type": "boolean"},
+                "buildAgents": {"type": "boolean"},
+                "runtimeKinds": {"type": "array", "items": {"type": "string", "enum": ["model_agent", "codex", "claude_code"]}},
+                "runtimeProfiles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "provider": {"type": "string", "enum": ["openai", "anthropic", "local", "other"]},
+                            "model": {"type": "string"},
+                            "systemPrompt": {"type": "string"},
+                            "endpoint": {"type": "string"},
+                            "metadata": {"type": "object", "additionalProperties": True},
+                        },
+                        "additionalProperties": True,
+                    },
+                },
+            },
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "studio_answer_company_harvest",
+        "description": "Answer simple CompanyHarvester onboarding questions, such as missing website URL, docs, auth/credential references, or task lists, then optionally continue the harvest.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "runId": {"type": "string"},
+                "answers": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+                "continueHarvest": {"type": "boolean"},
+                "autoSolveTasks": {"type": "boolean"},
+                "autoPromoteSkills": {"type": "boolean"},
+                "buildAgents": {"type": "boolean"},
+                "runtimeKinds": {"type": "array", "items": {"type": "string", "enum": ["model_agent", "codex", "claude_code"]}},
+                "runtimeProfiles": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "object",
+                        "properties": {
+                            "provider": {"type": "string", "enum": ["openai", "anthropic", "local", "other"]},
+                            "model": {"type": "string"},
+                            "systemPrompt": {"type": "string"},
+                            "endpoint": {"type": "string"},
+                            "metadata": {"type": "object", "additionalProperties": True},
+                        },
+                        "additionalProperties": True,
+                    },
+                },
+            },
+            "required": ["runId", "answers"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
+        "name": "studio_get_company_harvest_status",
+        "description": "Get normal or dev status for a CompanyHarvester run, including current step, questions, next action, and delivery summary.",
+        "parameters": {
+            "type": "object",
+            "properties": {"runId": {"type": "string"}, "mode": {"type": "string", "enum": ["normal", "dev"]}},
+            "required": ["runId"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "type": "function",
         "name": "studio_create_work_item",
         "description": "Create a scoped Studio work item, including scheduled work. Use when the user explicitly asks to create, schedule, or set up work and has provided enough details. Do not ask for another confirmation after the user has already said yes, confirm, create, or equivalent.",
         "parameters": {
@@ -963,7 +1057,7 @@ class AutomataAssistantService:
                 memory_block,
                 "Tool policy: use tools for current data or actions. Never claim create/update/delete/run/approve/reject/publish/test succeeded unless a tool returned success or a concrete id/result. Reads do not need confirmation. Destructive actions, real external sends, and secret changes need an explicit user request. Ask at most one concise clarification when required fields are missing.",
                 "Secrets policy: never reveal raw secrets. Do not ask users to paste secrets if a Settings credential form is better. If a user provides a secret explicitly, use credential tools and keep outputs masked.",
-                "Action hints: create scheduled work with studio_create_work_item after details/confirmation; create entities from OpenAPI with studio_generate_entities_from_openapi apply=true only when asked to create; clear Automata chat history with studio_delete_assistant_conversations while preserving the current conversation; refresh past-chat memory with studio_rebuild_assistant_memory.",
+                "Action hints: use studio_start_company_harvest when the user provides company docs, website/API URLs, auth notes, knowledge, or asks Automata to onboard/build agents for a company; create scheduled work with studio_create_work_item after details/confirmation; create entities from OpenAPI with studio_generate_entities_from_openapi apply=true only when asked to create; clear Automata chat history with studio_delete_assistant_conversations while preserving the current conversation; refresh past-chat memory with studio_rebuild_assistant_memory.",
                 "Answer concisely with concrete resource names/ids from tools. If a tool returns empty data, say so and suggest the next useful action.",
             ] if item]
         )
@@ -1022,6 +1116,57 @@ class AutomataAssistantService:
             return {"companies": companies, "activeCompanyId": self.context.company_id, "activeCompany": active_company}
         if name == "studio_list_connectors":
             return {"connectors": await self.tools.list_connectors(limit=min(limit, 50))}
+        if name == "studio_start_company_harvest":
+            materials = arguments.get("materials") if isinstance(arguments.get("materials"), list) else []
+            user_tasks = arguments.get("userTasks") or arguments.get("user_tasks") or []
+            if not isinstance(user_tasks, list):
+                user_tasks = []
+            runtime_kinds = arguments.get("runtimeKinds") or arguments.get("runtime_kinds") or []
+            if not isinstance(runtime_kinds, list):
+                runtime_kinds = []
+            runtime_profiles = arguments.get("runtimeProfiles") or arguments.get("runtime_profiles") or {}
+            if not isinstance(runtime_profiles, dict):
+                runtime_profiles = {}
+            return await self.tools.start_company_harvest_onboarding(
+                company_name=str(arguments.get("companyName") or arguments.get("company_name") or ""),
+                description=str(arguments.get("description") or ""),
+                materials=[item for item in materials if isinstance(item, dict)],
+                user_tasks=[item for item in user_tasks if isinstance(item, dict)],
+                mode=str(arguments.get("mode") or "normal"),
+                auto_solve_tasks=bool(arguments.get("autoSolveTasks") or arguments.get("auto_solve_tasks")),
+                auto_promote_skills=bool(arguments.get("autoPromoteSkills") or arguments.get("auto_promote_skills")),
+                build_agents=bool(arguments.get("buildAgents") or arguments.get("build_agents")),
+                runtime_kinds=[str(item) for item in runtime_kinds],
+                runtime_profiles=runtime_profiles,
+            )
+        if name == "studio_answer_company_harvest":
+            run_id = str(arguments.get("runId") or arguments.get("run_id") or "").strip()
+            answers = arguments.get("answers") if isinstance(arguments.get("answers"), list) else []
+            if not run_id:
+                return {"error": "runId is required"}
+            if not answers:
+                return {"error": "answers are required"}
+            runtime_kinds = arguments.get("runtimeKinds") or arguments.get("runtime_kinds") or []
+            if not isinstance(runtime_kinds, list):
+                runtime_kinds = []
+            runtime_profiles = arguments.get("runtimeProfiles") or arguments.get("runtime_profiles") or {}
+            if not isinstance(runtime_profiles, dict):
+                runtime_profiles = {}
+            return await self.tools.answer_company_harvest(
+                run_id,
+                answers=[item for item in answers if isinstance(item, dict)],
+                continue_harvest=bool(arguments.get("continueHarvest", arguments.get("continue_harvest", True))),
+                auto_solve_tasks=bool(arguments.get("autoSolveTasks") or arguments.get("auto_solve_tasks")),
+                auto_promote_skills=bool(arguments.get("autoPromoteSkills") or arguments.get("auto_promote_skills")),
+                build_agents=bool(arguments.get("buildAgents") or arguments.get("build_agents")),
+                runtime_kinds=[str(item) for item in runtime_kinds],
+                runtime_profiles=runtime_profiles,
+            )
+        if name == "studio_get_company_harvest_status":
+            run_id = str(arguments.get("runId") or arguments.get("run_id") or "").strip()
+            if not run_id:
+                return {"error": "runId is required"}
+            return await self.tools.get_company_harvest_status(run_id, mode=str(arguments.get("mode") or "normal"))
         if name == "studio_create_connector":
             connector_name = str(arguments.get("name") or "").strip()
             if not connector_name:
@@ -1332,6 +1477,16 @@ class AutomataAssistantService:
             score = readiness.get("score")
             score_text = f", readiness {int(float(score) * 100)}%" if isinstance(score, (int, float)) else ""
             return f"Loaded Studio operating state: {counts.get('companies', 0)} companies, {counts.get('connectors', 0)} connectors, {counts.get('tools', 0)} tools, {counts.get('skills', 0)} skills{score_text}."
+        if name == "studio_start_company_harvest":
+            run = output.get("harvestRun") if isinstance(output.get("harvestRun"), dict) else {}
+            job = output.get("job") if isinstance(output.get("job"), dict) else {}
+            return f"Started CompanyHarvester run {run.get('runId') or ''}{' and queued job ' + str(job.get('jobId')) if job.get('jobId') else ''}.".strip()
+        if name == "studio_answer_company_harvest":
+            run = output.get("status") if isinstance(output.get("status"), dict) else output.get("harvestRun") if isinstance(output.get("harvestRun"), dict) else {}
+            return f"Updated CompanyHarvester run {run.get('runId') or ''}; status {run.get('status') or 'unknown'}.".strip()
+        if name == "studio_get_company_harvest_status":
+            run = output.get("harvestRun") if isinstance(output.get("harvestRun"), dict) else {}
+            return f"Loaded CompanyHarvester run {run.get('runId') or ''}; status {run.get('status') or 'unknown'}.".strip()
         key = next((item for item in ("companies", "connectors", "agents", "workItems", "boards", "credentials", "apiKeys", "profiles", "usageEvents", "entities", "approvals", "documents", "artifacts", "conversations") if isinstance(output.get(item), list)), "")
         if key:
             return f"Loaded {len(output.get(key) or [])} {key}."

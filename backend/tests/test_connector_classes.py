@@ -3,7 +3,7 @@ import pytest
 from app.connectors.base import ConnectorConfig
 from app.connectors.implementations import BOPAConnector, HoldedConnector, SMTPConnector, TelegramConnector, WebConnector
 from app.connectors import registry
-from app.services import agent_runtime
+from app.services import agent_runtime, custom_connector_executors
 
 
 class _FakeCursor:
@@ -285,10 +285,15 @@ async def test_connector_registry_resolves_deep_secret_refs(monkeypatch):
 @pytest.mark.asyncio
 async def test_agent_runtime_requests_approval_before_write_tool(monkeypatch):
     approvals = []
+    events = []
 
     async def fake_create_pending_approval(**kwargs):
         approvals.append(kwargs)
         return {"approvalId": "approval-1", "approvalKey": kwargs["approval_key"]}
+
+    async def fake_record_runtime_event(**kwargs):
+        events.append(kwargs)
+        return {}
 
     data = {
         "tool_calls": [{"name": "telegram.send_message", "arguments": {"message": "Hello"}}],
@@ -306,13 +311,21 @@ async def test_agent_runtime_requests_approval_before_write_tool(monkeypatch):
         }
     ]))
     monkeypatch.setattr(agent_runtime, "create_pending_approval", fake_create_pending_approval)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
 
     result = await agent_runtime._execute_connector_tool_calls(agent_config, data, {"state_in": {}})
 
     assert result["tool_calls"][0]["name"] == "api.human_approval"
     assert result["tool_calls"][0]["arguments"]["approvalId"] == "approval-1"
     assert result["state_out"]["pendingConnectorToolCall"]["name"] == "telegram.send_message"
+    assert result["executed_tool_calls"][0]["name"] == "telegram.send_message"
+    assert result["executed_tool_calls"][0]["status"] == "approval_required"
+    assert result["executed_tool_calls"][0]["approvalId"] == "approval-1"
     assert approvals[0]["proposed_action"]["name"] == "telegram.send_message"
+    assert events[0]["event_type"] == "tool.call"
+    assert events[0]["tool_name"] == "telegram.send_message"
+    assert events[0]["status"] == "approval_required"
+    assert events[0]["result"]["approvalId"] == "approval-1"
 
 
 @pytest.mark.asyncio
@@ -350,6 +363,139 @@ async def test_agent_runtime_respects_never_approval_tool_override(monkeypatch):
     assert result["tool_calls"] == []
     assert result["tool_results"][0]["success"] is True
     assert executed[0][1] == "crm.update_note"
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_surfaces_custom_connector_implementation_gap(monkeypatch):
+    executed = []
+    events = []
+
+    async def fake_execute_connector_tool(company_id, tool_name, arguments):
+        executed.append((company_id, tool_name, arguments))
+        return {"tool": tool_name, "success": True, "output": {"unexpected": True}}
+
+    async def fake_record_runtime_event(**kwargs):
+        events.append(kwargs)
+        return {}
+
+    data = {
+        "tool_calls": [{"name": "payroll.lookup_employee", "arguments": {"employeeEmail": "ana@example.com"}}],
+        "done": False,
+        "state_out": {},
+    }
+    agent_config = {"agentId": "agent-1", "companyId": "company-1", "email": "user@example.com"}
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeConnectorsCollection([
+        {
+            "toolId": "tool-payroll",
+            "companyId": "company-1",
+            "name": "payroll.lookup_employee",
+            "connectorId": "company-1:custom:payroll",
+            "connectorType": "custom",
+            "runtimeRequirements": ["connector_runtime"],
+            "sideEffects": "reads",
+            "metadata": {"customConnector": True},
+        }
+    ]))
+    monkeypatch.setattr(agent_runtime, "execute_connector_tool", fake_execute_connector_tool)
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+
+    result = await agent_runtime._execute_connector_tool_calls(
+        agent_config,
+        data,
+        {"state_in": {}, "context": {"taskId": "task-payroll"}},
+    )
+
+    assert executed == []
+    assert result["tool_calls"] == []
+    assert result["tool_results"][0]["status"] == "implementation_required"
+    assert result["tool_results"][0]["output"]["implementationRequired"] is True
+    assert result["tool_results"][0]["artifacts"][0]["kind"] == "connector_gap_report"
+    assert result["executed_tool_calls"][0]["status"] == "implementation_required"
+    assert events[0]["status"] == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_surfaces_unregistered_custom_executor_as_gap(monkeypatch):
+    async def fake_record_runtime_event(**kwargs):
+        return {}
+
+    data = {
+        "tool_calls": [{"name": "payroll.lookup_employee", "arguments": {"employeeEmail": "ana@example.com"}}],
+        "done": False,
+        "state_out": {},
+    }
+    agent_config = {"agentId": "agent-1", "companyId": "company-1", "email": "user@example.com"}
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeConnectorsCollection([
+        {
+            "toolId": "tool-payroll",
+            "companyId": "company-1",
+            "name": "payroll.lookup_employee",
+            "connectorId": "company-1:custom:payroll",
+            "connectorType": "custom",
+            "runtimeExecutor": "custom.payroll.lookup_employee",
+            "runtimeRequirements": ["connector_runtime"],
+            "sideEffects": "reads",
+            "metadata": {"customConnector": True},
+        }
+    ]))
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+    custom_connector_executors.clear_custom_connector_executors()
+
+    result = await agent_runtime._execute_connector_tool_calls(agent_config, data, {"state_in": {}})
+
+    assert result["tool_results"][0]["status"] == "implementation_required"
+    assert result["tool_results"][0]["output"]["runtimeExecutor"] == "custom.payroll.lookup_employee"
+
+
+@pytest.mark.asyncio
+async def test_agent_runtime_executes_registered_custom_connector_executor(monkeypatch):
+    events = []
+
+    async def fake_record_runtime_event(**kwargs):
+        events.append(kwargs)
+        return {}
+
+    async def fake_record_usage(**kwargs):
+        return {}
+
+    async def executor(context):
+        return {"success": True, "output": {"employeeEmail": context["arguments"]["employeeEmail"], "status": "active"}}
+
+    data = {
+        "tool_calls": [{"name": "payroll.lookup_employee", "arguments": {"employeeEmail": "ana@example.com"}}],
+        "done": False,
+        "state_out": {},
+    }
+    agent_config = {"agentId": "agent-1", "companyId": "company-1", "email": "user@example.com"}
+    monkeypatch.setattr(agent_runtime, "tools_collection", _FakeConnectorsCollection([
+        {
+            "toolId": "tool-payroll",
+            "companyId": "company-1",
+            "name": "payroll.lookup_employee",
+            "connectorId": "company-1:custom:payroll",
+            "connectorType": "custom",
+            "runtimeExecutor": "custom.payroll.lookup_employee",
+            "runtimeRequirements": ["connector_runtime"],
+            "sideEffects": "reads",
+            "metadata": {"customConnector": True},
+        }
+    ]))
+    monkeypatch.setattr(agent_runtime, "record_runtime_event", fake_record_runtime_event)
+    monkeypatch.setattr(agent_runtime, "_record_usage_event", fake_record_usage)
+    custom_connector_executors.clear_custom_connector_executors()
+    custom_connector_executors.register_custom_connector_executor("custom.payroll.lookup_employee", executor)
+
+    try:
+        result = await agent_runtime._execute_connector_tool_calls(agent_config, data, {"state_in": {}})
+    finally:
+        custom_connector_executors.clear_custom_connector_executors()
+
+    assert result["tool_calls"] == []
+    assert result["tool_results"][0]["success"] is True
+    assert result["tool_results"][0]["executor"] == "custom.payroll.lookup_employee"
+    assert result["tool_results"][0]["output"] == {"employeeEmail": "ana@example.com", "status": "active"}
+    assert result["executed_tool_calls"][0]["success"] is True
+    assert events[0]["status"] == "ok"
 
 
 @pytest.mark.asyncio

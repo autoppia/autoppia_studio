@@ -2,18 +2,21 @@ import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { resolveActiveGroup } from "./nav-config";
+import { useStudioMode } from "../../utils/studio-mode";
 
 /**
  * Vertical sub-navigation for the active section. Renders nothing for groups
  * without sub-pages (Canvas, Settings) or for routes outside the nav (so the
- * canvas stays full-window).
+ * canvas stays full-window). Dev-only items are hidden in normal mode.
  */
 export default function SectionSubNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const mode = useStudioMode();
   const group = resolveActiveGroup(location.pathname);
 
-  if (!group || group.items.length === 0) return null;
+  const items = group ? group.items.filter((item) => mode === "dev" || !item.devOnly) : [];
+  if (!group || items.length === 0) return null;
 
   return (
     <aside className="flex h-full w-52 flex-shrink-0 flex-col border-r border-gray-200 bg-white px-3 py-4 dark:border-dark-border dark:bg-dark-bg">
@@ -27,7 +30,7 @@ export default function SectionSubNav() {
         </p>
       </div>
       <div className="flex flex-col gap-0.5">
-        {group.items.map((item) => {
+        {items.map((item) => {
           const isActive =
             location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
           return (

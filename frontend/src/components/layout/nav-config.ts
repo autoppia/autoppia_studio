@@ -16,12 +16,16 @@ import {
   faKey,
   faShapes,
   faBuilding,
+  faRocket,
 } from "@fortawesome/free-solid-svg-icons";
+import type { StudioMode } from "../../utils/studio-mode";
 
 export interface NavItem {
   label: string;
   path: string;
   icon: IconDefinition;
+  /** Hidden from non-technical (normal) users. */
+  devOnly?: boolean;
 }
 
 export interface NavGroup {
@@ -35,6 +39,8 @@ export interface NavGroup {
   items: NavItem[];
   /** Render this entry as a white call-to-action in the top bar. */
   cta?: boolean;
+  /** Hidden from non-technical (normal) users. */
+  devOnly?: boolean;
 }
 
 /**
@@ -43,20 +49,29 @@ export interface NavGroup {
  * Canvas is the home/center — it opens full-window with no rail.
  */
 export const NAV_GROUPS: NavGroup[] = [
-  { key: "canvas", label: "Canvas", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [] },
+  {
+    key: "onboarding",
+    label: "Onboarding",
+    description: "Tell Automata about your company and it will discover systems, build and test tasks, and prepare agents.",
+    icon: faRocket,
+    path: "/onboarding",
+    items: [],
+  },
+  { key: "canvas", label: "Canvas", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [], devOnly: true },
   {
     key: "factory",
     label: "Capability Factory",
     description: "Connectors, resources, entities, tasks, benchmarks, trajectories and skills become reusable business capabilities here.",
     icon: faWandMagicSparkles,
     items: [
+      // Agents stay accessible in normal mode; the rest are factory internals.
       { label: "Agents", path: "/agents", icon: faRobot },
-      { label: "Connectors", path: "/connectors", icon: faPlug },
-      { label: "Resources", path: "/knowledge", icon: faBook },
-      { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles },
-      { label: "Entities", path: "/entities", icon: faCubes },
-      { label: "Benchmarks", path: "/evals", icon: faClipboardCheck },
-      { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft },
+      { label: "Connectors", path: "/connectors", icon: faPlug, devOnly: true },
+      { label: "Resources", path: "/knowledge", icon: faBook, devOnly: true },
+      { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles, devOnly: true },
+      { label: "Entities", path: "/entities", icon: faCubes, devOnly: true },
+      { label: "Benchmarks", path: "/evals", icon: faClipboardCheck, devOnly: true },
+      { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft, devOnly: true },
     ],
   },
   {
@@ -64,6 +79,7 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Runtime Lab",
     description: "Governed sessions, traces, skill routing, approvals, artifacts, cost and replay from live execution.",
     icon: faBolt,
+    devOnly: true,
     items: [
       { label: "Sessions", path: "/runtime", icon: faClockRotateLeft },
       { label: "Approvals", path: "/approvals", icon: faCircleCheck },
@@ -84,12 +100,25 @@ export const NAV_GROUPS: NavGroup[] = [
     label: "Company Setup",
     description: "Company contract, credentials, embed controls and governance.",
     icon: faGear,
+    devOnly: true,
     items: [
       { label: "Company Setup", path: "/setup/company", icon: faBuilding },
       { label: "Credentials", path: "/credentials", icon: faKey },
     ],
   },
 ];
+
+/**
+ * Groups (and items within them) visible for a given experience mode. Normal
+ * users see only the guided surface; dev mode reveals factory internals.
+ */
+export function visibleNavGroups(mode: StudioMode): NavGroup[] {
+  if (mode === "dev") return NAV_GROUPS;
+  return NAV_GROUPS.filter((group) => !group.devOnly)
+    .map((group) => ({ ...group, items: group.items.filter((item) => !item.devOnly) }))
+    // Drop groups that have a sub-rail but no longer have any visible items.
+    .filter((group) => Boolean(group.path) || group.items.length > 0);
+}
 
 /** Path the top-bar entry navigates to when its group is clicked. */
 export function groupLandingPath(group: NavGroup): string {

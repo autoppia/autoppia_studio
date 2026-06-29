@@ -21,8 +21,12 @@ from app.database import (
     trajectories_collection,
 )
 from app.models.agent_config import AgentCallable, AgentConfig
+from app.runtimes.base import AgentRuntimeContext
+from app.runtimes.external_step import step_url
+from app.runtimes.registry import get_runtime_adapter, normalize_runtime_kind, runtime_catalog_payload, runtime_descriptor_payload
 from app.services.approvals import create_pending_approval, stable_approval_key
 from app.services.agent_config_contract import control_plane_separation_gate
+from app.services.custom_connector_executors import custom_connector_executor_name, execute_custom_connector_tool, has_custom_connector_executor
 from app.services.metering import record_usage
 from app.services.observability import record_runtime_event
 from app.services.resource_governance import resource_payload
@@ -36,13 +40,23 @@ DEFAULT_BASE_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", "
 logger = logging.getLogger(__name__)
 
 
-def step_url(endpoint: str) -> str:
-    clean = endpoint.rstrip("/")
-    if not clean:
-        return ""
-    if clean.endswith("/step"):
-        return clean
-    return f"{clean}/step"
+def _runtime_kind(value: Any) -> str:
+    return normalize_runtime_kind(value)
+
+
+def _runtime_adapter_context(agent_config: dict[str, Any], capability_context: dict[str, Any]) -> AgentRuntimeContext:
+    return AgentRuntimeContext(
+        agentConfig=agent_config,
+        tools=capability_context.get("tools") if isinstance(capability_context.get("tools"), list) else [],
+        skills=capability_context.get("skills") if isinstance(capability_context.get("skills"), list) else [],
+        resources=capability_context.get("resources") if isinstance(capability_context.get("resources"), list) else [],
+        entities=capability_context.get("entities") if isinstance(capability_context.get("entities"), dict) else {},
+        metadata={
+            "defaultEndpoint": DEFAULT_BASE_RUNTIME_ENDPOINT,
+            "httpClientFactory": httpx.AsyncClient,
+            "timeoutSeconds": 45.0,
+        },
+    )
 
 
 async def _record_usage_event(**kwargs: Any) -> None:
@@ -71,6 +85,9 @@ def serialize_agent(doc: dict[str, Any]) -> dict[str, Any]:
         "runtimeEndpoint": doc.get("runtimeEndpoint", ""),
         "baseRuntimeEndpoint": doc.get("baseRuntimeEndpoint", ""),
         "runtimeType": doc.get("runtimeType", ""),
+        "runtimeKind": _runtime_kind(doc.get("runtimeKind")),
+        "runtimeProfile": doc.get("runtimeProfile") or {"kind": _runtime_kind(doc.get("runtimeKind"))},
+        "runtimeDescriptor": runtime_descriptor_payload(doc.get("runtimeKind")),
         "status": doc.get("status", ""),
         "trainingStatus": doc.get("trainingStatus", ""),
         "runtimeCapabilities": doc.get("runtimeCapabilities") or {},
@@ -98,6 +115,8 @@ def _tool_callable(doc: dict[str, Any]) -> dict[str, Any]:
         source=str(doc.get("source") or ""),
         connectorId=str(doc.get("connectorId") or ""),
         executionType=str(doc.get("executionType") or ""),
+        executionReady=bool(doc.get("executionReady", True)),
+        implementationRequired=bool(doc.get("implementationRequired", False)),
         runtimeRequirements=[str(item) for item in doc.get("runtimeRequirements") or [] if item],
         permissions=doc.get("permissions") if isinstance(doc.get("permissions"), dict) else {},
         approvalPolicy=doc.get("approvalPolicy") if isinstance(doc.get("approvalPolicy"), dict) else {},
@@ -165,6 +184,8 @@ def _agent_config_payload(agent_config: dict[str, Any], context: dict[str, Any],
         runtimeEndpoint=str(agent_config.get("runtimeEndpoint") or ""),
         baseRuntimeEndpoint=str(agent_config.get("baseRuntimeEndpoint") or ""),
         runtimeType=str(agent_config.get("runtimeType") or "generalist_with_company_capabilities"),
+        runtimeKind=_runtime_kind(agent_config.get("runtimeKind")),
+        runtimeProfile=agent_config.get("runtimeProfile") if isinstance(agent_config.get("runtimeProfile"), dict) else {"kind": _runtime_kind(agent_config.get("runtimeKind"))},
         status=str(agent_config.get("status") or "draft"),
         trainingStatus=str(agent_config.get("trainingStatus") or "not_started"),
         runtimeCapabilities=runtime_capabilities,
@@ -176,12 +197,15 @@ def _agent_config_payload(agent_config: dict[str, Any], context: dict[str, Any],
         entities=context.get("entities") if isinstance(context.get("entities"), dict) else {},
         resources=context.get("resources") if isinstance(context.get("resources"), list) else [],
         knowledge=context.get("resources") if isinstance(context.get("resources"), list) else [],
+        deliverySurfaces=agent_config.get("deliverySurfaces") if isinstance(agent_config.get("deliverySurfaces"), dict) else {},
         memory=memory,
         riskPolicy={"writesRequireApproval": bool((agent_config.get("runtimeCapabilities") or {}).get("humanApprovalForWrites", True))},
         createdAt=agent_config.get("createdAt"),
         updatedAt=agent_config.get("updatedAt"),
     )
-    return payload.model_dump()
+    data = payload.model_dump()
+    data["runtimeDescriptor"] = runtime_descriptor_payload(data.get("runtimeKind"))
+    return data
 
 
 def _apply_runtime_overrides(agent_config: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
@@ -349,6 +373,10 @@ async def runtime_contract_payload(agent_config: dict[str, Any]) -> dict[str, An
         risk = str(tool.get("riskLevel") or "unknown").lower()
         risk_counts[risk] = risk_counts.get(risk, 0) + 1
     return {
+        "runtimeKind": _runtime_kind(agent_config.get("runtimeKind")),
+        "runtimeProfile": agent_config.get("runtimeProfile") if isinstance(agent_config.get("runtimeProfile"), dict) else {"kind": _runtime_kind(agent_config.get("runtimeKind"))},
+        "runtimeDescriptor": runtime_descriptor_payload(agent_config.get("runtimeKind")),
+        "runtimeAdapters": runtime_catalog_payload(),
         "runtimeCapabilities": agent_config.get("runtimeCapabilities") or {},
         "runtimeSpec": agent_config.get("runtimeSpec") or {},
         "controlPlaneSeparationGate": control_plane_separation_gate(
@@ -987,6 +1015,63 @@ def _connector_tool_arguments(tool_name: str, prompt: str, connector: dict[str, 
     return {}
 
 
+def _custom_connector_needs_implementation(tool_doc: dict[str, Any] | None) -> bool:
+    if not isinstance(tool_doc, dict) or not tool_doc:
+        return False
+    metadata = tool_doc.get("metadata") if isinstance(tool_doc.get("metadata"), dict) else {}
+    connector_type = str(tool_doc.get("connectorType") or metadata.get("connectorType") or "").lower()
+    implementation_status = str(tool_doc.get("implementationStatus") or metadata.get("implementationStatus") or "").lower()
+    has_executor = bool(tool_doc.get("executor") or tool_doc.get("runtimeExecutor") or metadata.get("executor"))
+    is_custom = connector_type == "custom" or bool(metadata.get("customConnector"))
+    if has_custom_connector_executor(tool_doc):
+        return False
+    if is_custom and has_executor:
+        return True
+    if implementation_status in {"ready", "implemented", "active"} or has_executor:
+        return False
+    return is_custom
+
+
+def _custom_connector_implementation_result(name: str, arguments: dict[str, Any], tool_doc: dict[str, Any], payload: dict[str, Any]) -> dict[str, Any]:
+    payload_context = payload.get("context") if isinstance(payload.get("context"), dict) else {}
+    task_id = str(payload_context.get("taskId") or "")
+    connector_id = str(tool_doc.get("connectorId") or "")
+    executor_name = custom_connector_executor_name(tool_doc)
+    return {
+        "tool": name,
+        "success": False,
+        "status": "implementation_required",
+        "error": "Custom connector tool is specified but no runtime executor is implemented yet.",
+        "output": {
+            "implementationRequired": True,
+            "toolName": name,
+            "toolId": str(tool_doc.get("toolId") or ""),
+            "connectorId": connector_id,
+            "runtimeExecutor": executor_name,
+            "arguments": arguments,
+            "nextAction": "Implement or attach a connector executor, then rerun the benchmark task.",
+        },
+        "artifacts": [
+            {
+                "artifactId": f"{task_id or connector_id or name}:connector_gap_report",
+                "name": "connector_gap_report",
+                "title": "Connector Gap Report",
+                "artifactType": "connector_gap_report",
+                "kind": "connector_gap_report",
+                "content": f"Tool {name} is modeled for connector {connector_id or 'unknown'}, but no runtime executor is attached.",
+                "sourceTool": name,
+                "metadata": {
+                    "toolId": str(tool_doc.get("toolId") or ""),
+                    "connectorId": connector_id,
+                    "taskId": task_id,
+                    "implementationRequired": True,
+                    "runtimeExecutor": executor_name,
+                },
+            }
+        ],
+    }
+
+
 def _fallback_expected_tool_from_prompt(prompt: str, tools: list[str]) -> str:
     lowered = prompt.lower()
     def available(name: str) -> bool:
@@ -1346,6 +1431,21 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                     "sourceKind": "work" if work_item_id else "session" if session_id else "runtime",
                 },
             )
+            await record_runtime_event(
+                agent_id=str(agent_config.get("agentId") or ""),
+                company_id=company_id,
+                event_type="tool.call",
+                tool_name=name,
+                status="approval_required",
+                payload={"arguments": arguments},
+                result={
+                    "tool": name,
+                    "success": False,
+                    "status": "approval_required",
+                    "approvalId": approval.get("approvalId", ""),
+                    "approvalKey": approval_key,
+                },
+            )
             return {
                 **data,
                 "tool_calls": [
@@ -1361,6 +1461,17 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                     }
                 ],
                 "tool_results": tool_results,
+                "executed_tool_calls": [
+                    *executed_tool_calls,
+                    {
+                        "name": name,
+                        "arguments": arguments,
+                        "success": False,
+                        "status": "approval_required",
+                        "approvalId": approval.get("approvalId", ""),
+                        "approvalKey": approval_key,
+                    },
+                ],
                 "done": False,
                 "state_out": {
                     **(data.get("state_out") if isinstance(data.get("state_out"), dict) else {}),
@@ -1370,8 +1481,32 @@ async def _execute_connector_tool_calls(agent_config: dict[str, Any], data: dict
                 },
             }
 
+        if _custom_connector_needs_implementation(tool_doc):
+            result = _custom_connector_implementation_result(name, arguments, tool_doc or {}, payload)
+            tool_results.append(result)
+            executed_tool_calls.append({"name": name, "arguments": arguments, "success": False, "error": result.get("error"), "status": result.get("status")})
+            await record_runtime_event(
+                agent_id=str(agent_config.get("agentId") or ""),
+                company_id=company_id,
+                event_type="tool.call",
+                tool_name=name,
+                status="blocked",
+                payload={"arguments": arguments},
+                result=result,
+            )
+            executed_any = True
+            continue
+
         try:
-            result = await execute_connector_tool(company_id=company_id, tool_name=name, arguments=arguments)
+            custom_result = await execute_custom_connector_tool(
+                company_id=company_id,
+                tool_name=name,
+                arguments=arguments,
+                tool_doc=tool_doc or {},
+                agent_config=agent_config,
+                payload=payload,
+            )
+            result = custom_result or await execute_connector_tool(company_id=company_id, tool_name=name, arguments=arguments)
             if tool_doc and (tool_doc.get("outputEntity") or tool_doc.get("outputCard")):
                 result = {
                     **result,
@@ -1809,21 +1944,12 @@ async def agent_step_result(agent_id: str, payload: dict[str, Any]) -> dict[str,
         router_public["fallbackRuntime"] = "local_connector_agent"
         data = await _local_connector_agent_response(agent_config, prompt, state_in, payload)
     else:
+        runtime_kind = _runtime_kind(agent_config.get("runtimeKind"))
+        runtime_adapter = get_runtime_adapter(runtime_kind)
         router_public["fallbackRuntime"] = str(agent_config.get("runtimeType") or "external_agent_runtime")
-        endpoint = step_url(str(agent_config.get("baseRuntimeEndpoint") or DEFAULT_BASE_RUNTIME_ENDPOINT))
-        if not endpoint:
-            raise HTTPException(status_code=409, detail="Agent runtime is not deployed yet")
-        try:
-            async with httpx.AsyncClient(timeout=45.0) as client:
-                response = await client.post(endpoint, json=payload)
-        except httpx.HTTPError as exc:
-            raise HTTPException(status_code=502, detail=f"Agent runtime request failed: {exc}") from exc
-        if response.status_code >= 400:
-            raise HTTPException(status_code=502, detail={"runtimeStatus": response.status_code, "body": response.text})
-        try:
-            data = response.json()
-        except ValueError:
-            data = {"raw": response.text}
+        router_public["runtimeKind"] = runtime_kind
+        router_public["runtimeAdapter"] = runtime_adapter.descriptor().model_dump()
+        data = await runtime_adapter.step(payload, _runtime_adapter_context(agent_config, context))
         if isinstance(data, dict) and _external_runtime_looks_mismatched(agent_config, data):
             if matched_skill:
                 data = await _web_skill_response(agent_config, matched_skill, prompt, payload)

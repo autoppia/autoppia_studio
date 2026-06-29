@@ -1,17 +1,20 @@
 import React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
-import { NAV_GROUPS, groupLandingPath, resolveActiveGroup } from "./nav-config";
+import { groupLandingPath, resolveActiveGroup, visibleNavGroups } from "./nav-config";
+import { useStudioMode } from "../../utils/studio-mode";
 
 /** Horizontal primary navigation rendered in the top bar. */
 export default function PrimaryNav() {
   const navigate = useNavigate();
   const location = useLocation();
+  const mode = useStudioMode();
   const active = resolveActiveGroup(location.pathname);
+  const groups = visibleNavGroups(mode);
 
   return (
     <nav className="flex items-center gap-2.5">
-      {NAV_GROUPS.map((group) => {
+      {groups.map((group) => {
         const isActive = active?.key === group.key;
         const className = group.cta
           ? `flex h-9 items-center gap-2 rounded-lg px-3.5 text-sm font-semibold transition-colors border ${

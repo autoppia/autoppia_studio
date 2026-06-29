@@ -25,6 +25,8 @@ from app.services.agent_config_contract import runtime_allowed_domains
 from app.services.agent_config_contract import runtime_classes
 from app.services.agent_config_contract import runtime_host
 from app.services.task_contracts import task_metadata_with_contract
+from app.runtimes.base import AgentRuntimeProfile
+from app.runtimes.registry import VALID_RUNTIME_KINDS, default_runtime_profile, normalize_runtime_kind
 
 router = APIRouter()
 
@@ -40,6 +42,7 @@ AUTOCINEMA_RUNTIME = "http://127.0.0.1:5060/step"
 DEFAULT_AGENT_RUNTIME_ENDPOINT = os.getenv("AUTOMATA_DEFAULT_RUNTIME_ENDPOINT", AUTOCINEMA_RUNTIME).strip()
 DEFAULT_AGENT_RUNTIME_TYPE = os.getenv("AUTOMATA_DEFAULT_RUNTIME_TYPE", "generalist_with_company_capabilities").strip()
 DEFAULT_RUNTIME_PROXY_BASE = os.getenv("AUTOMATA_RUNTIME_PROXY_BASE", "http://127.0.0.1:8080").rstrip("/")
+VALID_MODEL_PROVIDERS = {"openai", "anthropic", "local", "other"}
 
 AUTOCINEMA_CAPABILITIES = [
     {"name": "login", "taskName": "Login", "description": "Log in to Autocinema with the bundled demo credentials."},
@@ -71,6 +74,10 @@ class AgentConfigCreateRequest(BaseModel):
     browserEnabled: bool = True
     browserMode: str = "visible"
     maxCreditsPerRun: float = 5.0
+    runtimeKind: str = "model_agent"
+    modelProvider: str = "openai"
+    model: str = ""
+    systemPrompt: str = ""
 
 
 class AgentRuntimeSettingsRequest(BaseModel):
@@ -136,6 +143,9 @@ def _runtime_classes(*, browser_enabled: bool, tools: dict[str, Any]) -> list[st
 
 def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
     agent_id = doc.get("agentId", "")
+    runtime_kind = str(doc.get("runtimeKind") or "model_agent")
+    if runtime_kind not in VALID_RUNTIME_KINDS:
+        runtime_kind = "model_agent"
     runtime_capabilities = doc.get("runtimeCapabilities", {"browser": True, "apiCalls": True, "knowledge": False, "python": False})
     runtime_spec = doc.get("runtimeSpec") or _runtime_spec(
         browser_enabled=bool(runtime_capabilities.get("browser", True)),
@@ -161,6 +171,8 @@ def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
         "websiteUrl": doc.get("websiteUrl", ""),
         "runtimeEndpoint": doc.get("runtimeEndpoint", ""),
         "runtimeType": doc.get("runtimeType", "replay"),
+        "runtimeKind": runtime_kind,
+        "runtimeProfile": doc.get("runtimeProfile") or {"kind": runtime_kind},
         "status": doc.get("status", "draft"),
         "trainingStatus": doc.get("trainingStatus", "not_started"),
         "harvester": doc.get("harvester", "Automata Agent"),
@@ -477,6 +489,16 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
         email = scope.require_email(body.email)
         now = datetime.now(timezone.utc)
         agent_id = str(uuid.uuid4())
+        runtime_kind = normalize_runtime_kind(body.runtimeKind)
+        profile = default_runtime_profile(runtime_kind)
+        runtime_profile = AgentRuntimeProfile(
+            kind=runtime_kind,
+            provider=body.modelProvider if body.modelProvider in VALID_MODEL_PROVIDERS else profile.provider,  # type: ignore[arg-type]
+            model=body.model or profile.model,
+            systemPrompt=body.systemPrompt or profile.systemPrompt,
+            endpoint=DEFAULT_AGENT_RUNTIME_ENDPOINT,
+            metadata=profile.metadata,
+        ).model_dump()
         runtime_endpoint = f"{DEFAULT_RUNTIME_PROXY_BASE}/runtime/agents/{agent_id}/step" if DEFAULT_AGENT_RUNTIME_ENDPOINT else ""
         doc = {
             "agentId": agent_id,
@@ -487,6 +509,8 @@ async def create_agent(body: AgentConfigCreateRequest, scope: RequestScope = Dep
             "runtimeEndpoint": runtime_endpoint,
             "baseRuntimeEndpoint": DEFAULT_AGENT_RUNTIME_ENDPOINT,
             "runtimeType": DEFAULT_AGENT_RUNTIME_TYPE if DEFAULT_AGENT_RUNTIME_ENDPOINT else "pending",
+            "runtimeKind": runtime_kind,
+            "runtimeProfile": runtime_profile,
             "status": "ready" if DEFAULT_AGENT_RUNTIME_ENDPOINT else "draft",
             "trainingStatus": "needs_harvest",
             "harvester": "Automata Agent",

@@ -24,6 +24,7 @@ import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
 import PrimaryNav from "./primary-nav";
+import ModeToggle from "../common/mode-toggle";
 import { getApiUrl } from "../../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -294,6 +295,9 @@ export default function TopBar() {
           <PrimaryNav />
         </div>
       </div>
+
+      {/* Normal / Dev experience switch */}
+      <ModeToggle />
 
       {/* New session call-to-action */}
       <button

@@ -1190,6 +1190,9 @@ def test_assistant_exposes_core_action_tools():
         "studio_create_connector",
         "studio_test_connector",
         "studio_create_agent",
+        "studio_start_company_harvest",
+        "studio_answer_company_harvest",
+        "studio_get_company_harvest_status",
         "studio_approve_approval",
         "studio_save_knowledge_document_from_url",
         "studio_update_tool_approval",
@@ -1204,6 +1207,88 @@ def test_assistant_exposes_core_action_tools():
         "studio_rebuild_assistant_memory",
     } <= names
     assert "operating state" in snapshot_tool["description"]
+
+
+@pytest.mark.asyncio
+async def test_assistant_executes_company_harvest_onboarding_tool(monkeypatch):
+    from app.assistant import service as assistant_service
+
+    calls = []
+    started = []
+
+    class _FakeResponse:
+        def __init__(self, output, output_text=""):
+            self.output = output
+            self.output_text = output_text
+
+    class _FakeResponses:
+        async def create(self, **kwargs):
+            calls.append(kwargs)
+            if len(calls) == 1:
+                return _FakeResponse(
+                    [
+                        {
+                            "type": "function_call",
+                            "call_id": "call-company-harvest",
+                            "name": "studio_start_company_harvest",
+                            "arguments": (
+                                '{"companyName":"Celeris","description":"Claims CRM",'
+                                '"materials":[{"kind":"website","url":"https://crm.example.com","name":"CRM"},'
+                                '{"kind":"openapi","url":"https://api.example.com/openapi.json","name":"API docs"}],'
+                                '"userTasks":[{"prompt":"Find claim status"}],'
+                                '"mode":"normal","autoSolveTasks":true,"autoPromoteSkills":true,"buildAgents":true,'
+                                '"runtimeKinds":["model_agent","codex","claude_code"],'
+                                '"runtimeProfiles":{"model_agent":{"provider":"anthropic","model":"claude-sonnet","systemPrompt":"Use claims policy."}}}'
+                            ),
+                        }
+                    ]
+                )
+            return _FakeResponse([], "Started company onboarding.")
+
+    class _FakeOpenAI:
+        def __init__(self, api_key):
+            self.api_key = api_key
+            self.responses = _FakeResponses()
+
+    class _Tools:
+        def __init__(self, context):
+            self.context = context
+
+        async def start_company_harvest_onboarding(self, **kwargs):
+            started.append(kwargs)
+            return {
+                "success": True,
+                "harvestRun": {"runId": "run-1", "status": "intaking"},
+                "job": {"jobId": "job-1"},
+            }
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(assistant_service, "AsyncOpenAI", _FakeOpenAI)
+    monkeypatch.setattr(assistant_service, "AutomataAssistantTools", _Tools)
+
+    service = AutomataAssistantService(AssistantContext(email="owner@example.com", company_id="company-1"))
+    reply, events, draft = await service.respond("onboard my company from our CRM and API docs")
+
+    assert draft is None
+    assert reply == "Started company onboarding."
+    assert started == [
+        {
+            "company_name": "Celeris",
+            "description": "Claims CRM",
+            "materials": [
+                {"kind": "website", "url": "https://crm.example.com", "name": "CRM"},
+                {"kind": "openapi", "url": "https://api.example.com/openapi.json", "name": "API docs"},
+            ],
+            "user_tasks": [{"prompt": "Find claim status"}],
+            "mode": "normal",
+            "auto_solve_tasks": True,
+            "auto_promote_skills": True,
+            "build_agents": True,
+            "runtime_kinds": ["model_agent", "codex", "claude_code"],
+            "runtime_profiles": {"model_agent": {"provider": "anthropic", "model": "claude-sonnet", "systemPrompt": "Use claims policy."}},
+        }
+    ]
+    assert any(event.get("toolName") == "studio_start_company_harvest" for event in events)
 
 
 def test_assistant_snapshot_reply_surfaces_operating_next_action():

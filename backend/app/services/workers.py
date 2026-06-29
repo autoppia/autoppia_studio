@@ -12,7 +12,7 @@ from pymongo import ReturnDocument
 from pymongo.errors import DuplicateKeyError
 
 from app.database import worker_locks_collection
-from app.services.queue import claim_next_job, complete_job, fail_job
+from app.services.queue import claim_next_job, complete_job, enqueue_job, fail_job
 
 logger = logging.getLogger(__name__)
 WORKER_OWNER_ID = os.getenv("AUTOMATA_WORKER_ID") or f"{socket.gethostname()}:{os.getpid()}:{uuid.uuid4().hex[:8]}"
@@ -99,6 +99,31 @@ async def notification_cleanup_worker_loop() -> None:
     )
 
 
+async def _enqueue_company_knowledge_index_jobs(company_harvest: dict) -> list[dict]:
+    dev_summary = company_harvest.get("devSummary") if isinstance(company_harvest.get("devSummary"), dict) else {}
+    document_ids = [str(item) for item in dev_summary.get("knowledgeDocumentIds") or [] if item]
+    jobs = []
+    for document_id in document_ids:
+        jobs.append(
+            await enqueue_job(
+                "knowledge_index",
+                {"documentId": document_id},
+                dedupe_key=f"knowledge_index:{document_id}",
+                max_attempts=3,
+            )
+        )
+    return jobs
+
+
+def _company_harvest_allows_task_autosolve(company_harvest: dict) -> bool:
+    next_action = company_harvest.get("nextAction") if isinstance(company_harvest.get("nextAction"), dict) else {}
+    if str(next_action.get("kind") or "") == "implement_connectors":
+        return False
+    if str(company_harvest.get("status") or "") == "needs_user_input":
+        return False
+    return True
+
+
 async def execute_job(job: dict) -> dict:
     job_type = str(job.get("type") or "")
     payload = job.get("payload") if isinstance(job.get("payload"), dict) else {}
@@ -131,6 +156,164 @@ async def execute_job(job: dict) -> dict:
             harvester_name=str(payload.get("harvesterName") or "autoppia_harvester"),
         )
         return {"ok": True}
+    if job_type == "company_harvest":
+        from app.services.company_harvester import process_company_harvest_run, record_company_harvest_results
+
+        result = await process_company_harvest_run(str(payload.get("runId") or ""))
+        knowledge_index_jobs = []
+        if payload.get("autoIndexKnowledge", True):
+            knowledge_index_jobs = await _enqueue_company_knowledge_index_jobs(result)
+        task_harvest = None
+        promotion = None
+        agent_build = None
+        benchmark_id = str((result.get("normalSummary") or {}).get("benchmarkId") or (result.get("nextAction") or {}).get("benchmarkId") or "")
+        autosolve_blocked = payload.get("autoSolveTasks") and not _company_harvest_allows_task_autosolve(result)
+        downstream_blocked = False
+        if payload.get("autoSolveTasks") and not autosolve_blocked:
+            from app.services.task_harvester import harvest_benchmark_tasks, task_harvest_has_implementation_gaps
+
+            if benchmark_id:
+                task_harvest = await harvest_benchmark_tasks(benchmark_id, harvester_name=str(payload.get("harvesterName") or ""))
+                downstream_blocked = task_harvest_has_implementation_gaps(task_harvest)
+                if payload.get("autoPromoteSkills") and not downstream_blocked:
+                    from app.services.task_harvester import judge_and_promote_benchmark_trajectories
+
+                    promotion = await judge_and_promote_benchmark_trajectories(
+                        benchmark_id,
+                        judge_name=str(payload.get("judgeName") or "rules"),
+                    )
+        if payload.get("buildAgents") and not downstream_blocked:
+            from app.services.agent_builder import build_company_agents
+
+            agent_build = await build_company_agents(
+                email=str(result.get("email") or payload.get("email") or ""),
+                company_id=str(result.get("companyId") or payload.get("companyId") or ""),
+                company_name=str(payload.get("companyName") or ""),
+                benchmark_id=benchmark_id,
+                runtime_kinds=[str(item) for item in payload.get("runtimeKinds") or [] if item],
+                runtime_profiles=payload.get("runtimeProfiles") if isinstance(payload.get("runtimeProfiles"), dict) else {},
+            )
+        company_harvest = await record_company_harvest_results(
+            str(payload.get("runId") or ""),
+            knowledge_index_jobs=knowledge_index_jobs,
+            task_harvest=task_harvest,
+            promotion=promotion,
+            agent_build=agent_build,
+        )
+        response = {"companyHarvest": company_harvest, "knowledgeIndexJobs": knowledge_index_jobs}
+        blocked_actions = []
+        if autosolve_blocked:
+            blocked_actions.append(
+                {
+                    "kind": "auto_solve_tasks",
+                    "reason": "company_harvest_next_action_requires_connector_implementation",
+                    "nextAction": result.get("nextAction") if isinstance(result.get("nextAction"), dict) else {},
+                }
+            )
+        if downstream_blocked:
+            blocked_actions.append(
+                {
+                    "kind": "auto_promote_or_build_agents",
+                    "reason": "task_harvest_requires_connector_implementation",
+                    "benchmarkId": benchmark_id,
+                }
+            )
+        if blocked_actions:
+            response["blockedActions"] = blocked_actions
+        if task_harvest is not None:
+            response["taskHarvest"] = task_harvest
+        if promotion is not None:
+            response["promotion"] = promotion
+        if agent_build is not None:
+            response["agentBuild"] = agent_build
+        return response
+    if job_type == "task_harvest":
+        from app.services.task_harvester import harvest_benchmark_tasks, harvest_task, judge_and_promote_benchmark_trajectories, task_harvest_has_implementation_gaps
+
+        task_id = str(payload.get("taskId") or "")
+        if task_id:
+            harvest = await harvest_task(task_id, harvester_name=str(payload.get("harvesterName") or ""))
+            if payload.get("promoteSkills"):
+                if task_harvest_has_implementation_gaps(harvest):
+                    return {
+                        "harvest": harvest,
+                        "blockedActions": [
+                            {
+                                "kind": "promote_or_build_agents",
+                                "reason": "task_harvest_requires_connector_implementation",
+                                "benchmarkId": str(harvest.get("benchmarkId") or payload.get("benchmarkId") or ""),
+                            }
+                        ],
+                    }
+                promotion = await judge_and_promote_benchmark_trajectories(
+                    str(harvest.get("benchmarkId") or payload.get("benchmarkId") or ""),
+                    task_ids=[task_id],
+                    judge_name=str(payload.get("judgeName") or "rules"),
+                    limit=int(payload.get("limit") or 25),
+                )
+                response = {"harvest": harvest, "promotion": promotion}
+                if payload.get("buildAgents"):
+                    from app.services.agent_builder import build_company_agents
+
+                    response["agentBuild"] = await build_company_agents(
+                        email=str(payload.get("email") or ""),
+                        company_id=str(payload.get("companyId") or ""),
+                        company_name=str(payload.get("companyName") or ""),
+                        benchmark_id=str(harvest.get("benchmarkId") or payload.get("benchmarkId") or ""),
+                        runtime_kinds=[str(item) for item in payload.get("runtimeKinds") or [] if item],
+                        runtime_profiles=payload.get("runtimeProfiles") if isinstance(payload.get("runtimeProfiles"), dict) else {},
+                    )
+                return response
+            return harvest
+        harvest = await harvest_benchmark_tasks(
+            str(payload.get("benchmarkId") or ""),
+            harvester_name=str(payload.get("harvesterName") or ""),
+            task_ids=[str(item) for item in payload.get("taskIds") or [] if item],
+            limit=int(payload.get("limit") or 25),
+        )
+        if payload.get("promoteSkills"):
+            if task_harvest_has_implementation_gaps(harvest):
+                return {
+                    "harvest": harvest,
+                    "blockedActions": [
+                        {
+                            "kind": "promote_or_build_agents",
+                            "reason": "task_harvest_requires_connector_implementation",
+                            "benchmarkId": str(payload.get("benchmarkId") or ""),
+                        }
+                    ],
+                }
+            promotion = await judge_and_promote_benchmark_trajectories(
+                str(payload.get("benchmarkId") or ""),
+                task_ids=[str(item) for item in payload.get("taskIds") or [] if item],
+                judge_name=str(payload.get("judgeName") or "rules"),
+                limit=int(payload.get("limit") or 25),
+            )
+            response = {"harvest": harvest, "promotion": promotion}
+            if payload.get("buildAgents"):
+                from app.services.agent_builder import build_company_agents
+
+                response["agentBuild"] = await build_company_agents(
+                    email=str(payload.get("email") or ""),
+                    company_id=str(payload.get("companyId") or ""),
+                    company_name=str(payload.get("companyName") or ""),
+                    benchmark_id=str(payload.get("benchmarkId") or ""),
+                    runtime_kinds=[str(item) for item in payload.get("runtimeKinds") or [] if item],
+                    runtime_profiles=payload.get("runtimeProfiles") if isinstance(payload.get("runtimeProfiles"), dict) else {},
+                )
+            return response
+        return harvest
+    if job_type == "agent_build":
+        from app.services.agent_builder import build_company_agents
+
+        return await build_company_agents(
+            email=str(payload.get("email") or ""),
+            company_id=str(payload.get("companyId") or ""),
+            company_name=str(payload.get("companyName") or ""),
+            benchmark_id=str(payload.get("benchmarkId") or ""),
+            runtime_kinds=[str(item) for item in payload.get("runtimeKinds") or [] if item],
+            runtime_profiles=payload.get("runtimeProfiles") if isinstance(payload.get("runtimeProfiles"), dict) else {},
+        )
     if job_type == "assistant_memory_rebuild":
         from app.assistant.memory import rebuild_assistant_memory
 

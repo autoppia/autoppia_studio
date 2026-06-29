@@ -24,6 +24,7 @@ import Analytics from "./pages/analytics";
 import Runtime from "./pages/runtime";
 import Work from "./pages/work";
 import CompanySetup from "./pages/company-setup";
+import Onboarding from "./pages/onboarding";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -32,9 +33,19 @@ import { ToastProvider } from "./components/common/toast";
 import { setUser, logout } from "./redux/userSlice";
 import { installAuthFetch } from "./utils/auth-fetch";
 import { getApiUrl } from "./utils/api-url";
+import { useStudioMode } from "./utils/studio-mode";
 
 const apiUrl = getApiUrl();
 installAuthFetch(apiUrl);
+
+/**
+ * Studio's landing target depends on the experience mode: normal users land on
+ * company onboarding (the center of the product); dev users land on the canvas.
+ */
+function RootRedirect() {
+  const mode = useStudioMode();
+  return <Navigate to={mode === "dev" ? "/canvas" : "/onboarding"} replace />;
+}
 
 function resetUserScopedStorage(email: string) {
   const previous = localStorage.getItem("automata_last_email") || "";
@@ -134,8 +145,9 @@ function App() {
             <>
               {/* Protected routes */}
               <Route element={<MainLayout />}>
-                {/* Canvas is the home / center of the app */}
-                <Route path="/" element={<Navigate to="/canvas" replace />} />
+                {/* Landing depends on mode: onboarding (normal) or canvas (dev) */}
+                <Route path="/" element={<RootRedirect />} />
+                <Route path="/onboarding" element={<Onboarding />} />
                 <Route path="/home" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />

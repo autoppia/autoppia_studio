@@ -53,6 +53,7 @@ from app.routes import work_items as work_items_routes
 from app.routes import notifications as notifications_routes
 from app.routes import assistant as assistant_routes
 from app.routes import embed as embed_routes
+from app.routes import company_harvester as company_harvester_routes
 
 def _production_mode() -> bool:
     return os.getenv("AUTOMATA_ENV", os.getenv("ENVIRONMENT", os.getenv("APP_ENV", ""))).strip().lower() in {
@@ -122,6 +123,7 @@ fastapi_app.include_router(work_items_routes.router)
 fastapi_app.include_router(notifications_routes.router)
 fastapi_app.include_router(assistant_routes.router)
 fastapi_app.include_router(embed_routes.router)
+fastapi_app.include_router(company_harvester_routes.router)
 
 
 @fastapi_app.get("/health")

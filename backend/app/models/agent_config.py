@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.runtimes.base import AgentRuntimeProfile
+
 
 class RuntimeCapabilities(BaseModel):
     browser: bool = True
@@ -55,6 +57,8 @@ class AgentCallable(BaseModel):
     connectorId: str = ""
     trajectoryIds: list[str] = Field(default_factory=list)
     executionType: str = ""
+    executionReady: bool = True
+    implementationRequired: bool = False
     runtime: str = ""
     runtimeRequirements: list[str] = Field(default_factory=list)
     permissions: dict[str, Any] = Field(default_factory=dict)
@@ -76,6 +80,8 @@ class AgentConfig(BaseModel):
     runtimeEndpoint: str = ""
     baseRuntimeEndpoint: str = ""
     runtimeType: str = "generalist_with_company_capabilities"
+    runtimeKind: Literal["codex", "claude_code", "model_agent"] = "model_agent"
+    runtimeProfile: AgentRuntimeProfile = Field(default_factory=AgentRuntimeProfile)
     status: str = "draft"
     trainingStatus: str = "not_started"
     runtimeCapabilities: RuntimeCapabilities = Field(default_factory=RuntimeCapabilities)
@@ -87,6 +93,7 @@ class AgentConfig(BaseModel):
     entities: dict[str, Any] = Field(default_factory=dict)
     resources: list[dict[str, Any]] = Field(default_factory=list)
     knowledge: list[dict[str, Any]] = Field(default_factory=list)
+    deliverySurfaces: dict[str, Any] = Field(default_factory=dict)
     memory: dict[str, Any] = Field(default_factory=dict)
     riskPolicy: dict[str, Any] = Field(default_factory=lambda: {"writesRequireApproval": True})
     createdAt: Any = None
