@@ -1,63 +1,102 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#f4f6f9" />
-    <title>ICA | Company Harvester Arena</title>
-    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="theme-color" content="#0e1322" />
+    <title>Infinite Company Arena</title>
+    <link rel="stylesheet" href="/src/styles.css?v=3" />
   </head>
   <body>
+    <div class="aurora" aria-hidden="true"></div>
     <div class="shell">
+      <!-- ===== TOP BAR ===== -->
       <header class="topbar">
         <div class="brand">
-          <div class="brand-mark">ICA</div>
-          <div>
-            <div class="eyebrow">Infinite Company Arena</div>
-            <h1>Company Harvester Arena</h1>
+          <div class="brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32" width="22" height="22"><path d="M16 2 4 9v14l12 7 12-7V9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 9v14M9 12.5v7M23 12.5v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+          </div>
+          <div class="brand-text">
+            <div class="eyebrow">Company Harvester Benchmark</div>
+            <h1>Infinite Company Arena</h1>
           </div>
         </div>
         <div class="top-actions">
-          <label class="api-field">
-            <span>API</span>
-            <input id="apiUrlInput" spellcheck="false" autocomplete="off" />
-          </label>
-          <button id="reloadButton" class="button ghost" type="button">Reload</button>
-          <button id="runButton" class="button primary" type="button">Run matrix</button>
+          <div class="api-wrap">
+            <button id="apiToggle" class="icon-button" type="button" title="API endpoint" aria-label="API endpoint">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            </button>
+            <div id="apiPanel" class="api-panel" hidden>
+              <label class="api-field">
+                <span>API endpoint</span>
+                <input id="apiUrlInput" spellcheck="false" autocomplete="off" />
+              </label>
+            </div>
+          </div>
+          <button id="reloadButton" class="button ghost" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+            <span>Reload</span>
+          </button>
+          <button id="runButton" class="button primary" type="button">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
+            <span class="run-label">Run matrix</span>
+          </button>
         </div>
       </header>
 
+      <!-- ===== TABS ===== -->
       <nav class="tabs" role="tablist" aria-label="Sections">
         <button class="tab is-active" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview" type="button">Overview</button>
+        <button class="tab" role="tab" id="tab-leaderboard" aria-controls="panel-leaderboard" aria-selected="false" data-tab="leaderboard" type="button">Leaderboard</button>
         <button class="tab" role="tab" id="tab-harvesters" aria-controls="panel-harvesters" aria-selected="false" data-tab="harvesters" type="button">Harvesters</button>
-        <button class="tab" role="tab" id="tab-companies" aria-controls="panel-companies" aria-selected="false" data-tab="companies" type="button">Demo Companies</button>
+        <button class="tab" role="tab" id="tab-companies" aria-controls="panel-companies" aria-selected="false" data-tab="companies" type="button">Companies</button>
         <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" data-tab="runs" type="button">Runs</button>
       </nav>
 
       <section id="errorBanner" class="error-banner" hidden></section>
 
-      <!-- OVERVIEW -->
+      <!-- ===== OVERVIEW ===== -->
       <div id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
         <section class="kpi-grid">
           <article class="kpi">
-            <span>Runs</span>
+            <div class="kpi-head"><span>Completed runs</span><i class="kpi-ic">▦</i></div>
             <strong id="kpiRuns">0</strong>
-            <small id="kpiPassed">0 pass</small>
+            <small id="kpiPassed">0 passed</small>
           </article>
-          <article class="kpi">
-            <span>Avg score</span>
+          <article class="kpi accent">
+            <div class="kpi-head"><span>Average score</span><i class="kpi-ic">◎</i></div>
             <strong id="kpiScore">0%</strong>
-            <small>overall</small>
+            <div id="kpiScoreSpark" class="kpi-spark"></div>
           </article>
           <article class="kpi">
-            <span>Task recall</span>
+            <div class="kpi-head"><span>Pass rate</span><i class="kpi-ic">✓</i></div>
+            <strong id="kpiPassRate">0%</strong>
+            <small id="kpiPassRateSub">of completed runs</small>
+          </article>
+          <article class="kpi">
+            <div class="kpi-head"><span>Task recall</span><i class="kpi-ic">⌖</i></div>
             <strong id="kpiRecall">0%</strong>
-            <small>discovery</small>
+            <small>discovery coverage</small>
           </article>
           <article class="kpi">
-            <span>Selected</span>
+            <div class="kpi-head"><span>Matrix size</span><i class="kpi-ic">⊞</i></div>
             <strong id="kpiSelected">0</strong>
-            <small>matrix cells</small>
+            <small>cells queued</small>
+          </article>
+        </section>
+
+        <section class="charts-grid">
+          <article class="panel chart-panel">
+            <div class="panel-head compact"><h2>Pass rate</h2><span class="muted-tag">completed</span></div>
+            <div id="passGauge" class="gauge-wrap"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head compact"><h2>Phase performance</h2><span class="muted-tag">avg across runs</span></div>
+            <div id="phaseBars" class="phase-bars"></div>
+          </article>
+          <article class="panel chart-panel">
+            <div class="panel-head compact"><h2>Harvester scores</h2><span class="muted-tag">ranked</span></div>
+            <div id="harvesterRankMini" class="rank-mini"></div>
           </article>
         </section>
 
@@ -72,14 +111,17 @@
             </div>
             <div class="panel-body">
               <div id="selectionSummary" class="summary-rows"></div>
-              <button id="runButtonOverview" class="button primary block" type="button">Run matrix</button>
+              <button id="runButtonOverview" class="button primary block" type="button">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
+                <span class="run-label">Run matrix</span>
+              </button>
             </div>
           </section>
 
           <section class="panel">
             <div class="panel-head compact">
               <h2>Recent runs</h2>
-              <a class="link-tab" data-tab="runs" href="#" role="button">View all</a>
+              <a class="link-tab" data-tab="runs" href="#" role="button">View all →</a>
             </div>
             <div id="latestRuns" class="latest-runs"></div>
           </section>
@@ -91,13 +133,35 @@
               <h2>Latest run group report</h2>
               <p>Task discovery, solution discovery and inventory quality across the selected matrix.</p>
             </div>
-            <a class="link-tab" data-tab="runs" href="#" role="button">Open filters</a>
+            <a class="link-tab" data-tab="runs" href="#" role="button">Open filters →</a>
           </div>
           <div id="runGroupReport" class="group-report"></div>
         </section>
       </div>
 
-      <!-- HARVESTERS -->
+      <!-- ===== LEADERBOARD ===== -->
+      <div id="panel-leaderboard" class="tab-panel" role="tabpanel" aria-labelledby="tab-leaderboard" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Harvester leaderboard</h2>
+              <p>Ranked by average benchmark score across all completed runs.</p>
+            </div>
+            <span id="leaderCount" class="muted-tag">0 harvesters</span>
+          </div>
+          <div id="leaderboard" class="leaderboard"></div>
+        </section>
+
+        <section class="panel report-panel">
+          <div class="panel-head compact">
+            <h2>Phase comparison</h2>
+            <span class="muted-tag">task · solution · inventory</span>
+          </div>
+          <div id="phaseCompare" class="phase-compare"></div>
+        </section>
+      </div>
+
+      <!-- ===== HARVESTERS ===== -->
       <div id="panel-harvesters" class="tab-panel" role="tabpanel" aria-labelledby="tab-harvesters" hidden>
         <section class="panel">
           <div class="panel-head">
@@ -114,12 +178,12 @@
         </section>
       </div>
 
-      <!-- DEMO COMPANIES -->
+      <!-- ===== DEMO COMPANIES ===== -->
       <div id="panel-companies" class="tab-panel" role="tabpanel" aria-labelledby="tab-companies" hidden>
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>Demo Companies</h2>
+              <h2>Demo companies</h2>
               <p>Benchmark projects with web, API and document surfaces.</p>
             </div>
             <div class="chip-row">
@@ -135,7 +199,7 @@
         </section>
       </div>
 
-      <!-- RUNS -->
+      <!-- ===== RUNS ===== -->
       <div id="panel-runs" class="tab-panel" role="tabpanel" aria-labelledby="tab-runs" hidden>
         <section class="panel filters-panel">
           <div class="panel-head compact">
@@ -173,7 +237,7 @@
         <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>Results Matrix</h2>
+              <h2>Results matrix</h2>
               <p>Task discovery, solution discovery and inventory score by miner.</p>
             </div>
             <span id="runStateRuns" class="run-state">idle</span>
@@ -189,7 +253,7 @@
                   <th>Task discovery</th>
                   <th>Solution discovery</th>
                   <th>Inventory</th>
-                  <th>Missing</th>
+                  <th>Gaps</th>
                   <th></th>
                 </tr>
               </thead>
@@ -199,7 +263,9 @@
           </div>
         </section>
       </div>
+
+      <footer class="footnote">Infinite Company Arena · CompanyHarvester benchmark suite</footer>
     </div>
-    <script src="/src/app.js" defer></script>
+    <script src="/src/app.js?v=3" defer></script>
   </body>
 </html>

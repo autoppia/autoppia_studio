@@ -55,6 +55,15 @@ export default function CockpitSidebar() {
 
   return (
     <aside className={`ck-sidebar${collapsed ? " ck-sidebar--collapsed" : ""}`}>
+      <nav className="ck-nav">
+        {activeGroup && (
+          <div className="ck-nav-group">
+            <span className="ck-nav-label">{activeGroup.label}</span>
+            {activeItems.map((item) => renderItem(item.path, item.label, item.path, item.icon, isActivePath(location.pathname, item.path)))}
+          </div>
+        )}
+      </nav>
+
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
@@ -64,15 +73,6 @@ export default function CockpitSidebar() {
       >
         <FontAwesomeIcon icon={collapsed ? faAnglesRight : faAnglesLeft} />
       </button>
-
-      <nav className="ck-nav">
-        {activeGroup && (
-          <div className="ck-nav-group">
-            <span className="ck-nav-label">{activeGroup.label}</span>
-            {activeItems.map((item) => renderItem(item.path, item.label, item.path, item.icon, isActivePath(location.pathname, item.path)))}
-          </div>
-        )}
-      </nav>
     </aside>
   );
 }

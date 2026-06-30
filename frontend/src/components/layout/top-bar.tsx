@@ -313,7 +313,7 @@ export default function TopBar() {
       <div className="relative" ref={userMenuRef}>
         <button
           onClick={() => setUserMenuOpen((open) => !open)}
-          className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-[13px] font-bold text-white shadow-sm ring-1 ring-[color:var(--accent-line)] transition-transform hover:scale-105"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-[color:var(--accent)] text-[13px] font-bold text-[color:var(--on-accent)] shadow-sm ring-1 ring-[color:var(--accent-line)] transition-transform hover:scale-105"
           title={user.email || "Account"}
           aria-label="Account menu"
         >

@@ -178,8 +178,9 @@ img[src*="dark-bg"] {
 .ck-sidebar--collapsed .ck-brand::after { left: 12px; right: 12px; }
 .ck-sidebar--collapsed .ck-nav-item { justify-content: center; padding: 10px 0; }
 
-/* Slim collapse toggle that replaced the in-sidebar brand (logo moved to top bar). */
+/* Slim collapse toggle, pinned to the bottom of the sidebar. */
 .ck-side-collapse {
+  margin-top: auto;
   align-self: flex-end;
   display: inline-flex;
   align-items: center;
@@ -297,6 +298,7 @@ img[src*="dark-bg"] {
 }
 .ck-topbar-left {
   min-width: 0;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -378,6 +380,8 @@ img[src*="dark-bg"] {
 .ck-topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; z-index: 1; }
 .ck-topbar-nav {
   min-width: 0;
+  /* Shift the menu rightward into the open space after the company selector. */
+  margin-left: clamp(24px, 10vw, 220px);
   display: flex;
   align-items: center;
   gap: 2px;
