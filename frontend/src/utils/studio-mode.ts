@@ -18,11 +18,9 @@ const STORAGE_KEY = "automata_studio_mode";
 const EVENT_NAME = "automata-mode-changed";
 
 export function getStudioMode(): StudioMode {
-  try {
-    return localStorage.getItem(STORAGE_KEY) === "dev" ? "dev" : "normal";
-  } catch {
-    return "normal";
-  }
+  // The Normal/Dev switch was removed — Studio now runs a single unified
+  // experience that always exposes the full surface (previously "dev").
+  return "dev";
 }
 
 export function setStudioMode(mode: StudioMode): void {

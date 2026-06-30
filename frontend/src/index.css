@@ -168,25 +168,6 @@
     border-color: rgba(177, 206, 224, 0.14) !important;
   }
 
-  /* Uppercase, letter-spaced labels become monospace cockpit eyebrows. */
-  :where([class*="uppercase"][class*="tracking-w"]) {
-    font-family: var(--mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
-    font-feature-settings: "tnum" 1;
-  }
-
-  /* The muted eyebrow labels Studio uses for section headers get the iconic
-   * little square bullet from the cockpit cards. */
-  :where([class*="uppercase"][class*="tracking-w"][class*="text-gray-400"])::before {
-    content: "";
-    display: inline-block;
-    width: 6px;
-    height: 6px;
-    margin-right: 8px;
-    vertical-align: middle;
-    border-radius: 1px;
-    background: var(--accent);
-    box-shadow: 0 0 8px rgb(var(--color-primary, 251 146 60) / 0.5);
-  }
 }
 
 @layer utilities {

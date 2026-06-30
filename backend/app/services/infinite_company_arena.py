@@ -6,6 +6,8 @@ from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
 from app.models.agent_config import AgentCallable, AgentConfig, AgentTask
+from app.company_harvesters import get_company_harvester
+from app.models.company_harvester import CompanyHarvesterInput, CompanyHarvesterOutput, CompanyMaterial
 from app.models.ica import (
     ExpectedSurface,
     IcaBenchmarkMode,
@@ -330,6 +332,141 @@ class CompanyHarvesterIcaRunner:
             "intake": intake,
             "run": run,
             "snapshot": snapshot,
+            "expectedHarvest": materialized.expectedHarvest.model_dump(),
+        }
+
+
+def _discovery_mode_for(mode: IcaBenchmarkModeKind | None) -> str:
+    return {
+        "web_only": "ui_only",
+        "api_only": "ui_api_docs",
+        "hybrid": "ui_api_docs",
+    }.get(str(mode or ""), "full_company")
+
+
+def _company_harvester_input_from_materialized(
+    materialized: IcaMaterializedProject,
+    *,
+    company_id: str,
+    include_ground_truth_tasks: bool = False,
+) -> CompanyHarvesterInput:
+    return CompanyHarvesterInput(
+        companyId=company_id,
+        companyName=materialized.project.name,
+        description=materialized.project.description,
+        materials=[CompanyMaterial.model_validate(material) for material in materialized.materials],
+        discoveryMode=_discovery_mode_for(materialized.mode),  # type: ignore[arg-type]
+        userTasks=materialized.userTasks if include_ground_truth_tasks else [],
+        metadata={
+            "icaProjectId": materialized.project.projectId,
+            "icaMode": materialized.mode or "",
+        },
+    )
+
+
+def _snapshot_from_company_harvester_output(output: CompanyHarvesterOutput) -> dict[str, list[dict[str, Any]]]:
+    connector_docs = {
+        connector.connectorId or connector.name or f"connector:{index}": {
+            "connectorId": connector.connectorId or connector.name or f"connector:{index}",
+            "name": connector.name,
+            "type": connector.type,
+            "surface": connector.surface,
+            "authRequired": connector.authRequired,
+            "runtimeRequirements": connector.runtimeRequirements,
+            "source": "company_harvester_output",
+        }
+        for index, solution in enumerate(output.taskSolutions, start=1)
+        for connector in solution.connectors
+    }
+    tool_docs = {
+        tool.toolId or tool.name: {
+            "toolId": tool.toolId or tool.name,
+            "name": tool.name,
+            "connectorId": tool.connectorId,
+            "executionType": tool.executionType,
+            "policyBoundary": tool.policyBoundary,
+            "riskLevel": tool.riskLevel,
+            "source": "company_harvester_output",
+        }
+        for solution in output.taskSolutions
+        for tool in solution.tools
+        if tool.name
+    }
+    tasks = [
+        {
+            "taskId": proposal.taskId,
+            "name": proposal.name,
+            "taskName": proposal.name,
+            "prompt": proposal.prompt,
+            "successCriteria": proposal.successCriteria,
+            "riskClass": proposal.riskClass,
+            "metadata": {
+                **proposal.metadata,
+                "expectedSurfaces": proposal.expectedSurfaces,
+                "confidence": proposal.confidence,
+                "evidence": proposal.evidence,
+            },
+            "source": "company_harvester_output",
+        }
+        for proposal in output.proposedTasks
+    ]
+    benchmarks = [
+        {
+            "benchmarkId": output.benchmarkId or "company_harvester_output:benchmark",
+            "taskCount": len(tasks),
+            "source": "company_harvester_output",
+        }
+    ] if tasks else []
+    return {
+        "connectors": list(connector_docs.values()),
+        "tools": list(tool_docs.values()),
+        "tasks": tasks,
+        "benchmarks": benchmarks,
+    }
+
+
+class CompanyHarvesterEngineIcaRunner:
+    def __init__(self, harvester_name: str = "local_heuristic") -> None:
+        self.harvester_name = harvester_name
+
+    async def run(
+        self,
+        project: IcaDemoProject,
+        *,
+        email: str,
+        company_id: str,
+        base_url: str = "",
+        mode: IcaBenchmarkModeKind | None = None,
+        process: bool = True,
+        include_ground_truth_tasks: bool = False,
+    ) -> dict[str, Any]:
+        materialized = materialize_project(project, base_url=base_url, mode=mode, include_ground_truth_tasks=include_ground_truth_tasks)
+        request = _company_harvester_input_from_materialized(
+            materialized,
+            company_id=company_id,
+            include_ground_truth_tasks=include_ground_truth_tasks,
+        )
+        harvester = get_company_harvester(self.harvester_name)
+        output = await harvester.harvest(request)
+        snapshot = _snapshot_from_company_harvester_output(output)
+        return {
+            "project": project.model_dump(),
+            "materialized": materialized.model_dump(),
+            "intake": {"companyId": company_id, "email": email, "source": "company_harvester_engine"},
+            "run": {
+                "runId": f"{company_id}:{harvester.info().name}:ica",
+                "status": "ready",
+                "currentStep": "ready",
+                "normalSummary": {
+                    "companyHarvesterOutput": {
+                        "proposedTaskCount": len(output.proposedTasks),
+                        "taskSolutionCount": len(output.taskSolutions),
+                    }
+                },
+                "errors": [],
+            },
+            "snapshot": snapshot,
+            "companyHarvesterOutput": output.model_dump(mode="json"),
             "expectedHarvest": materialized.expectedHarvest.model_dump(),
         }
 

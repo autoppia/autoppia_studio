@@ -113,9 +113,36 @@ export default function ThemeCustomizer() {
               </button>
             </div>
 
-            <div className="ck-theme-preview" style={{ background: `linear-gradient(135deg, ${settings.accent}, ${settings.primary} 52%, ${settings.secondary})` }}>
-              <span>Primary</span>
+            <div
+              className="ck-theme-preview"
+              style={{
+                background:
+                  settings.themeStyle === "plain"
+                    ? settings.primary
+                    : `linear-gradient(135deg, ${settings.accent}, ${settings.primary} 52%, ${settings.secondary})`,
+              }}
+            >
+              <span>{settings.themeStyle === "plain" ? "Plain" : "Gradient"}</span>
               <strong>{settings.primary}</strong>
+            </div>
+
+            <div className="ck-theme-style">
+              <button
+                type="button"
+                className={settings.themeStyle === "gradient" ? "is-active" : ""}
+                onClick={() => patch({ themeStyle: "gradient" })}
+              >
+                <span style={{ background: `linear-gradient(135deg, ${settings.accent}, ${settings.primary} 52%, ${settings.secondary})` }} />
+                Gradient
+              </button>
+              <button
+                type="button"
+                className={settings.themeStyle === "plain" ? "is-active" : ""}
+                onClick={() => patch({ themeStyle: "plain" })}
+              >
+                <span style={{ background: settings.primary }} />
+                Plain
+              </button>
             </div>
 
             <div className="ck-theme-presets">

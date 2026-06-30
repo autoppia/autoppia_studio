@@ -274,17 +274,20 @@ html:not(.dark) {
 .ck-topbar-actions { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; z-index: 1; }
 .ck-topbar-nav {
   position: absolute;
-  left: 50%;
+  left: 44%;
   top: 50%;
   max-width: min(720px, calc(100vw - 520px));
   min-width: 0;
   display: flex;
   align-items: center;
-  gap: 3px;
-  padding: 3px;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-2) 84%, transparent);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--panel) 70%, transparent);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), var(--shadow);
+  backdrop-filter: blur(10px) saturate(140%);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
   overflow-x: auto;
   scrollbar-width: none;
   transform: translate(-50%, -50%);
@@ -295,25 +298,30 @@ html:not(.dark) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  height: 32px;
-  padding: 0 12px;
-  border: 0;
+  height: 34px;
+  padding: 0 15px;
+  border: 1px solid transparent;
   border-radius: 9px;
   background: transparent;
   color: var(--muted);
   font-family: var(--sans);
   font-size: 13px;
   font-weight: 600;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   cursor: pointer;
-  transition: color 0.16s ease, background 0.16s ease, box-shadow 0.16s ease;
+  transition: color 0.16s ease, background 0.16s ease, border-color 0.16s ease, transform 0.12s ease;
 }
 .ck-topbar-nav-item:hover { color: var(--ink); background: var(--hover-strong); }
+.ck-topbar-nav-item:active { transform: translateY(1px); }
 .ck-topbar-nav-item.is-active {
   color: var(--accent);
   background: var(--accent-soft);
+  border-color: var(--accent-line);
 }
-.ck-topbar-nav-icon { width: 14px; font-size: 12px; }
+.ck-topbar-nav-icon { width: 14px; font-size: 12px; color: var(--faint); transition: color 0.16s ease; }
+.ck-topbar-nav-item:hover .ck-topbar-nav-icon,
+.ck-topbar-nav-item.is-active .ck-topbar-nav-icon { color: var(--accent); }
 
 /* ── Theme customizer ─────────────────────────────────────────────────── */
 
@@ -438,6 +446,37 @@ html:not(.dark) {
   color: var(--accent);
   font-size: 10px;
 }
+.ck-theme-style {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 10px;
+}
+.ck-theme-style button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--bg-2);
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ck-theme-style button:hover { color: var(--ink); border-color: var(--accent-line); }
+.ck-theme-style button.is-active { color: var(--ink); border-color: var(--accent-line); background: var(--accent-soft); }
+.ck-theme-style button span {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  flex: none;
+}
+
 .ck-theme-grid {
   display: grid;
   grid-template-columns: 1fr;

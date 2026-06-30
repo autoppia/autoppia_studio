@@ -23,7 +23,6 @@ import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
-import ModeToggle from "../common/mode-toggle";
 import { getApiUrl } from "../../utils/api-url";
 import { groupLandingPath, resolveActiveGroup, visibleNavGroups } from "./nav-config";
 import { useStudioMode } from "../../utils/studio-mode";
@@ -255,10 +254,17 @@ export default function TopBar() {
       </nav>
 
       <div className="ck-topbar-actions">
-        {/* Normal / Dev experience switch */}
-        <ModeToggle />
-
       <ThemeCustomizer />
+
+      {/* Quick access to settings */}
+      <button
+        onClick={() => navigate("/settings")}
+        className="relative flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 hover:text-[color:var(--accent)] dark:border-zinc-800/80 dark:text-zinc-300 dark:hover:bg-white/5"
+        title="Settings"
+        aria-label="Settings"
+      >
+        <FontAwesomeIcon icon={faGear} className="text-xs" />
+      </button>
 
       {/* New session call-to-action */}
       <button

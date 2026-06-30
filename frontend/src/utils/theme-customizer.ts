@@ -1,3 +1,5 @@
+export type ThemeStyle = "gradient" | "plain";
+
 export interface StudioThemeSettings {
   primary: string;
   secondary: string;
@@ -5,6 +7,8 @@ export interface StudioThemeSettings {
   fontFamily: string;
   monoFont: string;
   radius: number;
+  /** "gradient" = brand surfaces use a gradient; "plain" = flat solid color. */
+  themeStyle: ThemeStyle;
 }
 
 export const THEME_STORAGE_KEY = "autoppia_studio_theme_settings";
@@ -16,21 +20,22 @@ export const DEFAULT_THEME_SETTINGS: StudioThemeSettings = {
   fontFamily: "Inter",
   monoFont: "JetBrains Mono",
   radius: 13,
+  themeStyle: "gradient",
 };
 
 export const THEME_PRESETS: Array<{ name: string; settings: StudioThemeSettings }> = [
   { name: "Studio", settings: DEFAULT_THEME_SETTINGS },
   {
     name: "Cyan",
-    settings: { primary: "#22D3EE", secondary: "#3B82F6", accent: "#A78BFA", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 12 },
+    settings: { primary: "#22D3EE", secondary: "#3B82F6", accent: "#A78BFA", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 12, themeStyle: "gradient" },
   },
   {
     name: "Emerald",
-    settings: { primary: "#34D399", secondary: "#10B981", accent: "#FBBF24", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 10 },
+    settings: { primary: "#34D399", secondary: "#10B981", accent: "#FBBF24", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 10, themeStyle: "gradient" },
   },
   {
     name: "Rose",
-    settings: { primary: "#FB7185", secondary: "#F472B6", accent: "#FCD34D", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 16 },
+    settings: { primary: "#FB7185", secondary: "#F472B6", accent: "#FCD34D", fontFamily: "Inter", monoFont: "JetBrains Mono", radius: 16, themeStyle: "gradient" },
   },
 ];
 
@@ -126,6 +131,7 @@ export function normalizeThemeSettings(settings: Partial<StudioThemeSettings> | 
     fontFamily: FONT_OPTIONS.some((item) => item.value === settings?.fontFamily) ? String(settings?.fontFamily) : DEFAULT_THEME_SETTINGS.fontFamily,
     monoFont: MONO_FONT_OPTIONS.some((item) => item.value === settings?.monoFont) ? String(settings?.monoFont) : DEFAULT_THEME_SETTINGS.monoFont,
     radius: clampRadius(settings?.radius),
+    themeStyle: settings?.themeStyle === "plain" ? "plain" : "gradient",
   };
 }
 
@@ -161,9 +167,14 @@ export function applyThemeSettings(rawSettings: Partial<StudioThemeSettings>): S
   root.style.setProperty("--accent-2", settings.accent);
   root.style.setProperty("--accent-soft", `rgb(${primaryRgb} / 0.13)`);
   root.style.setProperty("--accent-line", `rgb(${primaryRgb} / 0.38)`);
-  root.style.setProperty("--brand-bg", `linear-gradient(135deg, ${settings.accent}, ${settings.primary} 52%, ${settings.secondary})`);
-  root.style.setProperty("--glow", `0 0 20px rgb(${primaryRgb} / 0.22)`);
-  root.style.setProperty("--glow-lg", `0 0 40px rgb(${secondaryRgb} / 0.26)`);
+  const plain = settings.themeStyle === "plain";
+  root.style.setProperty(
+    "--brand-bg",
+    plain ? settings.primary : `linear-gradient(135deg, ${settings.accent}, ${settings.primary} 52%, ${settings.secondary})`,
+  );
+  root.style.setProperty("--glow", plain ? "none" : `0 0 20px rgb(${primaryRgb} / 0.22)`);
+  root.style.setProperty("--glow-lg", plain ? "none" : `0 0 40px rgb(${secondaryRgb} / 0.26)`);
+  root.classList.toggle("theme-plain", plain);
   root.style.setProperty("--sans", fontStack(settings.fontFamily));
   root.style.setProperty("--display", fontStack(settings.fontFamily));
   root.style.setProperty("--mono", monoStack(settings.monoFont));
