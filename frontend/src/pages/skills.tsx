@@ -11,6 +11,7 @@ import {
   faSpinner,
 } from "@fortawesome/free-solid-svg-icons";
 import { Skill } from "../utils/types";
+import SectionTitle from "../components/layout/section-title";
 import ConvertToSkillModal from "../components/session/convert-to-skill-modal";
 import ConfirmModal from "../components/common/confirm-modal";
 import { getApiUrl } from "../utils/api-url";
@@ -79,9 +80,12 @@ export default function Skills() {
 
       <div className="flex flex-col w-full h-full relative">
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border
-          bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Skills</h1>
+        <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
+          <SectionTitle
+            icon={faWandMagicSparkles}
+            title="Skills"
+            subtitle="Governed, reusable agent skills"
+          />
         </div>
 
         {/* Content */}

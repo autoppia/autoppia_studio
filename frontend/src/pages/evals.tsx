@@ -24,6 +24,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, EvalRun } from "../utils/types";
 import Tabs, { useTabState, TabDef } from "../components/common/tabs";
+import SectionTitle from "../components/layout/section-title";
 import useStartSession from "../hooks/useStartSession";
 import { getApiUrl } from "../utils/api-url";
 
@@ -1025,19 +1026,11 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
 
       <div className="flex flex-col w-full h-full relative">
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
-          <div className="flex items-center gap-2.5">
-            <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
-              <FontAwesomeIcon icon={mode === "benchmarks" ? faClipboardCheck : faClockRotateLeft} className="text-sm" />
-            </span>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">
-                {mode === "benchmarks" ? "Benchmarks" : "Runs"}
-              </h1>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">
-                {mode === "benchmarks" ? "Evaluation tasks and benchmarks" : "Benchmark run results"}
-              </p>
-            </div>
-          </div>
+          <SectionTitle
+            icon={mode === "benchmarks" ? faClipboardCheck : faClockRotateLeft}
+            title={mode === "benchmarks" ? "Benchmarks" : "Runs"}
+            subtitle={mode === "benchmarks" ? "Evaluation tasks and benchmarks" : "Benchmark run results"}
+          />
           {mode === "benchmarks" && (
             <button
               onClick={() => setShowCreateBenchmark(true)}

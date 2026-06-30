@@ -16,7 +16,14 @@ from app.database import (
     knowledge_documents_collection,
     tools_collection,
 )
-from app.models.company_harvester import CompanyHarvestArtifact, CompanyHarvestQuestion, CompanyHarvestRun, CompanyHarvestStep, CompanyIntake
+from app.models.company_harvester import (
+    CompanyHarvestArtifact,
+    CompanyHarvesterOutput,
+    CompanyHarvestQuestion,
+    CompanyHarvestRun,
+    CompanyHarvestStep,
+    CompanyIntake,
+)
 from app.services.connector_discovery import connector_capability_discovery
 from app.services.custom_connector_executors import custom_connector_executor_name, has_custom_connector_executor
 from app.services.resource_governance import build_resource_contract
@@ -42,6 +49,27 @@ HARVEST_STEPS: tuple[tuple[str, str, str], ...] = (
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def normalize_company_harvester_output(raw: dict[str, Any] | CompanyHarvesterOutput | None) -> CompanyHarvesterOutput:
+    if isinstance(raw, CompanyHarvesterOutput):
+        return raw
+    return CompanyHarvesterOutput.model_validate(raw or {})
+
+
+def company_harvester_output_summary(output: CompanyHarvesterOutput) -> dict[str, Any]:
+    runtime_kinds = sorted({solution.agentProvider.runtimeKind for solution in output.taskSolutions if solution.agentProvider.runtimeKind})
+    return {
+        "schemaVersion": output.schemaVersion,
+        "companyId": output.companyId,
+        "benchmarkId": output.benchmarkId,
+        "proposedTaskCount": len(output.proposedTasks),
+        "taskSolutionCount": len(output.taskSolutions),
+        "agentConfigCount": len(output.agentConfigs),
+        "questionCount": len(output.questions),
+        "runtimeKinds": runtime_kinds,
+        "confidence": output.confidence,
+    }
 
 
 def _new_steps() -> list[dict[str, Any]]:
@@ -2308,6 +2336,7 @@ async def record_company_harvest_results(
     run_id: str,
     *,
     knowledge_index_jobs: list[dict[str, Any]] | None = None,
+    harvester_output: dict[str, Any] | CompanyHarvesterOutput | None = None,
     task_harvest: dict[str, Any] | None = None,
     promotion: dict[str, Any] | None = None,
     agent_build: dict[str, Any] | None = None,
@@ -2320,6 +2349,33 @@ async def record_company_harvest_results(
     now = now_iso()
     normal_summary = dict(run.get("normalSummary") or {})
     dev_summary = dict(run.get("devSummary") or {})
+
+    if harvester_output is not None:
+        output = normalize_company_harvester_output(harvester_output)
+        summary = company_harvester_output_summary(output)
+        artifact_id = f"{run_id}:company_harvester_output"
+        if not _artifact_exists(artifacts, artifact_id):
+            artifacts.append(
+                CompanyHarvestArtifact(
+                    artifactId=artifact_id,
+                    kind="company_harvester_output",
+                    title="Company harvester output",
+                    refId=str(output.benchmarkId or normal_summary.get("benchmarkId") or ""),
+                    status="persisted",
+                    visibility="dev",
+                    summary=f"Validated {summary['proposedTaskCount']} task proposal(s) and {summary['taskSolutionCount']} task solution(s).",
+                    payload={"companyHarvesterOutput": output.model_dump()},
+                    createdAt=now,
+                ).model_dump()
+            )
+        normal_summary["companyHarvesterOutput"] = {
+            "proposedTaskCount": summary["proposedTaskCount"],
+            "taskSolutionCount": summary["taskSolutionCount"],
+            "agentConfigCount": summary["agentConfigCount"],
+            "runtimeKinds": summary["runtimeKinds"],
+            "confidence": summary["confidence"],
+        }
+        dev_summary["companyHarvesterOutput"] = output.model_dump()
 
     if knowledge_index_jobs is not None:
         jobs = [dict(item) for item in knowledge_index_jobs if isinstance(item, dict)]

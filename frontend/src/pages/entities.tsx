@@ -27,6 +27,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, CompanySkill, CompanyTool, Connector, EntityField, EntityModel, EntityRelationship } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import Tabs from "../components/common/tabs";
 import { getApiUrl } from "../utils/api-url";
 
@@ -1016,24 +1017,20 @@ export default function Entities(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
-              <FontAwesomeIcon icon={faCube} className="text-sm" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Entities</h1>
-                <InfoIcon title="Entities">
-                  <div className="space-y-3">
-                    <p>Entities describe the <strong>business objects</strong> this company works with: invoices, customers, tickets, orders.</p>
-                    <p>Each entity has typed <strong>fields</strong> and <strong>relationships</strong> to other entities. Tools and skills declare the entities they read (<em>input entities</em>) and produce (<em>output entity</em>), giving agents a shared semantic layer.</p>
-                    <p className="text-gray-400">Edit fields and relationships as JSON arrays for full control.</p>
-                  </div>
-                </InfoIcon>
-              </div>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">The semantic objects your agents reason about</p>
-            </div>
-          </div>
+          <SectionTitle
+            icon={faCube}
+            title="Entities"
+            subtitle="The semantic objects your agents reason about"
+            info={
+              <InfoIcon title="Entities">
+                <div className="space-y-3">
+                  <p>Entities describe the <strong>business objects</strong> this company works with: invoices, customers, tickets, orders.</p>
+                  <p>Each entity has typed <strong>fields</strong> and <strong>relationships</strong> to other entities. Tools and skills declare the entities they read (<em>input entities</em>) and produce (<em>output entity</em>), giving agents a shared semantic layer.</p>
+                  <p className="text-gray-400">Edit fields and relationships as JSON arrays for full control.</p>
+                </div>
+              </InfoIcon>
+            }
+          />
           <div className="flex items-center gap-2">
             {companyId && (
               <>

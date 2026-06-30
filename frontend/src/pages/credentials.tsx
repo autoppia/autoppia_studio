@@ -12,6 +12,7 @@ import {
   faXmark,
 } from "@fortawesome/free-solid-svg-icons";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import SelectDropdown from "../components/common/select-dropdown";
 import ConfirmModal from "../components/common/confirm-modal";
 import { useToast } from "../components/common/toast";
@@ -189,16 +190,20 @@ export default function Credentials(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
-          <div className="flex items-center gap-2">
-            <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100">Credentials</h1>
-            <InfoIcon title="Credentials Vault">
-              <div className="space-y-3">
-                <p>Credentials are encrypted secrets used by connectors, harvesters and agent runtimes.</p>
-                <p>The UI never shows raw values after saving. Connectors reference credentials through stable <strong>secret://</strong> refs.</p>
-                <p>Use this page to add shared credentials or rotate values without editing agent logic.</p>
-              </div>
-            </InfoIcon>
-          </div>
+          <SectionTitle
+            icon={faKey}
+            title="Credentials"
+            subtitle="Encrypted secrets for connectors, harvesters and agent runtimes"
+            info={
+              <InfoIcon title="Credentials Vault">
+                <div className="space-y-3">
+                  <p>Credentials are encrypted secrets used by connectors, harvesters and agent runtimes.</p>
+                  <p>The UI never shows raw values after saving. Connectors reference credentials through stable <strong>secret://</strong> refs.</p>
+                  <p>Use this page to add shared credentials or rotate values without editing agent logic.</p>
+                </div>
+              </InfoIcon>
+            }
+          />
           <div className="flex items-center gap-2">
             <button onClick={() => setIsAddModalOpen(true)} className="h-8 px-3 rounded-lg bg-gradient-primary text-white text-xs font-medium shadow-sm">
               <FontAwesomeIcon icon={faPlus} className="mr-2 text-[10px]" />

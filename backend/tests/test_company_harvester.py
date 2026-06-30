@@ -900,6 +900,86 @@ async def test_company_harvest_records_task_promotion_and_agent_results(monkeypa
 
 
 @pytest.mark.asyncio
+async def test_company_harvest_records_validated_harvester_output_contract(monkeypatch):
+    runs = _MemoryCollection()
+    monkeypatch.setattr(company_harvester, "company_harvest_runs_collection", runs)
+    await runs.insert_one(
+        {
+            "runId": "run-1",
+            "intakeId": "intake-1",
+            "email": "owner@example.com",
+            "companyId": "company-1",
+            "status": "discovering_tasks",
+            "currentStep": "discovering_tasks",
+            "steps": company_harvester._new_steps(),
+            "artifacts": [],
+            "normalSummary": {"benchmarkId": "bench-1"},
+            "devSummary": {"benchmarkId": "bench-1"},
+            "nextAction": {},
+        }
+    )
+
+    updated = await company_harvester.record_company_harvest_results(
+        "run-1",
+        harvester_output={
+            "companyId": "company-1",
+            "benchmarkId": "bench-1",
+            "proposedTasks": [
+                {
+                    "taskId": "claim-status",
+                    "name": "Find claim status",
+                    "prompt": "Find claim status from the API.",
+                    "successCriteria": "Status and latest note are returned.",
+                    "expectedSurfaces": ["api"],
+                    "confidence": 0.82,
+                }
+            ],
+            "taskSolutions": [
+                {
+                    "taskId": "claim-status",
+                    "connectors": [{"connectorId": "claims-api", "name": "Claims API", "type": "api"}],
+                    "tools": [{"toolId": "get-claim", "name": "claims.api.getclaim", "connectorId": "claims-api"}],
+                    "trajectories": [
+                        {
+                            "trajectoryId": "traj-claim-status",
+                            "description": "Call get claim and return status.",
+                            "toolCalls": [{"toolName": "claims.api.getclaim", "arguments": {"claim_id": "CLM-1"}}],
+                            "confidence": 0.9,
+                        }
+                    ],
+                    "skills": [
+                        {
+                            "skillId": "skill-claim-status",
+                            "name": "Read claim status",
+                            "trajectoryIds": ["traj-claim-status"],
+                            "source": "trajectory",
+                        }
+                    ],
+                    "agentProvider": {"runtimeKind": "model_agent", "provider": "openai"},
+                    "confidence": 0.86,
+                }
+            ],
+            "agentConfigs": [{"agentId": "agent-1", "runtimeKind": "model_agent"}],
+            "confidence": 0.8,
+        },
+    )
+
+    normal = await company_harvester.company_harvest_status("run-1", mode="normal", email="owner@example.com")
+    dev = await company_harvester.company_harvest_status("run-1", mode="dev", email="owner@example.com")
+
+    assert updated["normalSummary"]["companyHarvesterOutput"] == {
+        "proposedTaskCount": 1,
+        "taskSolutionCount": 1,
+        "agentConfigCount": 1,
+        "runtimeKinds": ["model_agent"],
+        "confidence": 0.8,
+    }
+    assert normal["summary"]["companyHarvesterOutput"]["taskSolutionCount"] == 1
+    assert dev["devSummary"]["companyHarvesterOutput"]["taskSolutions"][0]["skills"][0]["trajectoryIds"] == ["traj-claim-status"]
+    assert dev["artifacts"][0]["kind"] == "company_harvester_output"
+
+
+@pytest.mark.asyncio
 async def test_company_harvest_records_task_implementation_gaps_as_next_action(monkeypatch):
     runs = _MemoryCollection()
     monkeypatch.setattr(company_harvester, "company_harvest_runs_collection", runs)

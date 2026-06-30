@@ -15,6 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ApprovalRequest } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
+import SectionTitle from "../components/layout/section-title";
 import Tabs from "../components/common/tabs";
 
 const apiUrl = getApiUrl();
@@ -431,15 +432,11 @@ export default function Approvals(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
-              <FontAwesomeIcon icon={faClipboardCheck} className="text-sm" />
-            </span>
-            <div>
-              <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Approvals</h1>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Review runtime session and asynchronous work approvals before execution</p>
-            </div>
-          </div>
+          <SectionTitle
+            icon={faClipboardCheck}
+            title="Approvals"
+            subtitle="Review runtime session and asynchronous work approvals before execution"
+          />
         </div>
 
         <div className="flex-1 overflow-auto px-6 py-6">

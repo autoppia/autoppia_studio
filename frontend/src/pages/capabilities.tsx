@@ -40,6 +40,7 @@ import {
   WorkItem,
 } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import SectionTitle from "../components/layout/section-title";
 import SelectDropdown from "../components/common/select-dropdown";
 import Tabs from "../components/common/tabs";
 import { getApiUrl } from "../utils/api-url";
@@ -3147,18 +3148,12 @@ export default function Capabilities(): React.ReactElement {
       </div>
       <div className="flex flex-col w-full h-full relative">
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-8 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 flex-shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="w-9 h-9 rounded-xl bg-gradient-primary text-white flex items-center justify-center shadow-glow">
-              <FontAwesomeIcon icon={faWandMagicSparkles} className="text-sm" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-lg font-semibold leading-tight text-gray-800 dark:text-gray-100">Capability Factory</h1>
-                <CapabilitiesBuildInfo counts={{ customTools: toolsCount, trajectories: trajectories.length, skills: skills.length }} />
-              </div>
-              <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500">Turn connector actions into trajectories, and trajectories into governed reusable skills</p>
-            </div>
-          </div>
+          <SectionTitle
+            icon={faWandMagicSparkles}
+            title="Capability Factory"
+            subtitle="Turn connector actions into trajectories, and trajectories into governed reusable skills"
+            info={<CapabilitiesBuildInfo counts={{ customTools: toolsCount, trajectories: trajectories.length, skills: skills.length }} />}
+          />
           <div className="flex items-center gap-2">
             {companyId && (
               <button
