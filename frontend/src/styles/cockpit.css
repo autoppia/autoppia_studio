@@ -10,12 +10,12 @@
 :root {
   color-scheme: dark;
 
-  --bg: #070a10;
-  --bg-2: #0b1018;
-  --panel: #101620;
-  --panel-2: #151d28;
-  --inset: #0b1018;
-  --sidebar: #080c13;
+  --bg: #12161f;
+  --bg-2: #181d28;
+  --panel: #1a1f2b;
+  --panel-2: #232a38;
+  --inset: #161b25;
+  --sidebar: #10141d;
   --line: rgba(177, 206, 224, 0.10);
   --line-strong: rgba(177, 206, 224, 0.20);
   --ink: #f3f7fa;
@@ -39,7 +39,7 @@
 
   --hover: rgba(255, 255, 255, 0.03);
   --hover-strong: rgba(255, 255, 255, 0.05);
-  --topbar-bg: rgba(7, 10, 16, 0.82);
+  --topbar-bg: rgba(18, 22, 31, 0.82);
   --brand-bg: linear-gradient(135deg, #fcd34d, #fb923c 52%, #fb7185);
   --glow: 0 0 20px rgb(var(--color-primary) / 0.22);
   --glow-lg: 0 0 40px rgb(var(--color-primary-strong) / 0.26);
@@ -125,6 +125,13 @@ html:not(.dark) {
   overflow-y: auto;
   /* Flat canvas — no radial textures. Calm field like the Desearch console. */
   background: var(--bg);
+}
+
+/* The legacy dark-mode background texture (dark-bg.webp) was near-black and
+   fought the lightened dark canvas. Hide it so dark mode reads as one calm,
+   slightly-lighter field instead of a dark vignette under the content. */
+img[src*="dark-bg"] {
+  display: none !important;
 }
 
 .ck-page {

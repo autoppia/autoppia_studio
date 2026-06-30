@@ -3,43 +3,52 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.company_harvesters.base import CompanyHarvesterEngineInfo
-from app.company_harvesters.local_heuristic import LocalHeuristicCompanyHarvester
+from app.company_harvesters.local_heuristic import AgenticDiscoveryCore
 
 
 @dataclass(frozen=True)
-class ModelAgentCompanyHarvester(LocalHeuristicCompanyHarvester):
-    name: str = "model_agent"
-    kind: str = "model_agent"
+class AgenticHarvester(AgenticDiscoveryCore):
+    name: str = "agentic"
+    kind: str = "agentic"
+    display_name: str = "Agentic Harvester"
 
     def info(self) -> CompanyHarvesterEngineInfo:
         return CompanyHarvesterEngineInfo(
             name=self.name,
-            kind="model_agent",
-            description="Model-agent CompanyHarvester adapter. Currently uses the deterministic baseline planner until the LLM caller is wired.",
+            kind="agentic",
+            displayName=self.display_name,
+            description="Default model-agent CompanyHarvester profile. It plans task discovery and solution discovery with the agentic discovery core.",
+            metadata={"adapter": "agentic", "agentRuntime": "model_agent"},
         )
 
 
 @dataclass(frozen=True)
-class ClaudeCodeCompanyHarvester(LocalHeuristicCompanyHarvester):
+class ClaudeCodeCompanyHarvester(AgenticDiscoveryCore):
     name: str = "claude_code"
     kind: str = "claude_code"
+    display_name: str = "Claude Code Harvester"
 
     def info(self) -> CompanyHarvesterEngineInfo:
         return CompanyHarvesterEngineInfo(
             name=self.name,
             kind="claude_code",
-            description="Claude Code CompanyHarvester adapter. Placeholder over the baseline contract until the Claude Code company prompt is wired.",
+            displayName=self.display_name,
+            description="Claude Code CompanyHarvester profile for miner submissions that use Claude Code as the outer company harvester runtime.",
+            metadata={"adapter": "claude_code", "agentRuntime": "claude_code"},
         )
 
 
 @dataclass(frozen=True)
-class CodexCompanyHarvester(LocalHeuristicCompanyHarvester):
+class CodexCompanyHarvester(AgenticDiscoveryCore):
     name: str = "codex"
     kind: str = "codex"
+    display_name: str = "Codex Harvester"
 
     def info(self) -> CompanyHarvesterEngineInfo:
         return CompanyHarvesterEngineInfo(
             name=self.name,
             kind="codex",
-            description="Codex CompanyHarvester adapter. Placeholder over the baseline contract until the Codex company prompt is wired.",
+            displayName=self.display_name,
+            description="Codex CompanyHarvester profile for miner submissions that use Codex as the outer company harvester runtime.",
+            metadata={"adapter": "codex", "agentRuntime": "codex"},
         )

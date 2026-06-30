@@ -5,10 +5,11 @@ from app.models.company_harvester import CompanyHarvesterInput, CompanyMaterial
 from app.services import infinite_company_arena
 
 
-def test_company_harvester_registry_exposes_local_heuristic():
+def test_company_harvester_registry_exposes_public_miners():
     harvesters = list_company_harvesters()
-    assert {item["name"] for item in harvesters} == {"local_heuristic", "model_agent", "claude_code", "codex"}
-    assert {item["kind"] for item in harvesters} == {"local_heuristic", "model_agent", "claude_code", "codex"}
+    assert {item["name"] for item in harvesters} == {"agentic", "claude_code", "codex"}
+    assert {item["kind"] for item in harvesters} == {"agentic", "claude_code", "codex"}
+    assert all(item["displayName"] for item in harvesters)
 
 
 @pytest.mark.asyncio
@@ -36,7 +37,7 @@ async def test_local_company_harvester_implements_output_contract():
     assert {task.expectedSurfaces[0] for task in result.proposedTasks if task.expectedSurfaces} >= {"web", "api", "documents"}
     assert result.taskSolutions
     assert all(solution.connectors and solution.tools and solution.trajectories and solution.skills for solution in result.taskSolutions)
-    assert result.metadata["harvesterEngine"]["name"] == "local_heuristic"
+    assert result.metadata["harvesterEngine"]["name"] == "agentic"
 
 
 @pytest.mark.asyncio
@@ -47,7 +48,7 @@ async def test_company_harvester_agent_engines_implement_same_contract():
         materials=[CompanyMaterial(kind="website", name="Claims UI", url="https://claims.example.test")],
     )
 
-    for name in ("model_agent", "claude_code", "codex"):
+    for name in ("agentic", "claude_code", "codex"):
         harvester = get_company_harvester(name)
         result = await harvester.harvest(request)
         assert result.schemaVersion == "company_harvester_output/v1"

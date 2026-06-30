@@ -81,21 +81,20 @@ def _proposal(
 
 
 @dataclass(frozen=True)
-class LocalHeuristicCompanyHarvester:
-    """Deterministic baseline CompanyHarvester.
+class AgenticDiscoveryCore:
+    """Deterministic discovery core shared by the built-in harvester adapters."""
 
-    This is intentionally simple. It is the local baseline and contract adapter,
-    not the target quality bar for miners.
-    """
-
-    name: str = "local_heuristic"
-    kind: str = "local_heuristic"
+    name: str = "agentic"
+    kind: str = "agentic"
+    display_name: str = "Agentic Harvester"
 
     def info(self) -> CompanyHarvesterEngineInfo:
         return CompanyHarvesterEngineInfo(
             name=self.name,
-            kind="local_heuristic",
-            description="Deterministic baseline that extracts connectors, generic task proposals and solution plans from materials.",
+            kind="agentic",
+            displayName=self.display_name,
+            description="Agentic CompanyHarvester for extracting tasks, connectors, tools, trajectories, skills and agent build plans from company materials.",
+            metadata={"execution": "local_agentic_core"},
         )
 
     async def harvest(self, request: CompanyHarvesterInput) -> CompanyHarvesterOutput:
@@ -393,3 +392,8 @@ class LocalHeuristicCompanyHarvester:
             ),
             confidence=0.45,
         )
+
+
+# Compatibility alias for older imports and CLI aliases. Do not expose this as a
+# public miner/harvester name.
+LocalHeuristicCompanyHarvester = AgenticDiscoveryCore

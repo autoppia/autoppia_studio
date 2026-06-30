@@ -14,11 +14,12 @@ module.exports = {
         success: "#58D68D",
         danger: "#EF5B5B",
         warning: "#F0B429",
-        // Blue-tinted dark surfaces (from the hedge-fund / trading UIs).
-        "dark-bg": "#070A10",
-        "dark-surface": "#101620",
-        "dark-surface-2": "#151D28",
-        "dark-border": "#1F2A37",
+        // Blue-tinted dark surfaces (lightened from near-black for a calmer,
+        // less heavy dark mode).
+        "dark-bg": "#12161F",
+        "dark-surface": "#1A1F2B",
+        "dark-surface-2": "#232A38",
+        "dark-border": "#2B3443",
       },
       fontFamily: {
         sans: ["var(--sans)"],
