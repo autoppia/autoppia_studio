@@ -5,17 +5,25 @@ from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import urljoin, urlparse
 
+from app.models.agent_config import AgentCallable, AgentConfig, AgentTask
 from app.models.ica import (
     ExpectedSurface,
     IcaBenchmarkMode,
     IcaBenchmarkModeKind,
+    IcaCompanyBenchmarkResult,
     IcaDemoProject,
     IcaEvaluationMetric,
     IcaEvaluationResult,
     IcaExpectedHarvest,
     IcaMaterializedProject,
     IcaMinimumMetric,
+    IcaSolutionDiscoveryEvaluation,
+    IcaTaskDiscoveryEvaluation,
+    IcaTaskDiscoveryExpectation,
+    IcaTaskDiscoveryMatch,
+    IcaTaskSolutionSpec,
 )
+from app.runtimes.base import AgentRuntimeProfile
 from app.services import company_harvester
 
 
@@ -150,6 +158,7 @@ def materialize_project(
     manifest_path: str | Path | None = None,
     base_url: str = "",
     mode: IcaBenchmarkModeKind | None = None,
+    include_ground_truth_tasks: bool = True,
 ) -> IcaMaterializedProject:
     root = Path(manifest_path).parent if manifest_path else project_path(project.projectId)
     resolved_base = base_url or project.defaultBaseUrl
@@ -187,18 +196,19 @@ def materialize_project(
                 "docsUrl": url,
             }
         if surface.kind == "web":
-            metadata["uiTaskHints"] = [
-                {
-                    "name": task.name,
-                    "prompt": task.prompt,
-                    "successCriteria": task.successCriteria,
-                    "riskClass": task.riskClass,
-                    "expectedSurfaces": task.expectedSurfaces,
-                }
-                for task in project.tasks
-                if task in selected_tasks
-                if "web" in task.expectedSurfaces
-            ]
+            if include_ground_truth_tasks:
+                metadata["uiTaskHints"] = [
+                    {
+                        "name": task.name,
+                        "prompt": task.prompt,
+                        "successCriteria": task.successCriteria,
+                        "riskClass": task.riskClass,
+                        "expectedSurfaces": task.expectedSurfaces,
+                    }
+                    for task in project.tasks
+                    if task in selected_tasks
+                    if "web" in task.expectedSurfaces
+                ]
         material: dict[str, Any] = {
             "kind": material_kind,
             "name": surface.name,
@@ -226,7 +236,7 @@ def materialize_project(
             }
         )
 
-    user_tasks = [
+    user_tasks = [] if not include_ground_truth_tasks else [
         {
             "name": task.name,
             "prompt": task.prompt,
@@ -261,6 +271,7 @@ class IcaCompanyHarvestRunner(Protocol):
         base_url: str = "",
         mode: IcaBenchmarkModeKind | None = None,
         process: bool = True,
+        include_ground_truth_tasks: bool = False,
     ) -> dict[str, Any]:
         ...
 
@@ -297,8 +308,9 @@ class CompanyHarvesterIcaRunner:
         base_url: str = "",
         mode: IcaBenchmarkModeKind | None = None,
         process: bool = True,
+        include_ground_truth_tasks: bool = False,
     ) -> dict[str, Any]:
-        materialized = materialize_project(project, base_url=base_url, mode=mode)
+        materialized = materialize_project(project, base_url=base_url, mode=mode, include_ground_truth_tasks=include_ground_truth_tasks)
         intake = await company_harvester.create_company_intake(
             email=email,
             company_id=company_id,
@@ -389,6 +401,347 @@ def evaluate_company_harvest_snapshot(
     )
 
 
+def _selected_project_tasks(project: IcaDemoProject, mode: IcaBenchmarkModeKind | None = None) -> list[Any]:
+    mode_config = _mode_for(project, mode)
+    task_filter = set(mode_config.taskIds if mode_config else [])
+    surface_filter = set((mode_config.discoveryInput or mode_config.surfaceFilter) if mode_config else [])
+    return [
+        task
+        for task in project.tasks
+        if (not task_filter or task.taskId in task_filter)
+        and (not surface_filter or bool(set(task.expectedSurfaces) & surface_filter))
+    ]
+
+
+def _task_expectations(project: IcaDemoProject, mode: IcaBenchmarkModeKind | None = None) -> list[IcaTaskDiscoveryExpectation]:
+    selected = _selected_project_tasks(project, mode)
+    selected_ids = {task.taskId for task in selected}
+    explicit = [item for item in project.taskDiscoveryExpectations if not selected_ids or item.taskId in selected_ids]
+    by_id = {item.taskId: item for item in explicit}
+    expectations = []
+    for task in selected:
+        if task.taskId in by_id:
+            expectations.append(by_id[task.taskId])
+            continue
+        words = [part for part in _tokenize(f"{task.name} {task.prompt}") if len(part) > 3]
+        expectations.append(
+            IcaTaskDiscoveryExpectation(
+                taskId=task.taskId,
+                aliases=[task.name],
+                keywords=words[:8],
+                expectedSurfaces=task.expectedSurfaces,
+            )
+        )
+    return expectations
+
+
+def _tokenize(value: str) -> set[str]:
+    clean = "".join(ch.lower() if ch.isalnum() else " " for ch in str(value or ""))
+    stop = {"the", "and", "for", "with", "using", "use", "from", "into", "all", "una", "con", "para", "que", "los", "las"}
+    return {part for part in clean.split() if part and part not in stop}
+
+
+def _task_text(task: dict[str, Any]) -> str:
+    return " ".join(str(task.get(key) or "") for key in ("name", "taskName", "prompt", "successCriteria"))
+
+
+def _task_id(task: dict[str, Any], fallback: str = "") -> str:
+    return str(task.get("taskId") or task.get("id") or task.get("metadata", {}).get("icaTaskId") if isinstance(task.get("metadata"), dict) else "" or fallback)
+
+
+def _expected_task(project: IcaDemoProject, task_id: str) -> Any | None:
+    for task in project.tasks:
+        if task.taskId == task_id:
+            return task
+    return None
+
+
+def _task_match_score(expectation: IcaTaskDiscoveryExpectation, expected_name: str, discovered: dict[str, Any]) -> float:
+    discovered_text = _task_text(discovered)
+    discovered_tokens = _tokenize(discovered_text)
+    expected_tokens = _tokenize(" ".join([expected_name, *expectation.aliases, *expectation.keywords]))
+    if not expected_tokens or not discovered_tokens:
+        return 0.0
+    overlap = len(expected_tokens & discovered_tokens) / len(expected_tokens)
+    alias_hit = any(alias and alias.lower() in discovered_text.lower() for alias in expectation.aliases)
+    keyword_hit = sum(1 for keyword in expectation.keywords if keyword.lower() in discovered_text.lower())
+    keyword_bonus = min(keyword_hit / max(len(expectation.keywords), 1), 1.0) * 0.25
+    return round(min(1.0, overlap + keyword_bonus + (0.25 if alias_hit else 0.0)), 4)
+
+
+def evaluate_task_discovery(
+    *,
+    project: IcaDemoProject,
+    discovered_tasks: list[dict[str, Any]],
+    mode: IcaBenchmarkModeKind | None = None,
+) -> IcaTaskDiscoveryEvaluation:
+    expectations = _task_expectations(project, mode)
+    matches: list[IcaTaskDiscoveryMatch] = []
+    used_discovered: set[int] = set()
+    missing: list[str] = []
+
+    for expectation in expectations:
+        expected = _expected_task(project, expectation.taskId)
+        expected_name = str((expected.name if expected else expectation.taskId) or expectation.taskId)
+        best_index = -1
+        best_score = 0.0
+        for index, task in enumerate(discovered_tasks):
+            if index in used_discovered:
+                continue
+            score = _task_match_score(expectation, expected_name, task)
+            if score > best_score:
+                best_index = index
+                best_score = score
+        matched = best_index >= 0 and best_score >= expectation.minSimilarity
+        if matched:
+            used_discovered.add(best_index)
+            matched_task = discovered_tasks[best_index]
+            matches.append(
+                IcaTaskDiscoveryMatch(
+                    expectedTaskId=expectation.taskId,
+                    expectedName=expected_name,
+                    matchedTaskId=_task_id(matched_task, fallback=str(best_index)),
+                    matchedName=str(matched_task.get("name") or matched_task.get("taskName") or matched_task.get("prompt") or ""),
+                    score=best_score,
+                    matched=True,
+                    judge=expectation.judge,
+                    reason="Matched by aliases/keywords/token overlap.",
+                )
+            )
+        else:
+            missing.append(expectation.taskId)
+            matches.append(
+                IcaTaskDiscoveryMatch(
+                    expectedTaskId=expectation.taskId,
+                    expectedName=expected_name,
+                    score=best_score,
+                    matched=False,
+                    judge=expectation.judge,
+                    reason="No discovered task reached the required similarity threshold.",
+                )
+            )
+
+    matched_count = len(used_discovered)
+    expected_count = len(expectations)
+    discovered_count = len(discovered_tasks)
+    recall = round(matched_count / expected_count, 4) if expected_count else 1.0
+    precision = round(matched_count / discovered_count, 4) if discovered_count else (1.0 if expected_count == 0 else 0.0)
+    score = round((recall * 0.75) + (precision * 0.25), 4)
+    extra = [
+        str(task.get("name") or task.get("taskName") or task.get("prompt") or "")
+        for index, task in enumerate(discovered_tasks)
+        if index not in used_discovered
+    ]
+    return IcaTaskDiscoveryEvaluation(
+        projectId=project.projectId,
+        mode=mode,
+        passed=not missing,
+        score=score,
+        recall=recall,
+        precision=precision,
+        expectedCount=expected_count,
+        discoveredCount=discovered_count,
+        matchedCount=matched_count,
+        matches=matches,
+        missingTaskIds=missing,
+        extraTaskNames=extra,
+    )
+
+
+def _solution_expected_tasks(project: IcaDemoProject, mode: IcaBenchmarkModeKind | None = None) -> list[Any]:
+    return _selected_project_tasks(project, mode)
+
+
+def _tool_names(snapshot: dict[str, list[dict[str, Any]]]) -> set[str]:
+    return {str(tool.get("name") or "") for tool in snapshot.get("tools", []) if tool.get("name")}
+
+
+def _connector_types(snapshot: dict[str, list[dict[str, Any]]]) -> set[str]:
+    return {str(connector.get("type") or "") for connector in snapshot.get("connectors", []) if connector.get("type")}
+
+
+def _expected_solution_for(project: IcaDemoProject, task_id: str) -> IcaTaskSolutionSpec | None:
+    for solution in project.expectedSolutions:
+        if solution.taskId == task_id:
+            return solution
+    return None
+
+
+def _default_solution_for_task(project: IcaDemoProject, task: Any, snapshot: dict[str, list[dict[str, Any]]]) -> IcaTaskSolutionSpec:
+    surfaces = set(task.expectedSurfaces)
+    connectors = []
+    if "api" in surfaces:
+        connectors.append("api")
+    if "web" in surfaces:
+        connectors.append("web")
+    if "documents" in surfaces:
+        connectors.append("knowledge")
+    available_tools = sorted(_tool_names(snapshot))
+    tools = []
+    if "documents" in surfaces and "knowledge.company_docs.search" in available_tools:
+        tools.append("knowledge.company_docs.search")
+    if "web" in surfaces:
+        tools.extend(name for name in available_tools if ".web." in name or name.endswith(".explore_workflows"))
+    if "api" in surfaces:
+        tools.extend(name for name in available_tools if ".api." in name)
+    tools = sorted(dict.fromkeys(tools))
+    trajectory_id = f"{project.projectId}:{task.taskId}:expected_trajectory"
+    return IcaTaskSolutionSpec(
+        taskId=task.taskId,
+        connectors=connectors,
+        tools=tools,
+        trajectories=[
+            {
+                "trajectoryId": trajectory_id,
+                "description": f"Use {', '.join(connectors) or 'available'} surfaces to solve {task.name}.",
+                "toolCalls": [{"toolName": name, "arguments": {}} for name in tools[:4]],
+                "source": "generated",
+            }
+        ],
+        skills=[
+            {
+                "skillId": f"{project.projectId}:{task.taskId}:skill",
+                "name": f"{task.name} skill",
+                "description": task.successCriteria,
+                "trajectoryIds": [trajectory_id],
+                "instructions": task.prompt,
+                "source": "hybrid",
+            }
+        ],
+        agentProvider={
+            "runtimeKind": "model_agent",
+            "provider": "openai",
+            "model": "",
+            "systemPrompt": f"You are the {project.name} task agent. Solve: {task.prompt}",
+        },
+    )
+
+
+def propose_task_solutions(
+    *,
+    project: IcaDemoProject,
+    snapshot: dict[str, list[dict[str, Any]]],
+    mode: IcaBenchmarkModeKind | None = None,
+) -> list[IcaTaskSolutionSpec]:
+    expected_ids = {task.taskId for task in _solution_expected_tasks(project, mode)}
+    solutions: list[IcaTaskSolutionSpec] = []
+    for task in _solution_expected_tasks(project, mode):
+        solutions.append(_default_solution_for_task(project, task, snapshot))
+    return [solution for solution in solutions if not expected_ids or solution.taskId in expected_ids]
+
+
+def evaluate_solution_discovery(
+    *,
+    project: IcaDemoProject,
+    solutions: list[IcaTaskSolutionSpec],
+    snapshot: dict[str, list[dict[str, Any]]],
+    mode: IcaBenchmarkModeKind | None = None,
+) -> IcaSolutionDiscoveryEvaluation:
+    expected_tasks = _solution_expected_tasks(project, mode)
+    expected_task_ids = [task.taskId for task in expected_tasks]
+    by_task = {solution.taskId: solution for solution in solutions}
+    available_connectors = _connector_types(snapshot)
+    missing: list[str] = []
+    incomplete: list[str] = []
+
+    for task in expected_tasks:
+        solution = by_task.get(task.taskId)
+        if not solution:
+            missing.append(task.taskId)
+            continue
+        expected_solution = _expected_solution_for(project, task.taskId)
+        required_connectors = {"api" if surface == "api" else "web" if surface == "web" else "knowledge" for surface in task.expectedSurfaces if surface in {"api", "web", "documents"}}
+        if expected_solution:
+            required_connectors |= set(expected_solution.connectors)
+        has_connector_plan = required_connectors <= set(solution.connectors)
+        has_available_connectors = required_connectors <= available_connectors
+        required_tools = set(expected_solution.tools if expected_solution else [])
+        has_tools = bool(solution.tools) and (not required_tools or bool(required_tools & set(solution.tools)))
+        has_trajectory = bool(solution.trajectories)
+        has_skill = bool(solution.skills)
+        has_agent = bool(solution.agentProvider.runtimeKind)
+        if not (has_connector_plan and has_available_connectors and has_tools and has_trajectory and has_skill and has_agent):
+            incomplete.append(task.taskId)
+
+    passed_count = len(expected_task_ids) - len(missing) - len(incomplete)
+    score = round(passed_count / len(expected_task_ids), 4) if expected_task_ids else 1.0
+    return IcaSolutionDiscoveryEvaluation(
+        projectId=project.projectId,
+        mode=mode,
+        passed=not missing and not incomplete,
+        score=score,
+        expectedTaskCount=len(expected_task_ids),
+        solutionCount=len(solutions),
+        missingTaskIds=missing,
+        incompleteTaskIds=incomplete,
+        solutions=solutions,
+    )
+
+
+def build_agent_config_from_solution(
+    *,
+    project: IcaDemoProject,
+    task: dict[str, Any],
+    solution: IcaTaskSolutionSpec,
+    email: str = "",
+    company_id: str = "",
+) -> AgentConfig:
+    provider = solution.agentProvider
+    tool_callables = [
+        AgentCallable(
+            name=tool_name,
+            description=f"Tool required for {task.get('name') or solution.taskId}.",
+            kind="tool",
+            source="ica_solution",
+            connectorId=next((connector for connector in solution.connectors if connector in tool_name), ""),
+            executionReady=True,
+        )
+        for tool_name in solution.tools
+    ]
+    skill_callables = [
+        AgentCallable(
+            name=skill.name,
+            description=skill.description or skill.instructions,
+            kind="skill",
+            source="ica_solution",
+            capabilityId=skill.skillId,
+            trajectoryIds=skill.trajectoryIds,
+            executionReady=True,
+        )
+        for skill in solution.skills
+    ]
+    return AgentConfig(
+        agentId=f"{project.projectId}:{solution.taskId}:{provider.runtimeKind}",
+        name=f"{project.name} - {task.get('name') or solution.taskId}",
+        email=email,
+        companyId=company_id,
+        runtimeKind=provider.runtimeKind,
+        runtimeProfile=AgentRuntimeProfile(
+            kind=provider.runtimeKind,
+            provider=provider.provider,
+            model=provider.model,
+            systemPrompt=provider.systemPrompt,
+        ),
+        status="draft",
+        tasks=[
+            AgentTask(
+                name=str(task.get("name") or solution.taskId),
+                prompt=str(task.get("prompt") or ""),
+                successCriteria=str(task.get("successCriteria") or ""),
+            )
+        ],
+        tools=tool_callables,
+        skills=skill_callables,
+        capabilityDiscovery={
+            "mode": "ica_task_solution",
+            "icaProjectId": project.projectId,
+            "icaTaskId": solution.taskId,
+            "connectors": solution.connectors,
+            "trajectoryIds": [trajectory.trajectoryId for trajectory in solution.trajectories],
+        },
+    )
+
+
 async def evaluate_project_company_harvest(
     project: IcaDemoProject,
     *,
@@ -398,7 +751,7 @@ async def evaluate_project_company_harvest(
     mode: IcaBenchmarkModeKind | None = None,
     process: bool = True,
     runner: IcaCompanyHarvestRunner | None = None,
-) -> IcaEvaluationResult:
+) -> IcaCompanyBenchmarkResult:
     runner = runner or CompanyHarvesterIcaRunner()
     result = await runner.run(
         project,
@@ -407,14 +760,32 @@ async def evaluate_project_company_harvest(
         base_url=base_url,
         mode=mode,
         process=process,
+        include_ground_truth_tasks=False,
     )
     expected = IcaExpectedHarvest.model_validate(result.get("expectedHarvest") or project.expectedHarvest.model_dump())
-    return evaluate_company_harvest_snapshot(
+    inventory = evaluate_company_harvest_snapshot(
         project=project,
         snapshot=result.get("snapshot") or {},
         expected_harvest=expected,
         run=result.get("run") or {},
         mode=mode,
+    )
+    snapshot = result.get("snapshot") or {}
+    task_discovery = evaluate_task_discovery(project=project, discovered_tasks=snapshot.get("tasks") or [], mode=mode)
+    solutions = propose_task_solutions(project=project, snapshot=snapshot, mode=mode)
+    solution_discovery = evaluate_solution_discovery(project=project, solutions=solutions, snapshot=snapshot, mode=mode)
+    score = round((task_discovery.score * 0.45) + (solution_discovery.score * 0.45) + (inventory.score * 0.10), 4)
+    passed = task_discovery.passed and solution_discovery.passed and inventory.passed
+    return IcaCompanyBenchmarkResult(
+        projectId=project.projectId,
+        mode=mode,
+        passed=passed,
+        score=score,
+        phases={
+            "taskDiscovery": task_discovery.model_dump(),
+            "solutionDiscovery": solution_discovery.model_dump(),
+            "inventory": inventory.model_dump(),
+        },
     )
 
 

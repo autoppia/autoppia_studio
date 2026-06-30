@@ -130,6 +130,11 @@ def test_autoclaims_benchmark_modes_materialize_separate_surfaces_and_tasks():
     assert {material["kind"] for material in hybrid.materials} == {"website", "openapi", "document_url", "auth_note"}
     assert len(hybrid.userTasks) == 5
 
+    discovery_input = infinite_company_arena.materialize_project(project, mode="hybrid", include_ground_truth_tasks=False)
+    assert discovery_input.userTasks == []
+    web_material = next(material for material in discovery_input.materials if material["kind"] == "website")
+    assert "uiTaskHints" not in web_material["metadata"]
+
 
 def test_legacy_demo_web_wrapper_loads_as_web_only_ica_project():
     project = infinite_company_arena.load_demo_project("autocinema_web")
@@ -191,14 +196,95 @@ async def test_ica_evaluate_project_scores_company_harvester_discovery(collectio
 
     assert result.projectId == "autoclaims"
     assert result.mode == "hybrid"
+    assert result.passed is False
+    assert result.score < 1.0
+    assert result.phases["inventory"]["passed"] is True
+    assert result.phases["solutionDiscovery"]["passed"] is True
+    assert result.phases["taskDiscovery"]["passed"] is False
+    assert set(result.phases["taskDiscovery"]["missingTaskIds"]) == {
+        "find_claim_status",
+        "approve_low_risk_claim",
+        "escalate_flagged_claim",
+        "web_add_claim_note",
+        "customer_summary",
+    }
+    intake = collections["intakes"].docs[0]
+    assert intake["userTasks"] == []
+
+
+def test_ica_task_discovery_evaluator_matches_ground_truth_suite():
+    project = infinite_company_arena.load_demo_project("autoclaims")
+    discovered = [
+        {"taskId": "d1", "name": "Check claim status", "prompt": "Get claim details and latest note for a CLM id."},
+        {"taskId": "d2", "name": "Approve eligible claim", "prompt": "Use policy and set claim decision approved."},
+        {"taskId": "d3", "name": "Manual review for fraud flag", "prompt": "Escalate claim to manual review when fraud is present."},
+        {"taskId": "d4", "name": "Add note to claim", "prompt": "Use the UI to add a callback note to a claim."},
+        {"taskId": "d5", "name": "Summarize customer claims", "prompt": "List customer open claims and summarize next actions."},
+    ]
+
+    result = infinite_company_arena.evaluate_task_discovery(project=project, discovered_tasks=discovered, mode="hybrid")
+
     assert result.passed is True
-    assert result.score == 1.0
-    assert result.connectors.expected == ["api", "knowledge", "web"]
-    assert result.connectors.missing == []
-    assert result.tools.found >= result.tools.minimum
-    assert result.tasks.found >= result.tasks.minimum
-    assert result.benchmarks.found == 1
-    assert result.missing == []
+    assert result.recall == 1.0
+    assert result.matchedCount == 5
+    assert result.missingTaskIds == []
+
+
+def test_ica_solution_discovery_requires_agent_building_blocks():
+    project = infinite_company_arena.load_demo_project("autoclaims")
+    snapshot = {
+        "connectors": [{"type": "api"}, {"type": "knowledge"}, {"type": "web"}],
+        "tools": [
+            {"name": "knowledge.company_docs.search"},
+            {"name": "autoclaims.web.explore_workflows"},
+            {"name": "autoclaims.api.searchcustomers"},
+            {"name": "autoclaims.api.listclaims"},
+            {"name": "autoclaims.api.getclaim"},
+            {"name": "autoclaims.api.setclaimdecision"},
+        ],
+        "tasks": [],
+        "benchmarks": [],
+    }
+
+    solutions = infinite_company_arena.propose_task_solutions(project=project, snapshot=snapshot, mode="hybrid")
+    result = infinite_company_arena.evaluate_solution_discovery(project=project, solutions=solutions, snapshot=snapshot, mode="hybrid")
+
+    assert result.passed is True
+    assert result.solutionCount == 5
+    assert {solution.agentProvider.runtimeKind for solution in result.solutions} <= {"model_agent", "claude_code", "codex"}
+    assert all(solution.connectors and solution.tools and solution.trajectories and solution.skills for solution in result.solutions)
+
+    broken = [solution.model_copy(update={"skills": []}) for solution in solutions]
+    broken_result = infinite_company_arena.evaluate_solution_discovery(project=project, solutions=broken, snapshot=snapshot, mode="hybrid")
+    assert broken_result.passed is False
+    assert set(broken_result.incompleteTaskIds) == {
+        "find_claim_status",
+        "approve_low_risk_claim",
+        "escalate_flagged_claim",
+        "web_add_claim_note",
+        "customer_summary",
+    }
+
+
+def test_ica_task_solution_builds_agent_config():
+    project = infinite_company_arena.load_demo_project("autoclaims")
+    task = next(task for task in project.tasks if task.taskId == "web_add_claim_note")
+    solution = next(solution for solution in project.expectedSolutions if solution.taskId == "web_add_claim_note")
+
+    agent = infinite_company_arena.build_agent_config_from_solution(
+        project=project,
+        task=task.model_dump(),
+        solution=solution,
+        email="owner@example.com",
+        company_id="company-1",
+    )
+
+    assert agent.runtimeKind == "claude_code"
+    assert agent.runtimeProfile.provider == "anthropic"
+    assert [tool.name for tool in agent.tools] == ["autoclaims.web.explore_workflows"]
+    assert [skill.name for skill in agent.skills] == ["Add AutoClaims note through UI"]
+    assert agent.skills[0].trajectoryIds == ["autoclaims:web_add_claim_note:web"]
+    assert agent.capabilityDiscovery["icaTaskId"] == "web_add_claim_note"
 
 
 def test_ica_evaluation_reports_missing_requirements():

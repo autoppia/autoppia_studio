@@ -99,13 +99,15 @@ function SummaryCard({
 }: {
   label: string;
   value: string | number;
-  hint: string;
+  hint?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">{label}</p>
-      <p className="mt-2 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
-      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{hint}</p>
+    <div
+      className="rounded-2xl border border-gray-200 bg-white p-4 dark:border-dark-border dark:bg-dark-surface"
+      title={hint}
+    >
+      <p className="text-xs font-medium text-gray-500 dark:text-gray-400">{label}</p>
+      <p className="mt-1.5 text-2xl font-semibold text-gray-900 dark:text-white">{value}</p>
     </div>
   );
 }

@@ -28,16 +28,17 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <script>
-      // Apply the saved theme before render to avoid a flash. Default to dark.
+      // Apply the saved theme before render to avoid a flash. Default to light
+      // (clean Desearch-style canvas); dark is opt-in via the theme toggle.
       (function () {
         try {
-          if (localStorage.getItem('theme') === 'light') {
-            document.documentElement.classList.remove('dark');
-          } else {
+          if (localStorage.getItem('theme') === 'dark') {
             document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
           }
         } catch (e) {
-          document.documentElement.classList.add('dark');
+          document.documentElement.classList.remove('dark');
         }
       })();
     </script>
