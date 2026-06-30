@@ -156,7 +156,7 @@ describe("Artifacts page", () => {
     render(<Artifacts />);
 
     expect(await screen.findByRole("button", { name: "Open session" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open Workspace" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open job" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open skill" })).toBeInTheDocument();
   });

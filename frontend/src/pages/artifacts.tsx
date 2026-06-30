@@ -386,8 +386,9 @@ export default function Artifacts(): React.ReactElement {
   const counts = useMemo(() => {
     const interactive = artifacts.filter((artifact) => ["html", "react", "svg", "mermaid"].includes(artifact.artifactType)).length;
     const runtimeLinked = artifacts.filter((artifact) => Boolean(artifact.sessionId)).length;
+    const workLinked = artifacts.filter((artifact) => Boolean(artifactWorkItemId(artifact))).length;
     const capabilityLinked = artifacts.filter(artifactCapabilityLinked).length;
-    return { total: artifacts.length, interactive, runtimeLinked, capabilityLinked };
+    return { total: artifacts.length, interactive, runtimeLinked, workLinked, capabilityLinked };
   }, [artifacts]);
 
   return (
@@ -435,6 +436,10 @@ export default function Artifacts(): React.ReactElement {
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                   <p className="text-[10px] uppercase text-gray-400">Runtime linked</p>
                   <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.runtimeLinked}</p>
+                </div>
+                <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
+                  <p className="text-[10px] uppercase text-gray-400">Job linked</p>
+                  <p className="text-xl font-bold text-gray-900 dark:text-white">{counts.workLinked}</p>
                 </div>
                 <div className="rounded-lg bg-gray-50 p-3 dark:bg-white/5">
                   <p className="text-[10px] uppercase text-gray-400">Capability linked</p>
@@ -586,7 +591,7 @@ export default function Artifacts(): React.ReactElement {
                       }}
                       className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-dark-border dark:text-gray-300 dark:hover:bg-white/5"
                     >
-                      Open Runtime Lab
+                      Open Workspace
                     </button>
                   )}
                   {selectedWorkItemId && (

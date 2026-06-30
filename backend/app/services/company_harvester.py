@@ -1189,11 +1189,9 @@ async def _upsert_entity_candidates(*, intake: dict[str, Any], tools: list[dict[
     if not email or not company_id:
         return []
     now = now_iso()
-    raw_candidates = [
-        *_explicit_entity_candidates(materials),
-        *_tool_entity_candidates(tools),
-        *_material_entity_candidates(materials),
-    ]
+    raw_candidates = [*_explicit_entity_candidates(materials)]
+    if any((material.get("metadata") if isinstance(material.get("metadata"), dict) else {}).get("inferEntities") for material in materials):
+        raw_candidates.extend([*_tool_entity_candidates(tools), *_material_entity_candidates(materials)])
     docs: list[dict[str, Any]] = []
     seen: set[str] = set()
     for candidate in raw_candidates:
@@ -1416,6 +1414,55 @@ def _task_from_material(material: dict[str, Any]) -> dict[str, Any] | None:
     return None
 
 
+def _tasks_from_website_ui_hints(material: dict[str, Any]) -> list[dict[str, Any]]:
+    if str(material.get("kind") or "") != "website":
+        return []
+    metadata = material.get("metadata") if isinstance(material.get("metadata"), dict) else {}
+    raw_hints = metadata.get("uiTaskHints") or metadata.get("workflowHints") or metadata.get("workflows")
+    if not isinstance(raw_hints, list):
+        return []
+    name = str(material.get("name") or material.get("url") or "Web app").strip()
+    url = str(material.get("url") or "").strip()
+    default_tool = f"{_tool_prefix_from_material(material, 'web')}.explore_workflows"
+    tasks: list[dict[str, Any]] = []
+    for index, raw_hint in enumerate(raw_hints, start=1):
+        if isinstance(raw_hint, str):
+            raw_task: dict[str, Any] = {"prompt": raw_hint}
+        elif isinstance(raw_hint, dict):
+            raw_task = dict(raw_hint)
+        else:
+            continue
+        prompt = str(raw_task.get("prompt") or raw_task.get("description") or raw_task.get("name") or "").strip()
+        if not prompt:
+            continue
+        raw_metadata = raw_task.get("metadata") if isinstance(raw_task.get("metadata"), dict) else {}
+        expected_tools = [str(item) for item in raw_metadata.get("expectedTools") or raw_task.get("expectedTools") or [] if str(item or "").strip()]
+        if not expected_tools:
+            expected_tools = [default_tool]
+        allowed_systems = raw_task.get("allowedSystems") if isinstance(raw_task.get("allowedSystems"), list) else ([url] if url else [])
+        tasks.append(
+            {
+                **raw_task,
+                "name": str(raw_task.get("name") or f"{name} UI workflow {index}"),
+                "prompt": prompt,
+                "successCriteria": str(raw_task.get("successCriteria") or "The UI workflow is completed or converted into a reusable browser trajectory."),
+                "allowedSystems": [str(item) for item in allowed_systems if str(item or "").strip()],
+                "expectedArtifacts": raw_task.get("expectedArtifacts") if isinstance(raw_task.get("expectedArtifacts"), list) else ["workflow_summary", "trajectory_trace"],
+                "riskClass": str(raw_task.get("riskClass") or "read"),
+                "metadata": {
+                    **raw_metadata,
+                    "sourceMaterialKind": "website",
+                    "sourceUrl": url,
+                    "uiTaskHint": True,
+                    "requiresBrowser": True,
+                    "expectedTools": expected_tools,
+                },
+                "source": raw_task.get("source") or "company_harvester_ui_hint",
+            }
+        )
+    return tasks
+
+
 def _tasks_from_explicit_tools(material: dict[str, Any]) -> list[dict[str, Any]]:
     metadata = material.get("metadata") if isinstance(material.get("metadata"), dict) else {}
     raw_tools = metadata.get("tools")
@@ -1605,6 +1652,7 @@ def _task_candidates(intake: dict[str, Any]) -> list[dict[str, Any]]:
         if str(material.get("kind") or "") == "task_list":
             candidates.extend({**task, "source": "user_task_list"} for task in _tasks_from_material_task_list(material))
             continue
+        candidates.extend(_tasks_from_website_ui_hints(material))
         candidates.extend({**task, "source": "company_harvester_tool_candidate"} for task in _tasks_from_explicit_tools(material))
         inferred = _task_from_material(material)
         if inferred:

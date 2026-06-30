@@ -827,7 +827,7 @@ export default function RuntimeCanvas({
         className="absolute inset-0"
         style={{
           background:
-            "radial-gradient(900px 520px at 50% 8%, rgba(233,124,60,0.16), transparent 62%), radial-gradient(1100px 620px at 50% -8%, rgba(96,165,250,0.16), transparent 60%), radial-gradient(760px 560px at 10% 96%, rgba(167,139,250,0.14), transparent 58%), radial-gradient(760px 560px at 92% 92%, rgba(34,211,238,0.10), transparent 58%)",
+            "radial-gradient(900px 520px at 50% 8%, rgb(var(--color-primary) / 0.16), transparent 62%), radial-gradient(1100px 620px at 50% -8%, rgba(96,165,250,0.16), transparent 60%), radial-gradient(760px 560px at 10% 96%, rgba(167,139,250,0.14), transparent 58%), radial-gradient(760px 560px at 92% 92%, rgba(34,211,238,0.10), transparent 58%)",
         }}
       />
       {/* Fine grid — brighter, fades toward the edges via a radial mask. */}

@@ -24,7 +24,6 @@ import Analytics from "./pages/analytics";
 import Runtime from "./pages/runtime";
 import Work from "./pages/work";
 import CompanySetup from "./pages/company-setup";
-import Onboarding from "./pages/onboarding";
 import SignIn from "./pages/signin";
 import SignUp from "./pages/signup";
 import VerifyOTP from "./pages/verify-otp";
@@ -40,11 +39,12 @@ installAuthFetch(apiUrl);
 
 /**
  * Studio's landing target depends on the experience mode: normal users land on
- * company onboarding (the center of the product); dev users land on the canvas.
+ * the agents workspace (onboarding now lives in a top-bar window); dev users
+ * land on the canvas.
  */
 function RootRedirect() {
   const mode = useStudioMode();
-  return <Navigate to={mode === "dev" ? "/canvas" : "/onboarding"} replace />;
+  return <Navigate to={mode === "dev" ? "/canvas" : "/agents"} replace />;
 }
 
 function resetUserScopedStorage(email: string) {
@@ -145,9 +145,8 @@ function App() {
             <>
               {/* Protected routes */}
               <Route element={<MainLayout />}>
-                {/* Landing depends on mode: onboarding (normal) or canvas (dev) */}
+                {/* Landing depends on mode: agents (normal) or canvas (dev) */}
                 <Route path="/" element={<RootRedirect />} />
-                <Route path="/onboarding" element={<Onboarding />} />
                 <Route path="/home" element={<Home />} />
                 <Route path="/session/:id" element={<Session />} />
                 <Route path="/settings" element={<Settings />} />

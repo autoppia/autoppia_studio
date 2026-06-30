@@ -23,6 +23,7 @@ import {
   faChevronUp,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, EvalRun } from "../utils/types";
+import Tabs, { useTabState, TabDef } from "../components/common/tabs";
 import useStartSession from "../hooks/useStartSession";
 import { getApiUrl } from "../utils/api-url";
 
@@ -340,10 +341,17 @@ function verticalReadinessClass(state?: string) {
   return "border-red-200 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300";
 }
 
+const BENCH_TABS: TabDef[] = [
+  { id: "benchmarks", label: "Benchmarks", icon: faClipboardCheck },
+  { id: "coverage", label: "Coverage", icon: faListCheck },
+  { id: "smoke", label: "Smoke", icon: faPlug },
+];
+
 export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
+  const [benchTab, setBenchTab] = useTabState(BENCH_TABS.map((t) => t.id));
   const startSession = useStartSession();
 
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
@@ -1075,6 +1083,10 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
           </div>
 
           {mode === "benchmarks" && (
+            <Tabs className="mb-6" tabs={BENCH_TABS} active={benchTab} onChange={setBenchTab} />
+          )}
+
+          {mode === "benchmarks" && benchTab === "smoke" && (
             <div className="mb-6 rounded-xl border border-gray-200 bg-white shadow-soft dark:border-dark-border dark:bg-dark-surface">
               <button
                 onClick={() => setShowConnectorSmoke((v) => !v)}
@@ -1298,7 +1310,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
             </div>
           )}
 
-          {mode === "benchmarks" && coveragePortfolio && (
+          {mode === "benchmarks" && benchTab === "coverage" && coveragePortfolio && (
             <div className="mb-6 rounded-xl border border-gray-200 bg-white p-4 shadow-soft dark:border-dark-border dark:bg-dark-surface">
               <div className="mb-3 flex items-center justify-between gap-3">
                 <div>
@@ -1418,7 +1430,7 @@ export default function Evals({ mode = "benchmarks" }: { mode?: TabKey }) {
               <p className="text-sm text-gray-400 dark:text-gray-500">Loading evals...</p>
             </div>
           ) : mode === "benchmarks" ? (
-            filteredBenchmarks.length === 0 ? (
+            benchTab !== "benchmarks" ? null : filteredBenchmarks.length === 0 ? (
               <EmptyState text={companyId ? "No benchmarks for this company yet." : "Select a company to see its benchmarks."} />
             ) : (
               <div className="flex flex-col gap-4">

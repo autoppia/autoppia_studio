@@ -922,7 +922,7 @@ function Session(): React.ReactElement {
           value={creditsLabel || (pendingConnectorApproval ? "Pending" : approvedConnectorToolCallCount)}
           hint={
             creditsLabel
-              ? `Source: ${sourceKind === "work" ? "Work Orchestration" : "runtime session"}${runId ? ` · ${runId}` : ""}`
+              ? `Source: ${sourceKind === "work" ? "Board" : "runtime session"}${runId ? ` · ${runId}` : ""}`
               : pendingConnectorApproval
                 ? "Waiting for human approval before write/send."
                 : `${approvedConnectorToolCallCount} approved connector calls recorded.`

@@ -42,6 +42,22 @@ import {
  * floating tool dock and a centered add button — powered by @xyflow/react.
  */
 
+/** Track the app's light/dark theme (a `dark` class on <html>). */
+function useIsDark(): boolean {
+  const [dark, setDark] = useState(
+    () => typeof document !== "undefined" && document.documentElement.classList.contains("dark")
+  );
+  useEffect(() => {
+    const el = document.documentElement;
+    const sync = () => setDark(el.classList.contains("dark"));
+    const obs = new MutationObserver(sync);
+    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
+    sync();
+    return () => obs.disconnect();
+  }, []);
+  return dark;
+}
+
 export type FlowRunState = "idle" | "running" | "done" | "failed";
 
 export interface FlowAgent {
@@ -63,10 +79,10 @@ const STATE_META: Record<
   FlowRunState,
   { label: string; rgb: string; dot: string; text: string }
 > = {
-  idle: { label: "Idle", rgb: "148,163,184", dot: "bg-zinc-500", text: "text-zinc-400" },
-  running: { label: "Running", rgb: "125,211,252", dot: "bg-sky-300", text: "text-sky-200" },
-  done: { label: "Ready", rgb: "233,124,60", dot: "bg-primary", text: "text-primary" },
-  failed: { label: "Attention", rgb: "248,113,113", dot: "bg-red-400", text: "text-red-200" },
+  idle: { label: "Idle", rgb: "148 163 184", dot: "bg-zinc-500", text: "text-zinc-500 dark:text-zinc-400" },
+  running: { label: "Running", rgb: "125 211 252", dot: "bg-sky-300", text: "text-sky-600 dark:text-sky-200" },
+  done: { label: "Ready", rgb: "var(--color-primary)", dot: "bg-primary", text: "text-primary" },
+  failed: { label: "Attention", rgb: "248 113 113", dot: "bg-red-400", text: "text-red-500 dark:text-red-200" },
 };
 
 /* ------------------------------------------------------------------ */
@@ -75,8 +91,9 @@ const STATE_META: Record<
 
 const RootNode = memo(function RootNode({ data }: { data: Record<string, unknown> }) {
   const status = (data.status as "ready" | "incomplete" | "busy") || "incomplete";
-  const accent = status === "incomplete" ? "#ef4444" : "#E97C3C";
+  const accent = status === "incomplete" ? "#ef4444" : "var(--accent)";
   const spinning = status === "busy";
+  const isDark = useIsDark();
 
   return (
     <div className="relative select-none" title="Company router">
@@ -119,8 +136,8 @@ const RootNode = memo(function RootNode({ data }: { data: Record<string, unknown
           <svg viewBox="0 0 120 120" className="absolute h-28 w-28">
             <defs>
               <linearGradient id="flow-root-fill" x1="0%" y1="0%" x2="100%" y2="100%">
-                <stop offset="0%" stopColor="#0c1929" />
-                <stop offset="100%" stopColor="#0a0f1a" />
+                <stop offset="0%" stopColor={isDark ? "#0c1929" : "#ffffff"} />
+                <stop offset="100%" stopColor={isDark ? "#0a0f1a" : "#eef3f8"} />
               </linearGradient>
               <filter id="flow-root-glow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="3" result="b" />
@@ -149,7 +166,7 @@ const RootNode = memo(function RootNode({ data }: { data: Record<string, unknown
           />
         </div>
 
-        <span className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-400">
+        <span className="mt-2.5 text-[11px] font-semibold uppercase tracking-[0.24em] text-zinc-500 dark:text-zinc-400">
           Router
         </span>
       </div>
@@ -189,13 +206,13 @@ const AgentNode = memo(function AgentNode({ data }: { data: Record<string, unkno
         {running && (
           <span
             className="pointer-events-none absolute -inset-3 rounded-full blur-xl animate-pulse-soft"
-            style={{ background: `radial-gradient(circle, rgba(${meta.rgb},0.45), transparent 70%)` }}
+            style={{ background: `radial-gradient(circle, rgb(${meta.rgb} / 0.45), transparent 70%)` }}
           />
         )}
         {/* status ring */}
         <div
           className={`relative flex h-[68px] w-[68px] items-center justify-center rounded-full p-[2.5px] transition-transform duration-300 group-hover:scale-105 ${running ? "animate-pulse-soft" : ""}`}
-          style={{ background: `conic-gradient(from 140deg, rgba(${meta.rgb},0.95), rgba(${meta.rgb},0.25), rgba(${meta.rgb},0.95))` }}
+          style={{ background: `conic-gradient(from 140deg, rgb(${meta.rgb} / 0.95), rgb(${meta.rgb} / 0.25), rgb(${meta.rgb} / 0.95))` }}
         >
           <div
             className="flex h-full w-full items-center justify-center overflow-hidden rounded-full border border-white/10"
@@ -204,7 +221,7 @@ const AgentNode = memo(function AgentNode({ data }: { data: Record<string, unkno
                 ? "#0e0c08"
                 : `radial-gradient(circle at 35% 30%, hsl(${hue} 70% 55% / 0.55), #0c0a14 72%)`,
               boxShadow: running
-                ? `0 0 22px rgba(${meta.rgb},0.5), inset 0 1px 0 rgba(255,255,255,0.15)`
+                ? `0 0 22px rgb(${meta.rgb} / 0.5), inset 0 1px 0 rgba(255,255,255,0.15)`
                 : "inset 0 1px 0 rgba(255,255,255,0.12), 0 8px 18px rgba(0,0,0,0.45)",
             }}
           >
@@ -223,7 +240,7 @@ const AgentNode = memo(function AgentNode({ data }: { data: Record<string, unkno
         </div>
 
         {/* status dot */}
-        <span className={`absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-[#0b0913] ${meta.dot} ${running ? "animate-pulse" : ""}`} />
+        <span className={`absolute bottom-0.5 right-0.5 h-4 w-4 rounded-full border-[3px] border-white dark:border-[#0b0913] ${meta.dot} ${running ? "animate-pulse" : ""}`} />
 
         {/* working glyph */}
         {running && (
@@ -234,20 +251,20 @@ const AgentNode = memo(function AgentNode({ data }: { data: Record<string, unkno
       </div>
 
       {/* Name */}
-      <p className="mt-2.5 max-w-full truncate text-center text-[13px] font-semibold leading-tight text-white">
+      <p className="mt-2.5 max-w-full truncate text-center text-[13px] font-semibold leading-tight text-zinc-900 dark:text-white">
         {name}
       </p>
 
       {/* Status line */}
-      <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-white/5 bg-white/[0.04] px-2 py-0.5">
+      <div className="mt-1 inline-flex items-center gap-1.5 rounded-full border border-zinc-200 bg-white/80 px-2 py-0.5 shadow-sm dark:border-white/5 dark:bg-white/[0.04] dark:shadow-none">
         <span className={`h-1.5 w-1.5 rounded-full ${meta.dot}`} />
         <span className={`text-[9.5px] font-semibold uppercase tracking-wide ${meta.text}`}>{meta.label}</span>
-        {browserOn && <FontAwesomeIcon icon={faGlobe} className="text-[8px] text-zinc-500" />}
+        {browserOn && <FontAwesomeIcon icon={faGlobe} className="text-[8px] text-zinc-400 dark:text-zinc-500" />}
       </div>
 
       {/* Detail on hover */}
       {detail && (
-        <div className="pointer-events-none absolute top-full mt-1.5 max-w-[180px] truncate rounded-lg border border-white/10 bg-black/80 px-2 py-1 text-[9.5px] text-zinc-300 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100">
+        <div className="pointer-events-none absolute top-full mt-1.5 max-w-[180px] truncate rounded-lg border border-zinc-200 bg-white/95 px-2 py-1 text-[9.5px] text-zinc-600 opacity-0 shadow-md backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 dark:border-white/10 dark:bg-black/80 dark:text-zinc-300 dark:shadow-none">
           {detail}
         </div>
       )}
@@ -378,6 +395,7 @@ function CanvasInner({ agents, companyName, onAgentClick }: FlowCanvasProps) {
   const [tool, setTool] = useState<Tool>("select");
   const [rf, setRf] = useState<ReactFlowInstance<Node, Edge> | null>(null);
   const positionsRef = useRef<Record<string, { x: number; y: number }>>({});
+  const isDark = useIsDark();
 
   const ready = agents.length > 0 && agents.every((a) => a.state !== "failed" && a.state !== "idle");
   const busy = agents.some((a) => a.state === "running");
@@ -482,33 +500,63 @@ function CanvasInner({ agents, companyName, onAgentClick }: FlowCanvasProps) {
       proOptions={{ hideAttribution: true }}
       className="bg-transparent"
     >
-      <Background variant={BackgroundVariant.Dots} gap={26} size={1.4} color="rgba(148,163,184,0.18)" />
+      {isDark ? (
+        <Background
+          id="canvas-dots"
+          variant={BackgroundVariant.Dots}
+          gap={26}
+          size={1.4}
+          color="rgba(148,163,184,0.18)"
+        />
+      ) : (
+        <>
+          {/* Light mode: layered graph-paper grid — fine lines + a bolder major grid */}
+          <Background
+            id="canvas-grid-fine"
+            variant={BackgroundVariant.Lines}
+            gap={26}
+            lineWidth={1}
+            color="rgba(18,38,63,0.05)"
+          />
+          <Background
+            id="canvas-grid-major"
+            variant={BackgroundVariant.Lines}
+            gap={130}
+            lineWidth={1}
+            color="rgba(18,38,63,0.1)"
+          />
+        </>
+      )}
       <Controls showZoom={false} showFitView={false} showInteractive={false} className="hidden" />
       <MiniMap
         pannable
         zoomable
-        nodeColor={(n) => (n.type === "rootNode" ? "#E97C3C" : "#60a5fa")}
-        maskColor="rgba(0,0,0,0.7)"
-        style={{ borderRadius: 12, border: "1px solid rgba(63,63,70,0.5)", background: "rgba(12,10,20,0.85)" }}
+        nodeColor={(n) => (n.type === "rootNode" ? "rgb(var(--color-primary))" : "#60a5fa")}
+        maskColor={isDark ? "rgba(0,0,0,0.7)" : "rgba(226,232,240,0.6)"}
+        style={{
+          borderRadius: 12,
+          border: isDark ? "1px solid rgba(63,63,70,0.5)" : "1px solid rgba(18,38,63,0.12)",
+          background: isDark ? "rgba(12,10,20,0.85)" : "rgba(255,255,255,0.92)",
+        }}
       />
 
       {/* Company panel + work summary — top right */}
       <Panel position="top-right">
-        <div className="m-2 w-60 rounded-xl border border-zinc-800/70 bg-zinc-900/85 p-3 shadow-xl shadow-black/30 backdrop-blur-md">
+        <div className="m-2 w-60 rounded-xl border border-zinc-200 bg-white/85 p-3 shadow-xl shadow-zinc-900/10 backdrop-blur-md dark:border-zinc-800/70 dark:bg-zinc-900/85 dark:shadow-black/30">
           <div className="flex items-center gap-2">
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-semibold text-white">{companyName || "Company"}</p>
-              <p className="text-[11px] text-zinc-400">
+              <p className="truncate text-[13px] font-semibold text-zinc-900 dark:text-white">{companyName || "Company"}</p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
                 {agents.length} {agents.length === 1 ? "agent" : "agents"}
               </p>
             </div>
             <span
               className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-semibold ${
                 ready
-                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-300"
+                  ? "border-emerald-400/30 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300"
                   : busy
-                    ? "border-sky-400/30 bg-sky-500/10 text-sky-200"
-                    : "border-zinc-700/60 bg-zinc-800/60 text-zinc-400"
+                    ? "border-sky-400/30 bg-sky-500/10 text-sky-600 dark:text-sky-200"
+                    : "border-zinc-300 bg-zinc-100 text-zinc-500 dark:border-zinc-700/60 dark:bg-zinc-800/60 dark:text-zinc-400"
               }`}
             >
               <span className={`h-1.5 w-1.5 rounded-full ${ready ? "bg-emerald-400" : busy ? "bg-sky-300 animate-pulse" : "bg-zinc-500"}`} />
@@ -521,11 +569,11 @@ function CanvasInner({ agents, companyName, onAgentClick }: FlowCanvasProps) {
       {/* Tool dock — top left */}
       <Panel position="top-left">
         <div className="m-2 flex flex-col gap-1.5">
-          <div className="flex flex-col gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/85 p-1 shadow-lg shadow-black/30 backdrop-blur-sm">
+          <div className="flex flex-col gap-0.5 rounded-xl border border-zinc-200 bg-white/85 p-1 shadow-lg shadow-zinc-900/10 backdrop-blur-sm dark:border-zinc-800/60 dark:bg-zinc-900/85 dark:shadow-black/30">
             <ToolButton active={tool === "select"} onClick={() => setTool("select")} icon={faMousePointer} title="Select" />
             <ToolButton active={tool === "pan"} onClick={() => setTool("pan")} icon={faHand} title="Pan" />
           </div>
-          <div className="flex flex-col gap-0.5 rounded-xl border border-zinc-800/60 bg-zinc-900/85 p-1 shadow-lg shadow-black/30 backdrop-blur-sm">
+          <div className="flex flex-col gap-0.5 rounded-xl border border-zinc-200 bg-white/85 p-1 shadow-lg shadow-zinc-900/10 backdrop-blur-sm dark:border-zinc-800/60 dark:bg-zinc-900/85 dark:shadow-black/30">
             <ToolButton onClick={() => rf?.zoomIn({ duration: 180 })} icon={faMagnifyingGlassPlus} title="Zoom in" />
             <ToolButton onClick={() => rf?.zoomOut({ duration: 180 })} icon={faMagnifyingGlassMinus} title="Zoom out" />
             <ToolButton onClick={() => rf?.fitView({ padding: 0.25, maxZoom: 1.1, duration: 250 })} icon={faExpand} title="Fit view" />
@@ -536,11 +584,11 @@ function CanvasInner({ agents, companyName, onAgentClick }: FlowCanvasProps) {
 
       {agents.length === 0 && (
         <Panel position="top-center">
-          <div className="mt-24 flex flex-col items-center rounded-2xl border border-white/10 bg-black/45 px-7 py-6 text-center shadow-2xl backdrop-blur-md">
-            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-white/10 bg-white/[0.04] text-zinc-300">
+          <div className="mt-24 flex flex-col items-center rounded-2xl border border-zinc-200 bg-white/85 px-7 py-6 text-center shadow-2xl shadow-zinc-900/10 backdrop-blur-md dark:border-white/10 dark:bg-black/45 dark:shadow-black/40">
+            <div className="mb-3 flex h-11 w-11 items-center justify-center rounded-2xl border border-zinc-200 bg-zinc-100 text-zinc-500 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300">
               <FontAwesomeIcon icon={faRobot} className="text-base" />
             </div>
-            <p className="text-sm font-semibold text-zinc-200">No agents yet</p>
+            <p className="text-sm font-semibold text-zinc-800 dark:text-zinc-200">No agents yet</p>
             <p className="mt-1 text-xs text-zinc-500">Add agents to wire them to the company router.</p>
           </div>
         </Panel>
@@ -566,7 +614,9 @@ function ToolButton({
       onClick={onClick}
       title={title}
       className={`flex h-8 w-8 items-center justify-center rounded-lg transition-colors ${
-        active ? "bg-white/10 text-white" : "text-zinc-400 hover:bg-white/5 hover:text-zinc-200"
+        active
+          ? "bg-zinc-900/10 text-zinc-900 dark:bg-white/10 dark:text-white"
+          : "text-zinc-500 hover:bg-zinc-900/5 hover:text-zinc-800 dark:text-zinc-400 dark:hover:bg-white/5 dark:hover:text-zinc-200"
       }`}
     >
       <FontAwesomeIcon icon={icon} className="text-[13px]" />

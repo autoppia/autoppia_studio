@@ -13,6 +13,7 @@ import {
   faCube,
   faClockRotateLeft,
   faFlask,
+  faGaugeHigh,
   faPlus,
   faRobot,
   faRoute,
@@ -40,11 +41,12 @@ import {
 } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
 import SelectDropdown from "../components/common/select-dropdown";
+import Tabs from "../components/common/tabs";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
 
-type ViewKey = "tools" | "trajectories" | "skills" | "runs";
+type ViewKey = "overview" | "tools" | "trajectories" | "skills" | "runs";
 type ApprovalMode = "always" | "auto" | "never";
 type CapabilityDetail =
   | { kind: "tool"; item: CompanyTool }
@@ -100,7 +102,7 @@ type ConnectorAuditReport = {
 };
 
 function isViewKey(value?: string | null): value is ViewKey {
-  return value === "tools" || value === "trajectories" || value === "skills" || value === "runs";
+  return value === "overview" || value === "tools" || value === "trajectories" || value === "skills" || value === "runs";
 }
 
 function formatDate(value?: string) {
@@ -1283,7 +1285,7 @@ function CapabilityDetailModal({
                   )}
                   className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-border"
                 >
-                  Open Runtime Lab
+                  Open Workspace
                 </button>
                 <button
                   type="button"
@@ -1893,12 +1895,14 @@ export default function Capabilities(): React.ReactElement {
   const [workItems, setWorkItems] = useState<WorkItem[]>([]);
   const [backendCapabilityGraph, setBackendCapabilityGraph] = useState<CapabilityGraph | null>(null);
   const [loading, setLoading] = useState(true);
-  const [view, setView] = useState<ViewKey>("tools");
+  const [view, setView] = useState<ViewKey>("overview");
   const [expandedToolConnectorKeys, setExpandedToolConnectorKeys] = useState<Set<string>>(new Set());
   const [promoteTarget, setPromoteTarget] = useState<CompanyTrajectory | null>(null);
   const [detail, setDetail] = useState<CapabilityDetail>(null);
   const [promoting, setPromoting] = useState(false);
   const [activeGraphNode, setActiveGraphNode] = useState("");
+  // Heavy Overview panels stay collapsed by default so the tab opens scannable.
+  const [showConnectorMatrix, setShowConnectorMatrix] = useState(false);
 
   // Create Capability wizard state. `createPath` tracks which of the four paths is expanded.
   const [showCreate, setShowCreate] = useState(false);
@@ -3127,7 +3131,8 @@ export default function Capabilities(): React.ReactElement {
   // The pipeline band doubles as the primary navigation: Tools -> Trajectories ->
   // Skills -> Harvester Runs. Tasks stay under Benchmarks/Harvester Runs because
   // they are inputs to harvesting, not capabilities.
-  const pipelineSteps: Array<{ key: ViewKey; label: string; icon: typeof faWrench; count: number; blurb: string }> = [
+  const pipelineSteps: Array<{ key: ViewKey; label: string; icon: typeof faWrench; count?: number; blurb: string }> = [
+    { key: "overview", label: "Overview", icon: faGaugeHigh, blurb: "Coverage, gaps and scope graph" },
     { key: "tools", label: "Tools", icon: faWrench, count: toolsCount, blurb: "Atomic actions from connectors" },
     { key: "trajectories", label: "Trajectories", icon: faRoute, count: filteredTrajectories.length, blurb: "Concrete attempts with tool calls" },
     { key: "skills", label: "Skills", icon: faWandMagicSparkles, count: filteredSkills.length, blurb: "Reusable, versioned procedures" },
@@ -3407,35 +3412,17 @@ export default function Capabilities(): React.ReactElement {
               </div>
               )}
 
-              {/* Pipeline band — explains the model and acts as the primary navigation */}
-              <div className="mb-5">
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {pipelineSteps.map((step, index) => (
-                    <button
-                      key={step.key}
-                      onClick={() => setFactoryView(step.key)}
-                      className={`relative text-left rounded-xl border p-3 transition-all duration-200 ${
-                        view === step.key
-                          ? "border-primary/40 bg-primary/5 shadow-sm"
-                          : "border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface hover:border-primary/30"
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2 mb-1.5">
-                        <span className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${view === step.key ? "bg-gradient-primary text-white" : "bg-primary/10 text-primary"}`}>
-                          <FontAwesomeIcon icon={step.icon} className="text-[11px]" />
-                        </span>
-                        <span className={`text-sm font-semibold tabular-nums ${view === step.key ? "text-primary" : "text-gray-700 dark:text-gray-200"}`}>{step.count}</span>
-                      </div>
-                      <p className="text-xs font-semibold text-gray-900 dark:text-white truncate">{step.label}</p>
-                      <p className="text-[11px] leading-tight text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-2 min-h-[1.75rem]">{step.blurb}</p>
-                      {index < pipelineSteps.length - 1 && (
-                        <FontAwesomeIcon icon={faArrowRight} className="hidden lg:block absolute -right-[7px] top-1/2 -translate-y-1/2 z-10 text-[9px] text-gray-300 dark:text-gray-600" />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              {/* Pipeline tabs — primary navigation across the capability factory */}
+              <Tabs
+                className="mb-5"
+                tabs={pipelineSteps.map((step) => ({ id: step.key, label: step.label, icon: step.icon, count: step.count }))}
+                active={view}
+                onChange={(id) => setFactoryView(id as ViewKey)}
+              />
 
+              {/* Overview tab — coverage KPIs, scope graph, benchmark/entity/connector matrices and gaps. */}
+              {view === "overview" && (
+              <>
               <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-5">
                 <CoverageCard
                   label="Typed Tools"
@@ -4134,6 +4121,14 @@ export default function Capabilities(): React.ReactElement {
                       >
                         Open Benchmarks
                       </button>
+                      <button
+                        onClick={() => setShowConnectorMatrix((prev) => !prev)}
+                        className="inline-flex h-8 items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 text-xs font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300 dark:hover:bg-dark-border"
+                        aria-expanded={showConnectorMatrix}
+                      >
+                        {showConnectorMatrix ? "Hide" : `Show ${connectorCoverage.length}`}
+                        <FontAwesomeIcon icon={faChevronDown} className={`text-[10px] transition-transform ${showConnectorMatrix ? "rotate-180" : ""}`} />
+                      </button>
                     </div>
                   </div>
                   {connectorAuditError && (
@@ -4142,6 +4137,7 @@ export default function Capabilities(): React.ReactElement {
                       <span>{connectorAuditError}</span>
                     </div>
                   )}
+                  {showConnectorMatrix && (
                   <div className="mt-4 grid gap-3 xl:grid-cols-2">
                     {connectorCoverage.map((row) => (
                       <div key={row.spec.key} className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-bg">
@@ -4254,6 +4250,7 @@ export default function Capabilities(): React.ReactElement {
                       </div>
                     ))}
                   </div>
+                  )}
                 </div>
               )}
 
@@ -4409,6 +4406,8 @@ export default function Capabilities(): React.ReactElement {
                     </div>
                   </div>
                 </div>
+              )}
+              </>
               )}
 
               {loading ? (

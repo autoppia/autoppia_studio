@@ -10,34 +10,34 @@ import { setStudioMode, useStudioMode } from "../../utils/studio-mode";
 export default function ModeToggle() {
   const mode = useStudioMode();
 
-  const option = (value: "normal" | "dev", label: string, icon: typeof faUser) => {
+  const option = (value: "normal" | "dev", icon: typeof faUser, title: string) => {
     const active = mode === value;
     return (
       <button
         type="button"
         onClick={() => setStudioMode(value)}
         aria-pressed={active}
-        title={value === "normal" ? "Normal mode — guided onboarding" : "Dev mode — show factory internals"}
-        className={`flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[11px] font-semibold transition-colors ${
+        aria-label={title}
+        title={title}
+        className={`flex h-7 w-9 items-center justify-center rounded-lg text-[12px] transition-all ${
           active
-            ? "bg-white text-gray-900 shadow-sm dark:bg-white dark:text-gray-900"
-            : "text-gray-500 hover:text-gray-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+            ? "bg-[color:var(--panel)] text-[color:var(--accent)] shadow-sm ring-1 ring-[color:var(--accent-line)]"
+            : "text-[color:var(--faint)] hover:text-[color:var(--ink)]"
         }`}
       >
-        <FontAwesomeIcon icon={icon} className="text-[10px]" />
-        <span className="hidden sm:inline">{label}</span>
+        <FontAwesomeIcon icon={icon} />
       </button>
     );
   };
 
   return (
     <div
-      className="flex h-9 items-center rounded-xl border border-gray-200 bg-gray-50 p-1 dark:border-zinc-800/80 dark:bg-zinc-900/70"
+      className="flex h-9 items-center gap-1 rounded-xl border border-[color:var(--line)] bg-[color:var(--bg-2)] p-1"
       role="group"
       aria-label="Studio mode"
     >
-      {option("normal", "Normal", faUser)}
-      {option("dev", "Dev", faCode)}
+      {option("normal", faUser, "Normal mode — guided onboarding")}
+      {option("dev", faCode, "Dev mode — show factory internals")}
     </div>
   );
 }

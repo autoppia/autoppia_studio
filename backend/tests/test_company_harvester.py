@@ -162,14 +162,15 @@ async def test_company_harvest_run_has_normal_and_dev_views(monkeypatch, _patch_
     assert normal["summary"]["knowledgeSourcesFound"] == 1
     assert normal["summary"]["systemsFound"] == 3
     assert normal["summary"]["taskCandidatesFound"] == 4
-    assert normal["summary"]["entityCandidatesFound"] == 7
+    assert normal["summary"]["entityCandidatesFound"] == 0
     assert normal["summary"]["connectorsReadyForFactory"] == 3
     assert normal["summary"]["benchmarkId"].startswith("company-1:company_harvest:")
     assert normal["nextAction"]["kind"] == "run_task_harvester"
     assert processed["status"] == "solving_tasks"
     assert all(step["visibility"] == "normal" for step in normal["steps"])
-    assert len(dev["artifacts"]) >= 18
-    assert {"knowledge_document", "connector_candidate", "tool_candidate", "entity_candidate", "task_candidate", "benchmark"} <= set(dev["devSummary"]["artifactKinds"])
+    assert len(dev["artifacts"]) >= 11
+    assert {"knowledge_document", "connector_candidate", "tool_candidate", "task_candidate", "benchmark"} <= set(dev["devSummary"]["artifactKinds"])
+    assert "entity_candidate" not in set(dev["devSummary"]["artifactKinds"])
     assert len(connectors.docs) == 3
     assert {doc["type"] for doc in connectors.docs} == {"knowledge", "api", "web"}
     assert all(doc["capabilityDiscovery"]["toolSynthesis"]["typedToolCount"] == 1 for doc in connectors.docs)
@@ -177,17 +178,7 @@ async def test_company_harvest_run_has_normal_and_dev_views(monkeypatch, _patch_
     assert all(doc["capabilityDiscovery"]["ingestionPipeline"]["state"] in {"needs_benchmark", "ready"} for doc in connectors.docs)
     assert all(doc["toolIds"] for doc in connectors.docs)
     assert len(tools.docs) == 3
-    assert len(_patch_entities_collection.docs) == 7
-    assert {doc["name"] for doc in _patch_entities_collection.docs} == {
-        "ApiDocumentation",
-        "ApiOperation",
-        "KnowledgeQuery",
-        "KnowledgeSource",
-        "ToolCandidate",
-        "WebApp",
-        "WorkflowCandidate",
-    }
-    assert all(doc["metadata"]["companyHarvest"] is True for doc in _patch_entities_collection.docs)
+    assert _patch_entities_collection.docs == []
     assert len(knowledge_docs.docs) == 1
     assert knowledge_docs.docs[0]["resourceContract"]["resourceKind"] == "document"
     assert knowledge_docs.docs[0]["status"] == "pending_indexing"
@@ -203,6 +194,58 @@ async def test_company_harvest_run_has_normal_and_dev_views(monkeypatch, _patch_
     assert by_name["Inspect CRM API"]["metadata"]["expectedTools"] == ["crm.api.discover_operations"]
     assert by_name["Explore CRM"]["metadata"]["expectedTools"] == ["crm.explore_workflows"]
     assert by_name["Answer from Policy"]["metadata"]["expectedTools"] == ["knowledge.company_docs.search"]
+
+
+@pytest.mark.asyncio
+async def test_company_harvest_only_creates_explicit_business_entities(monkeypatch, _patch_entities_collection):
+    intakes = _MemoryCollection()
+    runs = _MemoryCollection()
+    connectors = _MemoryCollection()
+    tools = _MemoryCollection()
+    knowledge_docs = _MemoryCollection()
+    benchmarks = _MemoryCollection()
+    tasks = _MemoryCollection()
+    monkeypatch.setattr(company_harvester, "company_intakes_collection", intakes)
+    monkeypatch.setattr(company_harvester, "company_harvest_runs_collection", runs)
+    monkeypatch.setattr(company_harvester, "connectors_collection", connectors)
+    monkeypatch.setattr(company_harvester, "tools_collection", tools)
+    monkeypatch.setattr(company_harvester, "knowledge_documents_collection", knowledge_docs)
+    monkeypatch.setattr(company_harvester, "benchmarks_collection", benchmarks)
+    monkeypatch.setattr(company_harvester, "benchmark_tasks_collection", tasks)
+
+    intake = await company_harvester.create_company_intake(
+        email="owner@example.com",
+        company_id="company-1",
+        company_name="Celeris",
+        materials=[
+            {
+                "kind": "knowledge_note",
+                "name": "Celeris domain",
+                "content": "Celeris tracks customer cases.",
+                "metadata": {
+                    "entities": [
+                        {
+                            "name": "CustomerCase",
+                            "description": "A customer support case owned by Celeris.",
+                            "fields": [
+                                {"name": "caseId", "type": "string", "role": "identifier", "required": True},
+                                {"name": "status", "type": "string", "role": "status"},
+                            ],
+                        }
+                    ]
+                },
+            }
+        ],
+        user_tasks=[],
+        mode="normal",
+    )
+    run = await company_harvester.start_company_harvest(intake["intakeId"], email="owner@example.com")
+    await company_harvester.process_company_harvest_run(run["runId"])
+
+    assert len(_patch_entities_collection.docs) == 1
+    assert _patch_entities_collection.docs[0]["name"] == "CustomerCase"
+    assert _patch_entities_collection.docs[0]["metadata"]["inferenceSource"] == "material_metadata"
+    assert _patch_entities_collection.docs[0]["fields"][0]["name"] == "caseId"
 
 
 @pytest.mark.asyncio

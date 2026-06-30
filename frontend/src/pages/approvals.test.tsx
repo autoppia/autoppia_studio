@@ -144,7 +144,7 @@ describe("Approvals page", () => {
     );
   });
 
-  it("opens Runtime Lab from an approval with session context", async () => {
+  it("opens Workspace from an approval with session context", async () => {
     const approval = {
       approvalId: "approval-2",
       companyId: "company-1",
@@ -167,7 +167,7 @@ describe("Approvals page", () => {
 
     renderApprovals();
 
-    fireEvent.click(await screen.findByRole("button", { name: "Open Runtime Lab" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Open Workspace" }));
 
     expect(mockNavigate).toHaveBeenCalledWith("/runtime?sessionIds=session-42");
   });

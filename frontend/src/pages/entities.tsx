@@ -27,6 +27,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, CompanySkill, CompanyTool, Connector, EntityField, EntityModel, EntityRelationship } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
+import Tabs from "../components/common/tabs";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
@@ -1088,26 +1089,15 @@ export default function Entities(): React.ReactElement {
                 ))}
               </div>
 
-              {/* Tabs */}
-              <div className="flex items-center gap-1.5 mb-5">
-                {([
-                  { key: "list" as EntitiesTab, label: "Entities", icon: faList },
-                  { key: "graph" as EntitiesTab, label: "Relationships", icon: faDiagramProject },
-                ]).map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => setTab(item.key)}
-                    className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-colors border ${
-                      tab === item.key
-                        ? "bg-gradient-primary text-white border-transparent shadow-glow"
-                        : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-100 dark:hover:bg-dark-border"
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={item.icon} className="text-[11px]" />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
+              <Tabs
+                className="mb-5"
+                tabs={[
+                  { id: "list", label: "Entities", icon: faList, count: entities.length },
+                  { id: "graph", label: "Relationships", icon: faDiagramProject, count: totalRelationships },
+                ]}
+                active={tab}
+                onChange={(id) => setTab(id as EntitiesTab)}
+              />
 
               {loading ? (
                 <div className="flex items-center justify-center py-20">

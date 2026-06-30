@@ -298,13 +298,13 @@ export default function ActivityCenter({ showActivity = true }: { showActivity?:
       count: (status?.harvestersRunning || 0) + (status?.evalRunsPending || 0) + (status?.evalRunsFailed || 0),
     },
     {
-      label: "Runtime Lab",
+      label: "Workspace",
       hint: "Live sessions, approvals and artifacts",
       actionUrl: "/runtime",
       count: status?.activeSessions || 0,
     },
     {
-      label: "Work Orchestration",
+      label: "Board",
       hint: "Queues, schedules and jobs",
       actionUrl: "/work",
       count: (status?.runningTasks || 0) + (status?.queuedTasks || 0) + (status?.reviewTasks || 0),

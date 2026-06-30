@@ -189,3 +189,6 @@ gcp-login.json
 *.jsonl
 
 uv.lock
+
+# Local UI verification screenshots
+.screenshots/

@@ -18,7 +18,8 @@ export function isCelerisAgent(agent: Pick<AgentConfig, "name" | "websiteUrl">):
   return name.includes("celeris") || host === "celeris.ad" || host.endsWith(".celeris.ad");
 }
 
-export function agentImageUrl(agent: Pick<AgentConfig, "name" | "websiteUrl">): string {
+export function agentImageUrl(agent: Pick<AgentConfig, "name" | "websiteUrl" | "imageUrl">): string {
+  if (agent.imageUrl) return agent.imageUrl;
   if (isCelerisAgent(agent)) return CELERIS_AGENT_IMAGE;
 
   const host = normalizedHost(agent.websiteUrl);

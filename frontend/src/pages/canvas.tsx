@@ -103,26 +103,39 @@ export default function Canvas(): React.ReactElement {
   const flowAgents = useMemo(() => agents.map(toFlowAgent), [agents]);
 
   return (
-    <div className="relative h-full w-full overflow-hidden bg-[#0b0913]">
+    <div className="relative h-full w-full overflow-hidden bg-[color:var(--bg)]">
       {/* Layered dark backdrop with depth */}
       <div className="absolute inset-0 hidden dark:block pointer-events-none">
         <img src="/assets/images/bg/dark-bg.webp" alt="" className="h-full w-full object-cover opacity-50" />
       </div>
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 hidden dark:block"
         style={{
           background:
             "radial-gradient(1100px 560px at 50% -8%, rgba(96,165,250,0.12), transparent 60%), radial-gradient(760px 520px at 10% 95%, rgba(167,139,250,0.10), transparent 58%), radial-gradient(760px 520px at 92% 90%, rgba(34,211,238,0.08), transparent 58%)",
         }}
       />
       <div
-        className="pointer-events-none absolute inset-0"
+        className="pointer-events-none absolute inset-0 hidden dark:block"
         style={{ background: "radial-gradient(ellipse 90% 80% at 50% 45%, transparent 55%, rgba(0,0,0,0.55) 100%)" }}
+      />
+
+      {/* Light backdrop — airy white surface with soft brand-tinted washes */}
+      <div
+        className="pointer-events-none absolute inset-0 block dark:hidden"
+        style={{
+          background:
+            "radial-gradient(1100px 580px at 50% -10%, rgb(var(--color-primary) / 0.08), transparent 60%), radial-gradient(820px 540px at 8% 100%, rgba(96,165,250,0.07), transparent 60%), radial-gradient(820px 540px at 95% 96%, rgba(167,139,250,0.06), transparent 60%)",
+        }}
+      />
+      <div
+        className="pointer-events-none absolute inset-0 block dark:hidden"
+        style={{ background: "radial-gradient(ellipse 95% 85% at 50% 42%, transparent 62%, rgba(18,38,63,0.06) 100%)" }}
       />
 
       {loading ? (
         <div className="relative flex h-full items-center justify-center">
-          <div className="flex items-center gap-3 text-sm text-zinc-400">
+          <div className="flex items-center gap-3 text-sm text-zinc-500 dark:text-zinc-400">
             <FontAwesomeIcon icon={faSpinner} className="animate-spin text-primary" />
             Loading canvas
           </div>

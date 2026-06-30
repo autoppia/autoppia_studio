@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
@@ -8,33 +8,37 @@ import {
   faBuilding,
   faCircleHalfStroke,
   faRightFromBracket,
-  faRobot,
   faPen,
   faPlus,
   faTrash,
   faXmark,
   faUser,
   faGear,
+  faPenToSquare,
 } from "@fortawesome/free-solid-svg-icons";
 import { logout } from "../../redux/userSlice";
 import { Company } from "../../utils/types";
-import CelerisOnboarding from "../home/celeris-onboarding";
+import OnboardingWindow from "../onboarding/onboarding-window";
 import ConfirmModal from "../common/confirm-modal";
 import { useToast } from "../common/toast";
 import { apiErrorMessage } from "../../utils/api-error";
 import ActivityCenter from "./activity-center";
-import { resolvePageMeta } from "./nav-config";
 import ModeToggle from "../common/mode-toggle";
 import { getApiUrl } from "../../utils/api-url";
+import { groupLandingPath, resolveActiveGroup, visibleNavGroups } from "./nav-config";
+import { useStudioMode } from "../../utils/studio-mode";
+import ThemeCustomizer from "./theme-customizer";
 
 const apiUrl = getApiUrl();
 
 export default function TopBar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { eyebrow, title } = resolvePageMeta(location.pathname);
   const dispatch = useDispatch();
   const user = useSelector((state: any) => state.user);
+  const mode = useStudioMode();
+  const navGroups = visibleNavGroups(mode);
+  const activeGroup = resolveActiveGroup(location.pathname);
   const [companies, setCompanies] = useState<Company[]>([]);
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [modalMode, setModalMode] = useState<"create" | "edit" | null>(null);
@@ -44,10 +48,8 @@ export default function TopBar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
-  const [onboardingCompanyId, setOnboardingCompanyId] = useState(localStorage.getItem("automata_onboarding_company_id") || "");
   const [pendingOnboardingCompany, setPendingOnboardingCompany] = useState<Company | null>(null);
   const [showOnboarding, setShowOnboarding] = useState(false);
-  const [selectedCompanyIsEmpty, setSelectedCompanyIsEmpty] = useState(false);
   const { showToast } = useToast();
 
   const loadCompanies = () => {
@@ -77,7 +79,6 @@ export default function TopBar() {
 
   const selectedCompany = companies.find((company) => company.companyId === companyId) || companies[0] || null;
   const onboardingTargetCompany = pendingOnboardingCompany || selectedCompany;
-  const canOnboardSelectedCompany = !!selectedCompany && selectedCompany.name !== "Default Company" && (selectedCompany.companyId === onboardingCompanyId || selectedCompanyIsEmpty);
 
   const selectCompany = (nextId: string) => {
     setCompanyId(nextId);
@@ -133,8 +134,6 @@ export default function TopBar() {
         localStorage.setItem("automata_company_id", nextId);
         window.dispatchEvent(new CustomEvent("automata-company-changed", { detail: { companyId: nextId } }));
         if (!isEdit) {
-          setOnboardingCompanyId(nextId);
-          localStorage.setItem("automata_onboarding_company_id", nextId);
           setShowOnboarding(true);
         }
       }
@@ -147,34 +146,6 @@ export default function TopBar() {
       setSaving(false);
     }
   };
-
-  useEffect(() => {
-    if (!user.email || !selectedCompany?.companyId || selectedCompany.name === "Default Company") {
-      setSelectedCompanyIsEmpty(false);
-      return;
-    }
-    let cancelled = false;
-    const checkCompanyIsEmpty = async () => {
-      try {
-        const params = new URLSearchParams({ email: user.email, companyId: selectedCompany.companyId });
-        const [agentsRes, connectorsRes] = await Promise.all([
-          fetch(`${apiUrl}/agents?${params.toString()}`),
-          fetch(`${apiUrl}/connectors?${params.toString()}`),
-        ]);
-        if (cancelled) return;
-        const agentsData = agentsRes.ok ? await agentsRes.json() : { agents: [] };
-        const connectorsData = connectorsRes.ok ? await connectorsRes.json() : { connectors: [] };
-        if (cancelled) return;
-        setSelectedCompanyIsEmpty((agentsData.agents || []).length === 0 && (connectorsData.connectors || []).length === 0);
-      } catch (err) {
-        if (!cancelled) setSelectedCompanyIsEmpty(false);
-      }
-    };
-    checkCompanyIsEmpty();
-    return () => {
-      cancelled = true;
-    };
-  }, [user.email, selectedCompany?.companyId, selectedCompany?.name]);
 
   if (!user.isAuthenticated) return null;
 
@@ -209,27 +180,26 @@ export default function TopBar() {
 
   return (
     <header className="ck-topbar relative">
-      <div className="flex min-w-0 items-center gap-3">
-        <div className="ck-topbar-title">
-          <span className="ck-eyebrow">{eyebrow}</span>
-          <h1 className="ck-title">{title}</h1>
-        </div>
-        <div className="mx-1 hidden h-7 w-px bg-[color:var(--line)] sm:block" />
+      <div className="ck-topbar-left">
         <div className="flex items-center gap-2 min-w-0">
         <div className="relative">
           <button
             onClick={() => setCompanyMenuOpen((open) => !open)}
-            className="h-9 min-w-[220px] max-w-[320px] rounded-xl border border-gray-200 dark:border-zinc-800/80 bg-gray-50 dark:bg-zinc-900/70 px-3 flex items-center gap-2 text-left hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+            className="group flex h-9 w-[250px] max-w-[280px] items-center gap-2 rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-2)] pl-1.5 pr-2.5 text-left transition-colors hover:border-[color:var(--accent-line)] hover:bg-[color:var(--hover-strong)]"
             title="Company"
           >
-            <span className="w-6 h-6 rounded-lg bg-primary/10 text-primary flex items-center justify-center flex-shrink-0">
+            <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
               <FontAwesomeIcon icon={faBuilding} className="text-[10px]" />
             </span>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[10px] uppercase tracking-wide text-gray-400 leading-3">Company</span>
-              <span className="block text-xs font-semibold text-gray-800 dark:text-gray-100 truncate">{selectedCompany?.name || "Select company"}</span>
+            <span className="min-w-0 flex-1 leading-tight">
+              <span className="block font-sans text-[8px] font-bold uppercase tracking-[0.16em] text-[color:var(--faint)]">Company</span>
+              <span className="block truncate text-[13px] font-semibold text-[color:var(--ink)]">{selectedCompany?.name || "Select company"}</span>
             </span>
-            <FontAwesomeIcon icon={faChevronDown} className="text-[10px] text-gray-400" />
+            <FontAwesomeIcon
+              icon={faChevronDown}
+              className="flex-shrink-0 text-[9px] text-[color:var(--faint)] transition-transform duration-200 group-hover:text-[color:var(--accent)]"
+              style={{ transform: companyMenuOpen ? "rotate(180deg)" : "none" }}
+            />
           </button>
           {companyMenuOpen && (
             <div className="absolute left-0 top-11 z-[90] w-[320px] max-w-[calc(100vw-2rem)] rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/40 p-2 backdrop-blur-sm">
@@ -262,32 +232,42 @@ export default function TopBar() {
             </div>
           )}
         </div>
-        {canOnboardSelectedCompany && (
-          <button
-            onClick={() => setShowOnboarding(true)}
-            className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-xs font-semibold shadow-glow flex items-center gap-2"
-            title="Start onboarding for this company"
-          >
-            <FontAwesomeIcon icon={faRobot} className="text-[10px]" />
-            Onboard
-          </button>
-        )}
       </div>
 
       </div>
+
+      <nav className="ck-topbar-nav" aria-label="Primary navigation">
+        {navGroups.map((group) => {
+          const active = activeGroup?.key === group.key;
+          return (
+            <button
+              key={group.key}
+              type="button"
+              onClick={() => navigate(groupLandingPath(group))}
+              className={`ck-topbar-nav-item${active ? " is-active" : ""}`}
+              title={group.description}
+            >
+              <FontAwesomeIcon icon={group.icon} className="ck-topbar-nav-icon" />
+              <span>{group.label}</span>
+            </button>
+          );
+        })}
+      </nav>
 
       <div className="ck-topbar-actions">
         {/* Normal / Dev experience switch */}
         <ModeToggle />
 
+      <ThemeCustomizer />
+
       {/* New session call-to-action */}
       <button
         onClick={() => navigate("/home")}
-        className="flex h-9 flex-none items-center gap-2 whitespace-nowrap rounded-lg border border-[color:var(--line-strong)] bg-[color:var(--bg-2)] px-3 text-[13px] font-semibold text-[color:var(--ink)] transition-colors hover:border-[color:var(--accent-line)]"
+        className="relative flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 dark:border-zinc-800/80 dark:text-zinc-300 dark:hover:bg-white/5"
         title="New session"
+        aria-label="New session"
       >
-        <FontAwesomeIcon icon={faPlus} className="text-[10px]" />
-        <span className="hidden sm:inline">New session</span>
+        <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
       </button>
 
       {/* Notifications */}
@@ -297,11 +277,11 @@ export default function TopBar() {
       <div className="relative">
         <button
           onClick={() => setUserMenuOpen((open) => !open)}
-          className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-primary text-xs font-semibold text-white shadow-sm ring-1 ring-black/5 transition-transform hover:scale-105"
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-[13px] font-bold text-white shadow-sm ring-1 ring-[color:var(--accent-line)] transition-transform hover:scale-105"
           title={user.email || "Account"}
           aria-label="Account menu"
         >
-          {user.email ? user.email.charAt(0).toUpperCase() : <FontAwesomeIcon icon={faUser} className="text-[11px]" />}
+          {user.email ? user.email.charAt(0).toUpperCase() : <FontAwesomeIcon icon={faUser} className="text-[12px]" />}
         </button>
         {userMenuOpen && (
           <>
@@ -393,33 +373,18 @@ export default function TopBar() {
       )}
 
       {showOnboarding && onboardingTargetCompany && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setShowOnboarding(false)} />
-          <div className="relative flex w-full max-w-6xl max-h-[calc(100vh-1.5rem)] sm:max-h-[calc(100vh-3rem)] flex-col overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg shadow-2xl dark:shadow-black/60 animate-slide-up">
-            <button
-              onClick={() => setShowOnboarding(false)}
-              title="Close"
-              aria-label="Close onboarding"
-              className="absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white/90 text-gray-400 shadow-sm backdrop-blur-sm transition-colors hover:bg-white hover:text-gray-900 dark:border-zinc-800/80 dark:bg-zinc-900/80 dark:hover:bg-zinc-800 dark:hover:text-white"
-            >
-              <FontAwesomeIcon icon={faXmark} className="text-sm" />
-            </button>
-            <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin p-4 sm:p-6">
-              <CelerisOnboarding
-                companyId={onboardingTargetCompany.companyId}
-                companyName={onboardingTargetCompany.name}
-                companyDescription={onboardingTargetCompany.description || ""}
-                onComplete={() => {
-                  setShowOnboarding(false);
-                  setOnboardingCompanyId("");
-                  setPendingOnboardingCompany(null);
-                  localStorage.removeItem("automata_onboarding_company_id");
-                  loadCompanies();
-                }}
-              />
-            </div>
-          </div>
-        </div>
+        <OnboardingWindow
+          companyId={onboardingTargetCompany.companyId}
+          companyName={onboardingTargetCompany.name}
+          companyDescription={onboardingTargetCompany.description || ""}
+          onClose={() => setShowOnboarding(false)}
+          onComplete={() => {
+            setShowOnboarding(false);
+            setPendingOnboardingCompany(null);
+            localStorage.removeItem("automata_onboarding_company_id");
+            loadCompanies();
+          }}
+        />
       )}
     </header>
   );

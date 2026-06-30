@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { useSelector } from "react-redux";
 import Work from "./work";
 
@@ -24,6 +24,7 @@ describe("Work page", () => {
   beforeEach(() => {
     mockSearch = "";
     mockSetSearchParams.mockReset();
+    window.history.replaceState(null, "", "/work");
     localStorage.setItem("automata_company_id", "company-1");
     mockedUseSelector.mockImplementation((selector: any) =>
       selector({ user: { email: "demo@example.com" } }),
@@ -139,11 +140,13 @@ describe("Work page", () => {
     expect(await screen.findByRole("button", { name: "Open tool" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open benchmark" })).toBeInTheDocument();
     expect(await screen.findByRole("button", { name: "Open recent runs" })).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: "Open Runtime Lab" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Open Workspace" })).toBeInTheDocument();
   });
 
   it("surfaces runtime evidence in orchestration summaries and job cards", async () => {
     render(<Work />);
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Insights/i }));
 
     expect(await screen.findByText("Runtime sessions")).toBeInTheDocument();
     expect(await screen.findByText("Pending approvals")).toBeInTheDocument();
@@ -151,10 +154,12 @@ describe("Work page", () => {
     expect(await screen.findByText("Tool calls")).toBeInTheDocument();
     expect(await screen.findByText("Overdue SLA")).toBeInTheDocument();
     expect(await screen.findByText("Browser policy")).toBeInTheDocument();
-    expect(await screen.findByText("2 runtime sessions")).toBeInTheDocument();
-    expect(await screen.findByText("3 tool calls")).toBeInTheDocument();
-    expect(await screen.findByText("1 pending approvals")).toBeInTheDocument();
-    expect(await screen.findByText("2 artifacts")).toBeInTheDocument();
+    expect(within((await screen.findByText("Runtime sessions")).closest(".rounded-2xl") as HTMLElement).getByText("3")).toBeInTheDocument();
+    expect(within((await screen.findByText("Tool calls")).closest(".rounded-2xl") as HTMLElement).getByText("5")).toBeInTheDocument();
+    expect(within((await screen.findByText("Pending approvals")).closest(".rounded-2xl") as HTMLElement).getByText("1")).toBeInTheDocument();
+    expect(within((await screen.findByText("Artifacts")).closest(".rounded-2xl") as HTMLElement).getByText("3")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Board/i }));
     expect(await screen.findByText("42 min overdue")).toBeInTheDocument();
     expect(await screen.findByText("browser unrestricted")).toBeInTheDocument();
     expect(await screen.findByText("gate blocked")).toBeInTheDocument();

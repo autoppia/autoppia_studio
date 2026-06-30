@@ -15,6 +15,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { ApprovalRequest } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
+import Tabs from "../components/common/tabs";
 
 const apiUrl = getApiUrl();
 
@@ -185,7 +186,7 @@ function ApprovalCard({
               onClick={() => onOpenRuntime({ sessionId, workItemId })}
               className="h-8 rounded-lg border border-gray-200 px-3 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:text-gray-200 dark:hover:bg-dark-bg"
             >
-              Open Runtime Lab
+              Open Workspace
             </button>
           )}
           {skillId && (
@@ -511,33 +512,22 @@ export default function Approvals(): React.ReactElement {
                 <SummaryCard label="Capabilities" value={operationalSummary.capabilityLinked} hint="Skills, trajectories or tools referenced by approvals" />
               </div>
 
-              <div className="flex items-center gap-1.5 mb-5 overflow-x-auto">
-                {([
-                  { key: "pending" as ApprovalTab, label: "Pending", icon: faClock },
-                  { key: "approved" as ApprovalTab, label: "Approved", icon: faCheck },
-                  { key: "rejected" as ApprovalTab, label: "Rejected", icon: faXmark },
-                  { key: "all" as ApprovalTab, label: "All", icon: faClipboardCheck },
-                ]).map((item) => (
-                  <button
-                    key={item.key}
-                    onClick={() => {
-                      setTab(item.key);
-                      const next = new URLSearchParams(searchParams);
-                      next.set("status", item.key);
-                      setSearchParams(next);
-                    }}
-                    className={`h-9 px-3 rounded-lg text-xs font-semibold flex items-center gap-2 whitespace-nowrap transition-colors border ${
-                      tab === item.key
-                        ? "bg-amber-500 text-white border-transparent"
-                        : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:bg-gray-100 dark:hover:bg-dark-border"
-                    }`}
-                  >
-                    <FontAwesomeIcon icon={item.icon} className="text-[11px]" />
-                    {item.label}
-                    {item.key !== "all" && counts[item.key] ? <span className="text-[10px] opacity-80">{counts[item.key]}</span> : null}
-                  </button>
-                ))}
-              </div>
+              <Tabs
+                className="mb-5"
+                tabs={[
+                  { id: "pending", label: "Pending", icon: faClock, count: counts.pending },
+                  { id: "approved", label: "Approved", icon: faCheck, count: counts.approved },
+                  { id: "rejected", label: "Rejected", icon: faXmark, count: counts.rejected },
+                  { id: "all", label: "All", icon: faClipboardCheck },
+                ]}
+                active={tab}
+                onChange={(id) => {
+                  setTab(id as ApprovalTab);
+                  const next = new URLSearchParams(searchParams);
+                  next.set("status", id);
+                  setSearchParams(next);
+                }}
+              />
 
               {loading ? (
                 <div className="flex items-center justify-center py-20">

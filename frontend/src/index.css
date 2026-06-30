@@ -35,12 +35,12 @@
   }
 
   ::selection {
-    background-color: rgba(233, 124, 60, 0.3);
+    background-color: var(--selection-bg, rgba(251, 146, 60, 0.3));
     color: inherit;
   }
 
   :focus-visible {
-    outline: 2px solid rgba(233, 124, 60, 0.7);
+    outline: 2px solid var(--focus-ring, rgba(251, 146, 60, 0.7));
     outline-offset: 2px;
     border-radius: 6px;
   }
@@ -170,7 +170,7 @@
 
   /* Uppercase, letter-spaced labels become monospace cockpit eyebrows. */
   :where([class*="uppercase"][class*="tracking-w"]) {
-    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--mono, "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
     font-feature-settings: "tnum" 1;
   }
 
@@ -184,8 +184,8 @@
     margin-right: 8px;
     vertical-align: middle;
     border-radius: 1px;
-    background: #E97C3C;
-    box-shadow: 0 0 8px rgba(233, 124, 60, 0.5);
+    background: var(--accent);
+    box-shadow: 0 0 8px rgb(var(--color-primary, 251 146 60) / 0.5);
   }
 }
 

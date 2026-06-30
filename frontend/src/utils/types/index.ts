@@ -594,6 +594,8 @@ export interface AgentConfig {
   email: string;
   companyId?: string;
   name: string;
+  description?: string;
+  imageUrl?: string;
   websiteUrl: string;
   runtimeEndpoint: string;
   runtimeType: string;

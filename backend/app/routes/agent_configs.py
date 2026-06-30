@@ -86,6 +86,12 @@ class AgentRuntimeSettingsRequest(BaseModel):
     maxCreditsPerRun: float = 5.0
 
 
+class AgentProfileUpdateRequest(BaseModel):
+    name: str
+    imageUrl: str = ""
+    description: str = ""
+
+
 class AgentRunTaskRequest(BaseModel):
     email: str
     companyId: str = ""
@@ -168,6 +174,8 @@ def _serialize_agent_config(doc: dict[str, Any]) -> dict[str, Any]:
         "agentConfigId": agent_id,
         "email": doc.get("email", ""),
         "name": doc.get("name", ""),
+        "description": doc.get("description", ""),
+        "imageUrl": doc.get("imageUrl", ""),
         "websiteUrl": doc.get("websiteUrl", ""),
         "runtimeEndpoint": doc.get("runtimeEndpoint", ""),
         "runtimeType": doc.get("runtimeType", "replay"),
@@ -476,6 +484,38 @@ async def get_agent_runtime_contract(agent_id: str, scope: RequestScope = Depend
         doc = await _repo(scope).by_id(agent_id)
         contract = await runtime_contract_payload(doc)
         return {"agentId": agent_id, "contract": contract}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.patch("/agents/{agent_id}/profile")
+async def update_agent_profile(agent_id: str, body: AgentProfileUpdateRequest, scope: RequestScope = Depends(get_request_scope)):
+    try:
+        repo = _repo(scope)
+        existing = await repo.by_id(agent_id)
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Agent name is required")
+        now = datetime.now(timezone.utc)
+        await repo.update_owned_one(
+            {"agentId": agent_id},
+            {
+                "$set": {
+                    "name": name,
+                    "imageUrl": body.imageUrl.strip(),
+                    "description": body.description.strip(),
+                    "updatedAt": now,
+                }
+            },
+        )
+        await agent_webs_collection.update_many(
+            {"agentId": agent_id},
+            {"$set": {"name": name, "updatedAt": now.isoformat()}},
+        )
+        refreshed = await agents_collection.find_one({"agentId": agent_id})
+        return {"success": True, "agent": _serialize_agent_config(refreshed or existing)}
     except HTTPException:
         raise
     except Exception as e:

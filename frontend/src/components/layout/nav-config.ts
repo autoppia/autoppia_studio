@@ -5,18 +5,13 @@ import {
   faWandMagicSparkles,
   faClipboardCheck,
   faClockRotateLeft,
-  faListCheck,
   faBriefcase,
   faCircleCheck,
   faPlug,
   faBook,
   faCubes,
   faBolt,
-  faGear,
-  faKey,
   faShapes,
-  faBuilding,
-  faRocket,
 } from "@fortawesome/free-solid-svg-icons";
 import type { StudioMode } from "../../utils/studio-mode";
 
@@ -49,18 +44,10 @@ export interface NavGroup {
  * Canvas is the home/center — it opens full-window with no rail.
  */
 export const NAV_GROUPS: NavGroup[] = [
-  {
-    key: "onboarding",
-    label: "Onboarding",
-    description: "Tell Automata about your company and it will discover systems, build and test tasks, and prepare agents.",
-    icon: faRocket,
-    path: "/onboarding",
-    items: [],
-  },
-  { key: "canvas", label: "Canvas", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [], devOnly: true },
+  { key: "canvas", label: "Map", description: "Visual operating surface for live sessions and control flows.", icon: faDiagramProject, path: "/canvas", items: [], devOnly: true },
   {
     key: "factory",
-    label: "Capability Factory",
+    label: "Build",
     description: "Connectors, resources, entities, tasks, benchmarks, trajectories and skills become reusable business capabilities here.",
     icon: faWandMagicSparkles,
     items: [
@@ -70,40 +57,30 @@ export const NAV_GROUPS: NavGroup[] = [
       { label: "Resources", path: "/knowledge", icon: faBook, devOnly: true },
       { label: "Capabilities", path: "/capabilities", icon: faWandMagicSparkles, devOnly: true },
       { label: "Entities", path: "/entities", icon: faCubes, devOnly: true },
-      { label: "Benchmarks", path: "/evals", icon: faClipboardCheck, devOnly: true },
-      { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft, devOnly: true },
     ],
   },
   {
     key: "runtime",
-    label: "Runtime Lab",
+    label: "Workspace",
     description: "Governed sessions, traces, skill routing, approvals, artifacts, cost and replay from live execution.",
     icon: faBolt,
     devOnly: true,
     items: [
       { label: "Sessions", path: "/runtime", icon: faClockRotateLeft },
+      { label: "Board", path: "/work", icon: faBriefcase },
       { label: "Approvals", path: "/approvals", icon: faCircleCheck },
       { label: "Artifacts", path: "/artifacts", icon: faShapes },
     ],
   },
   {
-    key: "operations",
-    label: "Work Orchestration",
-    description: "Queues, schedules, recurring jobs and operational follow-through.",
-    icon: faListCheck,
-    items: [
-      { label: "Work Orchestration", path: "/work", icon: faBriefcase },
-    ],
-  },
-  {
-    key: "setup",
-    label: "Company Setup",
-    description: "Company contract, credentials, embed controls and governance.",
-    icon: faGear,
+    key: "eval",
+    label: "Eval",
+    description: "Benchmarks and evaluation runs for measuring agent behavior.",
+    icon: faClipboardCheck,
     devOnly: true,
     items: [
-      { label: "Company Setup", path: "/setup/company", icon: faBuilding },
-      { label: "Credentials", path: "/credentials", icon: faKey },
+      { label: "Benchmarks", path: "/evals", icon: faClipboardCheck },
+      { label: "Runs", path: "/eval-runs", icon: faClockRotateLeft },
     ],
   },
 ];
@@ -154,6 +131,6 @@ export function resolvePageMeta(pathname: string): { eyebrow: string; title: str
     }
   }
   if (item) return { eyebrow: group.label, title: item.label };
-  // Path-only group (Canvas, Onboarding): the group is the page.
+  // Path-only group (e.g. Canvas): the group is the page.
   return { eyebrow: "Autoppia Studio", title: group.label };
 }

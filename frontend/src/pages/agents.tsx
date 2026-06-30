@@ -9,12 +9,13 @@ import {
   faPlus,
   faTrash,
   faGlobe,
-  faBolt,
   faXmark,
   faCircleCheck,
   faListCheck,
   faRoute,
   faArrowUpRightFromSquare,
+  faArrowRight,
+  faCode,
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, AgentTask } from "../utils/types";
 import InfoIcon from "../components/common/info-icon";
@@ -106,7 +107,6 @@ export default function Agents() {
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [bootstrapping, setBootstrapping] = useState(false);
 
   // Create modal
   const [showModal, setShowModal] = useState(false);
@@ -221,26 +221,6 @@ export default function Agents() {
     }
   };
 
-  const handleBootstrapAutocinema = async () => {
-    if (bootstrapping) return;
-    setBootstrapping(true);
-    try {
-      const res = await fetch(`${apiUrl}/agents/bootstrap/autocinema`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: user.email }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      await fetchAgents();
-      showToast("Autocinema demo agent ready.", "success");
-    } catch (err) {
-      console.error("Failed to bootstrap Autocinema agent:", err);
-      showToast(err instanceof Error && err.message ? err.message.slice(0, 180) : "Could not bootstrap demo agent.", "error");
-    } finally {
-      setBootstrapping(false);
-    }
-  };
-
   const filtered = agents.filter(
     (o) =>
       o.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -271,44 +251,30 @@ export default function Agents() {
               </InfoIcon>
             }
           />
+          <button
+            onClick={() => setShowModal(true)}
+            className="flex items-center justify-center gap-2 px-4 h-9 rounded-xl text-sm font-medium flex-shrink-0
+              bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 transition-all duration-200"
+          >
+            <FontAwesomeIcon icon={faPlus} className="text-xs" />
+            Create Agent
+          </button>
         </div>
 
         {/* Content */}
         <div className="flex-1 overflow-auto px-6 py-6">
-          {/* Search + actions */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 mb-6">
-            <div className="flex items-center gap-2 px-3 h-10 rounded-xl bg-white dark:bg-dark-surface
-              border border-gray-200 dark:border-dark-border
-              focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-200 flex-1">
-              <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
-              <input
-                type="text"
-                placeholder="Search agents..."
-                className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
-            <button
-              onClick={handleBootstrapAutocinema}
-              disabled={bootstrapping}
-              className="flex items-center justify-center gap-2 px-4 h-10 rounded-xl text-sm font-medium flex-shrink-0
-                text-gray-700 dark:text-gray-200 bg-white dark:bg-dark-surface
-                border border-gray-200 dark:border-dark-border
-                hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-dark-border/60
-                disabled:opacity-60 disabled:cursor-not-allowed transition-all duration-200"
-            >
-              <FontAwesomeIcon icon={bootstrapping ? faSpinner : faBolt} className={`text-xs ${bootstrapping ? "animate-spin" : ""}`} />
-              {bootstrapping ? "Bootstrapping..." : "Autocinema Demo"}
-            </button>
-            <button
-              onClick={() => setShowModal(true)}
-              className="flex items-center justify-center gap-2 px-4 h-10 rounded-xl text-sm font-medium flex-shrink-0
-                bg-gradient-primary text-white shadow-glow hover:shadow-glow-lg hover:scale-105 transition-all duration-200"
-            >
-              <FontAwesomeIcon icon={faPlus} className="text-xs" />
-              Create Agent
-            </button>
+          {/* Search */}
+          <div className="mb-6 flex items-center gap-2 px-3 h-10 rounded-xl bg-white dark:bg-dark-surface
+            border border-gray-200 dark:border-dark-border
+            focus-within:border-gray-300 dark:focus-within:border-gray-600 transition-all duration-200">
+            <FontAwesomeIcon icon={faMagnifyingGlass} className="text-gray-400 text-sm" />
+            <input
+              type="text"
+              placeholder="Search agents..."
+              className="w-full outline-none bg-transparent text-sm text-gray-700 dark:text-gray-200 placeholder:text-gray-400"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
 
           {/* List */}
@@ -323,7 +289,7 @@ export default function Agents() {
                 <FontAwesomeIcon icon={faRobot} className="text-white text-xl" />
               </div>
               <p className="text-gray-500 dark:text-gray-400 text-sm">
-                {search ? "No agents found." : "No agents yet. Create one or bootstrap the Autocinema demo."}
+                {search ? "No agents found." : "No agents yet. Create your first agent."}
               </p>
               {!search && (
                 <button
@@ -358,7 +324,9 @@ export default function Agents() {
                           <h3 className="truncate text-base font-semibold leading-6 text-gray-900 dark:text-white">{op.name}</h3>
                           <p className="truncate text-xs text-gray-500 dark:text-gray-400">{agentHostLabel(op.websiteUrl)}</p>
                         </div>
-                        <span className="mt-1 inline-flex h-2.5 w-2.5 flex-shrink-0 rounded-full bg-primary shadow-[0_0_0_4px_rgba(233,124,60,0.14)]" />
+                        <span className="mt-0.5 flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-transparent text-gray-300 transition-all duration-200 group-hover:border-primary/30 group-hover:bg-primary/5 group-hover:text-primary dark:text-gray-600">
+                          <FontAwesomeIcon icon={faArrowRight} className="text-[11px]" />
+                        </span>
                       </div>
 
                       {op.websiteUrl && (
@@ -390,14 +358,18 @@ export default function Agents() {
                     </p>
                   )}
 
-                  <div className="relative mt-auto grid grid-cols-2 border-t border-gray-100 dark:border-dark-border">
-                    <div className="flex items-center gap-2 px-5 py-3 text-xs text-gray-500 dark:text-gray-400">
-                      <FontAwesomeIcon icon={faListCheck} className="text-[10px]" />
-                      <span>{op.tasks?.length || 0} {(op.tasks?.length || 0) === 1 ? "task" : "tasks"}</span>
+                  <div className="relative mt-auto grid grid-cols-3 border-t border-gray-100 dark:border-dark-border">
+                    <div className="flex items-center gap-1.5 px-4 py-3 text-xs text-gray-500 dark:text-gray-400">
+                      <FontAwesomeIcon icon={faListCheck} className="text-[10px] text-primary/70" />
+                      <span><span className="font-semibold text-gray-700 dark:text-gray-200">{op.tasks?.length || 0}</span> {(op.tasks?.length || 0) === 1 ? "task" : "tasks"}</span>
                     </div>
-                    <div className="flex items-center gap-2 border-l border-gray-100 px-5 py-3 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
-                      <FontAwesomeIcon icon={faRoute} className="text-[10px]" />
-                      <span>{op.trajectories?.length || 0} {(op.trajectories?.length || 0) === 1 ? "trajectory" : "trajectories"}</span>
+                    <div className="flex items-center gap-1.5 border-l border-gray-100 px-4 py-3 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
+                      <FontAwesomeIcon icon={faRoute} className="text-[10px] text-primary/70" />
+                      <span><span className="font-semibold text-gray-700 dark:text-gray-200">{op.trajectories?.length || 0}</span> {(op.trajectories?.length || 0) === 1 ? "traj." : "traj."}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 border-l border-gray-100 px-4 py-3 text-xs text-gray-500 dark:border-dark-border dark:text-gray-400">
+                      <FontAwesomeIcon icon={faCode} className="text-[10px] text-primary/70" />
+                      <span><span className="font-semibold text-gray-700 dark:text-gray-200">{op.skills?.length || 0}</span> {(op.skills?.length || 0) === 1 ? "skill" : "skills"}</span>
                     </div>
                   </div>
                 </div>

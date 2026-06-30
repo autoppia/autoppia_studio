@@ -1,10 +1,10 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faCheck,
   faChevronDown,
+  faCircleCheck,
   faCloud,
   faCodeBranch,
   faComments,
@@ -16,6 +16,7 @@ import {
   faKey,
   faPlus,
   faSearch,
+  faSliders,
   faSpinner,
   faTrash,
   faWandMagicSparkles,
@@ -28,11 +29,13 @@ import InfoIcon from "../components/common/info-icon";
 import SectionTitle from "../components/layout/section-title";
 import SelectDropdown from "../components/common/select-dropdown";
 import ConfirmModal from "../components/common/confirm-modal";
+import Tabs from "../components/common/tabs";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
 import { getApiUrl } from "../utils/api-url";
 
 const apiUrl = getApiUrl();
+type ConnectorDetailTab = "settings" | "auth" | "discovery" | "tools";
 
 const CONNECTOR_TYPES = [
   { value: "gmail", label: "Gmail", category: "email", icon: faEnvelope, logo: "/assets/images/connectors/gmail.svg" },
@@ -90,6 +93,11 @@ const STATUS_COPY: Record<string, string> = {
 const PROVIDER_COPY: Record<string, string> = {
   official: "Autoppia official",
   custom: "Custom generated",
+};
+
+const PROVIDER_SHORT: Record<string, string> = {
+  official: "Official",
+  custom: "Custom",
 };
 
 function tone(status: string) {
@@ -303,7 +311,6 @@ function emptyConfig(connector?: Connector | null) {
 }
 
 export default function Connectors(): React.ReactElement {
-  const navigate = useNavigate();
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
   const [companyId, setCompanyId] = useState(localStorage.getItem("automata_company_id") || "");
@@ -318,12 +325,17 @@ export default function Connectors(): React.ReactElement {
   const [type, setType] = useState("gmail");
   const [customType, setCustomType] = useState("api");
   const [selectedId, setSelectedId] = useState("");
+  const [connectorDetailTab, setConnectorDetailTab] = useState<ConnectorDetailTab>("settings");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [draft, setDraft] = useState({ name: "", type: "gmail", description: "", config: {} as Record<string, string> });
 
   const selected = useMemo(() => connectors.find((connector) => connector.connectorId === selectedId) || null, [connectors, selectedId]);
   const needsAuthCount = useMemo(() => connectors.filter((connector) => connector.status === "needs_auth" || connector.status === "not_connected").length, [connectors]);
   const connectedCount = useMemo(() => connectors.filter((connector) => connector.status === "connected").length, [connectors]);
+
+  useEffect(() => {
+    if (selectedId) setConnectorDetailTab("settings");
+  }, [selectedId]);
 
   const responseMessage = (res: Response, fallback: string) => apiErrorMessage(res, fallback, "this connector");
 
@@ -488,6 +500,10 @@ export default function Connectors(): React.ReactElement {
 
   const renderConnectorCard = (connector: Connector) => {
     const testing = testingId === connector.connectorId;
+    const isCustom = connector.provider === "custom";
+    const showDiscovery = !!connector.discoveryStatus && connector.discoveryStatus !== "ready";
+    const showGeneration = !!connector.generationStatus && connector.generationStatus !== "autoppia_supported";
+    const hasAttention = showDiscovery || showGeneration;
     return (
       <button
         key={connector.connectorId}
@@ -499,51 +515,37 @@ export default function Connectors(): React.ReactElement {
             <ConnectorLogo type={connector.type} />
             <div className="min-w-0">
               <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{connector.name}</p>
-              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{connector.toolkit.name}</p>
+              <p className="flex items-center gap-1.5 text-xs text-gray-400 dark:text-gray-500 min-w-0">
+                <FontAwesomeIcon
+                  icon={isCustom ? faWandMagicSparkles : faCircleCheck}
+                  className={`text-[10px] flex-shrink-0 ${isCustom ? "text-blue-500 dark:text-blue-400" : "text-primary"}`}
+                  title={PROVIDER_COPY[connector.provider || "official"]}
+                />
+                <span className="flex-shrink-0">{PROVIDER_SHORT[connector.provider || "official"]}</span>
+                <span className="text-gray-300 dark:text-gray-600">·</span>
+                <span className="truncate">{connector.toolkit.name}</span>
+              </p>
             </div>
           </div>
-          <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border whitespace-nowrap ${tone(connector.status)}`}>
+          <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border whitespace-nowrap flex-shrink-0 ${tone(connector.status)}`}>
             {STATUS_COPY[connector.status] || connector.status}
           </span>
         </div>
-        <div className="flex items-center gap-1.5 mt-3">
-          <span className={`px-2 py-0.5 rounded-md text-[11px] font-medium border ${providerTone(connector.provider)}`}>
-            {PROVIDER_COPY[connector.provider || "official"] || connector.provider}
-          </span>
-          {connector.discoveryStatus && (
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
-              discovery {connector.discoveryStatus}
-            </span>
-          )}
-          {connector.generationStatus && (
-            <span className="px-2 py-0.5 rounded-md text-[11px] font-medium border bg-gray-50 dark:bg-dark-bg text-gray-500 dark:text-gray-400 border-gray-200 dark:border-dark-border">
-              {connector.generationStatus.replace(/_/g, " ")}
-            </span>
-          )}
-        </div>
-        <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
-        {connector.capabilityDiscovery && (
-          <div className="mt-2 grid grid-cols-4 gap-1.5">
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
-              <p className="text-[9px] uppercase tracking-wide text-gray-400">Docs</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.docs?.available ? "ready" : "missing"}</p>
-            </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
-              <p className="text-[9px] uppercase tracking-wide text-gray-400">Typed</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.toolSynthesis?.typedToolCount ?? connector.capabilityDiscovery.toolSynthesis?.toolCount ?? connector.toolkit.tools.length}</p>
-            </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
-              <p className="text-[9px] uppercase tracking-wide text-gray-400">Pipeline</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">
-                {connector.capabilityDiscovery.ingestionPipeline?.readyStages || 0}/{connector.capabilityDiscovery.ingestionPipeline?.totalStages || 0}
-              </p>
-            </div>
-            <div className="rounded-lg border border-gray-100 bg-gray-50 px-2 py-1.5 dark:border-dark-border dark:bg-dark-bg">
-              <p className="text-[9px] uppercase tracking-wide text-gray-400">Gaps</p>
-              <p className="mt-0.5 text-[11px] font-semibold text-gray-700 dark:text-gray-200">{connector.capabilityDiscovery.gaps?.length || 0}</p>
-            </div>
+        {hasAttention && (
+          <div className="flex flex-wrap items-center gap-1.5 mt-3">
+            {showDiscovery && (
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-medium border bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-500/30">
+                discovery {connector.discoveryStatus}
+              </span>
+            )}
+            {showGeneration && (
+              <span className="px-2 py-0.5 rounded-md text-[11px] font-medium border bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-300 border-amber-200 dark:border-amber-500/30">
+                {connector.generationStatus?.replace(/_/g, " ")}
+              </span>
+            )}
           </div>
         )}
+        <p className="text-xs leading-relaxed text-gray-500 dark:text-gray-400 mt-3 line-clamp-2 min-h-[2rem]">{connector.description || "No description."}</p>
         {connector.type === "knowledge" && connector.vectorIndex && (
           <div className="mt-2 rounded-lg bg-gray-50 dark:bg-dark-bg border border-gray-100 dark:border-dark-border px-2 py-1.5">
             <p className="text-[10px] uppercase tracking-wide text-gray-400">Vector DB</p>
@@ -772,7 +774,7 @@ export default function Connectors(): React.ReactElement {
       {selected && (
         <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setSelectedId("")} />
-          <div className="relative w-full max-w-4xl max-h-[calc(100vh-2rem)] overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl flex flex-col">
+          <div className="relative w-full max-w-5xl max-h-[calc(100vh-1.5rem)] overflow-hidden rounded-2xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl flex flex-col">
             <div className="flex items-center justify-between gap-3 px-5 py-4 border-b border-gray-100 dark:border-dark-border">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
@@ -792,8 +794,22 @@ export default function Connectors(): React.ReactElement {
               </button>
             </div>
 
-            <div className="overflow-auto p-5 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-5">
+            <div className="border-b border-gray-100 px-5 py-3 dark:border-dark-border">
+              <Tabs
+                tabs={[
+                  { id: "settings", label: "Settings", icon: faSliders },
+                  { id: "auth", label: "Auth", icon: faKey },
+                  { id: "discovery", label: "Discovery", icon: faWandMagicSparkles },
+                  { id: "tools", label: "Tools", icon: faWrench, count: selected.toolkit.tools.length },
+                ]}
+                active={connectorDetailTab}
+                onChange={(id) => setConnectorDetailTab(id as ConnectorDetailTab)}
+              />
+            </div>
+
+            <div className="overflow-auto p-5">
               <div className="space-y-4">
+                {connectorDetailTab === "settings" && (
                 <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
                   <p className="text-sm font-semibold text-gray-900 dark:text-white mb-3">Connector settings</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -806,7 +822,9 @@ export default function Connectors(): React.ReactElement {
                     <textarea value={draft.description} onChange={(e) => setDraft((prev) => ({ ...prev, description: e.target.value }))} rows={3} className="sm:col-span-2 rounded-lg border border-gray-200 dark:border-dark-border bg-gray-50 dark:bg-dark-bg px-3 py-2 text-sm text-gray-900 dark:text-white outline-none resize-none" placeholder="Description" />
                   </div>
                 </div>
+                )}
 
+                {connectorDetailTab === "auth" && (
                 <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4">
                   <div className="flex items-center gap-2 mb-3">
                     <FontAwesomeIcon icon={faKey} className="text-primary text-xs" />
@@ -874,10 +892,11 @@ export default function Connectors(): React.ReactElement {
                     </p>
                   )}
                 </div>
-              </div>
+                )}
 
-              <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4 bg-gray-50 dark:bg-dark-bg">
-                {selected.capabilityDiscovery && (
+                {(connectorDetailTab === "discovery" || connectorDetailTab === "tools") && (
+                <div className="rounded-xl border border-gray-100 dark:border-dark-border p-4 bg-gray-50 dark:bg-dark-bg">
+                {connectorDetailTab === "discovery" && selected.capabilityDiscovery && (
                   <div className="mb-4 rounded-xl border border-gray-200 bg-white p-3 dark:border-dark-border dark:bg-dark-surface">
                     <div className="mb-3 flex items-center justify-between gap-3">
                       <div>
@@ -971,6 +990,13 @@ export default function Connectors(): React.ReactElement {
                     )}
                   </div>
                 )}
+                {connectorDetailTab === "discovery" && !selected.capabilityDiscovery && (
+                  <div className="rounded-xl border border-gray-200 bg-white p-5 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
+                    No discovery metadata yet. Test or harvest this connector to populate docs, typed tools, pipeline state and gaps.
+                  </div>
+                )}
+                {connectorDetailTab === "tools" && (
+                  <>
                 <div className="flex items-center justify-between gap-3 mb-3">
                   <div className="flex items-center gap-2">
                     <FontAwesomeIcon icon={faWrench} className="text-primary text-xs" />
@@ -986,18 +1012,6 @@ export default function Connectors(): React.ReactElement {
                   ))}
                 </div>
 
-                <button
-                  onClick={() => navigate(`/capabilities?connectorId=${encodeURIComponent(selected.connectorId)}`)}
-                  className="w-full mb-3 h-9 rounded-lg border border-primary/40 text-primary text-xs font-semibold hover:bg-primary/5 transition-colors flex items-center justify-center gap-2"
-                  title="Publish tools or run harvesters from Capabilities"
-                >
-                  <FontAwesomeIcon icon={faWandMagicSparkles} className="text-[11px]" />
-                  Generate capabilities
-                </button>
-                <p className="text-[11px] leading-4 text-gray-400 dark:text-gray-500 mb-3">
-                  Official connectors publish default tools. Custom APIs/Web apps generate task-scoped capabilities from benchmarks. Manage all generation runs under Capabilities.
-                </p>
-
                 <div className="space-y-2">
                   {selected.toolkit.tools.map((tool) => (
                     <div key={tool.name} className="rounded-lg border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface p-3">
@@ -1009,6 +1023,10 @@ export default function Connectors(): React.ReactElement {
                     </div>
                   ))}
                 </div>
+                  </>
+                )}
+                </div>
+                )}
               </div>
             </div>
 

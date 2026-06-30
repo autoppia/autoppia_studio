@@ -277,7 +277,7 @@ function SessionCard({
         <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 dark:border-dark-border dark:bg-dark-bg">
           <p className="font-semibold uppercase tracking-wide text-[10px] text-gray-400">Provider</p>
           <p className="mt-1 truncate text-gray-700 dark:text-gray-200">
-            {sourceKind === "work" ? "Work Orchestration" : session.provider || "autoppia"}
+            {sourceKind === "work" ? "Board" : session.provider || "autoppia"}
           </p>
           {workItemId ? (
             <p className="mt-1 truncate text-[11px] text-gray-400 dark:text-gray-500">
@@ -295,7 +295,7 @@ function SessionCard({
       {runtimeLab && (
         <div className="mt-3 rounded-xl border border-gray-200 bg-gray-50 p-3 dark:border-dark-border dark:bg-dark-bg">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Runtime Lab evidence</p>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Workspace evidence</p>
             <span className={`rounded-lg px-2 py-1 text-[11px] font-semibold ${runtimeLab.timeline?.replayReady ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300" : "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300"}`}>
               {labReplayLabel}
             </span>
@@ -518,11 +518,11 @@ export default function Runtime(): React.ReactElement {
 
   return (
     <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
+      <div className="flex w-full flex-col gap-6">
         <div className="flex flex-col gap-4 rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
           <SectionTitle
             icon={faBolt}
-            title="Runtime Lab"
+            title="Sessions"
             subtitle="Inspect live sessions, skill routing, approvals and operational traces."
           />
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">

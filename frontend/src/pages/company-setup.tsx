@@ -21,6 +21,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import SectionTitle from "../components/layout/section-title";
 import InfoIcon from "../components/common/info-icon";
+import Tabs, { useTabState, TabDef } from "../components/common/tabs";
 import { Company, CompanySetupContract } from "../utils/types";
 import { getApiUrl } from "../utils/api-url";
 import { useToast } from "../components/common/toast";
@@ -122,6 +123,14 @@ function statusTone(status: string) {
   return "border-gray-200 bg-gray-50 text-gray-600 dark:border-dark-border dark:bg-dark-bg dark:text-gray-300";
 }
 
+const SETUP_TABS: TabDef[] = [
+  { id: "overview", label: "Overview", icon: faGear },
+  { id: "integration", label: "Integration", icon: faPlug },
+  { id: "coverage", label: "Coverage", icon: faCubes },
+  { id: "governance", label: "Profile & Governance", icon: faKey },
+  { id: "systems", label: "Systems", icon: faGlobe },
+];
+
 export default function CompanySetup(): React.ReactElement {
   const user = useSelector((state: any) => state.user);
   const navigate = useNavigate();
@@ -206,19 +215,21 @@ export default function CompanySetup(): React.ReactElement {
     setClearHostJwtSecret(false);
   }, [company]);
 
+  const [tab, setTab] = useTabState(SETUP_TABS.map((t) => t.id));
+
   const quickActions = useMemo(() => ([
     { label: "Connectors", icon: faPlug, path: "/connectors" },
     { label: "Resources", icon: faBook, path: "/knowledge" },
     { label: "Entities", icon: faCubes, path: "/entities" },
     { label: "Capabilities", icon: faWandMagicSparkles, path: "/capabilities" },
-    { label: "Runtime Lab", icon: faBolt, path: "/runtime" },
+    { label: "Workspace", icon: faBolt, path: "/runtime" },
     { label: "Credentials", icon: faKey, path: "/credentials" },
   ]), []);
 
   if (loading) {
     return (
-      <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-gray-200 bg-white px-6 py-10 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
+      <div className="h-full overflow-auto bg-gray-50/70 p-4 dark:bg-dark-bg">
+        <div className="w-full rounded-3xl border border-gray-200 bg-white px-6 py-10 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
           Loading company setup...
         </div>
       </div>
@@ -227,8 +238,8 @@ export default function CompanySetup(): React.ReactElement {
 
   if (error) {
     return (
-      <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-red-200 bg-red-50 px-6 py-10 text-sm text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+      <div className="h-full overflow-auto bg-gray-50/70 p-4 dark:bg-dark-bg">
+        <div className="w-full rounded-3xl border border-red-200 bg-red-50 px-6 py-10 text-sm text-red-600 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
           <div className="flex items-center gap-3">
             <FontAwesomeIcon icon={faTriangleExclamation} />
             {error}
@@ -240,8 +251,8 @@ export default function CompanySetup(): React.ReactElement {
 
   if (!company || !contract) {
     return (
-      <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
-        <div className="mx-auto max-w-7xl rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-10 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
+      <div className="h-full overflow-auto bg-gray-50/70 p-4 dark:bg-dark-bg">
+        <div className="w-full rounded-3xl border border-dashed border-gray-300 bg-white px-6 py-10 text-sm text-gray-500 dark:border-dark-border dark:bg-dark-surface dark:text-gray-400">
           Select or create a company to define its setup contract.
         </div>
       </div>
@@ -335,8 +346,8 @@ export default function CompanySetup(): React.ReactElement {
   };
 
   return (
-    <div className="h-full overflow-auto bg-gray-50/70 px-6 py-6 dark:bg-dark-bg">
-      <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <div className="h-full overflow-auto bg-gray-50/70 p-4 dark:bg-dark-bg">
+      <div className="flex w-full flex-col gap-6">
         <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
             <div className="max-w-3xl">
@@ -381,6 +392,10 @@ export default function CompanySetup(): React.ReactElement {
           </div>
         </div>
 
+        <Tabs tabs={SETUP_TABS} active={tab} onChange={setTab} />
+
+        {tab === "overview" && (
+        <>
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <SummaryCard label="Systems" value={contract.systems.summary.totalConnectors} hint={`${contract.systems.summary.connectedConnectors} connected connectors`} tone={contract.systems.summary.connectedConnectors > 0 ? "good" : "warning"} />
           <SummaryCard label="Credentials" value={contract.governance.credentials} hint="Secrets available to connectors and runtimes" tone={contract.governance.credentials > 0 ? "good" : "warning"} />
@@ -438,8 +453,10 @@ export default function CompanySetup(): React.ReactElement {
             </div>
           </div>
         )}
+        </>
+        )}
 
-        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)]">
+        {tab === "integration" && (
           <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
             <div className="flex items-center gap-2">
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">Integration Contract</h2>
@@ -578,7 +595,10 @@ export default function CompanySetup(): React.ReactElement {
               </div>
             )}
           </div>
+        )}
 
+        {tab === "coverage" && (
+        <>
           <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
             <h2 className="text-base font-semibold text-gray-900 dark:text-white">Coverage</h2>
             <div className="mt-5 space-y-5">
@@ -881,9 +901,8 @@ export default function CompanySetup(): React.ReactElement {
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
+          <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold text-gray-900 dark:text-white">Operating Graph</h2>
@@ -901,14 +920,14 @@ export default function CompanySetup(): React.ReactElement {
               onClick={() => navigate("/capabilities")}
             />
             <DeepLinkCard
-              label="Runtime Lab"
+              label="Workspace"
               value={contract.runtime.sessions}
               hint={`${contract.runtime.artifacts} artifacts · ${contract.runtime.pendingApprovals} pending approvals`}
               actionLabel="Open runtime"
               onClick={() => navigate("/runtime")}
             />
             <DeepLinkCard
-              label="Work Orchestration"
+              label="Board"
               value={contract.runtime.workItems}
               hint={`${contract.runtime.runningWorkItems} running · ${contract.runtime.reviewWorkItems} in review`}
               actionLabel="Open work"
@@ -990,7 +1009,10 @@ export default function CompanySetup(): React.ReactElement {
             </div>
           )}
         </div>
+        </>
+        )}
 
+        {tab === "governance" && (
         <div className="grid gap-6 xl:grid-cols-2">
           <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
             <div className="flex items-center justify-between gap-3">
@@ -1128,7 +1150,9 @@ export default function CompanySetup(): React.ReactElement {
             </div>
           </div>
         </div>
+        )}
 
+        {tab === "systems" && (
         <div className="rounded-3xl border border-gray-200 bg-white p-6 dark:border-dark-border dark:bg-dark-surface">
           <div className="flex items-center justify-between gap-3">
             <div>
@@ -1187,6 +1211,7 @@ export default function CompanySetup(): React.ReactElement {
             ))}
           </div>
         </div>
+        )}
       </div>
     </div>
   );

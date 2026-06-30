@@ -4,11 +4,18 @@ import { useNavigate, useParams } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faArrowLeft,
+  faBolt,
   faBook,
   faCheck,
   faCircleNodes,
   faCode,
+  faDatabase,
+  faFileLines,
+  faArrowUpRightFromSquare,
+  faFloppyDisk,
+  faImage,
   faListCheck,
+  faPen,
   faPlug,
   faPlay,
   faPlus,
@@ -32,16 +39,20 @@ import {
   AgentWeb,
   AgentRuntimeContract,
   RuntimeEvent,
+  KnowledgeDocument,
+  VectorDatabase,
 } from "../utils/types";
 import useStartSession from "../hooks/useStartSession";
 import InfoIcon from "../components/common/info-icon";
+import Tabs from "../components/common/tabs";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
 import { getApiUrl } from "../utils/api-url";
+import { agentHostLabel, agentImageUrl } from "../utils/agent-image";
 
 const apiUrl = getApiUrl();
 
-type TabKey = "overview" | "skills" | "runtime" | "benchmarks" | "runs" | "connect";
+type TabKey = "overview" | "connectors" | "skills" | "knowledge" | "runtime" | "benchmarks" | "runs" | "connect";
 type SkillAssetTab = "skills" | "traces";
 type SnippetTab = "curl" | "javascript" | "python";
 type RunTarget = "selected" | "all";
@@ -103,6 +114,33 @@ function RuntimeJsonDetails({ label, value }: { label: string; value?: Record<st
   );
 }
 
+function AgentProfileAvatar({ agent }: { agent: AgentConfig }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = agentImageUrl(agent);
+  const initials = agent.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  useEffect(() => setFailed(false), [imageUrl]);
+
+  return (
+    <div className="relative h-16 w-16 flex-shrink-0 rounded-2xl border border-[color:var(--accent-line)] bg-[color:var(--accent-soft)] p-1 shadow-glow">
+      <div className="flex h-full w-full items-center justify-center overflow-hidden rounded-[14px] bg-white dark:bg-dark-surface">
+        {!failed && imageUrl ? (
+          <img src={imageUrl} alt="" className="h-full w-full object-cover" onError={() => setFailed(true)} draggable={false} />
+        ) : initials ? (
+          <span className="text-lg font-bold text-[color:var(--accent)]">{initials}</span>
+        ) : (
+          <FontAwesomeIcon icon={faRobot} className="text-lg text-[color:var(--accent)]" />
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function AgentDetail() {
   const { agentId = "" } = useParams();
   const user = useSelector((state: any) => state.user);
@@ -123,6 +161,10 @@ export default function AgentDetail() {
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEvent[]>([]);
   const [eventsLoading, setEventsLoading] = useState(false);
   const [eventsError, setEventsError] = useState("");
+  const [knowledgeDocs, setKnowledgeDocs] = useState<KnowledgeDocument[]>([]);
+  const [knowledgeStores, setKnowledgeStores] = useState<VectorDatabase[]>([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [knowledgeError, setKnowledgeError] = useState("");
   const [skillAssetTab, setSkillAssetTab] = useState<SkillAssetTab>("skills");
   const [snippetTab, setSnippetTab] = useState<SnippetTab>("curl");
   const [loading, setLoading] = useState(true);
@@ -143,6 +185,11 @@ export default function AgentDetail() {
   const [runBrowserMode, setRunBrowserMode] = useState<"visible" | "headless">("visible");
   const [runMaxCredits, setRunMaxCredits] = useState(5);
   const [runResults, setRunResults] = useState<AgentTaskRunResult[]>([]);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileName, setProfileName] = useState("");
+  const [profileImageUrl, setProfileImageUrl] = useState("");
+  const [profileDescription, setProfileDescription] = useState("");
 
   const responseMessage = (res: Response, fallback: string) => apiErrorMessage(res, fallback, "this agent");
 
@@ -197,6 +244,26 @@ export default function AgentDetail() {
     }
   };
 
+  const loadKnowledge = async () => {
+    const companyId = agent?.companyId;
+    if (!companyId || !user.email) return;
+    setKnowledgeLoading(true);
+    setKnowledgeError("");
+    try {
+      const params = new URLSearchParams({ email: user.email, companyId });
+      const res = await fetch(`${apiUrl}/knowledge/documents?${params.toString()}`);
+      if (!res.ok) throw new Error(await responseMessage(res, "Could not load knowledge."));
+      const data = await res.json();
+      setKnowledgeDocs(data.documents || []);
+      setKnowledgeStores(data.vectorDatabases || []);
+    } catch (err) {
+      console.error("Failed to load knowledge:", err);
+      setKnowledgeError(err instanceof Error ? err.message : "Could not load knowledge.");
+    } finally {
+      setKnowledgeLoading(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -206,6 +273,11 @@ export default function AgentDetail() {
     if (activeTab === "runtime") loadRuntimeEvents();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, agentId]);
+
+  useEffect(() => {
+    if (activeTab === "knowledge") loadKnowledge();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, agent?.companyId, user.email]);
 
   useEffect(() => {
     if (!agent) return;
@@ -219,6 +291,13 @@ export default function AgentDetail() {
     setRunBrowserEnabled(browserEnabled);
     setRunBrowserMode(browserMode);
     setRunMaxCredits(Number.isFinite(maxCredits) ? maxCredits : 5);
+  }, [agent]);
+
+  useEffect(() => {
+    if (!agent) return;
+    setProfileName(agent.name || "");
+    setProfileImageUrl(agent.imageUrl || "");
+    setProfileDescription(agent.description || "");
   }, [agent]);
 
   const benchmark = useMemo(() => ({
@@ -399,6 +478,37 @@ export default function AgentDetail() {
     }
   };
 
+  const saveProfile = async () => {
+    if (!agent || profileSaving) return;
+    const name = profileName.trim();
+    if (!name) {
+      showToast("Agent name is required.", "error");
+      return;
+    }
+    setProfileSaving(true);
+    try {
+      const res = await fetch(`${apiUrl}/agents/${agentId}/profile`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          imageUrl: profileImageUrl.trim(),
+          description: profileDescription.trim(),
+        }),
+      });
+      if (!res.ok) throw new Error(await responseMessage(res, "Could not update agent profile."));
+      const data = await res.json();
+      setAgent(data.agent || agent);
+      setProfileOpen(false);
+      showToast("Agent profile saved.", "success");
+    } catch (err) {
+      console.error("Failed to save agent profile:", err);
+      showToast(err instanceof Error ? err.message : "Could not update agent profile.", "error");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
   const runAdHocTask = async () => {
     const prompt = runPrompt.trim();
     if (!prompt || runningId) return;
@@ -520,8 +630,10 @@ export default function AgentDetail() {
 
   const tabs: { key: TabKey; label: string; icon: any }[] = [
     { key: "overview", label: "Overview", icon: faRobot },
-    { key: "skills", label: "Skills", icon: faCode },
-    { key: "connect", label: "Connect", icon: faPlug },
+    { key: "connectors", label: "Connectors", icon: faPlug },
+    { key: "skills", label: "Capabilities", icon: faCode },
+    { key: "knowledge", label: "Knowledge", icon: faBook },
+    { key: "connect", label: "Use", icon: faBolt },
   ];
 
   const knowledgeEnabled = agent.runtimeCapabilities?.knowledge ?? false;
@@ -624,6 +736,9 @@ print(response.json()["result"])`;
     }
     return null;
   })();
+  const agentHost = agentHostLabel(agent.websiteUrl);
+  const profileSummary = agent.description?.trim() || `${normalizeName(agent.runtimeType)} for ${agentHost}.`;
+  const connectedSummary = `${connectors.length} connectors · ${skills.length} skills · ${trajectories.length} trajectories`;
 
   return (
     <div className="w-full h-full flex relative overflow-auto bg-gray-100 dark:bg-dark-bg">
@@ -632,44 +747,140 @@ print(response.json()["result"])`;
       </div>
 
       <div className="flex flex-col w-full h-full relative">
-        <div className="flex items-center justify-between h-14 px-6 border-b border-gray-200 dark:border-dark-border bg-white/80 dark:bg-dark-bg/80 backdrop-blur-sm flex-shrink-0">
-          <div className="flex items-center gap-3 min-w-0">
+        <div className="border-b border-gray-200 bg-white/85 px-5 py-4 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/85 sm:px-6 flex-shrink-0">
+          <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
             <button
               onClick={() => navigate("/agents")}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-dark-surface transition-colors"
+              className="mt-1 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg text-gray-500 transition-colors hover:bg-gray-100 dark:hover:bg-dark-surface"
+              title="Back to agents"
+              aria-label="Back to agents"
             >
               <FontAwesomeIcon icon={faArrowLeft} className="text-sm" />
             </button>
-            <div className="min-w-0">
-              <h1 className="text-lg font-semibold text-gray-800 dark:text-gray-100 truncate">{agent.name}</h1>
-              <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{agent.websiteUrl}</p>
+            <AgentProfileAvatar agent={agent} />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                <h1 className="min-w-0 truncate text-2xl font-bold leading-tight text-gray-900 dark:text-white">{agent.name}</h1>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <StatusBadge label={normalizeName(agent.status)} tone={toneForStatus(agent.status)} />
+                  <StatusBadge label={normalizeName(agent.trainingStatus)} tone={toneForStatus(agent.trainingStatus)} />
+                </div>
+              </div>
+              <p className="mt-1 max-w-3xl text-sm leading-5 text-gray-600 dark:text-gray-300">{profileSummary}</p>
+              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
+                <span className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 dark:border-dark-border dark:bg-dark-surface">
+                  <FontAwesomeIcon icon={faBolt} className="text-[10px] text-[color:var(--accent)]" />
+                  {normalizeName(agent.runtimeType)}
+                </span>
+                <a
+                  href={agent.websiteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex max-w-[260px] items-center gap-1.5 truncate rounded-lg border border-gray-200 bg-gray-50 px-2.5 py-1 hover:text-[color:var(--accent)] dark:border-dark-border dark:bg-dark-surface"
+                  title={agent.websiteUrl}
+                >
+                  <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px]" />
+                  <span className="truncate">{agentHost}</span>
+                </a>
+                <span>{connectedSummary}</span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-400 dark:text-gray-500">
-            Configure the agent here. Run tasks and benchmarks from Sessions and Benchmarks.
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <button
+              type="button"
+              onClick={() => setProfileOpen((open) => !open)}
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-zinc-800/80 dark:text-zinc-300 dark:hover:bg-white/5"
+            >
+              <FontAwesomeIcon icon={faPen} className="text-[11px]" />
+              Edit profile
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate("/home")}
+              className="inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-sm font-semibold text-white shadow-glow"
+            >
+              <FontAwesomeIcon icon={faPlay} className="text-[11px]" />
+              New session
+            </button>
           </div>
+          </div>
+
+          {profileOpen && (
+            <div className="mt-4 rounded-2xl border border-gray-200 bg-gray-50 p-4 dark:border-dark-border dark:bg-dark-surface/80">
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Agent name</span>
+                  <input
+                    value={profileName}
+                    onChange={(event) => setProfileName(event.target.value)}
+                    className="mt-1 h-10 w-full rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:border-[color:var(--accent)] dark:border-dark-border dark:bg-dark-bg dark:text-white"
+                    placeholder="Celeris Agent"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Image URL</span>
+                  <div className="mt-1 flex gap-2">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-xl border border-gray-200 bg-white text-gray-400 dark:border-dark-border dark:bg-dark-bg">
+                      <FontAwesomeIcon icon={faImage} className="text-sm" />
+                    </span>
+                    <input
+                      value={profileImageUrl}
+                      onChange={(event) => setProfileImageUrl(event.target.value)}
+                      className="h-10 min-w-0 flex-1 rounded-xl border border-gray-200 bg-white px-3 text-sm text-gray-900 outline-none focus:border-[color:var(--accent)] dark:border-dark-border dark:bg-dark-bg dark:text-white"
+                      placeholder="https://..."
+                    />
+                  </div>
+                </label>
+                <label className="block lg:col-span-2">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Description</span>
+                  <textarea
+                    value={profileDescription}
+                    onChange={(event) => setProfileDescription(event.target.value)}
+                    className="mt-1 min-h-[76px] w-full resize-y rounded-xl border border-gray-200 bg-white px-3 py-2 text-sm leading-5 text-gray-900 outline-none focus:border-[color:var(--accent)] dark:border-dark-border dark:bg-dark-bg dark:text-white"
+                    placeholder="What this agent is responsible for."
+                  />
+                </label>
+              </div>
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    setProfileName(agent.name || "");
+                    setProfileImageUrl(agent.imageUrl || "");
+                    setProfileDescription(agent.description || "");
+                  }}
+                  className="h-9 rounded-lg border border-gray-200 px-3 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-zinc-800/80 dark:text-zinc-300 dark:hover:bg-white/5"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveProfile}
+                  disabled={profileSaving}
+                  className="inline-flex h-9 items-center gap-2 rounded-lg bg-gradient-primary px-3 text-sm font-semibold text-white shadow-glow disabled:opacity-60"
+                >
+                  <FontAwesomeIcon icon={profileSaving ? faSpinner : faFloppyDisk} className={profileSaving ? "text-[11px] animate-spin" : "text-[11px]"} />
+                  Save profile
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
-        <div className="flex-1 overflow-auto px-6 py-6">
-          <div className="flex flex-wrap items-center gap-2 mb-5">
-            {tabs.map((tab) => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`flex items-center gap-2 h-9 px-3 rounded-xl text-sm font-medium border transition-colors
-                  ${activeTab === tab.key
-                    ? "bg-gradient-primary text-white border-transparent shadow-glow"
-                    : "bg-white dark:bg-dark-surface text-gray-600 dark:text-gray-300 border-gray-200 dark:border-dark-border hover:border-gray-300 dark:hover:border-gray-600"
-                  }`}
-              >
-                <FontAwesomeIcon icon={tab.icon} className="text-xs" />
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        <div className="flex-1 overflow-auto">
+          <div className="w-full px-3 py-3">
+          <Tabs
+            className="mb-4"
+            tabs={tabs.map((t) => ({ id: t.key, label: t.label, icon: t.icon }))}
+            active={activeTab}
+            onChange={(id) => setActiveTab(id as TabKey)}
+          />
 
           {activeTab === "overview" && (
-            <div className="space-y-5">
+            <div className="space-y-3">
               {setupError && (
                 <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-4 flex items-start gap-3">
                   <FontAwesomeIcon icon={faTriangleExclamation} className="text-red-500 text-sm mt-0.5" />
@@ -724,7 +935,7 @@ print(response.json()["result"])`;
                 </div>
               )}
 
-              <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-3 divide-x divide-y divide-gray-100 overflow-hidden rounded-2xl border border-gray-200 bg-white sm:grid-cols-6 sm:divide-y-0 dark:divide-dark-border dark:border-dark-border dark:bg-dark-surface">
                 {[
                   { label: "Connectors", value: connectors.length, icon: faPlug },
                   { label: "Tools", value: allTools.length, icon: faWrench },
@@ -733,17 +944,21 @@ print(response.json()["result"])`;
                   { label: "Trajectories", value: trajectories.length, icon: faRoute },
                   { label: "Runs", value: runs.length, icon: faCircleNodes },
                 ].map((item) => (
-                  <div key={item.label} className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-4">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{item.label}</span>
-                      <FontAwesomeIcon icon={item.icon} className="text-xs text-primary" />
-                    </div>
-                    <p className="text-2xl font-semibold text-gray-900 dark:text-white">{item.value}</p>
+                  <div key={item.label} className="flex flex-col gap-1.5 px-4 py-3">
+                    <span className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                      <FontAwesomeIcon icon={item.icon} className="text-[9px] text-primary/70" />
+                      {item.label}
+                    </span>
+                    <span className="text-xl font-bold leading-none text-gray-900 dark:text-white">{item.value}</span>
                   </div>
                 ))}
               </div>
+            </div>
+          )}
 
-              {/* What this agent is made of — connectors, tools, skills, knowledge. */}
+          {activeTab === "connectors" && (
+            <div className="space-y-4">
+              {/* What this agent can touch — connectors, tools, knowledge. */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Connectors */}
                 <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
@@ -770,35 +985,6 @@ print(response.json()["result"])`;
                           <StatusBadge label={`${connector.toolCount} tool${connector.toolCount === 1 ? "" : "s"}`} tone="gray" />
                         </div>
                       ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Skills */}
-                <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <div className="flex items-center gap-2">
-                      <FontAwesomeIcon icon={faCode} className="text-xs text-primary" />
-                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Skills</p>
-                      <StatusBadge label={`${skills.length}`} tone={skills.length ? "blue" : "gray"} />
-                    </div>
-                    <button onClick={() => setActiveTab("skills")} className="text-xs font-medium text-primary hover:underline">
-                      View all
-                    </button>
-                  </div>
-                  {skills.length === 0 ? (
-                    <Empty text="No skills yet. Approve a trajectory to build a reusable workflow." />
-                  ) : (
-                    <div className="space-y-2">
-                      {skills.slice(0, 5).map((skill) => (
-                        <div key={skill.capabilityId} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
-                          <p className="font-mono text-sm font-medium text-gray-900 dark:text-white truncate">{skill.name}()</p>
-                          <StatusBadge label={skill.type || "web"} tone={skill.type === "api" ? "green" : "gray"} />
-                        </div>
-                      ))}
-                      {skills.length > 5 && (
-                        <p className="text-xs text-gray-400 dark:text-gray-500 pt-1">+{skills.length - 5} more</p>
-                      )}
                     </div>
                   )}
                 </div>
@@ -865,33 +1051,11 @@ print(response.json()["result"])`;
                   )}
                 </div>
               </div>
+            </div>
+          )}
 
-              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
-                <div className="flex flex-wrap gap-2 mb-4">
-                  <StatusBadge label={normalizeName(agent.status)} tone={toneForStatus(agent.status)} />
-                  <StatusBadge label={normalizeName(agent.trainingStatus)} tone={toneForStatus(agent.trainingStatus)} />
-                  <StatusBadge label={normalizeName(agent.runtimeType)} tone="blue" />
-                </div>
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Runtime endpoint</p>
-                    <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{agent.runtimeEndpoint || "Not deployed yet"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">Automata</p>
-                    <p className="text-gray-700 dark:text-gray-200">{agent.harvester || "Automata Agent"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">OpenAPI / Swagger</p>
-                    <p className="font-mono text-gray-700 dark:text-gray-200 break-all">{agent.apiSpecUrl || "Not configured"}</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">API auth</p>
-                    <p className="text-gray-700 dark:text-gray-200">{agent.apiAuthConfigured ? "Configured" : "Not configured"}</p>
-                  </div>
-                </div>
-              </div>
-
+          {activeTab === "overview" && (
+            <div className="space-y-3 mt-3">
               {creationJob && (
                 <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
                   <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-4">
@@ -1031,6 +1195,136 @@ print(response.json()["result"])`;
               ))}
                 </>
               )}
+            </div>
+          )}
+
+          {activeTab === "knowledge" && (
+            <div className="space-y-4">
+              {/* Capability + management header */}
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <FontAwesomeIcon icon={faBook} className="text-xs text-primary" />
+                      <p className="text-sm font-semibold text-gray-900 dark:text-white">Knowledge</p>
+                      <StatusBadge label={knowledgeEnabled ? "enabled" : "disabled"} tone={knowledgeEnabled ? "green" : "gray"} />
+                    </div>
+                    <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                      {knowledgeEnabled
+                        ? "This runtime can search company resources through read-only knowledge.* tools."
+                        : "Knowledge search is off. Enable it in Runtime settings to let this agent read your documents."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {!knowledgeEnabled && (
+                      <button onClick={() => setActiveTab("runtime")} className="h-9 px-3 rounded-xl border border-gray-200 dark:border-dark-border text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-dark-border">
+                        Runtime settings
+                      </button>
+                    )}
+                    <button onClick={() => navigate("/knowledge")} className="h-9 px-3 rounded-xl bg-gradient-primary text-white text-sm font-medium shadow-glow">
+                      Manage knowledge
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {knowledgeError && (
+                <div className="rounded-xl border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/10 p-3">
+                  <p className="text-xs font-medium text-red-600 dark:text-red-400">{knowledgeError}</p>
+                </div>
+              )}
+
+              {/* Vectorstore-backed toolkits attached to this agent */}
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <FontAwesomeIcon icon={faWrench} className="text-xs text-primary" />
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Knowledge toolkits</p>
+                  <StatusBadge label={`${knowledgeToolkits.length}`} tone={knowledgeToolkits.length ? "blue" : "gray"} />
+                </div>
+                {knowledgeToolkits.length === 0 ? (
+                  <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    No vectorstore-backed toolkits are attached to this agent yet. Attach one from the Knowledge page.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                    {knowledgeToolkits.map((toolkit) => (
+                      <div key={toolkit.toolkitId} className="rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{toolkit.name}</p>
+                            <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{toolkit.connectorName || "Knowledge"}</p>
+                          </div>
+                          <StatusBadge label="vectorstore" tone="blue" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Company resource stores */}
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <FontAwesomeIcon icon={faDatabase} className="text-xs text-primary" />
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Resource stores</p>
+                  <StatusBadge label={`${knowledgeStores.length}`} tone={knowledgeStores.length ? "blue" : "gray"} />
+                </div>
+                {knowledgeLoading && knowledgeStores.length === 0 && knowledgeDocs.length === 0 ? (
+                  <div className="h-24 rounded-xl border border-dashed border-gray-200 dark:border-dark-border flex items-center justify-center text-sm text-gray-500 dark:text-gray-400">
+                    <FontAwesomeIcon icon={faSpinner} className="mr-2 text-xs animate-spin" />
+                    Loading knowledge
+                  </div>
+                ) : knowledgeStores.length === 0 ? (
+                  <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    This company has no resource stores yet. Create one from the Knowledge page and upload documents.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                    {knowledgeStores.map((store) => (
+                      <button
+                        key={store.vectorDatabaseId}
+                        onClick={() => navigate("/knowledge")}
+                        className="text-left flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5 hover:border-primary/40 hover:bg-primary/5 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{store.name}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{store.documentCount || 0} resources</p>
+                        </div>
+                        <FontAwesomeIcon icon={faArrowUpRightFromSquare} className="text-[10px] text-gray-400 flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Documents */}
+              <div className="bg-white dark:bg-dark-surface rounded-xl border border-gray-200 dark:border-dark-border p-5">
+                <div className="flex items-center gap-2 mb-3">
+                  <FontAwesomeIcon icon={faFileLines} className="text-xs text-primary" />
+                  <p className="text-sm font-semibold text-gray-900 dark:text-white">Documents</p>
+                  <StatusBadge label={`${knowledgeDocs.length}`} tone={knowledgeDocs.length ? "blue" : "gray"} />
+                </div>
+                {knowledgeDocs.length === 0 ? (
+                  <p className="text-xs leading-5 text-gray-500 dark:text-gray-400">
+                    No documents indexed for this company yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2">
+                    {knowledgeDocs.map((doc) => (
+                      <div key={doc.documentId} className="flex items-center justify-between gap-3 rounded-xl border border-gray-100 dark:border-dark-border px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{doc.filename}</p>
+                          <p className="text-xs text-gray-400 dark:text-gray-500 truncate">{doc.vectorDatabaseName || "Knowledge"}</p>
+                        </div>
+                        <StatusBadge
+                          label={normalizeName(doc.status || "stored")}
+                          tone={toneForStatus(["indexed", "ready"].includes((doc.status || "").toLowerCase()) ? "ready" : doc.status)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -1441,6 +1735,7 @@ print(response.json()["result"])`;
               </div>
             </div>
           )}
+          </div>
         </div>
       </div>
 

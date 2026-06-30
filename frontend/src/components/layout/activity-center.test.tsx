@@ -54,7 +54,7 @@ describe("ActivityCenter", () => {
     localStorage.clear();
   });
 
-  it("opens Runtime Lab from a running work item using the derived runtime session", async () => {
+  it("opens Workspace from a running work item using the derived runtime session", async () => {
     global.fetch = jest.fn().mockImplementation((input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes("/activity-summary?")) {

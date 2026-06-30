@@ -26,6 +26,7 @@ import {
 } from "@fortawesome/free-solid-svg-icons";
 import { AgentConfig, EvalItem, WorkBoard, WorkItem, WorkRunTarget, WorkStatus } from "../utils/types";
 import SectionTitle from "../components/layout/section-title";
+import Tabs, { useTabState, TabDef } from "../components/common/tabs";
 import { useToast } from "../components/common/toast";
 import { apiErrorMessage } from "../utils/api-error";
 import { getApiUrl } from "../utils/api-url";
@@ -148,6 +149,12 @@ function domainListValue(domains?: string[]) {
   return (domains || []).join(", ");
 }
 
+const WORK_TABS: TabDef[] = [
+  { id: "board", label: "Board", icon: faBriefcase },
+  { id: "queues", label: "Queues", icon: faCalendarDays },
+  { id: "insights", label: "Insights", icon: faBolt },
+];
+
 export default function Work() {
   const user = useSelector((state: any) => state.user);
   const { showToast } = useToast();
@@ -163,6 +170,7 @@ export default function Work() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [runningId, setRunningId] = useState("");
+  const [tab, setTab] = useTabState(WORK_TABS.map((t) => t.id));
   const [showCreate, setShowCreate] = useState(false);
   const [expandedReportId, setExpandedReportId] = useState("");
   const [newBoardName, setNewBoardName] = useState("");
@@ -514,7 +522,7 @@ export default function Work() {
         <div className="flex min-h-16 items-center justify-between gap-3 border-b border-gray-200 bg-white/80 px-6 py-3 backdrop-blur-sm dark:border-dark-border dark:bg-dark-bg/80 sm:px-8 flex-shrink-0">
           <SectionTitle
             icon={faBriefcase}
-            title="Work Orchestration"
+            title="Board"
             subtitle="Queue recurring work, control budgets and review runtime outcomes across your agent fleet."
           />
           <div className="flex items-center gap-2 shrink-0">
@@ -555,6 +563,9 @@ export default function Work() {
               </button>
             </div>
           )}
+          <Tabs className="mb-5" tabs={WORK_TABS} active={tab} onChange={setTab} />
+
+          {tab === "insights" && (
           <div className="mb-5 grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
             {[
               {
@@ -650,6 +661,9 @@ export default function Work() {
             ))}
           </div>
 
+          )}
+
+          {tab === "queues" && (
           <div className="mb-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
             <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-dark-border dark:bg-dark-surface">
               <div className="flex items-start justify-between gap-3">
@@ -744,7 +758,10 @@ export default function Work() {
               </div>
             </div>
           </div>
+          )}
 
+          {tab === "board" && (
+          <>
           <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 mb-5">
             <div className="flex flex-wrap items-center gap-2">
               {boards.map((board) => (
@@ -1053,6 +1070,8 @@ export default function Work() {
                 );
               })}
             </div>
+          )}
+          </>
           )}
         </div>
       </div>
@@ -1547,7 +1566,7 @@ export default function Work() {
                     onClick={() => navigate(`/runtime?workItemId=${encodeURIComponent(selectedItem.workItemId)}`)}
                     className="h-10 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-700 transition-colors hover:bg-gray-100 dark:border-dark-border dark:bg-dark-surface dark:text-gray-200 dark:hover:bg-dark-bg"
                   >
-                    Open Runtime Lab
+                    Open Workspace
                   </button>
                   <button
                     onClick={() => navigate(`/artifacts?sessionId=${encodeURIComponent(latestWorkSessionId(selectedItem))}`)}

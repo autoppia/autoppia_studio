@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AutoClaims</title>
+    <style>
+      :root { color-scheme: light; font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      body { margin: 0; background: #f4f6f8; color: #172033; }
+      header { padding: 18px 24px; background: #101827; color: white; display: flex; justify-content: space-between; align-items: center; }
+      main { max-width: 1100px; margin: 0 auto; padding: 24px; display: grid; grid-template-columns: 320px 1fr; gap: 16px; }
+      section { background: white; border: 1px solid #dce3ea; border-radius: 12px; padding: 16px; }
+      button, input, textarea, select { font: inherit; }
+      button { border: 0; border-radius: 9px; background: #fb923c; color: white; padding: 9px 12px; cursor: pointer; }
+      input, textarea, select { width: 100%; box-sizing: border-box; border: 1px solid #ccd5df; border-radius: 9px; padding: 9px 10px; margin: 6px 0 12px; }
+      .claim { border: 1px solid #e5eaf0; border-radius: 10px; padding: 12px; margin-bottom: 10px; cursor: pointer; }
+      .claim:hover { border-color: #fb923c; }
+      .muted { color: #667085; font-size: 13px; }
+      .badge { display: inline-block; border-radius: 999px; padding: 3px 8px; background: #edf2f7; font-size: 12px; }
+      .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>AutoClaims</strong>
+      <span class="muted">Owner demo UI</span>
+    </header>
+    <main>
+      <section>
+        <h2>Search</h2>
+        <label>Customer or claim</label>
+        <input id="query" value="Ada" />
+        <button onclick="search()">Search claims</button>
+        <p class="muted">Demo auth is preconfigured in this UI.</p>
+      </section>
+      <section>
+        <div class="row">
+          <h2 style="margin-right:auto">Claims</h2>
+          <span id="count" class="badge">0</span>
+        </div>
+        <div id="claims"></div>
+        <div id="detail"></div>
+      </section>
+    </main>
+    <script>
+      const token = "autoclaims-demo-token";
+      let selected = "";
+      async function api(path, options = {}) {
+        const res = await fetch(path, {
+          ...options,
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${token}`,
+            ...(options.headers || {}),
+          },
+        });
+        if (!res.ok) throw new Error(await res.text());
+        return res.json();
+      }
+      async function search() {
+        const q = document.getElementById("query").value.trim();
+        let claims = [];
+        if (q.toUpperCase().startsWith("CLM-")) {
+          claims = [await api(`/claims/${encodeURIComponent(q.toUpperCase())}`)];
+        } else {
+          const customers = await api(`/customers/search?query=${encodeURIComponent(q)}`);
+          for (const customer of customers) {
+            claims.push(...await api(`/claims?customerId=${encodeURIComponent(customer.customerId)}`));
+          }
+        }
+        document.getElementById("count").textContent = `${claims.length}`;
+        document.getElementById("claims").innerHTML = claims.map(claim => `
+          <div class="claim" onclick="openClaim('${claim.claimId}')">
+            <strong>${claim.claimId}</strong> ${claim.title}
+            <div class="muted">${claim.status} · $${claim.amount}</div>
+          </div>
+        `).join("");
+      }
+      async function openClaim(id) {
+        selected = id;
+        const claim = await api(`/claims/${id}`);
+        document.getElementById("detail").innerHTML = `
+          <hr />
+          <h3>${claim.claimId}: ${claim.title}</h3>
+          <p><span class="badge">${claim.status}</span> <span class="badge">$${claim.amount}</span></p>
+          <p class="muted">${claim.notes.join("<br />")}</p>
+          <label>New note</label>
+          <textarea id="note">Customer requested a same-day callback.</textarea>
+          <button onclick="addNote()">Add note</button>
+          <button onclick="decide('approved')">Approve</button>
+          <button onclick="decide('manual_review')">Manual review</button>
+        `;
+      }
+      async function addNote() {
+        await api(`/claims/${selected}/notes`, { method: "POST", body: JSON.stringify({ note: document.getElementById("note").value }) });
+        await openClaim(selected);
+      }
+      async function decide(decision) {
+        await api(`/claims/${selected}/decision`, { method: "POST", body: JSON.stringify({ decision, reason: "Owner action from web UI" }) });
+        await openClaim(selected);
+      }
+      search();
+    </script>
+  </body>
+</html>
+

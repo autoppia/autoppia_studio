@@ -21,6 +21,8 @@ const mockedUseSelector = useSelector as unknown as jest.Mock;
 describe("Company Setup page", () => {
   beforeEach(() => {
     mockNavigate.mockReset();
+    localStorage.clear();
+    window.history.replaceState(null, "", "/company-setup");
     localStorage.setItem("automata_company_id", "company-1");
     mockedUseSelector.mockImplementation((selector: any) =>
       selector({ user: { email: "demo@example.com" } }),
@@ -353,7 +355,13 @@ describe("Company Setup page", () => {
   it("shows the operating graph and links into factory, runtime, work and approvals", async () => {
     render(<CompanySetup />);
 
+    fireEvent.click(await screen.findByRole("tab", { name: /Coverage/i }));
     expect(await screen.findByText("Operating Graph")).toBeInTheDocument();
+    expect(await screen.findByText("Capability Factory")).toBeInTheDocument();
+    expect(await screen.findByText("Board")).toBeInTheDocument();
+    expect(await screen.findByText("Approval Surface")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /open runtime/i })).toBeInTheDocument();
+
     expect(await screen.findByText("Capability map")).toBeInTheDocument();
     expect(await screen.findByText("Resource map")).toBeInTheDocument();
     expect(await screen.findByText("Runtime policy map")).toBeInTheDocument();
@@ -361,6 +369,8 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("5/7")).toBeInTheDocument();
     expect(await screen.findByText("6.5 credits")).toBeInTheDocument();
     expect(await screen.findByText("Domain restricted · 4 browser sessions")).toBeInTheDocument();
+
+    fireEvent.click(await screen.findByRole("tab", { name: /Integration/i }));
     expect(await screen.findByText("System factory pipeline")).toBeInTheDocument();
     expect(await screen.findByText("1 source ready, 1 pending")).toBeInTheDocument();
     expect(await screen.findByText("1 pending synthesis")).toBeInTheDocument();
@@ -368,12 +378,15 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("1 blocked connectors")).toBeInTheDocument();
     expect(await screen.findByText("Insurance ERP: mapped, 4 typed tools, ready")).toBeInTheDocument();
     expect(await screen.findByText("Broker Portal: Connector needs browser credentials.")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: /Coverage/i }));
     expect(await screen.findByText("Runtime gate")).toBeInTheDocument();
     expect((await screen.findAllByText("4/5")).length).toBeGreaterThan(0);
     expect(await screen.findByText("acl 1")).toBeInTheDocument();
     expect(await screen.findByText("knowledge.claims.search, knowledge.claims.read_document")).toBeInTheDocument();
     expect(await screen.findByText("email, insurance_erp, knowledge")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: /Overview/i }));
     expect(await screen.findByText("2 ready skills, 1 publishable packages")).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole("tab", { name: /Coverage/i }));
     expect(await screen.findByText("2 manifest ready · 1 regressions")).toBeInTheDocument();
     expect(await screen.findByText("Regression gate")).toBeInTheDocument();
     expect(await screen.findByText("1 publishable")).toBeInTheDocument();
@@ -384,17 +397,15 @@ describe("Company Setup page", () => {
     expect(await screen.findByText("0 pending")).toBeInTheDocument();
     expect(await screen.findByText("Work orchestration contract")).toBeInTheDocument();
     expect(await screen.findByText("1 due now")).toBeInTheDocument();
-    expect(await screen.findByText("Capability Factory")).toBeInTheDocument();
-    expect(await screen.findByText("Work Orchestration")).toBeInTheDocument();
-    expect(await screen.findByText("Approval Surface")).toBeInTheDocument();
-    expect(await screen.findByRole("button", { name: /open runtime/i })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /open capabilities/i }));
+    fireEvent.click(await screen.findByRole("tab", { name: /Overview/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Capabilities" }));
     expect(mockNavigate).toHaveBeenCalledWith("/capabilities");
 
-    fireEvent.click(screen.getByRole("button", { name: /open runtime/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
     expect(mockNavigate).toHaveBeenCalledWith("/runtime");
 
+    fireEvent.click(await screen.findByRole("tab", { name: /Coverage/i }));
     fireEvent.click(screen.getAllByRole("button", { name: /open work/i })[0]);
     expect(mockNavigate).toHaveBeenCalledWith("/work");
 

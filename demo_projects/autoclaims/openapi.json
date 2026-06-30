@@ -1,0 +1,88 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AutoClaims API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/customers/search": {
+      "get": {
+        "operationId": "searchCustomers",
+        "summary": "Search customers by name or email.",
+        "parameters": [
+          {"name": "query", "in": "query", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Matching customers"}}
+      }
+    },
+    "/claims": {
+      "get": {
+        "operationId": "listClaims",
+        "summary": "List claims, optionally filtered by customer or status.",
+        "parameters": [
+          {"name": "customerId", "in": "query", "required": false, "schema": {"type": "string"}},
+          {"name": "status", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Claims"}}
+      }
+    },
+    "/claims/{claim_id}": {
+      "get": {
+        "operationId": "getClaim",
+        "summary": "Get a claim by id.",
+        "parameters": [
+          {"name": "claim_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {"200": {"description": "Claim"}}
+      }
+    },
+    "/claims/{claim_id}/notes": {
+      "post": {
+        "operationId": "addClaimNote",
+        "summary": "Add an operational note to a claim.",
+        "parameters": [
+          {"name": "claim_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {"note": {"type": "string"}},
+                "required": ["note"]
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "Updated claim"}}
+      }
+    },
+    "/claims/{claim_id}/decision": {
+      "post": {
+        "operationId": "setClaimDecision",
+        "summary": "Set the decision/status for a claim.",
+        "parameters": [
+          {"name": "claim_id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "decision": {"type": "string", "enum": ["open", "approved", "manual_review", "rejected"]},
+                  "reason": {"type": "string"}
+                },
+                "required": ["decision", "reason"]
+              }
+            }
+          }
+        },
+        "responses": {"200": {"description": "Updated claim"}}
+      }
+    }
+  }
+}
+

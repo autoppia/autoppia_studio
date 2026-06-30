@@ -179,10 +179,10 @@ describe("Runtime page", () => {
     expect(await screen.findByText("1 connector action")).toBeInTheDocument();
   });
 
-  it("shows Runtime Lab evidence for replay, tools, skills, approvals and outputs", async () => {
+  it("shows Workspace evidence for replay, tools, skills, approvals and outputs", async () => {
     render(<Runtime />);
 
-    expect(await screen.findByText("Runtime Lab evidence")).toBeInTheDocument();
+    expect(await screen.findByText("Workspace evidence")).toBeInTheDocument();
     expect(await screen.findByText("Replay blocked")).toBeInTheDocument();
     expect(await screen.findByText("3 steps")).toBeInTheDocument();
     expect(await screen.findByText("1 tool call")).toBeInTheDocument();

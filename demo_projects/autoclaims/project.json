@@ -1,0 +1,150 @@
+{
+  "projectId": "autoclaims",
+  "name": "AutoClaims",
+  "version": "0.1.0",
+  "description": "Small insurance claims company demo with web UI, API docs and policy knowledge.",
+  "industry": "insurance operations",
+  "defaultBaseUrl": "http://127.0.0.1:8123",
+  "auth": {
+    "required": true,
+    "kind": "demo_owner",
+    "username": "owner@autoclaims.test",
+    "password": "Passw0rd!",
+    "instructions": "Use owner demo credentials for both the web UI and API benchmark runs."
+  },
+  "surfaces": [
+    {
+      "surfaceId": "autoclaims-web",
+      "kind": "web",
+      "name": "AutoClaims Web",
+      "url": "/",
+      "authRequired": true,
+      "description": "Browser interface for searching claims, reviewing claim detail and changing claim state."
+    },
+    {
+      "surfaceId": "autoclaims-api",
+      "kind": "openapi",
+      "name": "AutoClaims API",
+      "url": "/openapi.json",
+      "authRequired": true,
+      "description": "REST API for customers, claims, notes and claim decisions."
+    },
+    {
+      "surfaceId": "autoclaims-policy",
+      "kind": "document_url",
+      "name": "Claims Policy",
+      "url": "/docs/claims_policy.md",
+      "description": "Business policy used to decide approval, review and escalation."
+    },
+    {
+      "surfaceId": "autoclaims-escalation",
+      "kind": "document_url",
+      "name": "Escalation Playbook",
+      "url": "/docs/escalation_playbook.md",
+      "description": "Operational rules for fraud flags and high-value claims."
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "find_claim_status",
+      "name": "Find claim status",
+      "prompt": "Find the status and owner note for claim CLM-1001.",
+      "successCriteria": "Returns the current claim status, customer name and latest note for CLM-1001.",
+      "expectedSurfaces": ["api"],
+      "riskClass": "read"
+    },
+    {
+      "taskId": "approve_low_risk_claim",
+      "name": "Approve low risk claim",
+      "prompt": "Approve claim CLM-1001 if it satisfies the claims policy.",
+      "successCriteria": "Uses policy docs to confirm eligibility and marks CLM-1001 approved.",
+      "expectedSurfaces": ["api", "documents"],
+      "riskClass": "write"
+    },
+    {
+      "taskId": "escalate_flagged_claim",
+      "name": "Escalate flagged claim",
+      "prompt": "Review claim CLM-2002 and escalate it if the escalation playbook requires manual review.",
+      "successCriteria": "Uses the escalation playbook and sets CLM-2002 to manual_review.",
+      "expectedSurfaces": ["api", "documents"],
+      "riskClass": "write"
+    },
+    {
+      "taskId": "web_add_claim_note",
+      "name": "Add claim note from UI",
+      "prompt": "Using the web UI, add a note to claim CLM-3003 saying the customer requested a same-day callback.",
+      "successCriteria": "The claim detail page shows the new callback note.",
+      "expectedSurfaces": ["web"],
+      "riskClass": "write"
+    },
+    {
+      "taskId": "customer_summary",
+      "name": "Customer claim summary",
+      "prompt": "Create a short summary of all open claims for customer Ada Lovelace.",
+      "successCriteria": "Finds Ada Lovelace, lists open claims and summarizes next actions.",
+      "expectedSurfaces": ["api", "documents"],
+      "riskClass": "read"
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": ["web", "api", "knowledge"],
+    "minimumTaskCount": 5,
+    "minimumToolCount": 5,
+    "requiresKnowledge": true,
+    "requiresApiTools": true,
+    "requiresBrowserTasks": true
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "api_only",
+      "description": "Evaluate whether CompanyHarvester can build API tools and knowledge-backed API tasks without relying on browser workflows.",
+      "surfaceFilter": ["api", "documents"],
+      "taskIds": ["find_claim_status", "approve_low_risk_claim", "escalate_flagged_claim", "customer_summary"],
+      "expectedHarvest": {
+        "connectors": ["api", "knowledge"],
+        "minimumTaskCount": 4,
+        "minimumToolCount": 4,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": false
+      },
+      "metadata": {
+        "preferredExecution": "api"
+      }
+    },
+    {
+      "modeId": "web_only",
+      "description": "Evaluate browser-only task discovery and execution without API surfaces.",
+      "surfaceFilter": ["web"],
+      "taskIds": ["web_add_claim_note"],
+      "expectedHarvest": {
+        "connectors": ["web"],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true
+      },
+      "metadata": {
+        "preferredExecution": "browser"
+      }
+    },
+    {
+      "modeId": "hybrid",
+      "description": "Evaluate full-company onboarding where API should be preferred when available and web/docs remain available for workflows that need them.",
+      "surfaceFilter": ["web", "api", "documents"],
+      "taskIds": ["find_claim_status", "approve_low_risk_claim", "escalate_flagged_claim", "web_add_claim_note", "customer_summary"],
+      "expectedHarvest": {
+        "connectors": ["web", "api", "knowledge"],
+        "minimumTaskCount": 5,
+        "minimumToolCount": 5,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true
+      },
+      "metadata": {
+        "preferredExecution": "best_available"
+      }
+    }
+  ]
+}
