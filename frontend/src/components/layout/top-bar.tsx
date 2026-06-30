@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
@@ -14,7 +14,6 @@ import {
   faXmark,
   faUser,
   faGear,
-  faPenToSquare,
 } from "@fortawesome/free-solid-svg-icons";
 import { logout } from "../../redux/userSlice";
 import { Company } from "../../utils/types";
@@ -45,6 +44,8 @@ export default function TopBar() {
   const [companyDescription, setCompanyDescription] = useState("");
   const [companyMenuOpen, setCompanyMenuOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const companyMenuRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const [saving, setSaving] = useState(false);
   const [confirmDeleteCompany, setConfirmDeleteCompany] = useState(false);
   const [pendingOnboardingCompany, setPendingOnboardingCompany] = useState<Company | null>(null);
@@ -99,6 +100,24 @@ export default function TopBar() {
     return () => window.removeEventListener("automata-open-company-onboarding", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Close the company / account dropdowns on any click outside them. A plain
+  // `fixed inset-0` overlay does not work here because the top bar uses
+  // backdrop-filter, which contains fixed-positioned children to the bar.
+  useEffect(() => {
+    if (!companyMenuOpen && !userMenuOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node;
+      if (companyMenuOpen && companyMenuRef.current && !companyMenuRef.current.contains(target)) {
+        setCompanyMenuOpen(false);
+      }
+      if (userMenuOpen && userMenuRef.current && !userMenuRef.current.contains(target)) {
+        setUserMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [companyMenuOpen, userMenuOpen]);
 
   const openEdit = () => {
     if (!selectedCompany) return;
@@ -178,13 +197,24 @@ export default function TopBar() {
   };
 
   return (
-    <header className="ck-topbar relative">
+    <header className="ck-topbar">
       <div className="ck-topbar-left">
-        <div className="flex items-center gap-2 min-w-0">
-        <div className="relative">
+        <button
+          className="ck-brand-top"
+          onClick={() => navigate("/agents")}
+          title="Autoppia Studio"
+          aria-label="Autoppia Studio"
+        >
+          <img src="/assets/images/logos/main.webp" alt="Autoppia" />
+          <span className="ck-brand-top-word">Autoppia</span>
+          <span className="ck-brand-pill">Studio</span>
+        </button>
+        <span className="ck-topbar-sep" aria-hidden="true" />
+        <div className="flex items-center gap-2 flex-shrink-0">
+        <div className="relative" ref={companyMenuRef}>
           <button
             onClick={() => setCompanyMenuOpen((open) => !open)}
-            className="group flex h-9 w-[250px] max-w-[280px] items-center gap-2 rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-2)] pl-1.5 pr-2.5 text-left transition-colors hover:border-[color:var(--accent-line)] hover:bg-[color:var(--hover-strong)]"
+            className="group flex h-9 w-[180px] max-w-[200px] items-center gap-2 rounded-lg border border-[color:var(--line)] bg-[color:var(--bg-2)] pl-1.5 pr-2.5 text-left transition-colors hover:border-[color:var(--accent-line)] hover:bg-[color:var(--hover-strong)]"
             title="Company"
           >
             <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-md bg-[color:var(--accent-soft)] text-[color:var(--accent)]">
@@ -233,8 +263,6 @@ export default function TopBar() {
         </div>
       </div>
 
-      </div>
-
       <nav className="ck-topbar-nav" aria-label="Primary navigation">
         {navGroups.map((group) => {
           const active = activeGroup?.key === group.key;
@@ -252,6 +280,7 @@ export default function TopBar() {
           );
         })}
       </nav>
+      </div>
 
       <div className="ck-topbar-actions">
       <ThemeCustomizer />
@@ -269,18 +298,19 @@ export default function TopBar() {
       {/* New session call-to-action */}
       <button
         onClick={() => navigate("/home")}
-        className="relative flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-gray-200 text-gray-500 transition-colors hover:bg-gray-100 dark:border-zinc-800/80 dark:text-zinc-300 dark:hover:bg-white/5"
+        className="ck-newsession-btn"
         title="New session"
         aria-label="New session"
       >
-        <FontAwesomeIcon icon={faPenToSquare} className="text-xs" />
+        <FontAwesomeIcon icon={faPlus} className="text-[11px]" />
+        <span>New session</span>
       </button>
 
       {/* Notifications */}
       <ActivityCenter showActivity={false} />
 
       {/* User menu */}
-      <div className="relative">
+      <div className="relative" ref={userMenuRef}>
         <button
           onClick={() => setUserMenuOpen((open) => !open)}
           className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-primary text-[13px] font-bold text-white shadow-sm ring-1 ring-[color:var(--accent-line)] transition-transform hover:scale-105"
@@ -291,7 +321,6 @@ export default function TopBar() {
         </button>
         {userMenuOpen && (
           <>
-            <div className="fixed inset-0 z-[80]" onClick={() => setUserMenuOpen(false)} />
             <div className="absolute right-0 top-11 z-[90] w-60 rounded-xl border border-gray-200 dark:border-dark-border bg-white dark:bg-dark-surface shadow-xl dark:shadow-black/40 p-1.5">
               <div className="flex items-center gap-2.5 px-2.5 py-2">
                 <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-primary text-xs font-semibold text-white">

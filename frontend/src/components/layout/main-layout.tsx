@@ -56,13 +56,15 @@ export default function MainLayout() {
 
   return (
     <div className="ck-shell">
-      <CockpitSidebar />
-      <div className="ck-main">
-        <TopBar />
-        <div className="flex min-h-0 flex-1 overflow-hidden">
-          {isChatSurface ? <ChatHistoryRail histories={histories} /> : null}
-          <div className="min-w-0 flex-1 overflow-hidden">
-            <Outlet context={{ sidebarExpanded: false, addHistoryItem }} />
+      <TopBar />
+      <div className="ck-body">
+        <CockpitSidebar />
+        <div className="ck-main">
+          <div className="flex min-h-0 flex-1 overflow-hidden">
+            {isChatSurface ? <ChatHistoryRail histories={histories} /> : null}
+            <div className="min-w-0 flex-1 overflow-hidden">
+              <Outlet context={{ sidebarExpanded: false, addHistoryItem }} />
+            </div>
           </div>
         </div>
       </div>

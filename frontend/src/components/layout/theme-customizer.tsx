@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import { faCheck, faPalette, faRotateLeft } from "@fortawesome/free-solid-svg-icons";
 import {
@@ -74,11 +74,25 @@ function SelectField({
 export default function ThemeCustomizer() {
   const [open, setOpen] = useState(false);
   const [settings, setSettings] = useState<StudioThemeSettings>(() => loadThemeSettings());
+  const rootRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const applied = applyThemeSettings(settings);
     saveThemeSettings(applied);
   }, [settings]);
+
+  // Close on outside click. The top bar's backdrop-filter would trap a plain
+  // fixed overlay inside the bar, so listen at the document level instead.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: MouseEvent) => {
+      if (rootRef.current && !rootRef.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
 
   const patch = (update: Partial<StudioThemeSettings>) => {
     setSettings((current) => ({ ...current, ...update }));
@@ -89,7 +103,7 @@ export default function ThemeCustomizer() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative" ref={rootRef}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -101,7 +115,6 @@ export default function ThemeCustomizer() {
       </button>
       {open && (
         <>
-          <div className="fixed inset-0 z-[80]" onClick={() => setOpen(false)} />
           <div className="ck-theme-popover">
             <div className="ck-theme-head">
               <div>

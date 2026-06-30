@@ -32,4 +32,8 @@ async def test_ica_route_runs_single_harvester_project_mode():
     assert run["projectId"] == "autoclaims"
     assert run["mode"] == "hybrid"
     assert run["passed"] is True
+    assert run["taskDiscoveryPassed"] is True
     assert run["taskRecall"] == 1.0
+    assert run["taskMissingTaskIds"] == []
+    assert run["solutionDiscoveryPassed"] is True
+    assert run["solutionIncompleteTaskIds"] == []

@@ -87,6 +87,11 @@ def _summarize_run(run: dict[str, Any]) -> dict[str, Any]:
     task_discovery = phases.get("taskDiscovery") or {}
     solution_discovery = phases.get("solutionDiscovery") or {}
     inventory = phases.get("inventory") or {}
+    task_missing = task_discovery.get("missingTaskIds") or []
+    task_extra = task_discovery.get("extraTaskNames") or []
+    solution_missing = solution_discovery.get("missingTaskIds") or []
+    solution_incomplete = solution_discovery.get("incompleteTaskIds") or []
+    inventory_missing = inventory.get("missing") or []
     return {
         "runId": run["runId"],
         "runGroupId": run["runGroupId"],
@@ -98,17 +103,28 @@ def _summarize_run(run: dict[str, Any]) -> dict[str, Any]:
         "mode": run["mode"],
         "passed": result.get("passed", False),
         "score": result.get("score", 0.0),
+        "taskDiscoveryPassed": task_discovery.get("passed", False),
+        "taskDiscoveryScore": task_discovery.get("score", 0.0),
         "taskRecall": task_discovery.get("recall", 0.0),
         "taskPrecision": task_discovery.get("precision", 0.0),
         "matchedTasks": task_discovery.get("matchedCount", 0),
         "expectedTasks": task_discovery.get("expectedCount", 0),
+        "taskMissingTaskIds": task_missing,
+        "taskExtraTaskNames": task_extra,
+        "solutionDiscoveryPassed": solution_discovery.get("passed", False),
         "solutionScore": solution_discovery.get("score", 0.0),
         "solutionCount": solution_discovery.get("solutionCount", 0),
+        "expectedSolutionTasks": solution_discovery.get("expectedTaskCount", 0),
+        "solutionMissingTaskIds": solution_missing,
+        "solutionIncompleteTaskIds": solution_incomplete,
+        "inventoryPassed": inventory.get("passed", False),
         "inventoryScore": inventory.get("score", 0.0),
+        "inventoryMissing": inventory_missing,
         "missing": [
-            *(task_discovery.get("missingTaskIds") or []),
-            *(solution_discovery.get("missingTaskIds") or []),
-            *(inventory.get("missing") or []),
+            *task_missing,
+            *solution_missing,
+            *solution_incomplete,
+            *inventory_missing,
         ],
     }
 

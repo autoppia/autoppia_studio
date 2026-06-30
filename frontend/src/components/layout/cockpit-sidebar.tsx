@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { faAnglesLeft, faAnglesRight } from "@fortawesome/free-solid-svg-icons";
 import { groupLandingPath, resolveActiveGroup, visibleNavGroups, type NavItem } from "./nav-config";
 import { useStudioMode } from "../../utils/studio-mode";
 
@@ -57,15 +58,11 @@ export default function CockpitSidebar() {
       <button
         type="button"
         onClick={() => setCollapsed((v) => !v)}
-        className="ck-brand"
+        className="ck-side-collapse"
         title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
         aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
       >
-        <img src="/assets/images/logos/main.webp" alt="Autoppia" />
-        <span className="ck-brand-word">
-          <span className="ck-brand-main">Autoppia</span>
-          <span className="ck-brand-sub">Studio</span>
-        </span>
+        <FontAwesomeIcon icon={collapsed ? faAnglesRight : faAnglesLeft} />
       </button>
 
       <nav className="ck-nav">

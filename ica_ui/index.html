@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#f4f6f9" />
+    <title>ICA | Company Harvester Arena</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark">ICA</div>
+          <div>
+            <div class="eyebrow">Infinite Company Arena</div>
+            <h1>Company Harvester Arena</h1>
+          </div>
+        </div>
+        <div class="top-actions">
+          <label class="api-field">
+            <span>API</span>
+            <input id="apiUrlInput" spellcheck="false" autocomplete="off" />
+          </label>
+          <button id="reloadButton" class="button ghost" type="button">Reload</button>
+          <button id="runButton" class="button primary" type="button">Run matrix</button>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Sections">
+        <button class="tab is-active" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview" type="button">Overview</button>
+        <button class="tab" role="tab" id="tab-harvesters" aria-controls="panel-harvesters" aria-selected="false" data-tab="harvesters" type="button">Harvesters</button>
+        <button class="tab" role="tab" id="tab-companies" aria-controls="panel-companies" aria-selected="false" data-tab="companies" type="button">Demo Companies</button>
+        <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" data-tab="runs" type="button">Runs</button>
+      </nav>
+
+      <section id="errorBanner" class="error-banner" hidden></section>
+
+      <!-- OVERVIEW -->
+      <div id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
+        <section class="kpi-grid">
+          <article class="kpi">
+            <span>Runs</span>
+            <strong id="kpiRuns">0</strong>
+            <small id="kpiPassed">0 pass</small>
+          </article>
+          <article class="kpi">
+            <span>Avg score</span>
+            <strong id="kpiScore">0%</strong>
+            <small>overall</small>
+          </article>
+          <article class="kpi">
+            <span>Task recall</span>
+            <strong id="kpiRecall">0%</strong>
+            <small>discovery</small>
+          </article>
+          <article class="kpi">
+            <span>Selected</span>
+            <strong id="kpiSelected">0</strong>
+            <small>matrix cells</small>
+          </article>
+        </section>
+
+        <div class="overview-grid">
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Run selection</h2>
+                <p>What the next matrix run will cover.</p>
+              </div>
+              <span id="runState" class="run-state">idle</span>
+            </div>
+            <div class="panel-body">
+              <div id="selectionSummary" class="summary-rows"></div>
+              <button id="runButtonOverview" class="button primary block" type="button">Run matrix</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head compact">
+              <h2>Recent runs</h2>
+              <a class="link-tab" data-tab="runs" href="#" role="button">View all</a>
+            </div>
+            <div id="latestRuns" class="latest-runs"></div>
+          </section>
+        </div>
+
+        <section class="panel report-panel">
+          <div class="panel-head">
+            <div>
+              <h2>Latest run group report</h2>
+              <p>Task discovery, solution discovery and inventory quality across the selected matrix.</p>
+            </div>
+            <a class="link-tab" data-tab="runs" href="#" role="button">Open filters</a>
+          </div>
+          <div id="runGroupReport" class="group-report"></div>
+        </section>
+      </div>
+
+      <!-- HARVESTERS -->
+      <div id="panel-harvesters" class="tab-panel" role="tabpanel" aria-labelledby="tab-harvesters" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Harvesters</h2>
+              <p>Miner profiles implementing the CompanyHarvester contract.</p>
+            </div>
+            <div class="chip-row">
+              <span id="harvestersCount" class="count-badge">0 selected</span>
+              <button id="toggleHarvesters" class="chip" type="button">Select all</button>
+            </div>
+          </div>
+          <div id="harvestersGrid" class="harvesters-grid"></div>
+        </section>
+      </div>
+
+      <!-- DEMO COMPANIES -->
+      <div id="panel-companies" class="tab-panel" role="tabpanel" aria-labelledby="tab-companies" hidden>
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Demo Companies</h2>
+              <p>Benchmark projects with web, API and document surfaces.</p>
+            </div>
+            <div class="chip-row">
+              <span id="companiesCount" class="count-badge">0 selected</span>
+              <button id="toggleProjects" class="chip" type="button">Select all</button>
+            </div>
+          </div>
+          <div class="panel-subhead">
+            <span class="subhead-label">Benchmark modes</span>
+            <div id="modeChips" class="chip-row"></div>
+          </div>
+          <div id="companiesGrid" class="companies-grid"></div>
+        </section>
+      </div>
+
+      <!-- RUNS -->
+      <div id="panel-runs" class="tab-panel" role="tabpanel" aria-labelledby="tab-runs" hidden>
+        <section class="panel filters-panel">
+          <div class="panel-head compact">
+            <h2>Filters</h2>
+            <button id="clearFilters" class="chip" type="button">Clear</button>
+          </div>
+          <div class="filters-grid">
+            <label class="filter-field">
+              <span>Run group</span>
+              <select id="filterGroup"></select>
+            </label>
+            <label class="filter-field">
+              <span>Harvester</span>
+              <select id="filterHarvester"></select>
+            </label>
+            <label class="filter-field">
+              <span>Company</span>
+              <select id="filterProject"></select>
+            </label>
+            <label class="filter-field">
+              <span>Mode</span>
+              <select id="filterMode"></select>
+            </label>
+            <label class="filter-field">
+              <span>Status</span>
+              <select id="filterStatus">
+                <option value="">All</option>
+                <option value="pass">Pass</option>
+                <option value="fail">Needs work</option>
+              </select>
+            </label>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>Results Matrix</h2>
+              <p>Task discovery, solution discovery and inventory score by miner.</p>
+            </div>
+            <span id="runStateRuns" class="run-state">idle</span>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Company</th>
+                  <th>Miner</th>
+                  <th>Mode</th>
+                  <th>Score</th>
+                  <th>Task discovery</th>
+                  <th>Solution discovery</th>
+                  <th>Inventory</th>
+                  <th>Missing</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+            <div id="emptyResults" class="empty">Run the selected matrix to populate results.</div>
+          </div>
+        </section>
+      </div>
+    </div>
+    <script src="/src/app.js" defer></script>
+  </body>
+</html>
