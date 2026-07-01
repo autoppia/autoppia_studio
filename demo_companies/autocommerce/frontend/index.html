@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>AutoCommerce Admin</title>
+  </head>
+  <body>
+    <main>
+      <h1>AutoCommerce Admin</h1>
+      <section>
+        <h2>Order lookup</h2>
+        <input id="orderId" value="ORD-1001" />
+        <button id="findOrder">Find order status</button>
+        <pre id="orderResult"></pre>
+      </section>
+      <section>
+        <h2>Inventory notes</h2>
+        <input id="sku" value="SKU-RED-MUG" />
+        <textarea id="note">Needs supplier confirmation before restock.</textarea>
+        <button id="addNote">Add inventory note</button>
+        <pre id="noteResult"></pre>
+      </section>
+    </main>
+    <script>
+      async function api(path, options = {}) {
+        const response = await fetch(path, {
+          headers: { "Content-Type": "application/json" },
+          ...options,
+        });
+        return response.json();
+      }
+
+      document.getElementById("findOrder").onclick = async () => {
+        const orderId = document.getElementById("orderId").value.trim();
+        document.getElementById("orderResult").textContent = JSON.stringify(await api(`/orders/${orderId}`), null, 2);
+      };
+
+      document.getElementById("addNote").onclick = async () => {
+        const sku = document.getElementById("sku").value.trim();
+        const note = document.getElementById("note").value.trim();
+        document.getElementById("noteResult").textContent = JSON.stringify(
+          await api(`/inventory/${sku}/notes`, { method: "POST", body: JSON.stringify({ note }) }),
+          null,
+          2,
+        );
+      };
+    </script>
+  </body>
+</html>

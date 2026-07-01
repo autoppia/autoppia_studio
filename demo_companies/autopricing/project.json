@@ -1,0 +1,182 @@
+{
+  "projectId": "autopricing",
+  "name": "AutoPricing",
+  "version": "0.1.0",
+  "description": "Code-only demo company for harvesting hidden pricing rules from repository source.",
+  "industry": "SaaS pricing operations",
+  "defaultBaseUrl": "http://localhost:8030",
+  "auth": {
+    "required": false
+  },
+  "surfaces": [
+    {
+      "surfaceId": "autopricing-backend-code",
+      "kind": "code_file",
+      "name": "AutoPricing Backend Rules",
+      "url": "/backend/pricing_rules.py",
+      "authRequired": false,
+      "description": "Python pricing rules containing enterprise discount logic not documented elsewhere."
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "calculate_enterprise_discount",
+      "name": "Calculate enterprise discount",
+      "prompt": "Use the pricing rules code to calculate the discount for ACME: renewal=true, seats=120, term_months=18.",
+      "successCriteria": "Returns 18 percent discount, approval_required=false and cites the enterprise renewal rule.",
+      "expectedSurfaces": [
+        "code"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "executionTest": {
+          "type": "autopricing_discount_quote",
+          "requiredTools": [
+            "autopricing.code.inspect"
+          ],
+          "expected": {
+            "discountPercent": 18,
+            "approvalRequired": false,
+            "rationaleContains": "enterprise"
+          }
+        }
+      }
+    }
+  ],
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "calculate_enterprise_discount",
+      "aliases": [
+        "Calculate enterprise discount",
+        "Calculate renewal discount",
+        "Inspect pricing rules"
+      ],
+      "keywords": [
+        "discount",
+        "enterprise",
+        "renewal",
+        "seats",
+        "pricing"
+      ],
+      "required": true
+    }
+  ],
+  "expectedSolutions": [
+    {
+      "taskId": "calculate_enterprise_discount",
+      "connectors": [
+        "code"
+      ],
+      "tools": [
+        "autopricing.code.inspect"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autopricing:calculate_enterprise_discount:code",
+          "description": "Inspect pricing source code and apply the enterprise renewal discount rule.",
+          "toolCalls": [
+            {
+              "toolName": "autopricing.code.inspect",
+              "arguments": {
+                "path": "backend/pricing_rules.py",
+                "symbols": [
+                  "calculate_enterprise_discount"
+                ]
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autopricing:calculate_enterprise_discount:skill",
+          "name": "Apply AutoPricing enterprise discount rule",
+          "description": "Use source-code pricing rules to calculate enterprise renewal discounts.",
+          "trajectoryIds": [
+            "autopricing:calculate_enterprise_discount:code"
+          ],
+          "instructions": "Inspect pricing_rules.py and apply calculate_enterprise_discount for renewal=true, seats=120, term_months=18.",
+          "source": "hybrid"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "codex",
+        "provider": "openai",
+        "model": "gpt-5-codex",
+        "systemPrompt": "Use repository code evidence before answering pricing rule tasks."
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "code"
+    ],
+    "minimumTaskCount": 1,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": false,
+    "minimumSolutionCount": 1
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "code_only",
+      "description": "Harvest hidden pricing rules from code only.",
+      "surfaceFilter": [
+        "code"
+      ],
+      "taskIds": [
+        "calculate_enterprise_discount"
+      ],
+      "discoveryInput": [
+        "code"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "code"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": false,
+        "minimumSolutionCount": 1
+      },
+      "metadata": {
+        "sourceCombination": [
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "all_sources",
+      "description": "Canonical mode for this code-only company.",
+      "surfaceFilter": [
+        "code"
+      ],
+      "taskIds": [
+        "calculate_enterprise_discount"
+      ],
+      "discoveryInput": [
+        "code"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "code"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": false,
+        "minimumSolutionCount": 1
+      },
+      "metadata": {
+        "sourceCombination": [
+          "code"
+        ]
+      }
+    }
+  ]
+}

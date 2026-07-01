@@ -11,7 +11,10 @@ load_dotenv()
 
 # Pin backend dir first so local package `agent` resolves reliably.
 _backend_dir = str(_backend_dir_path)
+_repo_dir = str(_backend_dir_path.parent)
 sys.path.insert(0, _backend_dir)
+if _repo_dir not in sys.path:
+    sys.path.insert(1, _repo_dir)
 import agent.browser_executor  # noqa: F401 — warm import; keeps `agent` from sys.path races
 
 from fastapi import FastAPI, Depends, HTTPException, Request

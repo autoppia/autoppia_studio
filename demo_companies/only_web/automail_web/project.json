@@ -1,0 +1,113 @@
+{
+  "projectId": "automail_web",
+  "name": "AutoMail Web",
+  "version": "0.1.0",
+  "description": "Web-only ICA wrapper for the legacy AutoMail demo web.",
+  "industry": "email operations",
+  "defaultBaseUrl": "http://84.247.180.192:8005",
+  "surfaces": [
+    {
+      "surfaceId": "automail-web",
+      "kind": "web",
+      "name": "AutoMail Web",
+      "url": "/",
+      "authRequired": false,
+      "description": "Legacy browser surface from autoppia_webs_demo.",
+      "metadata": {
+        "legacyDemoWeb": true,
+        "legacyProject": "automail",
+        "legacyDirectory": "web_6_automail"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "primary_web_workflow",
+      "name": "Explore AutoMail Web",
+      "prompt": "Explore AutoMail Web and identify the primary useful business workflow available in the web UI.",
+      "successCriteria": "A useful web workflow is identified with enough detail to automate it later.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "automail",
+        "legacyDemoWeb": true
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "web"
+    ],
+    "minimumTaskCount": 1,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 0
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Legacy demo web adapter mode.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "taskIds": [
+        "primary_web_workflow"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "category": "only_web",
+    "legacyIwaProject": "automail",
+    "legacyDemoWeb": true,
+    "remotePort": 8005,
+    "remoteReachable": true,
+    "remoteCheckedAt": "2026-07-01",
+    "remoteStatus": "reachable"
+  },
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "primary_web_workflow",
+      "aliases": [
+        "Explore AutoMail Web",
+        "Explore web workflow",
+        "Primary web workflow",
+        "Identify useful business workflow"
+      ],
+      "keywords": [
+        "explore",
+        "web",
+        "workflow",
+        "business",
+        "mail"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    }
+  ]
+}

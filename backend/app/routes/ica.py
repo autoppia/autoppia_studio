@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,14 +16,35 @@ from app.services import infinite_company_arena as ica
 
 router = APIRouter(prefix="/ica", tags=["ica"])
 
-_RUNS: list[dict[str, Any]] = []
+_RUNS_PATH = ica.ROOT / "logs" / "ica_runs.json"
 _MAX_RUNS = 100
+
+
+def _load_runs() -> list[dict[str, Any]]:
+    if not _RUNS_PATH.exists():
+        return []
+    try:
+        data = json.loads(_RUNS_PATH.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [item for item in data if isinstance(item, dict)]
+
+
+def _save_runs() -> None:
+    _RUNS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _RUNS_PATH.write_text(json.dumps(_RUNS[:_MAX_RUNS], indent=2), encoding="utf-8")
+
+
+_RUNS: list[dict[str, Any]] = _load_runs()
 
 
 class IcaRunRequest(BaseModel):
     harvesterNames: list[str] = Field(default_factory=list)
     projectIds: list[str] = Field(default_factory=list)
     modeIds: list[IcaBenchmarkModeKind] = Field(default_factory=list)
+    canonicalModeOnly: bool = False
     email: str = "ica-owner@example.com"
     baseUrl: str = ""
 
@@ -32,10 +54,7 @@ def _utc_now() -> str:
 
 
 def _project_manifest_paths() -> list[Path]:
-    root = ica.DEMO_PROJECTS_ROOT
-    if not root.exists():
-        return []
-    return sorted(path / "project.json" for path in root.iterdir() if (path / "project.json").exists())
+    return ica.demo_company_manifest_paths()
 
 
 def _public_project(project: Any) -> dict[str, Any]:
@@ -55,6 +74,7 @@ def _public_project(project: Any) -> dict[str, Any]:
         "tasks": [task.model_dump(mode="json") for task in project.tasks],
         "benchmarkModes": modes,
         "expectedHarvest": project.expectedHarvest.model_dump(mode="json"),
+        "metadata": project.metadata,
     }
 
 
@@ -81,22 +101,47 @@ def _run_modes_for(project: Any, requested_modes: list[IcaBenchmarkModeKind]) ->
     return [None]
 
 
+def _canonical_run_modes_for(project: Any) -> list[IcaBenchmarkModeKind | None]:
+    supported = [mode.modeId for mode in project.benchmarkModes]
+    if "all_sources" in supported:
+        return ["all_sources"]
+    if "hybrid" in supported:
+        return ["hybrid"]
+    if "web_api_documents" in supported:
+        return ["web_api_documents"]
+    if "web_api_code" in supported:
+        return ["web_api_code"]
+    if "web_only" in supported:
+        return ["web_only"]
+    if "api_only" in supported:
+        return ["api_only"]
+    if supported:
+        return [supported[0]]
+    return [None]
+
+
 def _summarize_run(run: dict[str, Any]) -> dict[str, Any]:
     result = run.get("result") or {}
     phases = result.get("phases") or {}
     task_discovery = phases.get("taskDiscovery") or {}
     solution_discovery = phases.get("solutionDiscovery") or {}
+    agent_execution = phases.get("agentExecution") or {}
     inventory = phases.get("inventory") or {}
     task_missing = task_discovery.get("missingTaskIds") or []
     task_extra = task_discovery.get("extraTaskNames") or []
     solution_missing = solution_discovery.get("missingTaskIds") or []
     solution_incomplete = solution_discovery.get("incompleteTaskIds") or []
+    invalid_origins = solution_discovery.get("invalidOriginIds") or []
+    hallucinated_tools = solution_discovery.get("hallucinatedToolNames") or []
+    hallucinated_connectors = solution_discovery.get("hallucinatedConnectorIds") or []
     inventory_missing = inventory.get("missing") or []
+    project_tasks = run.get("projectTasks") or []
     return {
         "runId": run["runId"],
         "runGroupId": run["runGroupId"],
         "createdAt": run["createdAt"],
         "status": run["status"],
+        "error": run.get("error") or "",
         "harvesterName": run["harvesterName"],
         "projectId": run["projectId"],
         "projectName": run["projectName"],
@@ -111,12 +156,32 @@ def _summarize_run(run: dict[str, Any]) -> dict[str, Any]:
         "expectedTasks": task_discovery.get("expectedCount", 0),
         "taskMissingTaskIds": task_missing,
         "taskExtraTaskNames": task_extra,
+        "taskDiscoveryMatches": task_discovery.get("matches") or [],
+        "taskDiscoveredCount": task_discovery.get("discoveredCount", 0),
+        "projectTasks": project_tasks,
         "solutionDiscoveryPassed": solution_discovery.get("passed", False),
         "solutionScore": solution_discovery.get("score", 0.0),
         "solutionCount": solution_discovery.get("solutionCount", 0),
         "expectedSolutionTasks": solution_discovery.get("expectedTaskCount", 0),
+        "solutionExtraTaskIds": solution_discovery.get("extraSolutionTaskIds") or [],
         "solutionMissingTaskIds": solution_missing,
         "solutionIncompleteTaskIds": solution_incomplete,
+        "solutionInvalidOriginIds": invalid_origins,
+        "solutionHallucinatedToolNames": hallucinated_tools,
+        "solutionHallucinatedConnectorIds": hallucinated_connectors,
+        "solutionIncompleteReasons": solution_discovery.get("incompleteReasons") or {},
+        "solutionDiscoverySolutions": solution_discovery.get("solutions") or [],
+        "agentExecutionApplicable": agent_execution.get("applicable", False),
+        "agentExecutionSkippedReason": agent_execution.get("skippedReason", ""),
+        "agentExecutionMode": agent_execution.get("executionMode", "none"),
+        "agentRuntimeExecuted": agent_execution.get("runtimeExecuted", False),
+        "agentExecutionPassed": agent_execution.get("passed", True),
+        "agentExecutionScore": agent_execution.get("score", 1.0),
+        "agentExecutionExpectedTasks": agent_execution.get("expectedTaskCount", 0),
+        "agentExecutionExecutedTasks": agent_execution.get("executedTaskCount", 0),
+        "agentExecutionPassedTaskIds": agent_execution.get("passedTaskIds") or [],
+        "agentExecutionFailedTaskIds": agent_execution.get("failedTaskIds") or [],
+        "agentExecutionResults": agent_execution.get("results") or [],
         "inventoryPassed": inventory.get("passed", False),
         "inventoryScore": inventory.get("score", 0.0),
         "inventoryMissing": inventory_missing,
@@ -124,6 +189,9 @@ def _summarize_run(run: dict[str, Any]) -> dict[str, Any]:
             *task_missing,
             *solution_missing,
             *solution_incomplete,
+            *invalid_origins,
+            *hallucinated_tools,
+            *hallucinated_connectors,
             *inventory_missing,
         ],
     }
@@ -168,8 +236,21 @@ async def start_runs(request: IcaRunRequest) -> dict[str, Any]:
 
     for harvester_name in harvester_names:
         for project in projects:
-            modes = _run_modes_for(project, request.modeIds)
+            modes = _canonical_run_modes_for(project) if request.canonicalModeOnly else _run_modes_for(project, request.modeIds)
             for mode in modes:
+                materialized = ica.materialize_project(project, base_url=request.baseUrl, mode=mode, include_ground_truth_tasks=True)
+                project_tasks = [
+                    {
+                        "taskId": str((task.get("metadata") or {}).get("icaTaskId") or task.get("taskId") or task.get("id") or ""),
+                        "name": task.get("name", ""),
+                        "prompt": task.get("prompt", ""),
+                        "successCriteria": task.get("successCriteria", ""),
+                        "expectedSurfaces": (task.get("metadata") or {}).get("expectedSurfaces") or [],
+                        "riskClass": task.get("riskClass", "read"),
+                        "metadata": task.get("metadata") or {},
+                    }
+                    for task in materialized.userTasks
+                ]
                 run_id = f"ica-run-{uuid4().hex[:12]}"
                 record = {
                     "runId": run_id,
@@ -179,6 +260,7 @@ async def start_runs(request: IcaRunRequest) -> dict[str, Any]:
                     "harvesterName": harvester_name,
                     "projectId": project.projectId,
                     "projectName": project.name,
+                    "projectTasks": project_tasks,
                     "mode": mode,
                     "result": None,
                     "error": None,
@@ -202,6 +284,7 @@ async def start_runs(request: IcaRunRequest) -> dict[str, Any]:
 
     _RUNS[:0] = created_runs
     del _RUNS[_MAX_RUNS:]
+    _save_runs()
     return {
         "runGroupId": run_group_id,
         "runs": [_summarize_run(run) for run in created_runs],

@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 ROOT = Path(__file__).resolve().parents[1]
 BACKEND = ROOT / "backend"
 sys.path.insert(0, str(BACKEND))
+sys.path.insert(1, str(ROOT))
 
 load_dotenv(ROOT / ".env")
 load_dotenv(BACKEND / ".env")
@@ -22,12 +23,12 @@ from app.services.infinite_company_arena import CompanyHarvesterEngineIcaRunner,
 
 
 async def main() -> None:
-    parser = argparse.ArgumentParser(description="Seed an ICA demo project into CompanyHarvester benchmark inputs.")
-    parser.add_argument("--project", default="autoclaims", help="Demo project id under demo_projects/.")
+    parser = argparse.ArgumentParser(description="Seed an ICA demo company into CompanyHarvester benchmark inputs.")
+    parser.add_argument("--project", default="autoclaims", help="Demo company id under demo_companies/.")
     parser.add_argument("--email", default="ica-benchmark@autoppia.com")
     parser.add_argument("--company-id", default="ica-autoclaims")
     parser.add_argument("--base-url", default="", help="Override project base URL, e.g. http://127.0.0.1:8123")
-    parser.add_argument("--mode", choices=["api_only", "web_only", "hybrid"], default=None, help="Optional ICA benchmark mode.")
+    parser.add_argument("--mode", default=None, help="Optional ICA benchmark mode defined by the demo company.")
     parser.add_argument("--company-harvester", default="", help="Evaluate a CompanyHarvester engine adapter by name, e.g. local_heuristic.")
     parser.add_argument("--inventory-only", action="store_true", help="Print materialized project without writing to Mongo.")
     parser.add_argument("--evaluate", action="store_true", help="Run CompanyHarvester and print an ICA evaluation result.")

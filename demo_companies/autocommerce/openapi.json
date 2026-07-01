@@ -1,0 +1,105 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "AutoCommerce API",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/orders/{orderId}": {
+      "get": {
+        "operationId": "getOrder",
+        "summary": "Get an order with status, shipment and customer notes.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Order detail",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "orderId": { "type": "string" },
+                    "status": { "type": "string" },
+                    "carrier": { "type": "string" },
+                    "latestCustomerNote": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/orders/{orderId}/refund-drafts": {
+      "post": {
+        "operationId": "draftRefund",
+        "summary": "Draft a refund for an order after checking eligibility.",
+        "parameters": [
+          {
+            "name": "orderId",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "reason": { "type": "string" },
+                  "amount": { "type": "number" },
+                  "policyReference": { "type": "string" }
+                },
+                "required": ["reason", "policyReference"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Refund draft created" }
+        }
+      }
+    },
+    "/inventory/{sku}/notes": {
+      "post": {
+        "operationId": "addInventoryNote",
+        "summary": "Add an internal inventory note for a SKU.",
+        "parameters": [
+          {
+            "name": "sku",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "note": { "type": "string" }
+                },
+                "required": ["note"]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Inventory note added" }
+        }
+      }
+    }
+  }
+}

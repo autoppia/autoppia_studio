@@ -1,0 +1,875 @@
+{
+  "projectId": "autocommerce",
+  "name": "AutoCommerce",
+  "version": "0.1.0",
+  "description": "Small ecommerce operations demo with storefront admin UI, order API and fulfillment policy docs.",
+  "industry": "ecommerce operations",
+  "defaultBaseUrl": "http://127.0.0.1:8124",
+  "auth": {
+    "required": true,
+    "kind": "demo_owner",
+    "username": "owner@autocommerce.demo",
+    "password": "demo-password",
+    "instructions": "Use the demo owner credentials to access admin order and refund workflows."
+  },
+  "surfaces": [
+    {
+      "surfaceId": "autocommerce-web",
+      "kind": "web",
+      "name": "AutoCommerce Admin",
+      "url": "/",
+      "authRequired": true,
+      "description": "Admin UI for searching orders, checking inventory and preparing refunds."
+    },
+    {
+      "surfaceId": "autocommerce-api",
+      "kind": "openapi",
+      "name": "AutoCommerce API",
+      "url": "/openapi.json",
+      "authRequired": true,
+      "description": "REST API for orders, inventory, shipment status and refund drafts."
+    },
+    {
+      "surfaceId": "autocommerce-fulfillment",
+      "kind": "document_url",
+      "name": "Fulfillment Policy",
+      "url": "/docs/fulfillment_policy.md",
+      "authRequired": false,
+      "description": "Operational policy for delayed shipments, substitutions and refunds."
+    },
+    {
+      "surfaceId": "autocommerce-backend-code",
+      "kind": "code_file",
+      "name": "AutoCommerce Backend Code",
+      "url": "/backend/main.py",
+      "authRequired": false,
+      "description": "FastAPI backend source exposing order lookup, refund drafts and inventory notes."
+    },
+    {
+      "surfaceId": "autocommerce-frontend-code",
+      "kind": "code_file",
+      "name": "AutoCommerce Frontend Code",
+      "url": "/frontend/index.html",
+      "authRequired": false,
+      "description": "Admin UI source for order lookup and inventory note workflows."
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "find_order_status",
+      "name": "Find order status",
+      "prompt": "Find the status, shipment carrier and latest customer note for order ORD-1001.",
+      "successCriteria": "Returns the current order status, carrier and latest customer note for ORD-1001.",
+      "expectedSurfaces": [
+        "api"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "executionTest": {
+          "type": "autocommerce_order_status",
+          "orderId": "ORD-1001",
+          "expected": {
+            "status": "in_transit",
+            "carrier": "DHL",
+            "latestCustomerNoteContains": "delivery ETA"
+          },
+          "requiredTools": [
+            "autocommerce.api.getorder"
+          ]
+        }
+      }
+    },
+    {
+      "taskId": "draft_delayed_refund",
+      "name": "Draft delayed shipment refund",
+      "prompt": "Use the fulfillment policy to decide whether order ORD-2002 qualifies for a delayed shipment refund and draft the refund if eligible.",
+      "successCriteria": "Uses policy docs and prepares a refund draft for ORD-2002 when the delay threshold is met.",
+      "expectedSurfaces": [
+        "api",
+        "documents"
+      ],
+      "riskClass": "write",
+      "metadata": {
+        "executionTest": {
+          "type": "autocommerce_refund_draft",
+          "orderId": "ORD-2002",
+          "requiredTools": [
+            "autocommerce.api.getorder",
+            "autocommerce.api.draftrefund",
+            "knowledge.company_docs.search"
+          ],
+          "expected": {
+            "policyContains": "72",
+            "refundDraftCreated": true
+          }
+        }
+      }
+    },
+    {
+      "taskId": "web_update_inventory_note",
+      "name": "Update inventory note from UI",
+      "prompt": "Using the admin UI, add an inventory note that SKU-RED-MUG needs supplier confirmation before restock.",
+      "successCriteria": "The product inventory page shows the supplier confirmation note for SKU-RED-MUG.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "write",
+      "metadata": {
+        "executionTest": {
+          "type": "autocommerce_inventory_note",
+          "sku": "SKU-RED-MUG",
+          "requiredAnyTools": [
+            "autocommerce.web.explore_workflows",
+            "autocommerce.api.addinventorynote"
+          ],
+          "expected": {
+            "noteContains": "supplier confirmation"
+          }
+        }
+      }
+    }
+  ],
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "find_order_status",
+      "aliases": [
+        "Find order status",
+        "Get order details",
+        "Check shipment status"
+      ],
+      "keywords": [
+        "order",
+        "status",
+        "shipment",
+        "carrier",
+        "customer",
+        "note"
+      ],
+      "expectedSurfaces": [
+        "api"
+      ],
+      "minSimilarity": 0.42,
+      "judge": "hybrid"
+    },
+    {
+      "taskId": "draft_delayed_refund",
+      "aliases": [
+        "Draft delayed shipment refund",
+        "Create refund draft",
+        "Check delay refund eligibility"
+      ],
+      "keywords": [
+        "refund",
+        "delayed",
+        "shipment",
+        "policy",
+        "draft"
+      ],
+      "expectedSurfaces": [
+        "api",
+        "documents"
+      ],
+      "minSimilarity": 0.42,
+      "judge": "hybrid"
+    },
+    {
+      "taskId": "web_update_inventory_note",
+      "aliases": [
+        "Update inventory note from UI",
+        "Add inventory note",
+        "Record supplier confirmation note"
+      ],
+      "keywords": [
+        "inventory",
+        "note",
+        "SKU",
+        "supplier",
+        "restock"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.42,
+      "judge": "hybrid"
+    }
+  ],
+  "expectedSolutions": [
+    {
+      "taskId": "find_order_status",
+      "connectors": [
+        "api"
+      ],
+      "tools": [
+        "autocommerce.api.getorder"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocommerce:find_order_status:api",
+          "description": "Read order detail by order id through the orders API.",
+          "toolCalls": [
+            {
+              "toolName": "autocommerce.api.getorder",
+              "arguments": {
+                "orderId": "ORD-1001"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocommerce:find_order_status:skill",
+          "name": "Read AutoCommerce order status",
+          "description": "Read order status, carrier and latest customer note through the order API.",
+          "trajectoryIds": [
+            "autocommerce:find_order_status:api"
+          ],
+          "source": "trajectory"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "model_agent",
+        "provider": "openai"
+      }
+    },
+    {
+      "taskId": "draft_delayed_refund",
+      "connectors": [
+        "api",
+        "knowledge"
+      ],
+      "tools": [
+        "knowledge.company_docs.search",
+        "autocommerce.api.getorder",
+        "autocommerce.api.draftrefund"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocommerce:draft_delayed_refund:api_docs",
+          "description": "Check fulfillment policy, inspect delayed order, then create a refund draft.",
+          "toolCalls": [
+            {
+              "toolName": "knowledge.company_docs.search",
+              "arguments": {
+                "query": "delayed shipment refund threshold"
+              }
+            },
+            {
+              "toolName": "autocommerce.api.getorder",
+              "arguments": {
+                "orderId": "ORD-2002"
+              }
+            },
+            {
+              "toolName": "autocommerce.api.draftrefund",
+              "arguments": {
+                "orderId": "ORD-2002",
+                "reason": "Delayed shipment exceeds 72 hours",
+                "policyReference": "Fulfillment Policy 72 hours"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocommerce:draft_delayed_refund:skill",
+          "name": "Draft AutoCommerce delayed shipment refund",
+          "description": "Use the fulfillment policy and order API to draft eligible delayed shipment refunds.",
+          "trajectoryIds": [
+            "autocommerce:draft_delayed_refund:api_docs"
+          ],
+          "instructions": "Only draft a refund after checking the fulfillment policy and order delay state.",
+          "source": "hybrid"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "model_agent",
+        "provider": "openai"
+      }
+    },
+    {
+      "taskId": "web_update_inventory_note",
+      "connectors": [
+        "web"
+      ],
+      "tools": [
+        "autocommerce.web.explore_workflows"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocommerce:web_update_inventory_note:web",
+          "description": "Use the admin UI inventory workflow to add the supplier confirmation note.",
+          "toolCalls": [
+            {
+              "toolName": "autocommerce.web.explore_workflows",
+              "arguments": {
+                "startUrl": "/",
+                "intent": "add inventory note for SKU-RED-MUG"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocommerce:web_update_inventory_note:skill",
+          "name": "Add AutoCommerce inventory note through UI",
+          "description": "Use the admin UI to add inventory notes for SKUs.",
+          "trajectoryIds": [
+            "autocommerce:web_update_inventory_note:web"
+          ],
+          "source": "trajectory"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "claude_code",
+        "provider": "anthropic"
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "api",
+      "code",
+      "knowledge",
+      "web"
+    ],
+    "minimumTaskCount": 3,
+    "minimumToolCount": 3,
+    "requiresKnowledge": true,
+    "requiresApiTools": true,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 3
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Task and solution discovery from Web UI.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "taskIds": [
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 1
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    },
+    {
+      "modeId": "api_only",
+      "description": "Task and solution discovery from API docs.",
+      "surfaceFilter": [
+        "api"
+      ],
+      "discoveryInput": [
+        "api"
+      ],
+      "taskIds": [
+        "find_order_status"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "api"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": false,
+        "minimumSolutionCount": 1
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api"
+        ]
+      }
+    },
+    {
+      "modeId": "documents_only",
+      "description": "Task and solution discovery from documents.",
+      "surfaceFilter": [
+        "documents"
+      ],
+      "discoveryInput": [
+        "documents"
+      ],
+      "taskIds": [],
+      "expectedHarvest": {
+        "connectors": [
+          "knowledge"
+        ],
+        "minimumTaskCount": 0,
+        "minimumToolCount": 1,
+        "requiresKnowledge": true,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": false,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "documents"
+        ]
+      }
+    },
+    {
+      "modeId": "code_only",
+      "description": "Task and solution discovery from source code.",
+      "surfaceFilter": [
+        "code"
+      ],
+      "discoveryInput": [
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "code"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 3,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "web_api",
+      "description": "Task and solution discovery from API docs, Web UI.",
+      "surfaceFilter": [
+        "api",
+        "web"
+      ],
+      "discoveryInput": [
+        "api",
+        "web"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 2,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "web"
+        ]
+      }
+    },
+    {
+      "modeId": "web_documents",
+      "description": "Task and solution discovery from Web UI, documents.",
+      "surfaceFilter": [
+        "web",
+        "documents"
+      ],
+      "discoveryInput": [
+        "web",
+        "documents"
+      ],
+      "taskIds": [
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "knowledge"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 2,
+        "requiresKnowledge": true,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 1
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web",
+          "documents"
+        ]
+      }
+    },
+    {
+      "modeId": "web_code",
+      "description": "Task and solution discovery from Web UI, source code.",
+      "surfaceFilter": [
+        "web",
+        "code"
+      ],
+      "discoveryInput": [
+        "web",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "code"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 3,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "api_documents",
+      "description": "Task and solution discovery from API docs, documents.",
+      "surfaceFilter": [
+        "api",
+        "documents"
+      ],
+      "discoveryInput": [
+        "api",
+        "documents"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "api",
+          "knowledge"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 2,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": false,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "documents"
+        ]
+      }
+    },
+    {
+      "modeId": "api_code",
+      "description": "Task and solution discovery from API docs, source code.",
+      "surfaceFilter": [
+        "api",
+        "code"
+      ],
+      "discoveryInput": [
+        "api",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "code"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 3,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "documents_code",
+      "description": "Task and solution discovery from documents, source code.",
+      "surfaceFilter": [
+        "documents",
+        "code"
+      ],
+      "discoveryInput": [
+        "documents",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "knowledge",
+          "code"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 4,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 3
+      },
+      "metadata": {
+        "sourceCombination": [
+          "documents",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "web_api_documents",
+      "description": "Task and solution discovery from API docs, Web UI, documents.",
+      "surfaceFilter": [
+        "api",
+        "web",
+        "documents"
+      ],
+      "discoveryInput": [
+        "api",
+        "web",
+        "documents"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "knowledge"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 3,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 3
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "web",
+          "documents"
+        ]
+      }
+    },
+    {
+      "modeId": "web_api_code",
+      "description": "Task and solution discovery from API docs, Web UI, source code.",
+      "surfaceFilter": [
+        "api",
+        "web",
+        "code"
+      ],
+      "discoveryInput": [
+        "api",
+        "web",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "code"
+        ],
+        "minimumTaskCount": 2,
+        "minimumToolCount": 3,
+        "requiresKnowledge": false,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 2
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "web",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "web_documents_code",
+      "description": "Task and solution discovery from Web UI, documents, source code.",
+      "surfaceFilter": [
+        "web",
+        "documents",
+        "code"
+      ],
+      "discoveryInput": [
+        "web",
+        "documents",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "knowledge",
+          "code"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 4,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 3
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web",
+          "documents",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "api_documents_code",
+      "description": "Task and solution discovery from API docs, documents, source code.",
+      "surfaceFilter": [
+        "api",
+        "documents",
+        "code"
+      ],
+      "discoveryInput": [
+        "api",
+        "documents",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "knowledge",
+          "code"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 4,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 3
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "documents",
+          "code"
+        ]
+      }
+    },
+    {
+      "modeId": "all_sources",
+      "description": "Task and solution discovery from API docs, Web UI, documents, source code.",
+      "surfaceFilter": [
+        "api",
+        "web",
+        "documents",
+        "code"
+      ],
+      "discoveryInput": [
+        "api",
+        "web",
+        "documents",
+        "code"
+      ],
+      "taskIds": [
+        "find_order_status",
+        "draft_delayed_refund",
+        "web_update_inventory_note"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web",
+          "api",
+          "knowledge",
+          "code"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 4,
+        "requiresKnowledge": true,
+        "requiresApiTools": true,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 3
+      },
+      "metadata": {
+        "sourceCombination": [
+          "api",
+          "web",
+          "documents",
+          "code"
+        ]
+      }
+    }
+  ]
+}

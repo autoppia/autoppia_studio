@@ -1,0 +1,113 @@
+{
+  "projectId": "autodining_web",
+  "name": "AutoDining Web",
+  "version": "0.1.0",
+  "description": "Web-only ICA wrapper for the legacy AutoDining demo web.",
+  "industry": "restaurant operations",
+  "defaultBaseUrl": "http://84.247.180.192:8003",
+  "surfaces": [
+    {
+      "surfaceId": "autodining-web",
+      "kind": "web",
+      "name": "AutoDining Web",
+      "url": "/",
+      "authRequired": false,
+      "description": "Legacy browser surface from autoppia_webs_demo.",
+      "metadata": {
+        "legacyDemoWeb": true,
+        "legacyProject": "autodining",
+        "legacyDirectory": "web_4_autodining"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "primary_web_workflow",
+      "name": "Explore AutoDining Web",
+      "prompt": "Explore AutoDining Web and identify the primary useful business workflow available in the web UI.",
+      "successCriteria": "A useful web workflow is identified with enough detail to automate it later.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "autodining",
+        "legacyDemoWeb": true
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "web"
+    ],
+    "minimumTaskCount": 1,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 0
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Legacy demo web adapter mode.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "taskIds": [
+        "primary_web_workflow"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "category": "only_web",
+    "legacyIwaProject": "autodining",
+    "legacyDemoWeb": true,
+    "remotePort": 8003,
+    "remoteReachable": true,
+    "remoteCheckedAt": "2026-07-01",
+    "remoteStatus": "reachable"
+  },
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "primary_web_workflow",
+      "aliases": [
+        "Explore AutoDining Web",
+        "Explore web workflow",
+        "Primary web workflow",
+        "Identify useful business workflow"
+      ],
+      "keywords": [
+        "explore",
+        "web",
+        "workflow",
+        "business",
+        "dining"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    }
+  ]
+}

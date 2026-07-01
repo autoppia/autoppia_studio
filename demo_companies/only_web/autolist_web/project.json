@@ -1,0 +1,113 @@
+{
+  "projectId": "autolist_web",
+  "name": "AutoList Web",
+  "version": "0.1.0",
+  "description": "Web-only ICA wrapper for the legacy AutoList demo web.",
+  "industry": "listing operations",
+  "defaultBaseUrl": "http://84.247.180.192:8011",
+  "surfaces": [
+    {
+      "surfaceId": "autolist-web",
+      "kind": "web",
+      "name": "AutoList Web",
+      "url": "/",
+      "authRequired": false,
+      "description": "Legacy browser surface from autoppia_webs_demo.",
+      "metadata": {
+        "legacyDemoWeb": true,
+        "legacyProject": "autolist",
+        "legacyDirectory": "web_12_autolist"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "primary_web_workflow",
+      "name": "Explore AutoList Web",
+      "prompt": "Explore AutoList Web and identify the primary useful business workflow available in the web UI.",
+      "successCriteria": "A useful web workflow is identified with enough detail to automate it later.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "autolist",
+        "legacyDemoWeb": true
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "web"
+    ],
+    "minimumTaskCount": 1,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 0
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Legacy demo web adapter mode.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "taskIds": [
+        "primary_web_workflow"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "category": "only_web",
+    "legacyIwaProject": "autolist",
+    "legacyDemoWeb": true,
+    "remotePort": 8011,
+    "remoteReachable": true,
+    "remoteCheckedAt": "2026-07-01",
+    "remoteStatus": "reachable"
+  },
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "primary_web_workflow",
+      "aliases": [
+        "Explore AutoList Web",
+        "Explore web workflow",
+        "Primary web workflow",
+        "Identify useful business workflow"
+      ],
+      "keywords": [
+        "explore",
+        "web",
+        "workflow",
+        "business",
+        "list"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    }
+  ]
+}

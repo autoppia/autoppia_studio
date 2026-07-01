@@ -192,3 +192,11 @@ uv.lock
 
 # Local UI verification screenshots
 .screenshots/
+
+# Local JS/Python installs and generated app artifacts
+node_modules/
+frontend/build/
+mcp/dist/
+
+# Local benchmark/runtime outputs
+logs/

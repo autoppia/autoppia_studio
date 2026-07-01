@@ -1,0 +1,351 @@
+{
+  "projectId": "autocalendar_web",
+  "name": "AutoCalendar Web",
+  "version": "0.1.0",
+  "description": "Web-only ICA wrapper for the legacy AutoCalendar demo web.",
+  "industry": "calendar operations",
+  "defaultBaseUrl": "http://84.247.180.192:8010",
+  "surfaces": [
+    {
+      "surfaceId": "autocalendar-web",
+      "kind": "web",
+      "name": "AutoCalendar Web",
+      "url": "/",
+      "authRequired": false,
+      "description": "Legacy browser surface from autoppia_webs_demo.",
+      "metadata": {
+        "legacyDemoWeb": true,
+        "legacyProject": "autocalendar",
+        "legacyDirectory": "web_11_autocalendar"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "iwa_select_month",
+      "name": "Switch calendar to month view",
+      "prompt": "Using the AutoCalendar web UI, switch the calendar to month view.",
+      "successCriteria": "The SELECT_MONTH event is triggered by the UI workflow.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "autocalendar",
+        "iwaUseCase": "SELECT_MONTH",
+        "executionTest": {
+          "type": "iwa_event",
+          "projectId": "autocalendar",
+          "useCase": "SELECT_MONTH",
+          "requiredTools": [
+            "autocalendar_web.web.explore_workflows"
+          ],
+          "expected": {
+            "eventName": "SELECT_MONTH"
+          }
+        },
+        "requiresIwaEvaluator": true,
+        "legacyDemoWeb": true
+      }
+    },
+    {
+      "taskId": "iwa_add_event",
+      "name": "Add calendar event",
+      "prompt": "Using the AutoCalendar web UI, add an event titled IWA Traj Save via the event wizard.",
+      "successCriteria": "The ADD_EVENT event is triggered by the UI workflow.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "write",
+      "metadata": {
+        "legacyIwaProject": "autocalendar",
+        "iwaUseCase": "ADD_EVENT",
+        "executionTest": {
+          "type": "iwa_event",
+          "projectId": "autocalendar",
+          "useCase": "ADD_EVENT",
+          "requiredTools": [
+            "autocalendar_web.web.explore_workflows"
+          ],
+          "expected": {
+            "eventName": "ADD_EVENT"
+          }
+        },
+        "requiresIwaEvaluator": true,
+        "legacyDemoWeb": true
+      }
+    },
+    {
+      "taskId": "iwa_search_submit",
+      "name": "Search calendar events",
+      "prompt": "Using the AutoCalendar web UI, search for work.",
+      "successCriteria": "The SEARCH_SUBMIT event is triggered with query work.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "autocalendar",
+        "iwaUseCase": "SEARCH_SUBMIT",
+        "executionTest": {
+          "type": "iwa_event",
+          "projectId": "autocalendar",
+          "useCase": "SEARCH_SUBMIT",
+          "requiredTools": [
+            "autocalendar_web.web.explore_workflows"
+          ],
+          "expected": {
+            "eventName": "SEARCH_SUBMIT",
+            "eventCriteria": {
+              "query": "work"
+            }
+          }
+        },
+        "requiresIwaEvaluator": true,
+        "legacyDemoWeb": true
+      }
+    }
+  ],
+  "expectedSolutions": [
+    {
+      "taskId": "iwa_select_month",
+      "connectors": [
+        "web"
+      ],
+      "tools": [
+        "autocalendar_web.web.explore_workflows"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocalendar_web:iwa_select_month:iwa",
+          "description": "Replay the IWA SELECT_MONTH calendar workflow.",
+          "toolCalls": [
+            {
+              "toolName": "autocalendar_web.web.explore_workflows",
+              "arguments": {
+                "iwaUseCase": "SELECT_MONTH",
+                "eventName": "SELECT_MONTH",
+                "goal": "Switch calendar to month view"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocalendar_web:iwa_select_month:skill",
+          "name": "Switch AutoCalendar to month view",
+          "description": "Use the web UI to select month view.",
+          "trajectoryIds": [
+            "autocalendar_web:iwa_select_month:iwa"
+          ],
+          "instructions": "Open the calendar view selector and choose month view.",
+          "source": "trajectory"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "claude_code",
+        "provider": "anthropic"
+      }
+    },
+    {
+      "taskId": "iwa_add_event",
+      "connectors": [
+        "web"
+      ],
+      "tools": [
+        "autocalendar_web.web.explore_workflows"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocalendar_web:iwa_add_event:iwa",
+          "description": "Replay the IWA ADD_EVENT calendar workflow.",
+          "toolCalls": [
+            {
+              "toolName": "autocalendar_web.web.explore_workflows",
+              "arguments": {
+                "iwaUseCase": "ADD_EVENT",
+                "eventName": "ADD_EVENT",
+                "goal": "Add an event titled IWA Traj Save via the event wizard"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocalendar_web:iwa_add_event:skill",
+          "name": "Add AutoCalendar event",
+          "description": "Use the web UI event wizard to add an event.",
+          "trajectoryIds": [
+            "autocalendar_web:iwa_add_event:iwa"
+          ],
+          "instructions": "Create a new event titled IWA Traj Save and save it.",
+          "source": "trajectory"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "claude_code",
+        "provider": "anthropic"
+      }
+    },
+    {
+      "taskId": "iwa_search_submit",
+      "connectors": [
+        "web"
+      ],
+      "tools": [
+        "autocalendar_web.web.explore_workflows"
+      ],
+      "trajectories": [
+        {
+          "trajectoryId": "autocalendar_web:iwa_search_submit:iwa",
+          "description": "Replay the IWA SEARCH_SUBMIT calendar workflow.",
+          "toolCalls": [
+            {
+              "toolName": "autocalendar_web.web.explore_workflows",
+              "arguments": {
+                "iwaUseCase": "SEARCH_SUBMIT",
+                "eventName": "SEARCH_SUBMIT",
+                "query": "work",
+                "goal": "Search calendar events for work"
+              }
+            }
+          ],
+          "source": "expected"
+        }
+      ],
+      "skills": [
+        {
+          "skillId": "autocalendar_web:iwa_search_submit:skill",
+          "name": "Search AutoCalendar events",
+          "description": "Use the web UI to submit a calendar search.",
+          "trajectoryIds": [
+            "autocalendar_web:iwa_search_submit:iwa"
+          ],
+          "instructions": "Search for work in the calendar UI.",
+          "source": "trajectory"
+        }
+      ],
+      "agentProvider": {
+        "runtimeKind": "claude_code",
+        "provider": "anthropic"
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "web"
+    ],
+    "minimumTaskCount": 3,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 0
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Legacy IWA web adapter mode with real AutoCalendar use cases.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "taskIds": [
+        "iwa_select_month",
+        "iwa_add_event",
+        "iwa_search_submit"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 3,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "category": "only_web",
+    "legacyIwaProject": "autocalendar",
+    "legacyDemoWeb": true,
+    "remotePort": 8010,
+    "remoteReachable": true,
+    "remoteCheckedAt": "2026-07-01",
+    "remoteStatus": "reachable"
+  },
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "iwa_select_month",
+      "aliases": [
+        "Switch calendar to month view",
+        "Select month view",
+        "Month calendar view"
+      ],
+      "keywords": [
+        "calendar",
+        "month",
+        "view",
+        "switch"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    },
+    {
+      "taskId": "iwa_add_event",
+      "aliases": [
+        "Add calendar event",
+        "Create new event",
+        "Add an event titled IWA Traj Save"
+      ],
+      "keywords": [
+        "calendar",
+        "event",
+        "add",
+        "wizard",
+        "save"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    },
+    {
+      "taskId": "iwa_search_submit",
+      "aliases": [
+        "Search calendar events",
+        "Search for work",
+        "Submit calendar search"
+      ],
+      "keywords": [
+        "calendar",
+        "search",
+        "work",
+        "submit"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    }
+  ]
+}

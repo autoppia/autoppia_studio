@@ -87,9 +87,9 @@ def _material_artifact(intake_id: str, index: int, material: dict[str, Any]) -> 
     elif kind in {"api_docs", "openapi"}:
         artifact_kind = "connector_candidate"
         visibility = "dev"
-    elif kind == "website":
+    elif kind in {"website", "code_repository", "code_file"}:
         artifact_kind = "connector_candidate"
-        visibility = "normal"
+        visibility = "normal" if kind == "website" else "dev"
     elif kind == "task_list":
         artifact_kind = "task_candidate"
         visibility = "normal"
@@ -491,10 +491,14 @@ def _connector_spec_surface(spec: dict[str, Any], material: dict[str, Any]) -> s
         return "email"
     if raw in {"knowledge", "docs", "document"}:
         return "knowledge"
+    if raw in {"code", "repo", "repository", "source"}:
+        return "code"
     if material_kind in {"api_docs", "openapi"}:
         return "api"
     if material_kind == "website":
         return "webapp"
+    if material_kind in {"code_repository", "code_file"}:
+        return "code"
     return "custom"
 
 
@@ -504,6 +508,7 @@ def _connector_type_for_surface(surface: str) -> str:
         "webapp": "web",
         "knowledge": "knowledge",
         "email": "email",
+        "code": "code",
     }.get(surface, "custom")
 
 
@@ -516,6 +521,7 @@ def _connector_runtime_requirements(surface: str, spec: dict[str, Any]) -> list[
         "webapp": ["browser", "network"],
         "email": ["connector_runtime", "approval_gate"],
         "knowledge": ["vectorstore", "embedding_model"],
+        "code": ["repository_read"],
     }.get(surface, ["connector_runtime"])
 
 
@@ -639,6 +645,32 @@ async def _upsert_connector_candidate(*, intake: dict[str, Any], material: dict[
             "discoveryStatus": "pending",
             "discoveryMode": "company_harvest",
             "runtimeRequirements": ["api_docs_or_openapi", "network"],
+            "source": "company_harvester",
+            "sourceIntakeId": intake.get("intakeId", ""),
+            "updatedAt": now,
+        }
+    elif kind in {"code_repository", "code_file"}:
+        name = _connector_name(material, "Company Code")
+        connector_id = f"{company_id}:code:{_slug(url or name)}"
+        doc = {
+            "connectorId": connector_id,
+            "email": email,
+            "companyId": company_id,
+            "name": name,
+            "type": "code",
+            "category": "development",
+            "description": f"Company source code discovered from intake material {name}.",
+            "status": "not_connected",
+            "config": {"sourceUrl": url, "materialKind": kind},
+            "credentialRefs": auth_state["credentialRefs"],
+            "provider": "custom",
+            "generationStatus": "source_provided" if url or material.get("content") else "needs_source",
+            "surface": "code",
+            "authRequired": auth_required,
+            "authConfigured": bool(auth_state["configured"]),
+            "discoveryStatus": "pending",
+            "discoveryMode": "company_harvest",
+            "runtimeRequirements": ["repository_read"],
             "source": "company_harvester",
             "sourceIntakeId": intake.get("intakeId", ""),
             "updatedAt": now,
@@ -771,6 +803,8 @@ def _material_for_connector(connector: dict[str, Any], materials: list[dict[str,
         if connector_type == "web" and kind == "website":
             return material
         if connector_type == "knowledge" and kind in {"document_url", "file", "knowledge_note"}:
+            return material
+        if connector_type == "code" and kind in {"code_repository", "code_file"}:
             return material
     return {"metadata": {"sourceIntakeId": source_id}}
 
@@ -958,6 +992,23 @@ def _raw_tool_candidates_for_connector(connector: dict[str, Any], material: dict
                 "riskLevel": "low",
                 "inputEntities": ["WebApp"],
                 "outputEntity": "WorkflowCandidate",
+            }
+        ]
+    if connector_type == "code":
+        return [
+            {
+                "name": f"{prefix}.code.inspect",
+                "description": "Inspect company source code to discover routes, workflows, domain entities and automation surfaces.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {"query": {"type": "string"}, "pathHint": {"type": "string"}},
+                    "required": ["query"],
+                },
+                "outputSchema": {"type": "object", "properties": {"findings": {"type": "array"}}},
+                "sideEffects": "reads",
+                "riskLevel": "low",
+                "inputEntities": ["SourceCode"],
+                "outputEntity": "CodeFinding",
             }
         ]
     if connector_type == "email":
@@ -1208,6 +1259,15 @@ def _material_entity_candidates(materials: list[dict[str, Any]]) -> list[dict[st
                     metadata={"sourceMaterialKind": kind, "sourceUrl": material.get("url", ""), "materialName": name},
                 )
             )
+        elif kind in {"code_repository", "code_file"}:
+            candidates.append(
+                _entity_candidate_from_name(
+                    name="CodeFinding",
+                    source="code_material",
+                    description="Source code surface available for route, workflow and entity discovery.",
+                    metadata={"sourceMaterialKind": kind, "sourceUrl": material.get("url", ""), "materialName": name},
+                )
+            )
     return candidates
 
 
@@ -1439,6 +1499,17 @@ def _task_from_material(material: dict[str, Any]) -> dict[str, Any] | None:
             "riskClass": "read",
             "metadata": {"sourceMaterialKind": kind, "sourceUrl": url, "usesKnowledge": True, "expectedTools": ["knowledge.company_docs.search"]},
         }
+    if kind in {"code_repository", "code_file"}:
+        expected_tool = f"{_tool_prefix_from_material(material, 'code')}.code.inspect"
+        return {
+            "name": f"Inspect {name}",
+            "prompt": f"Inspect the source code in {name} and identify useful business workflows, API routes, UI actions and connector gaps.",
+            "successCriteria": "The result cites source code evidence and proposes concrete tasks/tools/skills that can be built from it.",
+            "allowedSystems": [url] if url else ["company_code"],
+            "expectedArtifacts": ["code_findings", "task_candidates", "tool_candidates"],
+            "riskClass": "read",
+            "metadata": {"sourceMaterialKind": kind, "sourceUrl": url, "usesCode": True, "expectedTools": [expected_tool]},
+        }
     return None
 
 
@@ -1519,6 +1590,8 @@ def _tasks_from_explicit_tools(material: dict[str, Any]) -> list[dict[str, Any]]
             task_metadata["requiresBrowser"] = True
         elif kind in {"document_url", "file", "knowledge_note"} or "knowledge" in tool_name.lower():
             task_metadata["usesKnowledge"] = True
+        elif kind in {"code_repository", "code_file"} or ".code." in tool_name.lower():
+            task_metadata["usesCode"] = True
         tasks.append(
             {
                 "name": f"Validate {tool_name}",

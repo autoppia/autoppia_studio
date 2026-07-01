@@ -1,0 +1,113 @@
+{
+  "projectId": "autobooks_web",
+  "name": "AutoBooks Web",
+  "version": "0.1.0",
+  "description": "Web-only ICA wrapper for the legacy AutoBooks demo web.",
+  "industry": "bookstore operations",
+  "defaultBaseUrl": "http://84.247.180.192:8001",
+  "surfaces": [
+    {
+      "surfaceId": "autobooks-web",
+      "kind": "web",
+      "name": "AutoBooks Web",
+      "url": "/",
+      "authRequired": false,
+      "description": "Legacy browser surface from autoppia_webs_demo.",
+      "metadata": {
+        "legacyDemoWeb": true,
+        "legacyProject": "autobooks",
+        "legacyDirectory": "web_2_autobooks"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "taskId": "primary_web_workflow",
+      "name": "Explore AutoBooks Web",
+      "prompt": "Explore AutoBooks Web and identify the primary useful business workflow available in the web UI.",
+      "successCriteria": "A useful web workflow is identified with enough detail to automate it later.",
+      "expectedSurfaces": [
+        "web"
+      ],
+      "riskClass": "read",
+      "metadata": {
+        "legacyIwaProject": "autobooks",
+        "legacyDemoWeb": true
+      }
+    }
+  ],
+  "expectedHarvest": {
+    "connectors": [
+      "web"
+    ],
+    "minimumTaskCount": 1,
+    "minimumToolCount": 1,
+    "requiresKnowledge": false,
+    "requiresApiTools": false,
+    "requiresBrowserTasks": true,
+    "minimumSolutionCount": 0
+  },
+  "benchmarkModes": [
+    {
+      "modeId": "web_only",
+      "description": "Legacy demo web adapter mode.",
+      "surfaceFilter": [
+        "web"
+      ],
+      "taskIds": [
+        "primary_web_workflow"
+      ],
+      "discoveryInput": [
+        "web"
+      ],
+      "expectedHarvest": {
+        "connectors": [
+          "web"
+        ],
+        "minimumTaskCount": 1,
+        "minimumToolCount": 1,
+        "requiresKnowledge": false,
+        "requiresApiTools": false,
+        "requiresBrowserTasks": true,
+        "minimumSolutionCount": 0
+      },
+      "metadata": {
+        "sourceCombination": [
+          "web"
+        ]
+      }
+    }
+  ],
+  "metadata": {
+    "category": "only_web",
+    "legacyIwaProject": "autobooks",
+    "legacyDemoWeb": true,
+    "remotePort": 8001,
+    "remoteReachable": true,
+    "remoteCheckedAt": "2026-07-01",
+    "remoteStatus": "reachable"
+  },
+  "taskDiscoveryExpectations": [
+    {
+      "taskId": "primary_web_workflow",
+      "aliases": [
+        "Explore AutoBooks Web",
+        "Explore web workflow",
+        "Primary web workflow",
+        "Identify useful business workflow"
+      ],
+      "keywords": [
+        "explore",
+        "web",
+        "workflow",
+        "business",
+        "books"
+      ],
+      "expectedSurfaces": [
+        "web"
+      ],
+      "minSimilarity": 0.35,
+      "judge": "hybrid"
+    }
+  ]
+}
