@@ -26,7 +26,7 @@ function safePath(urlPath) {
 const server = http.createServer((req, res) => {
   const filePath = safePath(req.url || "/");
   const ext = path.extname(filePath);
-  res.setHeader("Cache-Control", ext === ".html" ? "no-store" : "public, max-age=3600");
+  res.setHeader("Cache-Control", "no-store");
   res.setHeader("Content-Type", TYPES[ext] || "application/octet-stream");
   fs.createReadStream(filePath)
     .on("error", () => {

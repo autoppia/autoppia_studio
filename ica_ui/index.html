@@ -5,93 +5,119 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#0e1322" />
     <title>Infinite Company Arena</title>
-    <link rel="stylesheet" href="/src/styles.css?v=3" />
+    <link rel="icon" type="image/svg+xml" href="favicon.svg?v=1" />
+    <link rel="apple-touch-icon" href="favicon.svg?v=1" />
+    <link rel="stylesheet" href="src/styles.css?v=14" />
   </head>
   <body>
     <div class="aurora" aria-hidden="true"></div>
-    <div class="shell">
-      <!-- ===== TOP BAR ===== -->
-      <header class="topbar">
+    <div class="app" id="app">
+      <!-- ===== SIDEBAR ===== -->
+      <aside class="sidebar">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">
             <svg viewBox="0 0 32 32" width="22" height="22"><path d="M16 2 4 9v14l12 7 12-7V9z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M16 9v14M9 12.5v7M23 12.5v7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
           </div>
           <div class="brand-text">
-            <div class="eyebrow">Company Harvester Benchmark</div>
+            <div class="eyebrow">Company Harvester</div>
             <h1>Infinite Company Arena</h1>
           </div>
         </div>
-        <div class="top-actions">
-          <div class="api-wrap">
-            <button id="apiToggle" class="icon-button" type="button" title="API endpoint" aria-label="API endpoint">
-              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </button>
-            <div id="apiPanel" class="api-panel" hidden>
-              <label class="api-field">
-                <span>API endpoint</span>
-                <input id="apiUrlInput" spellcheck="false" autocomplete="off" />
-              </label>
-            </div>
+
+        <nav class="side-nav" role="tablist" aria-label="Sections">
+          <button class="nav-item is-active" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg></span>
+            <span class="nav-label">Overview</span>
+          </button>
+          <button class="nav-item" role="tab" id="tab-sources" aria-controls="panel-sources" aria-selected="false" data-tab="sources" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg></span>
+            <span class="nav-label">Sources</span>
+          </button>
+          <button class="nav-item" role="tab" id="tab-leaderboard" aria-controls="panel-leaderboard" aria-selected="false" data-tab="leaderboard" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4v-8H4zM10 20h4V4h-4zM16 20h4v-5h-4z"/></svg></span>
+            <span class="nav-label">Leaderboard</span>
+          </button>
+          <button class="nav-item" role="tab" id="tab-harvesters" aria-controls="panel-harvesters" aria-selected="false" data-tab="harvesters" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="7" r="3.2"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>
+            <span class="nav-label">Harvesters</span>
+          </button>
+          <button class="nav-item" role="tab" id="tab-companies" aria-controls="panel-companies" aria-selected="false" data-tab="companies" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V6l7-3v18M19 21V10l-7-3M8.5 8.5h.01M8.5 12h.01M8.5 15.5h.01M15 13h.01M15 16.5h.01"/></svg></span>
+            <span class="nav-label">Companies</span>
+          </button>
+          <button class="nav-item" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" data-tab="runs" type="button">
+            <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4v16l7-5 7 5V4z"/><path d="M9 8h6M9 11h4"/></svg></span>
+            <span class="nav-label">Runs</span>
+          </button>
+        </nav>
+
+        <button id="sidebarCollapse" class="side-collapse" type="button" title="Collapse menu" aria-label="Collapse menu">
+          <span class="nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 6-6 6 6 6"/></svg></span>
+          <span class="nav-label">Collapse</span>
+        </button>
+      </aside>
+
+      <!-- ===== MAIN ===== -->
+      <div class="main">
+        <!-- ===== TOP BAR ===== -->
+        <header class="topbar">
+          <div class="topbar-title">
+            <div class="eyebrow" id="topEyebrow">Company Harvester Benchmark</div>
+            <h2 class="page-title" id="pageTitle">Overview</h2>
           </div>
-          <button id="reloadButton" class="button ghost" type="button">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
-            <span>Reload</span>
-          </button>
-          <button id="runButton" class="button primary" type="button">
-            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
-            <span class="run-label">Run matrix</span>
-          </button>
-        </div>
-      </header>
+          <div class="top-actions">
+            <div class="api-wrap">
+              <button id="apiToggle" class="api-status" type="button" title="API endpoint" aria-label="API endpoint">
+                <span class="api-dot" aria-hidden="true"></span>
+                <span class="api-status-label">local API</span>
+                <svg class="api-caret" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div id="apiPanel" class="api-panel" hidden>
+                <label class="api-field">
+                  <span>API endpoint</span>
+                  <input id="apiUrlInput" spellcheck="false" autocomplete="off" />
+                </label>
+              </div>
+            </div>
+            <span class="top-divider" aria-hidden="true"></span>
+            <button id="reloadButton" class="button ghost" type="button">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+              <span>Reload</span>
+            </button>
+          </div>
+        </header>
 
-      <!-- ===== TABS ===== -->
-      <nav class="tabs" role="tablist" aria-label="Sections">
-        <button class="tab is-active" role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true" data-tab="overview" type="button">Overview</button>
-        <button class="tab" role="tab" id="tab-leaderboard" aria-controls="panel-leaderboard" aria-selected="false" data-tab="leaderboard" type="button">Leaderboard</button>
-        <button class="tab" role="tab" id="tab-harvesters" aria-controls="panel-harvesters" aria-selected="false" data-tab="harvesters" type="button">Harvesters</button>
-        <button class="tab" role="tab" id="tab-companies" aria-controls="panel-companies" aria-selected="false" data-tab="companies" type="button">Companies</button>
-        <button class="tab" role="tab" id="tab-runs" aria-controls="panel-runs" aria-selected="false" data-tab="runs" type="button">Runs</button>
-      </nav>
-
-      <section id="errorBanner" class="error-banner" hidden></section>
+        <section id="errorBanner" class="error-banner" hidden></section>
 
       <!-- ===== OVERVIEW ===== -->
       <div id="panel-overview" class="tab-panel" role="tabpanel" aria-labelledby="tab-overview">
         <section class="kpi-grid">
           <article class="kpi">
-            <div class="kpi-head"><span>Completed runs</span><i class="kpi-ic">▦</i></div>
+            <div class="kpi-head"><span>Completed runs</span><i class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v16"/></svg></i></div>
             <strong id="kpiRuns">0</strong>
             <small id="kpiPassed">0 passed</small>
           </article>
           <article class="kpi accent">
-            <div class="kpi-head"><span>Average score</span><i class="kpi-ic">◎</i></div>
+            <div class="kpi-head"><span>Average score <span id="kpiScoreInfo"></span></span><i class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg></i></div>
             <strong id="kpiScore">0%</strong>
             <div id="kpiScoreSpark" class="kpi-spark"></div>
+            <small id="kpiScoreSparkCap" class="kpi-cap"></small>
           </article>
           <article class="kpi">
-            <div class="kpi-head"><span>Pass rate</span><i class="kpi-ic">✓</i></div>
+            <div class="kpi-head"><span>Pass rate <span id="kpiPassRateInfo"></span></span><i class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></i></div>
             <strong id="kpiPassRate">0%</strong>
             <small id="kpiPassRateSub">of completed runs</small>
           </article>
           <article class="kpi">
-            <div class="kpi-head"><span>Task recall</span><i class="kpi-ic">⌖</i></div>
+            <div class="kpi-head"><span>Task recall <span id="kpiRecallInfo"></span></span><i class="kpi-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.2-3.2"/></svg></i></div>
             <strong id="kpiRecall">0%</strong>
-            <small>discovery coverage</small>
-          </article>
-          <article class="kpi">
-            <div class="kpi-head"><span>Matrix size</span><i class="kpi-ic">⊞</i></div>
-            <strong id="kpiSelected">0</strong>
-            <small>cells queued</small>
+            <small>task discovery coverage</small>
           </article>
         </section>
 
-        <section class="charts-grid">
+        <section class="charts-grid two">
           <article class="panel chart-panel">
-            <div class="panel-head compact"><h2>Pass rate</h2><span class="muted-tag">completed</span></div>
-            <div id="passGauge" class="gauge-wrap"></div>
-          </article>
-          <article class="panel chart-panel">
-            <div class="panel-head compact"><h2>Phase performance</h2><span class="muted-tag">avg across runs</span></div>
+            <div class="panel-head compact"><h2>Phase performance <span id="phaseBarsInfo"></span></h2><span class="muted-tag" id="phaseBarsTag">top harvester</span></div>
             <div id="phaseBars" class="phase-bars"></div>
           </article>
           <article class="panel chart-panel">
@@ -100,42 +126,43 @@
           </article>
         </section>
 
-        <div class="overview-grid">
-          <section class="panel">
-            <div class="panel-head">
-              <div>
-                <h2>Run selection</h2>
-                <p>What the next matrix run will cover.</p>
-              </div>
-              <span id="runState" class="run-state">idle</span>
-            </div>
-            <div class="panel-body">
-              <div id="selectionSummary" class="summary-rows"></div>
-              <button id="runButtonOverview" class="button primary block" type="button">
-                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
-                <span class="run-label">Run matrix</span>
-              </button>
-            </div>
-          </section>
+        <section class="panel">
+          <div class="panel-head compact">
+            <h2>Recent runs</h2>
+            <a class="link-tab" data-tab="runs" href="#" role="button">View all →</a>
+          </div>
+          <div id="latestRuns" class="latest-runs"></div>
+        </section>
 
-          <section class="panel">
-            <div class="panel-head compact">
-              <h2>Recent runs</h2>
-              <a class="link-tab" data-tab="runs" href="#" role="button">View all →</a>
-            </div>
-            <div id="latestRuns" class="latest-runs"></div>
-          </section>
-        </div>
+      </div>
 
-        <section class="panel report-panel">
+      <!-- ===== SOURCE COVERAGE ===== -->
+      <div id="panel-sources" class="tab-panel" role="tabpanel" aria-labelledby="tab-sources" hidden>
+        <section class="panel">
           <div class="panel-head">
             <div>
-              <h2>Latest run group report</h2>
-              <p>Task discovery, solution discovery and inventory quality across the selected matrix.</p>
+              <h2>Source coverage</h2>
+              <p>How harvesters perform across input-source combinations — Web, API, Docs and Code.</p>
             </div>
-            <a class="link-tab" data-tab="runs" href="#" role="button">Open filters →</a>
+            <div class="seg-control" id="sourceDim" role="tablist" aria-label="Compare by">
+              <button class="seg-btn is-active" data-dim="harvester" type="button">By harvester</button>
+              <button class="seg-btn" data-dim="project" type="button">By company</button>
+            </div>
           </div>
-          <div id="runGroupReport" class="group-report"></div>
+          <div class="panel-body">
+            <div id="sourceSummary" class="source-summary"></div>
+            <div class="source-matrix-head">
+              <div>
+                <h3 class="source-matrix-title">Coverage grid</h3>
+                <p class="source-matrix-sub">Average score for every source combination. Cells show score and eval count.</p>
+              </div>
+              <div class="source-legend-wrap">
+                <div id="heatScale" class="heat-scale"></div>
+                <div id="sourceLegend" class="source-legend"></div>
+              </div>
+            </div>
+            <div id="sourceMatrix" class="source-matrix-wrap"></div>
+          </div>
         </section>
       </div>
 
@@ -145,19 +172,11 @@
           <div class="panel-head">
             <div>
               <h2>Harvester leaderboard</h2>
-              <p>Ranked by average benchmark score across all completed runs.</p>
+              <p>Ranked by average benchmark score across all completed runs. Bars break each harvester down by phase.</p>
             </div>
             <span id="leaderCount" class="muted-tag">0 harvesters</span>
           </div>
           <div id="leaderboard" class="leaderboard"></div>
-        </section>
-
-        <section class="panel report-panel">
-          <div class="panel-head compact">
-            <h2>Phase comparison</h2>
-            <span class="muted-tag">task · solution · inventory</span>
-          </div>
-          <div id="phaseCompare" class="phase-compare"></div>
         </section>
       </div>
 
@@ -167,7 +186,7 @@
           <div class="panel-head">
             <div>
               <h2>Harvesters</h2>
-              <p>Miner profiles implementing the CompanyHarvester contract.</p>
+              <p>Miner profiles implementing the CompanyHarvester contract. Tick the ones you want to include in the next run — selection is shared with the Start&nbsp;a&nbsp;run dialog.</p>
             </div>
             <div class="chip-row">
               <span id="harvestersCount" class="count-badge">0 selected</span>
@@ -184,16 +203,31 @@
           <div class="panel-head">
             <div>
               <h2>Demo companies</h2>
-              <p>Benchmark projects with web, API and document surfaces.</p>
+              <p>The targets a harvester is benchmarked against. Tick the ones to evaluate — selection is shared with the Start&nbsp;a&nbsp;run dialog.</p>
             </div>
             <div class="chip-row">
               <span id="companiesCount" class="count-badge">0 selected</span>
               <button id="toggleProjects" class="chip" type="button">Select all</button>
             </div>
           </div>
-          <div class="panel-subhead">
-            <span class="subhead-label">Benchmark modes</span>
-            <div id="modeChips" class="chip-row"></div>
+          <div class="company-toolbar">
+            <div class="company-search">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input id="companySearch" type="search" placeholder="Search companies…" spellcheck="false" autocomplete="off" />
+            </div>
+            <div class="company-source-filter" id="companySourceFilter" role="group" aria-label="Filter by source — shows companies exposing all selected surfaces" title="Shows companies that expose every selected surface"></div>
+            <div class="company-toolbar-right">
+              <label class="company-sort">
+                <span>Sort</span>
+                <select id="companySort">
+                  <option value="name">Name</option>
+                  <option value="tasks">Most tasks</option>
+                  <option value="modes">Most modes</option>
+                  <option value="selected">Selected first</option>
+                </select>
+              </label>
+              <span id="companyFilterCount" class="count-badge"></span>
+            </div>
           </div>
           <div id="companiesGrid" class="companies-grid"></div>
         </section>
@@ -201,71 +235,159 @@
 
       <!-- ===== RUNS ===== -->
       <div id="panel-runs" class="tab-panel" role="tabpanel" aria-labelledby="tab-runs" hidden>
-        <section class="panel filters-panel">
-          <div class="panel-head compact">
-            <h2>Filters</h2>
-            <button id="clearFilters" class="chip" type="button">Clear</button>
-          </div>
-          <div class="filters-grid">
-            <label class="filter-field">
-              <span>Run group</span>
-              <select id="filterGroup"></select>
-            </label>
-            <label class="filter-field">
-              <span>Harvester</span>
-              <select id="filterHarvester"></select>
-            </label>
-            <label class="filter-field">
-              <span>Company</span>
-              <select id="filterProject"></select>
-            </label>
-            <label class="filter-field">
-              <span>Mode</span>
-              <select id="filterMode"></select>
-            </label>
-            <label class="filter-field">
-              <span>Status</span>
-              <select id="filterStatus">
-                <option value="">All</option>
-                <option value="pass">Pass</option>
-                <option value="fail">Needs work</option>
-              </select>
-            </label>
-          </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head">
+        <!-- list view -->
+        <div id="runsListView">
+          <div class="runs-toolbar">
             <div>
-              <h2>Results matrix</h2>
-              <p>Task discovery, solution discovery and inventory score by miner.</p>
+              <h2 class="runs-toolbar-title">Benchmark runs</h2>
+              <p class="runs-toolbar-sub">Browse grouped evaluations, or configure and launch a new run.</p>
             </div>
-            <span id="runStateRuns" class="run-state">idle</span>
+            <button id="openRunModal" class="button primary" type="button">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
+              <span>Start a run</span>
+            </button>
           </div>
-          <div class="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Company</th>
-                  <th>Miner</th>
-                  <th>Mode</th>
-                  <th>Score</th>
-                  <th>Task discovery</th>
-                  <th>Solution discovery</th>
-                  <th>Inventory</th>
-                  <th>Gaps</th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="resultsBody"></tbody>
-            </table>
-            <div id="emptyResults" class="empty">Run the selected matrix to populate results.</div>
-          </div>
-        </section>
+
+          <details class="panel filters-panel" id="filtersPanel">
+            <summary class="panel-head compact filters-summary">
+              <h2>Filters</h2>
+              <span class="filters-summary-right">
+                <span id="filtersActive" class="count-badge" hidden>0 active</span>
+                <span class="muted-tag filters-hint">show / hide</span>
+              </span>
+            </summary>
+            <div class="filters-toolbar">
+              <button id="clearFilters" class="chip" type="button">Clear all</button>
+            </div>
+            <div class="filters-grid">
+              <label class="filter-field">
+                <span>Run group</span>
+                <select id="filterGroup"></select>
+              </label>
+              <label class="filter-field">
+                <span>Harvester</span>
+                <select id="filterHarvester"></select>
+              </label>
+              <label class="filter-field">
+                <span>Company</span>
+                <select id="filterProject"></select>
+              </label>
+              <label class="filter-field">
+                <span>Mode / sources</span>
+                <select id="filterMode"></select>
+              </label>
+              <label class="filter-field">
+                <span>Phase</span>
+                <select id="filterPhase">
+                  <option value="">Overall</option>
+                  <option value="task">Task discovery</option>
+                  <option value="solution">Solution discovery</option>
+                  <option value="execution">Agent execution</option>
+                </select>
+              </label>
+              <label class="filter-field">
+                <span>Status</span>
+                <select id="filterStatus">
+                  <option value="">All</option>
+                  <option value="pass">Pass</option>
+                  <option value="fail">Needs work</option>
+                </select>
+              </label>
+            </div>
+          </details>
+
+          <section class="panel">
+            <div class="panel-head">
+              <div>
+                <h2>Runs</h2>
+                <p>Each run is one grouped evaluation of harvesters against demo companies. Open one for the full detail.</p>
+              </div>
+              <span id="runStateRuns" class="run-state">idle</span>
+            </div>
+            <div id="runsOverview" class="runs-overview" hidden></div>
+            <div id="runGroupsList" class="run-groups-list"></div>
+            <div id="emptyResults" class="empty">Run a matrix to create grouped run cards.</div>
+          </section>
+        </div>
+
+        <!-- routed detail view (run group / single run) -->
+        <section id="runDetailView" class="run-detail-view" hidden></section>
       </div>
 
-      <footer class="footnote">Infinite Company Arena · CompanyHarvester benchmark suite</footer>
+        <footer class="footnote">Infinite Company Arena · CompanyHarvester benchmark suite</footer>
+      </div>
     </div>
-    <script src="/src/app.js?v=3" defer></script>
+
+    <!-- ===== START A RUN — MODAL ===== -->
+    <div id="runModal" class="modal-overlay" hidden>
+      <div class="modal" role="dialog" aria-modal="true" aria-labelledby="runModalTitle">
+        <div class="modal-head">
+          <div>
+            <div class="eyebrow">Benchmark</div>
+            <h2 id="runModalTitle">Start a run</h2>
+            <p>Pick harvesters and companies in their tabs, choose source modes here.</p>
+          </div>
+          <div class="modal-head-right">
+            <span id="runState" class="run-state">idle</span>
+            <button id="runModalClose" class="icon-button" type="button" title="Close" aria-label="Close">
+              <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="modal-body">
+          <div class="run-config-body">
+            <div class="run-config-main">
+              <div id="selectionSummary" class="summary-rows"></div>
+              <div class="mode-selector-head">
+                <span class="subhead-label">Source modes</span>
+                <span id="modeSelCount" class="count-badge">0 selected</span>
+              </div>
+              <div id="modeSelector" class="mode-selector"></div>
+            </div>
+            <div class="run-config-actions">
+              <button id="runButtonRuns" class="button primary block" type="button">
+                <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 3 14 9-14 9z"/></svg>
+                <span class="run-label">Run matrix</span>
+              </button>
+              <span class="run-config-hint">Quick presets</span>
+              <div class="quick-actions">
+                <button id="runTopAllProjects" class="button ghost block" type="button">Top harvester · all demo companies</button>
+                <button id="runAllAllProjects" class="button ghost block" type="button">All harvesters · all demo companies</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- ===== RUN PROGRESS / CONFIRM OVERLAY ===== -->
+    <div id="runProgress" class="run-progress-overlay" hidden>
+      <div class="run-progress-card" role="dialog" aria-modal="true" aria-labelledby="rpTitle">
+        <!-- confirmation step (shown for large matrices) -->
+        <div id="rpConfirm" class="rp-confirm" hidden>
+          <div class="rp-confirm-ic" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/></svg>
+          </div>
+          <h2 id="rpTitle">Start this run?</h2>
+          <p>This will evaluate <b id="rpcCells">0</b> cells (<span id="rpcExpr" class="mono"></span>). It runs on the server and <b id="rpcHint">can take a few minutes</b>.</p>
+          <div class="rp-actions">
+            <button id="rpCancel" class="button ghost" type="button">Cancel</button>
+            <button id="rpConfirmBtn" class="button primary" type="button">Run anyway</button>
+          </div>
+        </div>
+        <!-- running step -->
+        <div id="rpRunning" class="rp-running" hidden>
+          <div class="rp-spinner" aria-hidden="true"></div>
+          <h2>Running benchmark…</h2>
+          <p>Evaluating <b id="rpCells">0</b> cells. <span id="rpHint">This can take a few minutes.</span></p>
+          <div class="rp-bar" aria-hidden="true"><i></i></div>
+          <div class="rp-meta">
+            <span>Elapsed <b id="rpElapsed" class="mono">0:00</b></span>
+            <span class="rp-note">Keep this tab open — results appear automatically when finished.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="src/app.js?v=18" defer></script>
   </body>
 </html>

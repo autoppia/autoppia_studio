@@ -23,6 +23,12 @@ Default URL:
 http://127.0.0.1:3100
 ```
 
+The local PM2 setup commonly runs this UI on:
+
+```text
+http://127.0.0.1:3101
+```
+
 Default API:
 
 ```text
@@ -35,3 +41,5 @@ in the top bar or with:
 ```text
 http://127.0.0.1:3100?api=http://127.0.0.1:8080
 ```
+
+Use the same `api` query parameter on port `3101` when running through PM2.
